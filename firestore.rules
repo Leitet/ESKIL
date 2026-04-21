@@ -1,0 +1,115 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && userRole() == 'super-admin';
+    }
+
+    function compAdmins(cid) {
+      return get(/databases/$(database)/documents/competitions/$(cid)).data.admins;
+    }
+
+    function compUsers(cid) {
+      return get(/databases/$(database)/documents/competitions/$(cid)).data.users;
+    }
+
+    function isCompAdmin(cid) {
+      return isSignedIn() && (isSuperAdmin() || request.auth.uid in compAdmins(cid));
+    }
+
+    function isCompMember(cid) {
+      return isSignedIn() && (isSuperAdmin()
+        || request.auth.uid in compAdmins(cid)
+        || request.auth.uid in compUsers(cid));
+    }
+
+    // A competition flagged with demo: true is read-only for everyone except
+    // super-admins. Used for the bundled "Demospår" that ships in prod so new
+    // users can explore without being able to deface it.
+    function compIsDemo(cid) {
+      return get(/databases/$(database)/documents/competitions/$(cid)).data.demo == true;
+    }
+
+    // --- Users
+    // Any signed-in user may read the (email, role) of other users so that
+    // competition admins can look up invitees by email. A user may only
+    // create/update their own doc, and cannot elevate their own role — only
+    // the pre-approved super-admin email may self-assign "super-admin".
+    match /users/{uid} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.auth.uid == uid
+        && (
+          request.resource.data.role == 'user'
+          || (request.resource.data.role == 'super-admin'
+              // MUST match SUPER_ADMIN_EMAIL in public/js/store.js
+              && request.auth.token.email == 'johan@leitet.se')
+        );
+      allow update: if isSuperAdmin()
+        || (isSignedIn() && request.auth.uid == uid
+            && request.resource.data.role == resource.data.role);
+      allow delete: if isSuperAdmin();
+    }
+
+    // --- Competitions
+    match /competitions/{cid} {
+      allow read: if true; // public read of competition meta is OK (names only)
+      // Only super-admin can create demo competitions — regular users creating
+      // one accidentally shouldn't be possible.
+      allow create: if isSignedIn()
+        && (request.resource.data.demo != true || isSuperAdmin());
+      // Writes on a demo competition are locked to super-admin.
+      allow update: if isSuperAdmin()
+        || (isCompAdmin(cid) && !compIsDemo(cid));
+      allow delete: if isSuperAdmin();
+
+      // Patrols — readable by anyone (ID is obscure anyway, used by control page)
+      match /patrols/{pid} {
+        allow read: if true;
+        allow write: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
+      }
+
+      // Controls — read public (ID is the secret); write by admins only
+      match /controls/{ctrlId} {
+        allow read: if true;
+        allow write: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
+
+        // Scores — anonymous create/update allowed if control is open AND the
+        // competition isn't a demo. Super-admin can always seed scores.
+        match /scores/{scoreId} {
+          allow read: if true;
+          allow create: if isSuperAdmin() || (
+               get(/databases/$(database)/documents/competitions/$(cid)/controls/$(ctrlId)).data.open == true
+            && !compIsDemo(cid)
+            && request.resource.data.keys().hasOnly(['patrolId','poang','extraPoang','note','reportedAt','reporter'])
+            && request.resource.data.poang is number
+            && request.resource.data.patrolId is string
+          );
+          allow update: if isSuperAdmin() || (
+               get(/databases/$(database)/documents/competitions/$(cid)/controls/$(ctrlId)).data.open == true
+            && !compIsDemo(cid)
+            && request.resource.data.keys().hasOnly(['patrolId','poang','extraPoang','note','reportedAt','reporter'])
+          );
+          allow delete: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
+        }
+      }
+
+      // Invites
+      match /invites/{inviteId} {
+        allow read: if true; // token-based lookup
+        allow create: if isCompAdmin(cid);
+        allow update: if isSignedIn(); // to mark used on accept
+        allow delete: if isCompAdmin(cid);
+      }
+    }
+  }
+}

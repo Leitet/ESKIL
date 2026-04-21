@@ -1,0 +1,20 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "controls",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "nummer", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "patrols",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "avdelning", "order": "ASCENDING" },
+        { "fieldPath": "number", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

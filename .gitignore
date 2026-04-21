@@ -1,0 +1,17 @@
+node_modules/
+.DS_Store
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Never commit service account credentials
+*service-account*.json
+*.serviceaccount.json
+
+# No need to gitignore firebase-config.json — the client auto-connects to
+# emulators on localhost, and Firebase Hosting overrides the file in prod via
+# /__/firebase/init.json. The committed values are demo/placeholder only.
+
+# Generated/bundle extraction
+_design/design.tar

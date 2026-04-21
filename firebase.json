@@ -1,0 +1,31 @@
+{
+  "hosting": {
+    "public": "public",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "cleanUrls": true,
+    "trailingSlash": false,
+    "rewrites": [
+      { "source": "/k/**", "destination": "/k.html" },
+      { "source": "/s/**", "destination": "/s.html" },
+      { "source": "/t/**", "destination": "/t.html" },
+      { "source": "/app/**", "destination": "/index.html" },
+      { "source": "**", "destination": "/index.html" }
+    ],
+    "headers": [
+      {
+        "source": "**/*.@(js|css|svg)",
+        "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600" }]
+      }
+    ]
+  },
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "emulators": {
+    "auth":      { "host": "127.0.0.1", "port": 9099 },
+    "firestore": { "host": "127.0.0.1", "port": 8080 },
+    "hosting":   { "host": "127.0.0.1", "port": 5050 },
+    "ui":        { "enabled": true, "host": "127.0.0.1", "port": 4000 }
+  }
+}

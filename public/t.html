@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Tävling — ESKIL</title>
+<meta name="theme-color" content="#003660">
+<link rel="icon" type="image/svg+xml" href="/assets/scout-symbol.svg">
+<link rel="stylesheet" href="/assets/tokens.css">
+<link rel="stylesheet" href="/assets/app.css">
+<link rel="stylesheet" href="/assets/public.css">
+
+<link rel="modulepreload" href="/js/firebase.js">
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js" crossorigin>
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js" crossorigin>
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js" crossorigin>
+</head>
+<body>
+
+<div id="root">
+  <div class="splash" style="min-height: 60vh;">
+    <div class="splash-pattern"></div>
+    <div class="splash-inner">
+      <img src="/assets/logo-scouterna-tagline-white.svg" alt="Scouterna" style="height:40px;">
+      <div class="t-over eyebrow" style="margin-top: var(--sp-8);">Laddar tävling…</div>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="/js/public.js"></script>
+</body>
+</html>

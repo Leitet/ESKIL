@@ -1,0 +1,701 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Svenska Scouterna — Design System</title>
+<link rel="stylesheet" href="tokens.css">
+<style>
+  .page { max-width: 1200px; margin: 0 auto; padding: 0 var(--sp-8); }
+
+  /* Top nav */
+  .nav {
+    position: sticky; top: 0; z-index: 20;
+    background: rgba(255,255,255,0.92);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner {
+    max-width: 1200px; margin: 0 auto; padding: 14px var(--sp-8);
+    display: flex; align-items: center; gap: var(--sp-8);
+  }
+  .brand { display: flex; align-items: center; gap: var(--sp-3); color: var(--scout-blue); text-decoration: none; }
+  .brand-mark { width: 28px; height: 34px; color: var(--scout-blue); }
+  .brand-name { font-family: var(--font-display); font-weight: 700; font-size: 18px; letter-spacing: -0.01em; }
+  .nav-links { display: flex; gap: var(--sp-5); margin-left: auto; font-size: 14px; }
+  .nav-links a { color: var(--fg2); text-decoration: none; }
+  .nav-links a:hover { color: var(--scout-blue); }
+
+  /* HERO */
+  .hero {
+    background: var(--scout-blue);
+    color: var(--fg-on-blue);
+    padding: var(--sp-24) 0 var(--sp-16);
+    position: relative;
+    overflow: hidden;
+  }
+  .hero-pattern {
+    position: absolute; inset: 0;
+    background-image: radial-gradient(rgba(255,255,255,0.06) 1.5px, transparent 1.5px);
+    background-size: 28px 28px;
+    mask-image: linear-gradient(180deg, black 0%, transparent 85%);
+  }
+  .hero .page { position: relative; }
+  .hero .eyebrow { color: var(--rover-yellow); font-weight: 700; }
+  .hero h1 { margin: var(--sp-4) 0 var(--sp-6); max-width: 900px; }
+  .hero p { font-family: var(--font-serif); font-size: 22px; line-height: 1.5; max-width: 680px; color: #d2dde8; }
+  .hero-meta { margin-top: var(--sp-10); display: flex; gap: var(--sp-8); flex-wrap: wrap; font-size: 14px; color: #a7bccf; }
+  .hero-meta b { color: var(--white); font-weight: 600; }
+
+  /* Decorative symbol in hero */
+  .hero-symbol {
+    position: absolute; right: -60px; top: 50%; transform: translateY(-50%);
+    width: 420px; color: rgba(255,255,255,0.05);
+  }
+
+  /* Sections */
+  section.band { padding: var(--sp-24) 0; border-bottom: 1px solid var(--border); }
+  section.band.alt { background: var(--bg-muted); }
+  .band-head { max-width: 720px; margin-bottom: var(--sp-12); }
+  .band-head .t-over { color: var(--scout-blue); display: inline-block; margin-bottom: var(--sp-3); }
+  .band-head h2 { margin-bottom: var(--sp-4); }
+  .band-head p { font-family: var(--font-serif); font-size: 20px; line-height: 1.55; color: var(--fg2); }
+
+  /* Color grids */
+  .color-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sp-5); }
+  @media (max-width: 900px) { .color-grid { grid-template-columns: repeat(2,1fr); } }
+  .swatch {
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    overflow: hidden;
+    background: var(--white);
+  }
+  .swatch-fill { aspect-ratio: 4/3; position: relative; }
+  .swatch-label {
+    position: absolute; bottom: 12px; left: 14px;
+    color: var(--white);
+    font-family: var(--font-display); font-weight: 700;
+    font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase;
+  }
+  .swatch-label.dark { color: var(--black); }
+  .swatch-meta { padding: var(--sp-4); display: flex; justify-content: space-between; font-size: 13px; }
+  .swatch-meta code { font-family: var(--font-mono); font-size: 12px; color: var(--fg2); }
+  .swatch-meta .pant { color: var(--fg3); }
+
+  /* Ramp */
+  .ramp { display: flex; border-radius: var(--r-md); overflow: hidden; border: 1px solid var(--border); }
+  .ramp > div { flex: 1; height: 72px; position: relative; }
+  .ramp > div span { position: absolute; bottom: 8px; left: 8px; font-size: 10px; font-family: var(--font-mono); }
+
+  /* AGE GROUPS */
+  .ages { display: grid; grid-template-columns: repeat(5, 1fr); gap: var(--sp-4); }
+  @media (max-width: 1000px) { .ages { grid-template-columns: repeat(2,1fr); } }
+  .age {
+    border-radius: var(--r-xl);
+    padding: var(--sp-6);
+    color: var(--white);
+    min-height: 260px;
+    display: flex; flex-direction: column; justify-content: space-between;
+    position: relative; overflow: hidden;
+    transition: transform var(--dur-base) var(--ease);
+  }
+  .age:hover { transform: translateY(-4px); }
+  .age-sp { background: var(--spaer-green); }
+  .age-up { background: var(--upp-blue); }
+  .age-av { background: var(--avent-orange); }
+  .age-ut { background: var(--utm-pink); }
+  .age-ro { background: var(--rover-yellow); color: var(--rover-dark); }
+  .age-icon {
+    width: 64px; height: 64px;
+    opacity: 0.9;
+  }
+  .age-icon svg { width: 100%; height: 100%; }
+  .age-name { font-family: var(--font-display); font-weight: 700; font-size: 22px; margin-top: var(--sp-4); }
+  .age-range { opacity: 0.85; font-size: 13px; margin-top: var(--sp-1); }
+  .age-desc { font-size: 13px; line-height: 1.5; margin-top: var(--sp-3); opacity: 0.9; }
+  .age-watermark {
+    position: absolute; right: -30px; bottom: -30px; width: 160px;
+    opacity: 0.12; color: currentColor;
+  }
+
+  /* Type specimens */
+  .type-grid { display: grid; grid-template-columns: 200px 1fr; gap: var(--sp-8) var(--sp-10); align-items: baseline; }
+  @media (max-width: 700px) { .type-grid { grid-template-columns: 1fr; gap: var(--sp-2); } }
+  .type-grid .label { font-family: var(--font-mono); font-size: 11px; color: var(--fg3); text-transform: uppercase; letter-spacing: 0.1em; }
+  .type-sample { color: var(--scout-blue); }
+
+  /* Cards grid */
+  .cards-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-6); }
+  @media (max-width: 900px) { .cards-grid { grid-template-columns: 1fr; } }
+  .demo-card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: var(--sp-6);
+    box-shadow: var(--shadow-sm);
+  }
+  .demo-card h4 { margin: 0 0 var(--sp-2); }
+  .demo-card p { font-family: var(--font-serif); font-size: 16px; color: var(--fg2); margin: 0; }
+  .demo-card .tag { display: inline-block; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; color: var(--scout-blue); background: var(--scout-blue-100); padding: 4px 10px; border-radius: var(--r-full); margin-bottom: var(--sp-3); }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex; align-items: center; gap: var(--sp-2);
+    font-family: var(--font-display); font-weight: 600; font-size: 15px;
+    padding: 12px 22px; border-radius: var(--r-md);
+    border: 1px solid transparent; cursor: pointer;
+    transition: all var(--dur-base) var(--ease);
+    text-decoration: none;
+  }
+  .btn-primary { background: var(--primary); color: var(--primary-fg); }
+  .btn-primary:hover { background: var(--primary-hover); box-shadow: var(--shadow-md); transform: translateY(-1px); }
+  .btn-secondary { background: var(--white); color: var(--scout-blue); border-color: var(--scout-blue); }
+  .btn-secondary:hover { background: var(--scout-blue-50); }
+  .btn-ghost { background: transparent; color: var(--scout-blue); }
+  .btn-ghost:hover { background: var(--scout-blue-100); }
+  .btn-accent { background: var(--avent-orange); color: var(--white); }
+  .btn-accent:hover { background: #cf5210; box-shadow: var(--shadow-md); }
+
+  /* Badges */
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 600;
+    padding: 4px 10px; border-radius: var(--r-full);
+    font-family: var(--font-display);
+  }
+  .badge-blue   { background: var(--scout-blue-100); color: var(--scout-blue); }
+  .badge-green  { background: #e3f4dd; color: #2d7a1c; }
+  .badge-orange { background: #fde5d4; color: #b84a0a; }
+  .badge-pink   { background: #fad4e2; color: #a6004a; }
+  .badge-yellow { background: #f8f6c0; color: #6a6303; }
+
+  /* Input */
+  .input {
+    width: 100%; padding: 12px 14px;
+    border: 1.5px solid var(--border-strong);
+    border-radius: var(--r-md);
+    font-family: var(--font-sans); font-size: 15px;
+    background: var(--white); color: var(--fg1);
+    transition: border-color var(--dur-base) var(--ease), box-shadow var(--dur-base) var(--ease);
+  }
+  .input:focus { outline: none; border-color: var(--scout-blue); box-shadow: var(--shadow-ring); }
+  label.field { display: block; font-size: 13px; font-weight: 600; color: var(--fg1); margin-bottom: 6px; }
+
+  /* Spacing scale */
+  .sp-row { display: flex; align-items: center; gap: var(--sp-4); margin-bottom: var(--sp-3); font-family: var(--font-mono); font-size: 12px; }
+  .sp-bar { background: var(--scout-blue); height: 20px; border-radius: var(--r-sm); }
+
+  /* Radii + shadows */
+  .rad-grid, .sh-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: var(--sp-5); }
+  @media (max-width: 900px) { .rad-grid, .sh-grid { grid-template-columns: repeat(2,1fr); } }
+  .rad-box {
+    aspect-ratio: 1; background: var(--scout-blue-100);
+    border: 2px solid var(--scout-blue); display: flex; align-items: flex-end; justify-content: center;
+    padding: 8px; font-family: var(--font-mono); font-size: 11px; color: var(--scout-blue);
+  }
+  .sh-box {
+    aspect-ratio: 1; background: var(--white); display: flex; align-items: flex-end; justify-content: center;
+    padding: 8px; font-family: var(--font-mono); font-size: 11px; color: var(--fg2);
+    border-radius: var(--r-lg);
+  }
+
+  /* Sample UI: Scoutkår card */
+  .ui-sample {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: var(--r-xl);
+    overflow: hidden;
+    box-shadow: var(--shadow-md);
+    max-width: 420px;
+  }
+  .ui-banner {
+    height: 160px;
+    background: linear-gradient(135deg, var(--scout-blue-700) 0%, var(--scout-blue-800) 100%);
+    position: relative; overflow: hidden;
+  }
+  .ui-banner::before {
+    content: ''; position: absolute; inset: 0;
+    background-image: radial-gradient(rgba(255,255,255,0.08) 1px, transparent 1px);
+    background-size: 18px 18px;
+  }
+  .ui-banner svg { position: absolute; right: -20px; bottom: -40px; width: 200px; color: rgba(255,255,255,0.1); }
+  .ui-body { padding: var(--sp-6); }
+  .ui-tab {
+    display: inline-block;
+    background: var(--scout-blue); color: var(--white);
+    font-family: var(--font-display); font-weight: 700; font-size: 11px;
+    letter-spacing: 0.15em; text-transform: uppercase;
+    padding: 6px 12px; margin-left: 20px; margin-top: -14px; position: relative;
+    border-radius: 0 0 2px 2px;
+  }
+
+  /* Footer */
+  footer {
+    background: var(--scout-blue-900);
+    color: #a7bccf;
+    padding: var(--sp-16) 0 var(--sp-12);
+    font-size: 14px;
+  }
+  footer .page { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--sp-8); flex-wrap: wrap; }
+  footer h5 { color: var(--white); font-family: var(--font-display); font-weight: 700; margin: 0 0 var(--sp-3); }
+  footer p { max-width: 380px; }
+  footer .cite { font-family: var(--font-serif); font-style: italic; font-size: 18px; color: var(--rover-yellow); max-width: 420px; }
+
+  /* Mission callout */
+  .mission {
+    font-family: var(--font-display);
+    font-weight: 200;
+    font-size: 44px;
+    line-height: 1.15;
+    letter-spacing: -0.015em;
+    color: var(--scout-blue);
+    max-width: 900px;
+  }
+  .mission em { font-family: var(--font-serif); font-style: italic; font-weight: 500; color: var(--avent-orange); }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="#top">
+      <svg class="brand-mark" viewBox="0 0 200 240" fill="currentColor" aria-hidden="true">
+        <path d="M100 12 C 92 38, 90 60, 90 92 C 90 118, 95 138, 100 158 C 105 138, 110 118, 110 92 C 110 60, 108 38, 100 12 Z"/>
+        <path d="M38 32 C 44 62, 52 86, 68 108 C 78 122, 84 132, 82 152 C 78 138, 70 132, 58 128 C 44 124, 34 118, 30 102 C 26 82, 28 58, 38 32 Z"/>
+        <path d="M162 32 C 156 62, 148 86, 132 108 C 122 122, 116 132, 118 152 C 122 138, 130 132, 142 128 C 156 124, 166 118, 170 102 C 174 82, 172 58, 162 32 Z"/>
+        <ellipse cx="100" cy="170" rx="62" ry="10"/>
+        <rect x="48" y="184" width="104" height="6"/>
+        <rect x="54" y="196" width="92" height="6"/>
+      </svg>
+      <span class="brand-name">Scouterna Design System</span>
+    </a>
+    <div class="nav-links">
+      <a href="#foundations">Foundations</a>
+      <a href="#colors">Colors</a>
+      <a href="#age-groups">Åldersgrupper</a>
+      <a href="#type">Type</a>
+      <a href="#components">Components</a>
+      <a href="#sample">In Use</a>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<header id="top" class="hero">
+  <div class="hero-pattern"></div>
+  <svg class="hero-symbol" viewBox="0 0 200 240" fill="currentColor" aria-hidden="true">
+    <path d="M100 12 C 92 38, 90 60, 90 92 C 90 118, 95 138, 100 158 C 105 138, 110 118, 110 92 C 110 60, 108 38, 100 12 Z"/>
+    <path d="M38 32 C 44 62, 52 86, 68 108 C 78 122, 84 132, 82 152 C 78 138, 70 132, 58 128 C 44 124, 34 118, 30 102 C 26 82, 28 58, 38 32 Z"/>
+    <path d="M162 32 C 156 62, 148 86, 132 108 C 122 122, 116 132, 118 152 C 122 138, 130 132, 142 128 C 156 124, 166 118, 170 102 C 174 82, 172 58, 162 32 Z"/>
+    <ellipse cx="100" cy="170" rx="62" ry="10"/>
+    <rect x="48" y="184" width="104" height="6"/>
+    <rect x="54" y="196" width="92" height="6"/>
+    <path d="M100 208 C 94 216, 92 224, 96 232 L 104 232 C 108 224, 106 216, 100 208 Z"/>
+  </svg>
+  <div class="page">
+    <div class="t-over eyebrow">Version 2.0 · Digital</div>
+    <h1 class="t-hero">Raised by<br>adventure.</h1>
+    <p>Ett designsystem för Svenska Scouterna — byggt på den grafiska profilen och det visuella arvet av äventyr, gemenskap och utveckling.</p>
+    <div class="hero-meta">
+      <span><b>Scoutblå</b> · primär färg</span>
+      <span><b>5 åldersgrupper</b> · egna identiteter</span>
+      <span><b>Libre Franklin</b> · typsnitt</span>
+      <span><b>Äventyr & kompisar</b> · löfte</span>
+    </div>
+  </div>
+</header>
+
+<!-- MISSION / PHILOSOPHY -->
+<section class="band">
+  <div class="page">
+    <div class="t-over" style="color: var(--avent-orange); margin-bottom: var(--sp-4);">Varumärkeslöfte</div>
+    <p class="mission">
+      Vi lovar <em>äventyr</em> och kompisar, spänning, utveckling och gemenskap — designsystemet är verktyget som håller det löftet konsekvent, från affischen i scoutkåren till appen i fickan.
+    </p>
+  </div>
+</section>
+
+<!-- COLORS -->
+<section id="colors" class="band alt">
+  <div class="page">
+    <div class="band-head">
+      <div class="t-over">01 / Färger</div>
+      <h2 class="t-d2">Scoutblå är ramverket.</h2>
+      <p>De sekundära färgerna finns främst för att ge varje åldersgrupp en egen identitet, men kan också liva upp generell kommunikation när flera används tillsammans.</p>
+    </div>
+
+    <!-- Primary + Neutrals -->
+    <h3 class="t-h3" style="margin-bottom: var(--sp-5);">Primär</h3>
+    <div class="color-grid" style="grid-template-columns: repeat(3,1fr); margin-bottom: var(--sp-12);">
+      <div class="swatch">
+        <div class="swatch-fill" style="background: var(--scout-blue);">
+          <div class="swatch-label">Scoutblå</div>
+        </div>
+        <div class="swatch-meta"><code>#003660</code><span class="pant">PANTONE 2955C</span></div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-fill" style="background: var(--black);">
+          <div class="swatch-label">Svart</div>
+        </div>
+        <div class="swatch-meta"><code>#282727</code><span class="pant">Neutral Black C</span></div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-fill" style="background: var(--white); border-bottom: 1px solid var(--border);">
+          <div class="swatch-label dark">Vit</div>
+        </div>
+        <div class="swatch-meta"><code>#FFFFFF</code><span class="pant">—</span></div>
+      </div>
+    </div>
+
+    <!-- Secondary -->
+    <h3 class="t-h3" style="margin-bottom: var(--sp-5);">Sekundära — åldersgruppsfärger</h3>
+    <div class="color-grid" style="grid-template-columns: repeat(5,1fr);">
+      <div class="swatch">
+        <div class="swatch-fill" style="background: var(--spaer-green);"><div class="swatch-label">Spårargrön</div></div>
+        <div class="swatch-meta"><code>#41A62A</code><span class="pant">361C</span></div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-fill" style="background: var(--upp-blue);"><div class="swatch-label">Upptäckarblå</div></div>
+        <div class="swatch-meta"><code>#00A8E1</code><span class="pant">2995C</span></div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-fill" style="background: var(--avent-orange);"><div class="swatch-label">Äventyrarorange</div></div>
+        <div class="swatch-meta"><code>#E95F13</code><span class="pant">166C</span></div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-fill" style="background: var(--utm-pink);"><div class="swatch-label">Utmanarrosa</div></div>
+        <div class="swatch-meta"><code>#DA005E</code><span class="pant">Rubine Red</span></div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-fill" style="background: var(--rover-yellow);"><div class="swatch-label dark">Rovergul</div></div>
+        <div class="swatch-meta"><code>#E2E000</code><span class="pant">396C</span></div>
+      </div>
+    </div>
+
+    <!-- Blue ramp for UI -->
+    <h3 class="t-h3" style="margin: var(--sp-12) 0 var(--sp-5);">Scoutblå — UI-skala</h3>
+    <p class="t-sm t-muted" style="margin-bottom: var(--sp-5); max-width: 640px;">Extraherad skala för digital användning — bakgrund, hover, border och tryggt kontrast-par på vit.</p>
+    <div class="ramp">
+      <div style="background: var(--scout-blue-50);"><span style="color:#003660">50</span></div>
+      <div style="background: var(--scout-blue-100);"><span style="color:#003660">100</span></div>
+      <div style="background: var(--scout-blue-200);"><span style="color:#003660">200</span></div>
+      <div style="background: var(--scout-blue-300);"><span style="color:#003660">300</span></div>
+      <div style="background: var(--scout-blue-400);"><span style="color:white">400</span></div>
+      <div style="background: var(--scout-blue-500);"><span style="color:white">500</span></div>
+      <div style="background: var(--scout-blue-600);"><span style="color:white">600</span></div>
+      <div style="background: var(--scout-blue-700);"><span style="color:white">700</span></div>
+      <div style="background: var(--scout-blue-800);"><span style="color:white">800</span></div>
+      <div style="background: var(--scout-blue-900);"><span style="color:white">900</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- AGE GROUPS -->
+<section id="age-groups" class="band">
+  <div class="page">
+    <div class="band-head">
+      <div class="t-over">02 / Åldersgrupper</div>
+      <h2 class="t-d2">Fem grupper, fem identiteter.</h2>
+      <p>Varje åldersgrupp har en egen färg och symbol som skapar gruppidentitet. Använd dem konsekvent i kommunikation riktad mot rätt målgrupp.</p>
+    </div>
+
+    <div class="ages">
+      <!-- SPÅRARE -->
+      <div class="age age-sp">
+        <div class="age-icon">
+          <!-- Fox -->
+          <svg viewBox="0 0 64 64" fill="currentColor" aria-hidden="true">
+            <path d="M8 14 L18 34 L14 46 Q20 44 26 40 Q32 46 38 40 Q44 44 50 46 L46 34 L56 14 L44 22 Q32 18 20 22 Z"/>
+            <circle cx="24" cy="30" r="2.5" fill="#003660"/>
+            <circle cx="40" cy="30" r="2.5" fill="#003660"/>
+          </svg>
+        </div>
+        <div>
+          <div class="age-name">Spårare</div>
+          <div class="age-range">8 – 10 år</div>
+          <div class="age-desc">Jag kan! Vill ha kompisar, leka, upptäcka.</div>
+        </div>
+      </div>
+
+      <!-- UPPTÄCKARE -->
+      <div class="age age-up">
+        <div class="age-icon">
+          <!-- Hand / trust -->
+          <svg viewBox="0 0 64 64" fill="currentColor" aria-hidden="true">
+            <path d="M20 14 L20 38 Q14 38 14 44 Q14 52 22 56 L44 56 Q52 56 52 46 L52 24 Q52 20 48 20 Q44 20 44 24 L44 34 L40 34 L40 18 Q40 14 36 14 Q32 14 32 18 L32 34 L28 34 L28 14 Q28 10 24 10 Q20 10 20 14 Z"/>
+          </svg>
+        </div>
+        <div>
+          <div class="age-name">Upptäckare</div>
+          <div class="age-range">10 – 12 år</div>
+          <div class="age-desc">Vågar mer. Vill uppleva äventyr och känna sig stor.</div>
+        </div>
+      </div>
+
+      <!-- ÄVENTYRARE -->
+      <div class="age age-av">
+        <div class="age-icon">
+          <!-- Fire -->
+          <svg viewBox="0 0 64 64" fill="currentColor" aria-hidden="true">
+            <path d="M32 6 Q24 18 24 26 Q18 22 18 30 Q14 38 18 48 Q22 58 32 58 Q42 58 46 48 Q50 38 46 30 Q46 22 40 26 Q40 18 32 6 Z"/>
+          </svg>
+        </div>
+        <div>
+          <div class="age-name">Äventyrare</div>
+          <div class="age-range">12 – 15 år</div>
+          <div class="age-desc">Pratar om livet medan de gör roliga saker.</div>
+        </div>
+      </div>
+
+      <!-- UTMANARE -->
+      <div class="age age-ut">
+        <div class="age-icon">
+          <!-- Torch -->
+          <svg viewBox="0 0 64 64" fill="currentColor" aria-hidden="true">
+            <path d="M32 4 Q24 14 24 22 Q20 18 20 26 Q20 34 32 36 Q44 34 44 26 Q44 18 40 22 Q40 14 32 4 Z"/>
+            <rect x="28" y="36" width="8" height="6"/>
+            <path d="M22 44 L42 44 L38 60 L26 60 Z"/>
+          </svg>
+        </div>
+        <div>
+          <div class="age-name">Utmanare</div>
+          <div class="age-range">15 – 18 år</div>
+          <div class="age-desc">Bygger självkänsla. Engagerade globalt.</div>
+        </div>
+      </div>
+
+      <!-- ROVER -->
+      <div class="age age-ro">
+        <div class="age-icon">
+          <!-- Flame -->
+          <svg viewBox="0 0 64 64" fill="currentColor" aria-hidden="true">
+            <path d="M32 6 Q20 22 22 36 Q14 32 16 44 Q18 56 32 58 Q46 56 48 44 Q50 32 42 36 Q44 22 32 6 Z"/>
+          </svg>
+        </div>
+        <div>
+          <div class="age-name">Rover</div>
+          <div class="age-range">19 – 25 år</div>
+          <div class="age-desc">Leder och driver. Förbättrar världen.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TYPOGRAPHY -->
+<section id="type" class="band alt">
+  <div class="page">
+    <div class="band-head">
+      <div class="t-over">03 / Typografi</div>
+      <h2 class="t-d2">Libre Franklin + EB Garamond.</h2>
+      <p>Modern digital ersättning för brand-bokens Tee Franklin (rubriker) och Adobe Garamond Pro (brödtext i längre dokument). Ultralight i stora rubriker ger karaktär.</p>
+    </div>
+
+    <div class="type-grid">
+      <div class="label">Hero · 88 / Ultralight</div>
+      <div class="type-sample t-hero">Äventyr</div>
+
+      <div class="label">Display 1 · 64 / Light</div>
+      <div class="type-sample t-d1">Vi är raised by adventure</div>
+
+      <div class="label">Display 2 · 48 / Light</div>
+      <div class="type-sample t-d2">Hitta scoutkår nära dig</div>
+
+      <div class="label">H1 · 36 / Semibold</div>
+      <div class="type-sample t-h1">Aktuella äventyr</div>
+
+      <div class="label">H2 · 28 / Semibold</div>
+      <div class="type-sample t-h2">Fritidskortet och din kår</div>
+
+      <div class="label">H3 · 22 / Semibold</div>
+      <div class="type-sample t-h3">Är du redan en van scout?</div>
+
+      <div class="label">Body · 16 / Regular</div>
+      <div class="type-sample t-body">Scouterna ger barn och unga från alla delar av samhället möjlighet att utvecklas till sin fulla potential, i en trygg miljö där alla får vara sig själva.</div>
+
+      <div class="label">Body Serif · 18 / EB Garamond</div>
+      <div class="type-sample t-serif">Vi lovar äventyr, spänning och gemenskap och Sveriges bästa ledare. Vi förändrar världen till det bättre – både lokalt och globalt.</div>
+
+      <div class="label">Overline · 12 / Bold / 0.12em</div>
+      <div class="type-sample t-over">Välkommen till scouterna</div>
+    </div>
+  </div>
+</section>
+
+<!-- FOUNDATIONS: SPACING, RADII, SHADOWS -->
+<section id="foundations" class="band">
+  <div class="page">
+    <div class="band-head">
+      <div class="t-over">04 / Foundations</div>
+      <h2 class="t-d2">4 px grid, mjuka radier, subtila skuggor.</h2>
+      <p>Mätetalen som håller ihop komponenter. Skuggor färgade med scoutblå för ett samstämt djup.</p>
+    </div>
+
+    <h3 class="t-h3" style="margin-bottom: var(--sp-5);">Spacing (4 px base)</h3>
+    <div style="margin-bottom: var(--sp-12); max-width: 760px;">
+      <div class="sp-row"><span style="width: 64px;">sp-1</span><div class="sp-bar" style="width: 4px;"></div><span>4</span></div>
+      <div class="sp-row"><span style="width: 64px;">sp-2</span><div class="sp-bar" style="width: 8px;"></div><span>8</span></div>
+      <div class="sp-row"><span style="width: 64px;">sp-3</span><div class="sp-bar" style="width: 12px;"></div><span>12</span></div>
+      <div class="sp-row"><span style="width: 64px;">sp-4</span><div class="sp-bar" style="width: 16px;"></div><span>16</span></div>
+      <div class="sp-row"><span style="width: 64px;">sp-6</span><div class="sp-bar" style="width: 24px;"></div><span>24</span></div>
+      <div class="sp-row"><span style="width: 64px;">sp-8</span><div class="sp-bar" style="width: 32px;"></div><span>32</span></div>
+      <div class="sp-row"><span style="width: 64px;">sp-12</span><div class="sp-bar" style="width: 48px;"></div><span>48</span></div>
+      <div class="sp-row"><span style="width: 64px;">sp-16</span><div class="sp-bar" style="width: 64px;"></div><span>64</span></div>
+      <div class="sp-row"><span style="width: 64px;">sp-24</span><div class="sp-bar" style="width: 96px;"></div><span>96</span></div>
+    </div>
+
+    <h3 class="t-h3" style="margin-bottom: var(--sp-5);">Radii</h3>
+    <div class="rad-grid" style="margin-bottom: var(--sp-12);">
+      <div class="rad-box" style="border-radius: var(--r-sm);">4 · sm</div>
+      <div class="rad-box" style="border-radius: var(--r-md);">8 · md</div>
+      <div class="rad-box" style="border-radius: var(--r-lg);">12 · lg</div>
+      <div class="rad-box" style="border-radius: var(--r-xl);">16 · xl</div>
+      <div class="rad-box" style="border-radius: var(--r-2xl);">24 · 2xl</div>
+    </div>
+
+    <h3 class="t-h3" style="margin-bottom: var(--sp-5);">Shadows</h3>
+    <div class="sh-grid">
+      <div class="sh-box" style="box-shadow: var(--shadow-xs);">xs</div>
+      <div class="sh-box" style="box-shadow: var(--shadow-sm);">sm</div>
+      <div class="sh-box" style="box-shadow: var(--shadow-md);">md</div>
+      <div class="sh-box" style="box-shadow: var(--shadow-lg);">lg</div>
+      <div class="sh-box" style="box-shadow: var(--shadow-ring); background: var(--scout-blue-50);">focus</div>
+    </div>
+  </div>
+</section>
+
+<!-- COMPONENTS -->
+<section id="components" class="band alt">
+  <div class="page">
+    <div class="band-head">
+      <div class="t-over">05 / Komponenter</div>
+      <h2 class="t-d2">Knappar, taggar, fält, kort.</h2>
+      <p>Grundläggande UI-byggstenar, grundade i scoutblå och åldersgruppsfärgerna — redo att kombineras.</p>
+    </div>
+
+    <!-- Buttons -->
+    <h3 class="t-h3" style="margin-bottom: var(--sp-5);">Knappar</h3>
+    <div style="display: flex; gap: var(--sp-3); flex-wrap: wrap; margin-bottom: var(--sp-12);">
+      <button class="btn btn-primary">Bli scout</button>
+      <button class="btn btn-secondary">Läs mer</button>
+      <button class="btn btn-ghost">Avbryt</button>
+      <button class="btn btn-accent">Anmäl till läger</button>
+      <button class="btn btn-primary" disabled style="opacity:0.4; cursor: not-allowed;">Avaktiverad</button>
+    </div>
+
+    <!-- Badges -->
+    <h3 class="t-h3" style="margin-bottom: var(--sp-5);">Taggar / Badges</h3>
+    <div style="display: flex; gap: var(--sp-2); flex-wrap: wrap; margin-bottom: var(--sp-12);">
+      <span class="badge badge-blue">Scouterna</span>
+      <span class="badge badge-green">Spårare</span>
+      <span class="badge" style="background:#d5f1fc; color:#006b8f;">Upptäckare</span>
+      <span class="badge badge-orange">Äventyrare</span>
+      <span class="badge badge-pink">Utmanare</span>
+      <span class="badge badge-yellow">Rover</span>
+      <span class="badge" style="background:#282727; color:#E2E000;">Jamboree26</span>
+    </div>
+
+    <!-- Inputs -->
+    <h3 class="t-h3" style="margin-bottom: var(--sp-5);">Formulär</h3>
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: var(--sp-5); max-width: 640px; margin-bottom: var(--sp-12);">
+      <div>
+        <label class="field" for="ort">Ort</label>
+        <input id="ort" class="input" placeholder="T.ex. Stockholm" />
+      </div>
+      <div>
+        <label class="field" for="age">Ålder</label>
+        <input id="age" class="input" placeholder="8–25 år" />
+      </div>
+    </div>
+
+    <!-- Cards -->
+    <h3 class="t-h3" style="margin-bottom: var(--sp-5);">Kort</h3>
+    <div class="cards-grid">
+      <div class="demo-card">
+        <span class="tag">Aktuellt</span>
+        <h4 class="t-h4">Jamboree26</h4>
+        <p>Nästa sommar samlas scouter från hela världen för ett läger som sprakar av energi och gemenskap.</p>
+      </div>
+      <div class="demo-card">
+        <span class="tag" style="background:#fde5d4; color:#b84a0a;">Läger</span>
+        <h4 class="t-h4">Vårläger vid Tyresö</h4>
+        <p>Tre dagar vid sjön — kanot, eldmatlagning och natt i tält. För upptäckare och äventyrare.</p>
+      </div>
+      <div class="demo-card">
+        <span class="tag" style="background:#e3f4dd; color:#2d7a1c;">Scoutkår</span>
+        <h4 class="t-h4">Landvetter scoutkår</h4>
+        <p>Möten varje onsdag kl 18. Välkommen förbi och prova på — ingen förhandsanmälan behövs.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- IN USE -->
+<section id="sample" class="band">
+  <div class="page">
+    <div class="band-head">
+      <div class="t-over">06 / I bruk</div>
+      <h2 class="t-d2">Systemet, i sitt element.</h2>
+      <p>Ett exempel på hur tokens, typografi och komponenter blir till riktig scoutkommunikation — logotyp-tabben i ena hörnet, scoutblå som grundton.</p>
+    </div>
+
+    <div style="display: grid; grid-template-columns: auto 1fr; gap: var(--sp-10); align-items: start;">
+      <!-- Sample card -->
+      <div class="ui-sample">
+        <div class="ui-banner">
+          <svg viewBox="0 0 200 240" fill="currentColor" aria-hidden="true">
+            <path d="M100 12 C 92 38, 90 60, 90 92 C 90 118, 95 138, 100 158 C 105 138, 110 118, 110 92 C 110 60, 108 38, 100 12 Z"/>
+            <path d="M38 32 C 44 62, 52 86, 68 108 C 78 122, 84 132, 82 152 C 78 138, 70 132, 58 128 C 44 124, 34 118, 30 102 C 26 82, 28 58, 38 32 Z"/>
+            <path d="M162 32 C 156 62, 148 86, 132 108 C 122 122, 116 132, 118 152 C 122 138, 130 132, 142 128 C 156 124, 166 118, 170 102 C 174 82, 172 58, 162 32 Z"/>
+            <ellipse cx="100" cy="170" rx="62" ry="10"/>
+          </svg>
+        </div>
+        <div class="ui-tab">Scouterna</div>
+        <div class="ui-body">
+          <span class="badge badge-orange" style="margin-bottom: var(--sp-3);">Äventyrare · 12–15 år</span>
+          <h3 class="t-h2" style="color: var(--scout-blue); margin: var(--sp-3) 0 var(--sp-3);">Prova på<br>scouting!</h3>
+          <p class="t-serif" style="color: var(--fg2); margin-bottom: var(--sp-5);">Onsdag 8 maj kl 18. Ta med en vuxen och nyfikenheten — vi bjuder på kvällsfika vid lägerelden.</p>
+          <button class="btn btn-primary" style="width: 100%; justify-content: center;">Anmäl dig</button>
+        </div>
+      </div>
+
+      <!-- Principles -->
+      <div>
+        <h3 class="t-h3" style="margin-bottom: var(--sp-5);">Principer</h3>
+        <div style="display: grid; gap: var(--sp-5);">
+          <div style="padding: var(--sp-5); border-left: 3px solid var(--spaer-green); background: var(--white); border-radius: 0 var(--r-md) var(--r-md) 0;">
+            <div class="t-over" style="color: var(--spaer-green); margin-bottom: var(--sp-2);">01 Sänk trösklar</div>
+            <p class="t-serif" style="margin: 0;">Inkludera, välkomna och kommunicera på ett sätt som talar till barn, unga och familjer — aldrig fjärma.</p>
+          </div>
+          <div style="padding: var(--sp-5); border-left: 3px solid var(--upp-blue); background: var(--white); border-radius: 0 var(--r-md) var(--r-md) 0;">
+            <div class="t-over" style="color: var(--upp-blue); margin-bottom: var(--sp-2);">02 Skapa tillhörighet</div>
+            <p class="t-serif" style="margin: 0;">Scoutlogotypen används alltid tillsammans med scoutkårens — vi är alltid starkare tillsammans.</p>
+          </div>
+          <div style="padding: var(--sp-5); border-left: 3px solid var(--avent-orange); background: var(--white); border-radius: 0 var(--r-md) var(--r-md) 0;">
+            <div class="t-over" style="color: var(--avent-orange); margin-bottom: var(--sp-2);">03 Spänning, utveckling, gemenskap</div>
+            <p class="t-serif" style="margin: 0;">Varje komponent ska stödja associationerna. Bilder på eldar, äventyr och gemenskap — inte tomma stockfoton.</p>
+          </div>
+          <div style="padding: var(--sp-5); border-left: 3px solid var(--utm-pink); background: var(--white); border-radius: 0 var(--r-md) var(--r-md) 0;">
+            <div class="t-over" style="color: var(--utm-pink); margin-bottom: var(--sp-2);">04 Symbolen håller ihop</div>
+            <p class="t-serif" style="margin: 0;">Fransk lilja + treklöver bildar scoutsymbolen och får aldrig skiljas åt. Den är tabben, stämpeln, garantin.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="page">
+    <div>
+      <h5>Svenska Scouterna · Design System</h5>
+      <p>Byggd på den grafiska profilen v1.1 och <a href="https://www.scouterna.se" style="color: var(--rover-yellow);">scouterna.se</a>. Version 2.0 — digital.</p>
+      <p class="t-xs" style="margin-top: var(--sp-4); color: #6a8aab;">Scoutsymbolen i detta dokument är en approximation. För produktionsbruk, använd den officiella SVG-filen från Scouternas bildbank.</p>
+    </div>
+    <p class="cite">"Vi lovar äventyr och kompisar." — Scouternas varumärkeslöfte</p>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 140" aria-label="Scouterna">
+  <g fill="#003660">
+    
+    <g transform="translate(0,10) scale(0.5)">
+      <path d="M100 12 C 92 38, 90 60, 90 92 C 90 118, 95 138, 100 158 C 105 138, 110 118, 110 92 C 110 60, 108 38, 100 12 Z"></path>
+      <path d="M38 32 C 44 62, 52 86, 68 108 C 78 122, 84 132, 82 152 C 78 138, 70 132, 58 128 C 44 124, 34 118, 30 102 C 26 82, 28 58, 38 32 Z"></path>
+      <path d="M162 32 C 156 62, 148 86, 132 108 C 122 122, 116 132, 118 152 C 122 138, 130 132, 142 128 C 156 124, 166 118, 170 102 C 174 82, 172 58, 162 32 Z"></path>
+      <ellipse cx="100" cy="170" rx="62" ry="10"></ellipse>
+      <rect x="48" y="184" width="104" height="6"></rect>
+      <rect x="54" y="196" width="92" height="6"></rect>
+      <path d="M100 208 C 94 216, 92 224, 96 232 L 104 232 C 108 224, 106 216, 100 208 Z"></path>
+    </g>
+    
+    <text x="130" y="100" font-family="&#39;Libre Franklin&#39;, sans-serif" font-weight="700" font-size="88" font-style="italic" letter-spacing="-0.02em">Scouterna</text>
+  </g>
+</svg>

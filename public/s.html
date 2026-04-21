@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="sv" data-mode="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
+<title>Startkort — ESKIL</title>
+<meta name="theme-color" content="#003660">
+<meta name="robots" content="noindex,nofollow">
+<link rel="icon" type="image/svg+xml" href="/assets/scout-symbol.svg">
+<link rel="stylesheet" href="/assets/report.css">
+<link rel="stylesheet" href="/assets/start.css">
+
+<link rel="modulepreload" href="/js/firebase.js">
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js" crossorigin>
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js" crossorigin>
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js" crossorigin>
+
+<script>
+  (function() {
+    try {
+      const m = localStorage.getItem('eskil:mode');
+      if (m === 'night') document.documentElement.setAttribute('data-mode', 'night');
+    } catch {}
+  })();
+</script>
+</head>
+<body>
+
+<button class="mode-toggle" id="mode-toggle" aria-label="Växla läge">
+  <span id="mode-icon"></span>
+  <span id="mode-label">Nattläge</span>
+</button>
+
+<main class="r-page" id="root">
+  <div class="r-loading">Laddar startkort…</div>
+</main>
+
+<script type="module" src="/js/start.js"></script>
+</body>
+</html>
