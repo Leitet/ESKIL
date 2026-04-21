@@ -28,6 +28,8 @@ jobs:
         run: |
           echo "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/sa.json" >> "$GITHUB_ENV"
+          # Print which service account is actually being used (safe — email only).
+          node -e "const j=require('$RUNNER_TEMP/sa.json'); console.log('Using service account:', j.client_email); console.log('Project in key:', j.project_id);"
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
 
