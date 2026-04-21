@@ -16,19 +16,36 @@ export async function ensureUser(uid, email) {
     // sign-in. MUST match the literal email in firestore.rules.
     const SUPER_ADMIN_EMAIL = 'johan@leitet.se';
     const isBootstrapSuper = email === SUPER_ADMIN_EMAIL;
+    const role = isBootstrapSuper ? 'super-admin' : 'user';
     await setDoc(ref, {
       email,
-      role: isBootstrapSuper ? 'super-admin' : 'user',
-      createdAt: serverTimestamp()
+      role,
+      createdAt: serverTimestamp(),
+      lastSeenAt: serverTimestamp()
     });
-    return { email, role: isBootstrapSuper ? 'super-admin' : 'user' };
+    return { email, role };
   }
+  // Refresh lastSeenAt on every sign-in — super-admin user list depends on it.
+  updateDoc(ref, { lastSeenAt: serverTimestamp() }).catch(() => {});
   return snap.data();
 }
 
 export async function getUser(uid) {
   const snap = await getDoc(doc(db, 'users', uid));
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+}
+
+export async function listAllUsers() {
+  const snap = await getDocs(collection(db, 'users'));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+export async function updateUserRole(uid, role) {
+  await updateDoc(doc(db, 'users', uid), { role });
+}
+
+export async function deleteUser(uid) {
+  await deleteDoc(doc(db, 'users', uid));
 }
 
 // --- Competitions ----------------------------------------------------------

@@ -30,6 +30,20 @@ export async function renderSettings(app, user) {
       <p class="muted t-sm">${escapeHtml(user.email)} — roll: <strong>${escapeHtml(user.role || 'användare')}</strong></p>
     </div>
 
+    ${user.role === 'super-admin' ? `
+      <h2 class="t-h2 mt-6">Super-admin</h2>
+      <div class="grid" style="gap:var(--sp-3);">
+        <a class="card" style="text-decoration:none;color:inherit;display:flex;align-items:center;justify-content:space-between;gap:var(--sp-4);" href="/app/admin/users" data-link>
+          <div>
+            <div class="t-over" style="color:var(--avent-orange);">Användarhantering</div>
+            <h3 class="t-h4" style="margin:4px 0 0;color:var(--scout-blue);">Alla användare</h3>
+            <p class="muted t-sm" style="margin:4px 0 0;">Se vem som loggat in, ändra roller, ta bort konton.</p>
+          </div>
+          <span class="muted t-sm">Öppna ${icon('arrow-right', { size: 14 })}</span>
+        </a>
+      </div>
+    ` : ''}
+
     <h2 class="t-h2 mt-6">Tävlingar du administrerar</h2>
     <p class="muted">Välj en tävling för att redigera uppgifter, regler, tävlingsledning och användare.</p>
     ${mine.length ? `<div class="grid" style="gap:var(--sp-3);">${mine.map(c => `
