@@ -8,6 +8,7 @@ import { AVDELNINGAR, escapeHtml, allInstructionGroups, internalManagement } fro
 import { ensureLeaflet } from './leaflet.js';
 import { icon } from './icons.js';
 import { haptic, bindHaptic, lockScroll, unlockScroll } from './haptic.js';
+import { enqueue, removeFromQueue, listQueue, isPending, flushQueue, withTimeout } from './offline-queue.js';
 
 const root = document.getElementById('root');
 const modeBtn = document.getElementById('mode-toggle');
@@ -394,10 +395,11 @@ async function main() {
       <div class="patrol-grid">
         ${rows.map(p => {
           const s = scoreByPatrol[p.id];
+          const pending = isPending(cid, ctrlId, p.id);
           return `<button class="patrol-btn ${s ? 'reported' : ''}" data-id="${p.id}">
             <div class="p-num">#${p.number ?? '—'}</div>
             <div class="p-name">${escapeHtml(p.name || '—')}</div>
-            <div class="p-meta">${escapeHtml(p.kar || '')}</div>
+            <div class="p-meta">${escapeHtml(p.kar || '')}${pending ? ' <span class="p-pending">Väntar på synk</span>' : ''}</div>
             ${s ? `<span class="p-score">${s.poang}${s.extraPoang ? '+' + s.extraPoang : ''}</span>` : ''}
           </button>`;
         }).join('')}
@@ -415,14 +417,19 @@ async function main() {
     const patrol = patrols.find(p => p.id === patrolId);
     if (!patrol) return;
     const existing = scores.find(s => s.patrolId === patrolId);
+    // If nothing is confirmed server-side yet but a pending offline write is
+    // queued for this patrol, treat that as the current state so the user
+    // doesn't re-enter a score they already reported.
+    const pending = !existing ? listQueue(cid, ctrlId).find(x => x.patrolId === patrolId) : null;
+    const seed = existing || pending;
     const maxP = Number(control.maxPoang) || 0;
     const minP = Number(control.minPoang) || 0;
     const maxE = Number(control.extraPoang) || 0;
 
     const midP = Math.round((minP + maxP) / 2);
-    let poang = existing ? Number(existing.poang) : midP;
-    let extra = existing ? Number(existing.extraPoang) : 0;
-    let note = existing?.note || '';
+    let poang = seed ? Number(seed.poang) : midP;
+    let extra = seed ? Number(seed.extraPoang) : 0;
+    let note = seed?.note || '';
 
     const overlay = document.createElement('div');
     overlay.className = 'sheet-overlay';
@@ -506,16 +513,36 @@ async function main() {
     saveBtn.addEventListener('click', async () => {
       if (comp?.demo) { rtoast('Demospår — rapportering är avstängd.', 'err'); return; }
       if (!control.open) { rtoast('Kontrollen är stängd.', 'err'); return; }
+      const noteVal = overlay.querySelector('#note').value.trim();
+      const reporter = reporterId();
+      // Queue locally first so the report survives even if the tab is closed
+      // mid-save. Firestore's setDoc is idempotent on our keys (patrolId) so
+      // the retry on reconnect cannot create duplicates.
+      enqueue(cid, ctrlId, {
+        patrolId: patrol.id, poang, extraPoang: extra, note: noteVal, reporter
+      });
+      sync.render();
+
       saveBtn.disabled = true; saveBtn.textContent = 'Sparar…';
       try {
-        await upsertScore(cid, ctrlId, patrol.id, poang, extra, overlay.querySelector('#note').value.trim(), reporterId());
+        await withTimeout(
+          upsertScore(cid, ctrlId, patrol.id, poang, extra, noteVal, reporter),
+          navigator.onLine ? 5000 : 500
+        );
+        removeFromQueue(cid, ctrlId, patrol.id);
         haptic([12, 40, 12]);
         rtoast(existing ? 'Poäng uppdaterat' : 'Poäng sparat');
+        sync.render();
         close();
       } catch (e) {
-        console.error(e);
-        rtoast('Fel: ' + e.message, 'err');
-        saveBtn.disabled = false; saveBtn.textContent = existing ? 'Uppdatera poäng' : 'Spara poäng';
+        // Either a timeout (offline) or a real error. Either way the item is
+        // already in the local queue and will be retried by trySync() when
+        // the user comes back online. We let them keep working.
+        console.warn('[ESKIL] score queued for later sync:', e.message);
+        haptic(20);
+        rtoast('Sparat offline — synkas när nätet kommer tillbaka');
+        sync.render();
+        close();
       }
     });
 
@@ -524,9 +551,13 @@ async function main() {
       bindHaptic(removeBtn, 20);
       removeBtn.addEventListener('click', async () => {
         if (!confirm('Ta bort rapporten för denna patrull?')) return;
+        // Also purge any pending offline write for this patrol so the queue
+        // doesn't resurrect the deleted score when it eventually syncs.
+        removeFromQueue(cid, ctrlId, patrol.id);
         try {
           await deleteScore(cid, ctrlId, existing.id);
           rtoast('Borttagen');
+          sync.render();
           close();
         } catch (e) {
           rtoast('Fel: ' + e.message, 'err');
@@ -535,9 +566,66 @@ async function main() {
     }
   }
 
+  // --- Offline queue UI ---
+  const sync = {
+    el: null,
+    set(state, text) {
+      if (!this.el) return;
+      this.el.hidden = !text;
+      this.el.className = 'r-sync ' + (state ? 'is-' + state : '');
+      this.el.innerHTML = text
+        ? `<span class="r-sync-dot"></span><span>${escapeHtml(text)}</span>`
+        : '';
+    },
+    render() {
+      const pending = listQueue(cid, ctrlId).length;
+      if (!pending && navigator.onLine) { this.set('', ''); return; }
+      if (!navigator.onLine) {
+        this.set('offline', pending
+          ? `Offline — ${pending} rapport${pending === 1 ? '' : 'er'} väntar på synk`
+          : 'Offline — rapporter sparas lokalt tills nätet kommer tillbaka');
+      } else {
+        this.set('syncing', `Synkar ${pending} rapport${pending === 1 ? '' : 'er'}…`);
+      }
+    }
+  };
+
+  async function trySync({ silent = false } = {}) {
+    if (!navigator.onLine) { sync.render(); return; }
+    const before = listQueue(cid, ctrlId).length;
+    if (!before) { sync.render(); return; }
+    sync.render();
+    const synced = await flushQueue(cid, ctrlId,
+      (item) => upsertScore(cid, ctrlId, item.patrolId, item.poang, item.extraPoang, item.note, item.reporter)
+    );
+    if (synced.length) {
+      renderPatrols();
+      if (!silent) {
+        const names = synced
+          .map(s => patrols.find(p => p.id === s.patrolId)?.name || '#' + (patrols.find(p => p.id === s.patrolId)?.number ?? ''))
+          .filter(Boolean);
+        const head = synced.length === 1
+          ? `Synkade: ${names[0] || '1 rapport'}`
+          : `Synkade ${synced.length} rapporter: ${names.slice(0, 3).join(', ')}${names.length > 3 ? '…' : ''}`;
+        rtoast(head);
+      }
+    }
+    if (!listQueue(cid, ctrlId).length && !silent) {
+      sync.set('ok', 'Alla rapporter synkade');
+      setTimeout(() => sync.render(), 3000);
+    } else {
+      sync.render();
+    }
+  }
+
+  window.addEventListener('online', () => trySync());
+  window.addEventListener('offline', () => sync.render());
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) trySync(); });
+
   // --- Layout ---
   root.innerHTML = `
     <div id="head"></div>
+    <div id="sync" class="r-sync" hidden></div>
     <div class="r-section" id="avd"></div>
     <div class="r-section" id="plist"></div>
     <p class="r-sub" style="text-align:center;opacity:.6;margin-top:40px;">
@@ -548,9 +636,15 @@ async function main() {
   const avd = root.querySelector('#avd');
   const plist = root.querySelector('#plist');
 
+  sync.el = root.querySelector('#sync');
+
   renderHead();
   renderAvdelningar();
   renderPatrols();
+
+  // Flush silently on load — if the previous session left queued writes we
+  // want them to vanish without a toast unless they actually succeed here.
+  trySync({ silent: false });
 }
 
 main().catch(e => {

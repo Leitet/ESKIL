@@ -618,6 +618,54 @@ html[data-mode="night"] .sheet-overlay { background: rgba(0,0,0,0.85); }
 .r-btn.danger { background: transparent; color: var(--r-danger); border: 2px solid var(--r-danger); }
 .r-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* Offline status strip — sticky under the header */
+.r-sync {
+  position: sticky;
+  top: 0;
+  z-index: 25;
+  margin: -4px -16px 16px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--r-chip-bg);
+  color: var(--r-chip-fg);
+  border-bottom: 1px solid var(--r-border);
+}
+.r-sync.is-offline { background: #fff3e8; color: #8a3a00; }
+.r-sync.is-syncing { background: #e6f3ff; color: #003660; }
+.r-sync.is-ok { background: #e6f7e9; color: #2a6b1c; }
+html[data-mode="night"] .r-sync { background: #2a0808; color: var(--r-fg); border-color: var(--r-border); }
+html[data-mode="night"] .r-sync.is-offline { background: #3a1010; color: #ffb56b; }
+html[data-mode="night"] .r-sync.is-syncing { background: #2a0808; color: var(--r-fg); }
+html[data-mode="night"] .r-sync.is-ok      { background: #1a2a10; color: #a7e08a; }
+.r-sync[hidden] { display: none; }
+.r-sync-dot {
+  width: 10px; height: 10px; border-radius: 999px;
+  background: currentColor; flex-shrink: 0;
+}
+.r-sync.is-syncing .r-sync-dot { animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+/* Per-patrol pending badge */
+.patrol-btn .p-pending {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fff3e8;
+  color: #8a3a00;
+  margin-left: 6px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+html[data-mode="night"] .patrol-btn .p-pending { background: #3a1010; color: #ffb56b; }
+
 /* Info card (about control) */
 .info-card {
   background: var(--r-card);
