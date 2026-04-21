@@ -14,6 +14,7 @@ import {
 } from './utils.js';
 import { ensureLeaflet } from './leaflet.js';
 import { icon } from './icons.js';
+import { bindHaptic, lockScroll, unlockScroll } from './haptic.js';
 
 const root = document.getElementById('root');
 const modeBtn = document.getElementById('mode-toggle');
@@ -28,6 +29,7 @@ function applyMode(mode) {
   else { modeIcon.innerHTML = icon('sun', { size: 16 }); modeLbl.textContent = 'Nattläge'; }
 }
 applyMode(document.documentElement.getAttribute('data-mode') || 'light');
+bindHaptic(modeBtn);
 modeBtn.addEventListener('click', () => {
   const cur = document.documentElement.getAttribute('data-mode') || 'light';
   applyMode(cur === 'night' ? 'light' : 'night');
@@ -455,8 +457,12 @@ function openControlSheet(ctrlId) {
     </div>
   `;
   document.body.appendChild(overlay);
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-  overlay.querySelector('#close').onclick = () => overlay.remove();
+  lockScroll();
+  const close = () => { overlay.remove(); unlockScroll(); };
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  const closeBtn = overlay.querySelector('#close');
+  closeBtn.onclick = close;
+  bindHaptic(closeBtn);
 
   if (c.lat && c.lng) {
     ensureLeaflet().then(L => {
@@ -635,8 +641,12 @@ function openStartFinishSheet(kind) {
     </div>
   `;
   document.body.appendChild(overlay);
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-  overlay.querySelector('#close').onclick = () => overlay.remove();
+  lockScroll();
+  const close = () => { overlay.remove(); unlockScroll(); };
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  const closeBtn = overlay.querySelector('#close');
+  closeBtn.onclick = close;
+  bindHaptic(closeBtn);
 
   ensureLeaflet().then(L => {
     const host = overlay.querySelector('#sf-detail-map');

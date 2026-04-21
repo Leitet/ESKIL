@@ -7,6 +7,7 @@ import { getCompetition, getControl, listPatrols, watchScoresForControl, upsertS
 import { AVDELNINGAR, escapeHtml, allInstructionGroups, internalManagement } from './utils.js';
 import { ensureLeaflet } from './leaflet.js';
 import { icon } from './icons.js';
+import { haptic, bindHaptic, lockScroll, unlockScroll } from './haptic.js';
 
 const root = document.getElementById('root');
 const modeBtn = document.getElementById('mode-toggle');
@@ -25,6 +26,7 @@ function applyMode(mode) {
   }
 }
 applyMode(document.documentElement.getAttribute('data-mode') || 'light');
+bindHaptic(modeBtn);
 modeBtn.addEventListener('click', () => {
   const cur = document.documentElement.getAttribute('data-mode') || 'light';
   applyMode(cur === 'night' ? 'light' : 'night');
@@ -403,6 +405,7 @@ async function main() {
     `;
 
     plist.querySelectorAll('.patrol-btn').forEach(b => {
+      bindHaptic(b);
       b.addEventListener('click', () => openSheet(b.dataset.id));
     });
   }
@@ -462,8 +465,12 @@ async function main() {
       </div>
     `;
     document.body.appendChild(overlay);
-    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-    overlay.querySelector('#close').onclick = () => overlay.remove();
+    lockScroll();
+    const close = () => { overlay.remove(); unlockScroll(); };
+    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+    const closeBtn = overlay.querySelector('#close');
+    closeBtn.onclick = close;
+    bindHaptic(closeBtn);
 
     const valEl = overlay.querySelector('#val');
     const inp = overlay.querySelector('#poang-input');
@@ -472,8 +479,12 @@ async function main() {
       valEl.firstChild.textContent = poang + ' ';
       inp.value = poang;
     };
-    overlay.querySelector('#minus').onclick = () => setPoang(poang - 1);
-    overlay.querySelector('#plus').onclick = () => setPoang(poang + 1);
+    const minusBtn = overlay.querySelector('#minus');
+    const plusBtn = overlay.querySelector('#plus');
+    minusBtn.onclick = () => setPoang(poang - 1);
+    plusBtn.onclick = () => setPoang(poang + 1);
+    bindHaptic(minusBtn);
+    bindHaptic(plusBtn);
     inp.addEventListener('input', e => setPoang(e.target.value));
 
     if (maxE > 0) {
@@ -482,33 +493,41 @@ async function main() {
         extra = Math.max(0, Math.min(maxE, Number(v) || 0));
         evalEl.firstChild.textContent = extra + '';
       };
-      overlay.querySelector('#eminus').onclick = () => setExtra(extra - 1);
-      overlay.querySelector('#eplus').onclick = () => setExtra(extra + 1);
+      const eminus = overlay.querySelector('#eminus');
+      const eplus = overlay.querySelector('#eplus');
+      eminus.onclick = () => setExtra(extra - 1);
+      eplus.onclick = () => setExtra(extra + 1);
+      bindHaptic(eminus);
+      bindHaptic(eplus);
     }
 
-    overlay.querySelector('#save').addEventListener('click', async () => {
+    const saveBtn = overlay.querySelector('#save');
+    bindHaptic(saveBtn, 15);
+    saveBtn.addEventListener('click', async () => {
       if (comp?.demo) { rtoast('Demospår — rapportering är avstängd.', 'err'); return; }
       if (!control.open) { rtoast('Kontrollen är stängd.', 'err'); return; }
-      const btn = overlay.querySelector('#save');
-      btn.disabled = true; btn.textContent = 'Sparar…';
+      saveBtn.disabled = true; saveBtn.textContent = 'Sparar…';
       try {
         await upsertScore(cid, ctrlId, patrol.id, poang, extra, overlay.querySelector('#note').value.trim(), reporterId());
+        haptic([12, 40, 12]);
         rtoast(existing ? 'Poäng uppdaterat' : 'Poäng sparat');
-        overlay.remove();
+        close();
       } catch (e) {
         console.error(e);
         rtoast('Fel: ' + e.message, 'err');
-        btn.disabled = false; btn.textContent = existing ? 'Uppdatera poäng' : 'Spara poäng';
+        saveBtn.disabled = false; saveBtn.textContent = existing ? 'Uppdatera poäng' : 'Spara poäng';
       }
     });
 
     if (existing) {
-      overlay.querySelector('#remove').addEventListener('click', async () => {
+      const removeBtn = overlay.querySelector('#remove');
+      bindHaptic(removeBtn, 20);
+      removeBtn.addEventListener('click', async () => {
         if (!confirm('Ta bort rapporten för denna patrull?')) return;
         try {
           await deleteScore(cid, ctrlId, existing.id);
           rtoast('Borttagen');
-          overlay.remove();
+          close();
         } catch (e) {
           rtoast('Fel: ' + e.message, 'err');
         }

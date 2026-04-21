@@ -51,6 +51,19 @@ html, body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
+  /* Stop iOS rubber-banding the whole page when the reporter sheet opens. */
+  overscroll-behavior-y: contain;
+}
+
+/* Every interactive element on the mobile pages skips the double-tap-zoom
+   wait so two quick +/− taps register as two taps, not a zoom gesture. */
+button, a, input, textarea, select, label { touch-action: manipulation; }
+
+/* Prevent text selection on the score steppers — double-tap-to-select is
+   another source of latency on iOS. */
+.step-btn, .sheet-close, .mode-toggle, .patrol-btn, .r-btn {
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* Mode toggle pill */

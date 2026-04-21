@@ -69,6 +69,7 @@ export function renderTopbar(extra) {
       <div class="topbar-right">
         ${currentUser?.role === 'super-admin' ? '<span class="badge badge-blue">Super-admin</span>' : ''}
         <span class="muted" title="${currentUser?.email ?? ''}">${currentUser?.email ?? ''}</span>
+        <a class="btn btn-ghost btn-sm" href="/app/settings" data-link>Inställningar</a>
         <button class="btn btn-ghost btn-sm" id="sign-out">Logga ut</button>
       </div>
     </div>
