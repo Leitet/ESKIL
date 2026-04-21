@@ -30,6 +30,9 @@ function applyMode(mode) {
 }
 applyMode(document.documentElement.getAttribute('data-mode') || 'light');
 bindHaptic(modeBtn);
+
+// Same iOS double-tap-zoom guard as on the reporter page.
+document.addEventListener('dblclick', (e) => { e.preventDefault(); }, { passive: false });
 modeBtn.addEventListener('click', () => {
   const cur = document.documentElement.getAttribute('data-mode') || 'light';
   applyMode(cur === 'night' ? 'light' : 'night');

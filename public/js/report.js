@@ -7,7 +7,7 @@ import { getCompetition, getControl, listPatrols, watchScoresForControl, upsertS
 import { AVDELNINGAR, escapeHtml, allInstructionGroups, internalManagement } from './utils.js';
 import { ensureLeaflet } from './leaflet.js';
 import { icon } from './icons.js';
-import { haptic, bindHaptic, lockScroll, unlockScroll } from './haptic.js';
+import { haptic, bindHaptic, bindTap, lockScroll, unlockScroll } from './haptic.js';
 import { enqueue, removeFromQueue, listQueue, isPending, flushQueue, withTimeout } from './offline-queue.js';
 
 const root = document.getElementById('root');
@@ -28,6 +28,12 @@ function applyMode(mode) {
 }
 applyMode(document.documentElement.getAttribute('data-mode') || 'light');
 bindHaptic(modeBtn);
+
+// iOS: even with touch-action: manipulation on every interactive element,
+// double-tapping blank space (or inside certain flex children) still fires
+// the native zoom heuristic. This is the documented fallback — block the
+// synthesised dblclick everywhere on the reporter page.
+document.addEventListener('dblclick', (e) => { e.preventDefault(); }, { passive: false });
 modeBtn.addEventListener('click', () => {
   const cur = document.documentElement.getAttribute('data-mode') || 'light';
   applyMode(cur === 'night' ? 'light' : 'night');
@@ -486,12 +492,11 @@ async function main() {
       valEl.firstChild.textContent = poang + ' ';
       inp.value = poang;
     };
-    const minusBtn = overlay.querySelector('#minus');
-    const plusBtn = overlay.querySelector('#plus');
-    minusBtn.onclick = () => setPoang(poang - 1);
-    plusBtn.onclick = () => setPoang(poang + 1);
-    bindHaptic(minusBtn);
-    bindHaptic(plusBtn);
+    // bindTap uses touchstart+preventDefault so two quick +/- taps register
+    // as two increments on iOS without the browser ever considering it a
+    // double-tap-to-zoom gesture.
+    bindTap(overlay.querySelector('#minus'), () => setPoang(poang - 1));
+    bindTap(overlay.querySelector('#plus'),  () => setPoang(poang + 1));
     inp.addEventListener('input', e => setPoang(e.target.value));
 
     if (maxE > 0) {
@@ -500,12 +505,8 @@ async function main() {
         extra = Math.max(0, Math.min(maxE, Number(v) || 0));
         evalEl.firstChild.textContent = extra + '';
       };
-      const eminus = overlay.querySelector('#eminus');
-      const eplus = overlay.querySelector('#eplus');
-      eminus.onclick = () => setExtra(extra - 1);
-      eplus.onclick = () => setExtra(extra + 1);
-      bindHaptic(eminus);
-      bindHaptic(eplus);
+      bindTap(overlay.querySelector('#eminus'), () => setExtra(extra - 1));
+      bindTap(overlay.querySelector('#eplus'),  () => setExtra(extra + 1));
     }
 
     const saveBtn = overlay.querySelector('#save');

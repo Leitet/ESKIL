@@ -18,6 +18,26 @@ export function bindHaptic(el, pattern = 10) {
   el.addEventListener('pointerdown', () => haptic(pattern), { passive: true });
 }
 
+// Fire a handler on the first touchstart and preventDefault so iOS never
+// enters the double-tap-zoom heuristic (which happens even when
+// touch-action: manipulation is set on fast successive taps in the +/-
+// steppers). Falls back to click for mouse / stylus / keyboard.
+export function bindTap(el, handler, pattern = 10) {
+  if (!el) return;
+  let touchHandled = false;
+  el.addEventListener('touchstart', (e) => {
+    if (e.cancelable) e.preventDefault();
+    touchHandled = true;
+    haptic(pattern);
+    handler(e);
+  }, { passive: false });
+  el.addEventListener('click', (e) => {
+    if (touchHandled) { touchHandled = false; return; }
+    haptic(pattern);
+    handler(e);
+  });
+}
+
 let lockedY = 0;
 let lockDepth = 0;
 
