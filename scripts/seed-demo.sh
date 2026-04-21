@@ -41,7 +41,7 @@ JSON
 )
   local resp status
   resp=$(curl -sS -w "\n__HTTP__:%{http_code}" -X POST "$HOST/v1/$DBPATH:commit" \
-    -H 'Authorization: Bearer owner' -H 'Content-Type: application/json' \
+    -H "Authorization: ${AUTH:-Bearer owner}" -H 'Content-Type: application/json' \
     --data "$payload")
   status=$(echo "$resp" | tail -n1 | sed 's/__HTTP__://')
   if [ "$status" != "200" ]; then
@@ -130,12 +130,12 @@ ctrl demo-c10 10 "Mörkermoment"       15 0 5 56.73960 16.27191 "Skogsstigen nor
 purge_subcol() {
   local subcol="$1"   # e.g. "patrols" or "controls/demo-c01/scores"
   local ids
-  ids=$(curl -sS -H 'Authorization: Bearer owner' \
+  ids=$(curl -sS -H "Authorization: ${AUTH:-Bearer owner}" \
     "$HOST/v1/$DBPATH/competitions/$CID/$subcol" \
     | python3 -c 'import json,sys; d=json.load(sys.stdin); [print(x["name"].split("/")[-1]) for x in d.get("documents",[])]')
   for id in $ids; do
     curl -sS -X POST "$HOST/v1/$DBPATH:commit" \
-      -H 'Authorization: Bearer owner' -H 'Content-Type: application/json' \
+      -H "Authorization: ${AUTH:-Bearer owner}" -H 'Content-Type: application/json' \
       -d "{\"writes\":[{\"delete\":\"$DBPATH/competitions/$CID/$subcol/$id\"}]}" > /dev/null
   done
 }

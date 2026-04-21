@@ -1,0 +1,30 @@
+name: Seed Demospår
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: firebase-seed
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Seed Demospår into production Firestore
+        env:
+          FIREBASE_PROJECT: ${{ vars.FIREBASE_PROJECT_ID }}
+          FIRESTORE_HOST: https://firestore.googleapis.com
+        run: |
+          TOKEN=$(gcloud auth print-access-token)
+          AUTH="Bearer $TOKEN" ./scripts/seed-demo.sh
