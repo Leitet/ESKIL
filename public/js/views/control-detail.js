@@ -8,6 +8,7 @@ import { icon } from '../icons.js';
 import { navigate } from '../router.js';
 import { openControlModal } from './controls.js';
 import { downloadControlPdf, renderQrToImg } from '../pdf.js';
+import { ensureLeaflet } from '../leaflet.js';
 
 let unsub = null;
 
@@ -65,6 +66,7 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
       <div class="card">
         <h3 class="t-h3">Placering</h3>
         ${control.lat && control.lng ? `
+          <div id="placering-map" style="aspect-ratio:1/1;width:100%;border-radius:var(--r-md);overflow:hidden;border:1px solid var(--border);margin-bottom:var(--sp-3);"></div>
           <p class="mono t-sm">${control.lat.toFixed(5)}, ${control.lng.toFixed(5)}</p>
           <a class="btn btn-ghost btn-sm" href="https://www.openstreetmap.org/?mlat=${control.lat}&mlon=${control.lng}#map=17/${control.lat}/${control.lng}" target="_blank" rel="noopener">Öppna i OpenStreetMap</a>
         ` : '<p class="muted">Ingen position angiven.</p>'}
@@ -106,6 +108,27 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
   // QR preview
   const qrHost = wrap.querySelector('#qr');
   renderQrToImg(url, 180).then(img => { qrHost.innerHTML = ''; qrHost.appendChild(img); });
+
+  // Placering map — square, pinned on the control coordinates.
+  const mapHost = wrap.querySelector('#placering-map');
+  if (mapHost && control.lat && control.lng) {
+    ensureLeaflet().then(L => {
+      const map = L.map(mapHost, {
+        zoomControl: true,
+        scrollWheelZoom: false,
+        dragging: true
+      }).setView([control.lat, control.lng], 16);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19, attribution: '© OSM'
+      }).addTo(map);
+      L.circleMarker([control.lat, control.lng], {
+        radius: 12, color: '#ffffff', weight: 3,
+        fillColor: '#E95F13', fillOpacity: 0.98
+      }).addTo(map);
+      // Square containers often mount at zero height on first paint.
+      setTimeout(() => map.invalidateSize(), 60);
+    }).catch(e => { console.warn('[ESKIL] Leaflet load failed:', e); });
+  }
 
   // Wire actions
   wrap.querySelector('#copy').addEventListener('click', async () => {
