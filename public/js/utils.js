@@ -330,11 +330,26 @@ export function patrolStartDateTime(comp, patrol, today = new Date(), totalPatro
   if (!s.enabled) return null;
   const idx = Number(patrol?.startOrder);
   if (!Number.isFinite(idx)) return null;
+
+  const iv = effectiveIntervalSec(comp, totalPatrols);
+
+  // Demo competitions ignore the stored HH:MM and roll the whole schedule
+  // so that the current moment always sits ~4 intervals into the start
+  // window. A few patrols have "already started", the rest are upcoming —
+  // regardless of what time of day someone opens the demo.
+  if (comp?.demo) {
+    const base = new Date(today.getTime() - 4 * iv * 1000);
+    base.setSeconds(0, 0);
+    base.setMinutes(Math.floor(base.getMinutes() / 5) * 5);
+    base.setSeconds(base.getSeconds() + idx * iv);
+    return base;
+  }
+
   const [h, m] = s.firstStart.split(':').map(Number);
   if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
   const base = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   base.setHours(h, m, 0, 0);
-  base.setSeconds(base.getSeconds() + idx * effectiveIntervalSec(comp, totalPatrols));
+  base.setSeconds(base.getSeconds() + idx * iv);
   return base;
 }
 
