@@ -29,11 +29,23 @@ function applyMode(mode) {
 applyMode(document.documentElement.getAttribute('data-mode') || 'light');
 bindHaptic(modeBtn);
 
-// iOS: even with touch-action: manipulation on every interactive element,
-// double-tapping blank space (or inside certain flex children) still fires
-// the native zoom heuristic. This is the documented fallback — block the
-// synthesised dblclick everywhere on the reporter page.
-document.addEventListener('dblclick', (e) => { e.preventDefault(); }, { passive: false });
+// iOS ignores viewport user-scalable=no. The only reliable way to block
+// pinch-zoom and the residual double-tap-zoom on this page is to swallow
+// the native gesture events before Safari acts on them. These handlers
+// have no effect on buttons, taps, or vertical scrolling — only on the
+// zoom gestures we don't want.
+document.addEventListener('dblclick',     (e) => e.preventDefault(), { passive: false });
+document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
+document.addEventListener('gesturechange', (e) => e.preventDefault(), { passive: false });
+document.addEventListener('gestureend',    (e) => e.preventDefault(), { passive: false });
+// Multi-touch moves are the pinch gesture on browsers that don't fire the
+// legacy gesture* events (Android Chrome, Firefox). Block them — but NOT
+// inside a Leaflet map, where pinch-zoom is the intended interaction.
+document.addEventListener('touchmove', (e) => {
+  if (e.touches.length > 1 && !e.target.closest?.('.leaflet-container')) {
+    e.preventDefault();
+  }
+}, { passive: false });
 modeBtn.addEventListener('click', () => {
   const cur = document.documentElement.getAttribute('data-mode') || 'light';
   applyMode(cur === 'night' ? 'light' : 'night');
@@ -275,13 +287,13 @@ async function main() {
                 <h1 class="r-title">
                   <span class="r-ctrl-no">${escapeHtml(String(control.nummer ?? ''))}</span>${escapeHtml(control.name || '')}
                 </h1>
-                ${hasBackContent ? `<button class="flip-btn" id="flip-open" aria-expanded="false" aria-label="Visa instruktioner och karta">${icon('info', { size: 22 })}</button>` : ''}
+                ${hasBackContent ? `<button type="button" class="flip-btn" id="flip-open" aria-expanded="false" aria-label="Visa instruktioner och karta">${icon('info', { size: 22 })}</button>` : ''}
               </div>
               <div class="r-sub">Rapportera poäng. Max ${control.maxPoang ?? 0} · Min ${control.minPoang ?? 0}${control.extraPoang ? ' · Extra max ' + control.extraPoang : ''}</div>
             </div>
           </div>
           <div class="flip-face flip-back" aria-hidden="true">
-            <button class="flip-back-close" id="flip-close" aria-label="Stäng instruktioner">${icon('x', { size: 22 })}</button>
+            <button type="button" class="flip-back-close" id="flip-close" aria-label="Stäng instruktioner">${icon('x', { size: 22 })}</button>
 
             ${groups.length ? `
               <h3>Instruktioner</h3>
@@ -355,11 +367,11 @@ async function main() {
         <span style="color:var(--r-fg);letter-spacing:normal;text-transform:none;font-weight:600;">${totalDone} av ${patrols.length} klara</span>
       </div>
       <div class="avd-chips">
-        <button class="avd-chip ${state.avd == null ? 'active' : ''}" data-avd="">
+        <button type="button" class="avd-chip ${state.avd == null ? 'active' : ''}" data-avd="">
           Alla<span class="avd-count">${totalRemaining} kvar</span>
         </button>
         ${present.map(a => `
-          <button class="avd-chip ${state.avd === a.key ? 'active' : ''}" data-color="${a.short}" data-avd="${a.key}">
+          <button type="button" class="avd-chip ${state.avd === a.key ? 'active' : ''}" data-color="${a.short}" data-avd="${a.key}">
             ${escapeHtml(a.key)}
             <span class="avd-count">${remaining[a.key] || 0} kvar</span>
           </button>
@@ -402,7 +414,7 @@ async function main() {
         ${rows.map(p => {
           const s = scoreByPatrol[p.id];
           const pending = isPending(cid, ctrlId, p.id);
-          return `<button class="patrol-btn ${s ? 'reported' : ''}" data-id="${p.id}">
+          return `<button type="button" class="patrol-btn ${s ? 'reported' : ''}" data-id="${p.id}">
             <div class="p-num">#${p.number ?? '—'}</div>
             <div class="p-name">${escapeHtml(p.name || '—')}</div>
             <div class="p-meta">${escapeHtml(p.kar || '')}${pending ? ' <span class="p-pending">Väntar på synk</span>' : ''}</div>
@@ -447,34 +459,34 @@ async function main() {
             <h2>${escapeHtml(patrol.name || '')}</h2>
             <div style="color:var(--r-fg-muted);margin-top:2px;">${escapeHtml(patrol.avdelning || '')} · ${escapeHtml(patrol.kar || '')}</div>
           </div>
-          <button class="sheet-close" id="close" aria-label="Stäng">${icon('x', { size: 22 })}</button>
+          <button type="button" class="sheet-close" id="close" aria-label="Stäng">${icon('x', { size: 22 })}</button>
         </div>
 
         <div class="r-label-inline">Poäng</div>
         <div class="score-stepper">
-          <button class="step-btn" id="minus" aria-label="Minska">${icon('minus', { size: 28 })}</button>
+          <button type="button" class="step-btn" id="minus" aria-label="Minska">${icon('minus', { size: 28 })}</button>
           <div class="score-display" id="val">
             ${poang}
             <span class="range">max ${maxP} · min ${minP}</span>
           </div>
-          <button class="step-btn" id="plus" aria-label="Öka">${icon('plus', { size: 28 })}</button>
+          <button type="button" class="step-btn" id="plus" aria-label="Öka">${icon('plus', { size: 28 })}</button>
         </div>
         <input type="number" class="r-input" id="poang-input" inputmode="numeric" value="${poang}" min="${minP}" max="${maxP}" step="1">
 
         ${maxE > 0 ? `
           <div style="margin-top:18px;" class="r-label-inline">Extra poäng (max ${maxE})</div>
           <div class="score-stepper">
-            <button class="step-btn" id="eminus" aria-label="Minska extra">${icon('minus', { size: 28 })}</button>
+            <button type="button" class="step-btn" id="eminus" aria-label="Minska extra">${icon('minus', { size: 28 })}</button>
             <div class="score-display" id="eval">${extra}<span class="range">0 – ${maxE}</span></div>
-            <button class="step-btn" id="eplus" aria-label="Öka extra">${icon('plus', { size: 28 })}</button>
+            <button type="button" class="step-btn" id="eplus" aria-label="Öka extra">${icon('plus', { size: 28 })}</button>
           </div>
         ` : ''}
 
         <div style="margin-top:18px;" class="r-label-inline">Notering (frivilligt)</div>
         <textarea class="r-textarea" id="note" placeholder="T.ex. regelavvikelse eller kommentar…">${escapeHtml(note)}</textarea>
 
-        <button class="r-btn" id="save">${existing ? 'Uppdatera poäng' : 'Spara poäng'}</button>
-        ${existing ? '<button class="r-btn danger" id="remove">Ta bort rapport</button>' : ''}
+        <button type="button" class="r-btn" id="save">${existing ? 'Uppdatera poäng' : 'Spara poäng'}</button>
+        ${existing ? '<button type="button" class="r-btn danger" id="remove">Ta bort rapport</button>' : ''}
       </div>
     `;
     document.body.appendChild(overlay);

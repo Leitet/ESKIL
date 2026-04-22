@@ -31,8 +31,16 @@ function applyMode(mode) {
 applyMode(document.documentElement.getAttribute('data-mode') || 'light');
 bindHaptic(modeBtn);
 
-// Same iOS double-tap-zoom guard as on the reporter page.
-document.addEventListener('dblclick', (e) => { e.preventDefault(); }, { passive: false });
+// Same iOS zoom-blockers as the reporter page (dblclick + pinch gestures).
+document.addEventListener('dblclick',      (e) => e.preventDefault(), { passive: false });
+document.addEventListener('gesturestart',  (e) => e.preventDefault(), { passive: false });
+document.addEventListener('gesturechange', (e) => e.preventDefault(), { passive: false });
+document.addEventListener('gestureend',    (e) => e.preventDefault(), { passive: false });
+document.addEventListener('touchmove', (e) => {
+  if (e.touches.length > 1 && !e.target.closest?.('.leaflet-container')) {
+    e.preventDefault();
+  }
+}, { passive: false });
 modeBtn.addEventListener('click', () => {
   const cur = document.documentElement.getAttribute('data-mode') || 'light';
   applyMode(cur === 'night' ? 'light' : 'night');
@@ -132,7 +140,7 @@ function render() {
               <h1 class="start-title">
                 <span class="r-ctrl-no">#${escapeHtml(String(patrol.number ?? ''))}</span>${escapeHtml(patrol.name || '')}
               </h1>
-              ${hasBackContent ? `<button class="flip-btn" id="flip-open" aria-expanded="false" aria-label="Visa tävlingsinformation">${icon('info', { size: 22 })}</button>` : ''}
+              ${hasBackContent ? `<button type="button" class="flip-btn" id="flip-open" aria-expanded="false" aria-label="Visa tävlingsinformation">${icon('info', { size: 22 })}</button>` : ''}
             </div>
             <div class="start-sub">
               ${escapeHtml(patrol.avdelning || '')}${patrol.kar ? ' · ' + escapeHtml(patrol.kar) : ''}${patrol.antal ? ' · ' + patrol.antal + ' deltagare' : ''}
@@ -152,7 +160,7 @@ function render() {
           </div>
         </div>
         <div class="flip-face flip-back" aria-hidden="true">
-          <button class="flip-back-close" id="flip-close" aria-label="Stäng">${icon('x', { size: 22 })}</button>
+          <button type="button" class="flip-back-close" id="flip-close" aria-label="Stäng">${icon('x', { size: 22 })}</button>
           ${generalInfo ? `
             <h3>Allmän information</h3>
             <div class="flip-placement"><p>${escapeHtml(generalInfo)}</p></div>
@@ -187,9 +195,9 @@ function render() {
     ` : ''}
 
     <div class="start-filter">
-      <button data-f="alla"  class="${filter === 'alla'  ? 'active' : ''}">Alla · ${t.total}</button>
-      <button data-f="kvar"  class="${filter === 'kvar'  ? 'active' : ''}">Kvar · ${t.total - t.done}</button>
-      <button data-f="klara" class="${filter === 'klara' ? 'active' : ''}">Klara · ${t.done}</button>
+      <button type="button" data-f="alla"  class="${filter === 'alla'  ? 'active' : ''}">Alla · ${t.total}</button>
+      <button type="button" data-f="kvar"  class="${filter === 'kvar'  ? 'active' : ''}">Kvar · ${t.total - t.done}</button>
+      <button type="button" data-f="klara" class="${filter === 'klara' ? 'active' : ''}">Klara · ${t.done}</button>
     </div>
 
     <div class="start-ctrl-list">
@@ -268,7 +276,7 @@ function renderList() {
     const name = displayName(c);
     const anon = isAnonymous() && !done;
     return `
-      <button class="start-ctrl ${done ? 'done' : ''}" data-id="${c.id}">
+      <button type="button" class="start-ctrl ${done ? 'done' : ''}" data-id="${c.id}">
         <div class="start-ctrl-no">${escapeHtml(String(c.nummer ?? '?'))}</div>
         <div class="start-ctrl-body">
           <div class="start-ctrl-name ${anon ? 'anon' : ''}">${escapeHtml(name)}</div>
@@ -439,7 +447,7 @@ function openControlSheet(ctrlId) {
                    : (c.open ? 'Öppen för rapportering' : 'Inte öppen ännu')}
           </div>
         </div>
-        <button class="sheet-close" id="close" aria-label="Stäng">${icon('x', { size: 22 })}</button>
+        <button type="button" class="sheet-close" id="close" aria-label="Stäng">${icon('x', { size: 22 })}</button>
       </div>
 
       ${c.lat && c.lng ? `
@@ -633,7 +641,7 @@ function openStartFinishSheet(kind) {
           <h2>${escapeHtml(p.name || (p.kind === 'startfinish' ? 'Start / Mål' : p.title))}</h2>
           <div style="color:var(--r-fg-muted);margin-top:2px;">Specialplats · inga poäng</div>
         </div>
-        <button class="sheet-close" id="close" aria-label="Stäng">${icon('x', { size: 22 })}</button>
+        <button type="button" class="sheet-close" id="close" aria-label="Stäng">${icon('x', { size: 22 })}</button>
       </div>
 
       <div class="detail-field" style="margin-top:6px;">
