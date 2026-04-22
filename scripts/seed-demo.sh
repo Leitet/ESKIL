@@ -58,10 +58,10 @@ write "competitions/$CID" '{
   "date":        {"stringValue":"2026-05-01"},
   "location":    {"stringValue":"Lindsdal, Kalmar"},
   "organizer":   {"stringValue":"Lindsdals Scoutkår"},
-  "description": {"stringValue":"Ett demospår att utforska ESKIL. Tio kontroller i en slinga genom Lindsdal. Alla kan titta; bara superadministratören kan ändra."},
-  "generalInfo": {"stringValue":"Detta är ett demospår. Poängrapportering är avstängd — ingen skrivning tillåten utom från superadmin."},
+  "description": {"stringValue":"Ett demospår att utforska ESKIL. Tio kontroller i en slinga genom Lindsdal."},
+  "generalInfo": {"stringValue":"Detta är ett demospår. Poängrapportering är avstängd."},
   "demo":              {"booleanValue": true},
-  "anonymousControls": {"booleanValue": false},
+  "anonymousControls": {"booleanValue": true},
   "startTimes":        {"mapValue":{"fields":{
     "enabled":         {"booleanValue": true},
     "firstStart":      {"stringValue": "'"$FIRST_START"'"},
@@ -80,7 +80,8 @@ write "competitions/$CID" '{
     "enabled": {"booleanValue": true},
     "name":    {"stringValue": "Grusparkeringen vid scoutgården"},
     "lat":     {"doubleValue": 56.73632},
-    "lng":     {"doubleValue": 16.27976}
+    "lng":     {"doubleValue": 16.27976},
+    "note":    {"stringValue": "Tänk på att det kommer att vara många bilar på plats och ont om parkeringar så försök trycka ihop er."}
   }}},
   "management": {"arrayValue":{"values":[
     {"mapValue":{"fields":{"id":{"stringValue":"leader"},       "label":{"stringValue":"Tävlingsledare"},"visibility":{"stringValue":"public"},  "name":{"stringValue":"Tävlingsledare"},"phone":{"stringValue":"070-000 00 01"},"email":{"stringValue":""}}}},

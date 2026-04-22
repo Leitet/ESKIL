@@ -1,13 +1,13 @@
 # ESKIL — Scouttävlingssystem
 
-Digitalt stödsystem för scouttävlingar (Älgjakten, DM, ...) i sydöstra Sverige.
+Digitalt stödsystem för scouttävlingar (Älghornsjakten, DM, ...) i sydöstra Sverige.
 Byggt som en statisk SPA på Firebase (Hosting + Firestore + Auth) så att det går
 att köra gratis på Spark-planen.
 
 ## Funktioner
 
 - **Flera tävlingar** med egna administratörer — en tävlingsadministratör för
-  Älgjakten 2026 kan bjuda in tävlingsadministratören för Älgjakten 2027.
+  Älghornsjakten 2026 kan bjuda in tävlingsadministratören för Älghornsjakten 2027.
 - **Patruller** — nummer, namn, antal, avdelning (Spårare, Upptäckare,
   Äventyrare, Utmanare, Rover, Ledare), kår, notering.
 - **Kontroller** — nummer, namn, max/min/extra poäng, position (lat/lng),

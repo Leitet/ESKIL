@@ -161,7 +161,7 @@ function drawBannerSlim(pdf, W, comp) {
 
 // Tall banner for page 1. Proportions:
 //   ┌─────────────────────────────────────────────────┐
-//   │                     ESKIL · Älgjakten 2026 · …  │  eyebrow right-aligned
+//   │                     ESKIL · Älghornsjakten 2026 · …  │  eyebrow right-aligned
 //   │        ┌──┐                                     │
 //   │        │  │   KNOP OCH SURRNING                 │
 //   │        │ 2│                                     │

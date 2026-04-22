@@ -54,7 +54,7 @@ export async function renderHome(app, user) {
       list.innerHTML = `
         <div class="empty">
           <h3>Inga tävlingar än</h3>
-          <p>Skapa din första tävling — t.ex. Älgjakten ${new Date().getFullYear()}.</p>
+          <p>Skapa din första tävling — t.ex. Älghornsjakten ${new Date().getFullYear()}.</p>
         </div>`;
       return;
     }
@@ -95,7 +95,7 @@ function openCreateModal(user) {
         <form id="f" class="field-group">
           <div>
             <label class="field" for="shortName">Kort namn</label>
-            <input class="input" id="shortName" required placeholder="Älgjakten">
+            <input class="input" id="shortName" required placeholder="Älghornsjakten">
           </div>
           <div class="grid grid-2">
             <div>
@@ -109,7 +109,7 @@ function openCreateModal(user) {
           </div>
           <div>
             <label class="field" for="name">Fullständigt namn</label>
-            <input class="input" id="name" required placeholder="Älgjakten 2026">
+            <input class="input" id="name" required placeholder="Älghornsjakten 2026">
             <div class="field-hint">Visas i listor och på PDF-utskrifter.</div>
           </div>
           <div>

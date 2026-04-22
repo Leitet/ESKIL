@@ -40,8 +40,8 @@ JSON
 
 # --- Competition ---
 write "competitions/$CID" '{
-  "name":        {"stringValue":"Älgjakten 2026"},
-  "shortName":   {"stringValue":"Älgjakten"},
+  "name":        {"stringValue":"Älghornsjakten 2026"},
+  "shortName":   {"stringValue":"Älghornsjakten"},
   "year":        {"integerValue":"2026"},
   "date":        {"stringValue":"2026-10-04"},
   "location":    {"stringValue":"Tinnerö eklandskap, Kalmar"},
@@ -249,8 +249,8 @@ SUPER_ADMIN_EMAIL="${SUPER_ADMIN_EMAIL:-johan@leitet.se}"
 SUPERUID=$(find_uid "$SUPER_ADMIN_EMAIL")
 if [ -n "$SUPERUID" ]; then
   write "competitions/$CID" '{
-    "name":        {"stringValue":"Älgjakten 2026"},
-    "shortName":   {"stringValue":"Älgjakten"},
+    "name":        {"stringValue":"Älghornsjakten 2026"},
+    "shortName":   {"stringValue":"Älghornsjakten"},
     "year":        {"integerValue":"2026"},
     "date":        {"stringValue":"2026-10-04"},
     "location":    {"stringValue":"Tinnerö eklandskap, Kalmar"},
@@ -282,7 +282,7 @@ FIRST_PATROL=$(curl -sS -H 'Authorization: Bearer owner' \
   | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("documents",[{}])[0].get("name","").split("/")[-1])' 2>/dev/null)
 
 echo ""
-echo "✅ Seedat: Älgjakten 2026 — 7 patruller, 10 kontroller."
+echo "✅ Seedat: Älghornsjakten 2026 — 7 patruller, 10 kontroller."
 echo "   App:           http://localhost:5050"
 echo "   Adminvy:       http://localhost:5050/app/c/$CID"
 echo "   Offentlig sida: http://localhost:5050/t/$CID"
