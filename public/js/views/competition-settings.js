@@ -233,6 +233,16 @@ function renderRulesTab(comp, cid, refresh, readOnly) {
 
       <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
         <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
+          <input type="checkbox" id="autoCloseControls" ${comp.autoCloseControls ? 'checked' : ''} style="margin-top:4px;">
+          <span>
+            <strong>Stäng kontroller automatiskt</strong>
+            <div class="field-hint" style="margin-top:2px;">När samtliga patruller rapporterat poäng på en kontroll stängs den automatiskt (syns som "Stängd" i listor). Gäller bara när en administratör är inne och tittar på kontrollen eller poängtabellen.</div>
+          </span>
+        </label>
+      </div>
+
+      <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
+        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
           <input type="checkbox" id="st-enabled" ${comp.startTimes?.enabled ? 'checked' : ''} style="margin-top:4px;">
           <span>
             <strong>Starttider</strong>
@@ -297,6 +307,7 @@ function renderRulesTab(comp, cid, refresh, readOnly) {
   wireSave(card, async () => {
     await updateCompetition(cid, {
       anonymousControls: card.querySelector('#anonymousControls').checked,
+      autoCloseControls: card.querySelector('#autoCloseControls').checked,
       startTimes: {
         enabled: card.querySelector('#st-enabled').checked,
         mode: card.querySelector('input[name="st-mode"]:checked').value,
@@ -354,6 +365,8 @@ function renderStartFinishTab(comp, cid, refresh, readOnly) {
           </div>
           <input type="hidden" id="sf-start-lat" value="${start.lat ?? ''}">
           <input type="hidden" id="sf-start-lng" value="${start.lng ?? ''}">
+          <label class="field mt-3" for="sf-start-note">Notering (visas på publika sidan)</label>
+          <textarea class="textarea" id="sf-start-note" placeholder="T.ex. parkeringsinstruktioner, samlingstid, incheckning…">${escapeHtml(start.note || '')}</textarea>
         </div>
 
         <div class="card mt-3" id="sf-finish-block" style="padding:var(--sp-4);background:var(--bg-muted);box-shadow:none;display:${mode === 'separate' ? 'block' : 'none'};">
@@ -368,6 +381,8 @@ function renderStartFinishTab(comp, cid, refresh, readOnly) {
           </div>
           <input type="hidden" id="sf-finish-lat" value="${finish.lat ?? ''}">
           <input type="hidden" id="sf-finish-lng" value="${finish.lng ?? ''}">
+          <label class="field mt-3" for="sf-finish-note">Notering (visas på publika sidan)</label>
+          <textarea class="textarea" id="sf-finish-note" placeholder="T.ex. målgångsinstruktioner, utcheckning…">${escapeHtml(finish.note || '')}</textarea>
         </div>
       </div>
     </form>
@@ -398,6 +413,8 @@ function renderStartFinishTab(comp, cid, refresh, readOnly) {
         </div>
         <input type="hidden" id="pk-lat" value="${parking.lat ?? ''}">
         <input type="hidden" id="pk-lng" value="${parking.lng ?? ''}">
+        <label class="field mt-3" for="pk-note">Notering (visas på publika sidan)</label>
+        <textarea class="textarea" id="pk-note" placeholder="T.ex. 'Parkera högst upp, ej framför lokalen'">${escapeHtml(parking.note || '')}</textarea>
       </div>
     </form>
     ${readOnly ? '' : saveRow('Spara parkering')}
@@ -485,7 +502,8 @@ function renderStartFinishTab(comp, cid, refresh, readOnly) {
         enabled: pkEnabled.checked,
         name: parkingCard.querySelector('#pk-name').value.trim(),
         lat: num('#pk-lat'),
-        lng: num('#pk-lng')
+        lng: num('#pk-lng'),
+        note: parkingCard.querySelector('#pk-note').value.trim()
       }
     });
     await refresh();
@@ -500,14 +518,16 @@ function renderStartFinishTab(comp, cid, refresh, readOnly) {
       start: {
         name: card.querySelector('#sf-start-name').value.trim(),
         lat: num('#sf-start-lat'),
-        lng: num('#sf-start-lng')
+        lng: num('#sf-start-lng'),
+        note: card.querySelector('#sf-start-note').value.trim()
       }
     };
     if (m === 'separate') {
       data.finish = {
         name: card.querySelector('#sf-finish-name').value.trim(),
         lat: num('#sf-finish-lat'),
-        lng: num('#sf-finish-lng')
+        lng: num('#sf-finish-lng'),
+        note: card.querySelector('#sf-finish-note').value.trim()
       };
     }
     await updateCompetition(cid, { startFinish: data });

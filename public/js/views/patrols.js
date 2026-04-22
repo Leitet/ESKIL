@@ -270,6 +270,7 @@ async function openStartCardModal(cid, patrol) {
         <div class="btn-row mt-4">
           <button class="btn btn-primary" id="pdf">${icon('download', { size: 16 })} Ladda ner PDF</button>
           <a class="btn btn-ghost" href="${url}" target="_blank" rel="noopener">Öppna startkort</a>
+          <a class="btn btn-secondary" href="/app/c/${cid}/startscreen" target="_blank" rel="noopener">Startskärm</a>
         </div>
       </div>
       <div class="modal-foot">

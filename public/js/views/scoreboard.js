@@ -1,6 +1,6 @@
 import { layout, setTopbarCompetition } from '../app.js';
-import { getCompetition, listPatrols, listControls, listAllScores } from '../store.js';
-import { AVDELNINGAR, escapeHtml, rankPatrols, rankKarer, RANKING_RULES_TEXT } from '../utils.js';
+import { getCompetition, listPatrols, listControls, listAllScores, updateControl } from '../store.js';
+import { AVDELNINGAR, escapeHtml, rankPatrols, rankKarer, RANKING_RULES_TEXT, toast } from '../utils.js';
 import { icon } from '../icons.js';
 import { compActionsHtml } from './competition.js';
 
@@ -64,6 +64,8 @@ export async function renderScoreboard(app, user, cid) {
   const content = wrap.querySelector('#content');
   content.innerHTML = `<div class="muted">Räknar poäng…</div>`;
 
+  const isAdmin = user.role === 'super-admin' || (comp.admins || []).includes(user.uid);
+
   let patrols = [], controls = [], scores = [];
   async function load() {
     try {
@@ -73,9 +75,41 @@ export async function renderScoreboard(app, user, cid) {
         listAllScores(cid)
       ]);
       render();
+      maybeAutoCloseReadyControls();
     } catch (e) {
       console.error(e);
       content.innerHTML = `<div class="empty"><h3>Kunde inte ladda</h3><p>${escapeHtml(e.message)}</p></div>`;
+    }
+  }
+
+  // When the competition has autoCloseControls enabled, sweep every still-open
+  // control and close the ones where every patrol has reported. This gives us
+  // a bulk-processing opportunity whenever an admin visits the scoreboard —
+  // the control-detail page handles the live case for a single control.
+  async function maybeAutoCloseReadyControls() {
+    if (!comp?.autoCloseControls || !isAdmin || !patrols.length) return;
+    const patrolIds = new Set(patrols.map(p => p.id));
+    const scoresByCtrl = {};
+    for (const s of scores) {
+      if (!patrolIds.has(s.patrolId)) continue;
+      (scoresByCtrl[s.controlId] ||= new Set()).add(s.patrolId);
+    }
+    const ready = controls.filter(c =>
+      c.open && (scoresByCtrl[c.id]?.size || 0) >= patrolIds.size
+    );
+    if (!ready.length) return;
+    const closed = [];
+    for (const c of ready) {
+      try {
+        await updateControl(cid, c.id, { open: false });
+        c.open = false;
+        closed.push(c);
+      } catch (e) {
+        console.warn('[ESKIL] auto-close failed for', c.id, e);
+      }
+    }
+    if (closed.length) {
+      toast(`Stängde ${closed.length} kontroll${closed.length === 1 ? '' : 'er'} automatiskt`, 'success');
     }
   }
 

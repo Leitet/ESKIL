@@ -350,20 +350,34 @@ function renderPodiumStep(row, rank, cls) {
 function renderMap() {
   const withPos = controls.filter(c => c.lat && c.lng);
   const sf = startFinishPoints(comp);
+  const park = parkingPoint(comp);
   if (!withPos.length && !sf.length) return '';
-  const allPts = [...withPos.map(c => [c.lat, c.lng]), ...sf.map(p => [p.lat, p.lng])];
-  const avgLat = allPts.reduce((s, p) => s + p[0], 0) / allPts.length;
-  const avgLng = allPts.reduce((s, p) => s + p[1], 0) / allPts.length;
-  const osm = `https://www.openstreetmap.org/#map=14/${avgLat.toFixed(4)}/${avgLng.toFixed(4)}`;
+  // Notes for the special points (parking, start, finish). Only render the
+  // section if at least one of them has a non-empty note.
+  const notedPoints = [park, ...sf].filter(p => p && (p.note || '').trim());
+  const notesBlock = notedPoints.length ? `
+    <div class="map-notes">
+      ${notedPoints.map(p => `
+        <div class="map-note">
+          <div class="map-note-head">
+            <span class="badge ${p.kind === 'parking' ? 'badge-blue' : 'badge-orange'}">${escapeHtml(p.title)}</span>
+            ${p.name ? `<strong>${escapeHtml(p.name)}</strong>` : ''}
+          </div>
+          <p>${escapeHtml(p.note)}</p>
+        </div>
+      `).join('')}
+    </div>
+  ` : '';
+
   return `
-    <div class="pub-section-head"><h2 class="t-h2">Karta</h2><span class="muted">${withPos.length} kontroller${sf.length ? ' · start/mål' : ''}</span></div>
+    <div class="pub-section-head"><h2 class="t-h2">Karta</h2><span class="muted">${withPos.length} kontroller${sf.length ? ' · start/mål' : ''}${park ? ' · parkering' : ''}</span></div>
     <div class="map-card">
       <div id="pub-map"></div>
       <div class="foot">
         <span>Kontrollpositioner — exakta platser kan skilja något.</span>
-        <a class="btn btn-ghost btn-sm" target="_blank" rel="noopener" href="${osm}">Öppna i OpenStreetMap</a>
       </div>
     </div>
+    ${notesBlock}
   `;
 }
 
@@ -396,13 +410,13 @@ function renderPatrols(totals) {
           const done = t?.count || 0;
           const pct = Math.round((done / ctrlCount) * 100);
           const stime = patrolStartTime(comp, p, patrols.length);
-          return `<div class="pat-card">
+          return `<button type="button" class="pat-card" data-patrol="${escapeHtml(p.id)}">
             <div class="n">#${p.number ?? '—'} · <span class="dot ${avdSlug(p.avdelning)}"></span>${escapeHtml(p.avdelning || '')}${stime ? ` · <span class="mono" style="color:var(--scout-blue);">${escapeHtml(stime)}</span>` : ''}</div>
             <div class="name">${escapeHtml(p.name || '')}</div>
             <div class="kar">${escapeHtml(p.kar || '')}</div>
             <div class="progress"><span style="width:${pct}%"></span></div>
             <div class="progress-label"><span>${done} / ${ctrlCount} kontroller</span><span>${t?.grand || 0} p</span></div>
-          </div>`;
+          </button>`;
         }).join('')}
       </div>
     `}
@@ -463,7 +477,7 @@ function renderScoreboard(totals) {
       <div class="lb"><table>
         <thead><tr><th class="rank">#</th><th>Patrull</th><th>Kår</th><th class="num">Kontr.</th><th class="num">Max</th><th class="num">Extra</th><th class="num">Total</th></tr></thead>
         <tbody>
-          ${rows.map(r => `<tr class="${r.rank<=3?'top'+r.rank:''}">
+          ${rows.map(r => `<tr class="${r.rank<=3?'top'+r.rank:''} is-clickable" data-patrol="${escapeHtml(r.id)}">
             <td class="rank">${r.rank === 1 ? icon('trophy', { size: 16 }) + ' ' : ''}${r.rank}</td>
             <td>
               <span class="pname">${escapeHtml(r.name || '')}</span>
@@ -546,7 +560,119 @@ document.addEventListener('click', (e) => {
     render();
     return;
   }
+  const patBtn = e.target.closest('[data-patrol]');
+  if (patBtn) {
+    openPatrolModal(patBtn.dataset.patrol);
+    return;
+  }
 });
+
+// --- Patrol detail modal ---------------------------------------------------
+// Click on a patrol card or scoreboard row to see every control the patrol has
+// scored, with the points and optional reporter note. Respects the
+// competition's anonymousControls flag: while a control is still open, its
+// name is hidden (only the number is shown) — only when an admin closes the
+// control does its name reveal on this public view.
+function openPatrolModal(patrolId) {
+  const patrol = patrols.find(p => p.id === patrolId);
+  if (!patrol) return;
+
+  const anon = comp?.anonymousControls !== false;
+  const controlName = (c) => (anon && c.open) ? `Kontroll ${c.nummer ?? '?'}` : (c.name || `Kontroll ${c.nummer ?? '?'}`);
+
+  // Gather this patrol's score for every control, in control-number order.
+  const sorted = [...controls].sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0));
+  const perCtrl = sorted.map(c => {
+    const score = (scoresByControl[c.id] || []).find(s => s.patrolId === patrolId);
+    return { control: c, score };
+  });
+  const totals = perCtrl.reduce((acc, { score }) => {
+    if (!score) return acc;
+    acc.done += 1;
+    acc.poang += Number(score.poang) || 0;
+    acc.extra += Number(score.extraPoang) || 0;
+    return acc;
+  }, { done: 0, poang: 0, extra: 0 });
+  const grand = totals.poang + totals.extra;
+
+  const stime = patrolStartTime(comp, patrol, patrols.length);
+
+  const overlay = document.createElement('div');
+  overlay.className = 'pub-modal-overlay';
+  overlay.innerHTML = `
+    <div class="pub-modal" role="dialog" aria-modal="true">
+      <div class="pub-modal-head">
+        <div>
+          <div class="t-over" style="color:var(--avent-orange);">Patrull #${escapeHtml(String(patrol.number ?? ''))}</div>
+          <h2 style="margin:4px 0 2px;">${escapeHtml(patrol.name || '')}</h2>
+          <div class="muted t-sm">
+            <span class="dot ${avdSlug(patrol.avdelning)}"></span>${escapeHtml(patrol.avdelning || '')}
+            ${patrol.kar ? ' · ' + escapeHtml(patrol.kar) : ''}
+            ${patrol.antal ? ' · ' + escapeHtml(String(patrol.antal)) + ' deltagare' : ''}
+            ${stime ? ' · <span class="mono" style="color:var(--scout-blue);">' + escapeHtml(stime) + '</span>' : ''}
+          </div>
+        </div>
+        <button type="button" class="icon-btn" id="pub-modal-close" aria-label="Stäng">${icon('x', { size: 20 })}</button>
+      </div>
+
+      <div class="pub-modal-totals">
+        <div>
+          <div class="val">${totals.done}<span class="of">/${sorted.length}</span></div>
+          <div class="lbl">Kontroller</div>
+        </div>
+        <div>
+          <div class="val">${totals.poang}</div>
+          <div class="lbl">Poäng</div>
+        </div>
+        <div>
+          <div class="val">${totals.extra}</div>
+          <div class="lbl">Extra</div>
+        </div>
+        <div class="grand">
+          <div class="val">${grand}</div>
+          <div class="lbl">Totalt</div>
+        </div>
+      </div>
+
+      ${anon ? `<p class="pub-modal-hint muted t-sm">Anonyma kontroller: namn visas först när kontrollen stängts.</p>` : ''}
+
+      <div class="pub-modal-list">
+        ${perCtrl.map(({ control, score }) => {
+          const name = controlName(control);
+          const hidden = anon && control.open;
+          if (score) {
+            const extra = Number(score.extraPoang) || 0;
+            return `
+              <div class="pub-modal-row is-done">
+                <div class="num">#${escapeHtml(String(control.nummer ?? '?'))}</div>
+                <div class="name ${hidden ? 'is-hidden' : ''}">${escapeHtml(name)}</div>
+                <div class="pts">
+                  <span class="main">${Number(score.poang) || 0}</span>
+                  ${extra > 0 ? `<span class="extra">+${extra}</span>` : ''}
+                </div>
+                ${score.note ? `<div class="note">${escapeHtml(score.note)}</div>` : ''}
+              </div>
+            `;
+          }
+          return `
+            <div class="pub-modal-row is-pending">
+              <div class="num">#${escapeHtml(String(control.nummer ?? '?'))}</div>
+              <div class="name ${hidden ? 'is-hidden' : ''}">${escapeHtml(name)}</div>
+              <div class="pts muted">${control.open ? 'Öppen' : 'Inte rapporterat'}</div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  overlay.querySelector('#pub-modal-close').onclick = close;
+  const onKey = (e) => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } };
+  document.addEventListener('keydown', onKey);
+}
 
 function renderNotFound(msg) {
   root.innerHTML = `

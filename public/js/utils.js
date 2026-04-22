@@ -316,7 +316,8 @@ export function parkingPoint(comp) {
     title: 'Parkering',
     name: p.name || 'Parkering',
     lat: p.lat,
-    lng: p.lng
+    lng: p.lng,
+    note: p.note || ''
   };
 }
 

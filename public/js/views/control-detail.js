@@ -66,9 +66,8 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
       <div class="card">
         <h3 class="t-h3">Placering</h3>
         ${control.lat && control.lng ? `
-          <div id="placering-map" style="aspect-ratio:1/1;width:100%;border-radius:var(--r-md);overflow:hidden;border:1px solid var(--border);margin-bottom:var(--sp-3);"></div>
-          <p class="mono t-sm">${control.lat.toFixed(5)}, ${control.lng.toFixed(5)}</p>
-          <a class="btn btn-ghost btn-sm" href="https://www.openstreetmap.org/?mlat=${control.lat}&mlon=${control.lng}#map=17/${control.lat}/${control.lng}" target="_blank" rel="noopener">Öppna i OpenStreetMap</a>
+          <p class="mono t-sm" style="margin:0 0 var(--sp-2);">${control.lat.toFixed(5)}, ${control.lng.toFixed(5)}</p>
+          <div id="placering-map" style="aspect-ratio:1/1;width:100%;max-width:260px;border-radius:var(--r-md);overflow:hidden;border:1px solid var(--border);"></div>
         ` : '<p class="muted">Ingen position angiven.</p>'}
         ${control.placement ? `
           <div class="mt-4">
@@ -164,7 +163,33 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
   // Score subscription
   const scoresEl = wrap.querySelector('#scores');
   const patrolById = Object.fromEntries(patrols.map(p => [p.id, p]));
+  let autoCloseFired = false;
   unsub = watchScoresForControl(cid, ctrlId, (rows) => {
+    // Auto-close when every patrol has reported. Only admins can write the
+    // control doc (per Firestore rules) so this runs just for admin viewers;
+    // that's acceptable — the setting is per-competition and the control
+    // simply stays open if no admin ever visits during the window.
+    if (comp.autoCloseControls
+        && control.open
+        && !autoCloseFired
+        && isAdmin
+        && patrols.length > 0) {
+      const reportedIds = new Set(rows.map(r => r.patrolId));
+      const coverage = patrols.every(p => reportedIds.has(p.id));
+      if (coverage) {
+        autoCloseFired = true;
+        updateControl(cid, ctrlId, { open: false })
+          .then(() => {
+            control.open = false;
+            toast('Alla patruller rapporterat — kontrollen stängdes automatiskt', 'success');
+            renderControlDetail(app, user, cid, ctrlId);
+          })
+          .catch(e => {
+            autoCloseFired = false;
+            console.warn('[ESKIL] auto-close failed:', e);
+          });
+      }
+    }
     rows.sort((a, b) => {
       const A = patrolById[a.patrolId], B = patrolById[b.patrolId];
       return (A?.number || 0) - (B?.number || 0);

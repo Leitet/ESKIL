@@ -6,7 +6,7 @@
 //   - Filter chips + control list with anonymity enforced
 
 import { db, doc, onSnapshot, collection } from './firebase.js';
-import { getCompetition, getPatrol, listControls } from './store.js';
+import { getCompetition, getPatrol, listControls, listPatrols } from './store.js';
 import {
   escapeHtml, publicManagement, patrolStartTime, patrolStartDateTime,
   startFinishPoints, parkingPoint, startTimeSettings,
@@ -57,6 +57,9 @@ function parsePath() {
 // --- Global state ---
 let comp = null;
 let patrol = null;
+let patrols = [];          // all patrols in the competition — needed for
+                           // accurate start-time interval in range mode
+                           // and for the countdown window.
 let controls = [];
 let scoresForPatrol = {};  // controlId -> score doc
 let filter = 'alla';       // 'alla' | 'kvar' | 'klara'
@@ -67,10 +70,11 @@ async function main() {
   const { cid, patrolId } = parsed;
 
   try {
-    [comp, patrol, controls] = await Promise.all([
+    [comp, patrol, controls, patrols] = await Promise.all([
       getCompetition(cid),
       getPatrol(cid, patrolId),
-      listControls(cid)
+      listControls(cid),
+      listPatrols(cid)
     ]);
   } catch (e) {
     return renderError('Kunde inte ladda startkortet: ' + e.message);
