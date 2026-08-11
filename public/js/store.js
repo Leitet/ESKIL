@@ -223,3 +223,26 @@ export async function upsertScore(cid, ctrlId, patrolId, poang, extraPoang, note
 export async function deleteScore(cid, ctrlId, scoreId) {
   await deleteDoc(doc(db, 'competitions', cid, 'controls', ctrlId, 'scores', scoreId));
 }
+
+// --- Registrations (Anmälan) ------------------------------------------------
+// The registration doc ID is the secret — the manage link /a/<cid>/<regId> is
+// the only way for the anmälare to reach their registration (same pattern as
+// control reporter URLs). Anonymous get/create/update; only admins may list.
+
+export async function getRegistration(cid, regId) {
+  const snap = await getDoc(doc(db, 'competitions', cid, 'registrations', regId));
+  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+}
+
+export async function listRegistrations(cid) {
+  const snap = await getDocs(collection(db, 'competitions', cid, 'registrations'));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+export async function createRegistration(cid, regId, data) {
+  await setDoc(doc(db, 'competitions', cid, 'registrations', regId), data);
+}
+
+export async function updateRegistration(cid, regId, data) {
+  await updateDoc(doc(db, 'competitions', cid, 'registrations', regId), data);
+}

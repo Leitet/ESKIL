@@ -69,6 +69,11 @@ function cleanup() {
   unsubs = [];
 }
 
+// Per-competition setting: when publicScores is false the public page hides
+// all points, totals and rankings — only green completion checks are shown.
+// Missing field means public (backward compatible with existing competitions).
+function scoresPublic() { return comp?.publicScores !== false; }
+
 async function boot() {
   const parsed = parsePath();
   if (!parsed) return renderNotFound('Ogiltig länk.');
@@ -201,7 +206,7 @@ function render() {
       <div class="pub-tabs">
         <a data-tab="overview"   href="/t/${cid}"            class="${tab==='overview'?'active':''}">Översikt</a>
         <a data-tab="patrols"    href="/t/${cid}/patrols"    class="${tab==='patrols'?'active':''}">Patruller</a>
-        <a data-tab="scoreboard" href="/t/${cid}/scoreboard" class="${tab==='scoreboard'?'active':''}">Poängtabell</a>
+        <a data-tab="scoreboard" href="/t/${cid}/scoreboard" class="${tab==='scoreboard'?'active':''}">${scoresPublic() ? 'Poängtabell' : 'Genomfört'}</a>
       </div>
     </div>
     <main class="page">
@@ -264,7 +269,9 @@ function renderFooter() {
           <img src="/assets/logo-scouterna-tagline-white.svg" alt="Scouterna">
           <span>· ESKIL · ${comp?.year || ''}</span>
         </div>
-        <span class="muted">Poängtabellen uppdateras direkt när kontrollanter rapporterar.</span>
+        <span class="muted">${scoresPublic()
+          ? 'Poängtabellen uppdateras direkt när kontrollanter rapporterar.'
+          : 'Poängen publiceras av tävlingsledningen — tills dess visas bara genomförda kontroller.'}</span>
       </div>
     </footer>
   `;
@@ -286,7 +293,7 @@ function renderOverview(totals) {
       <div class="pub-kpi"><div class="label">Öppna just nu</div><div class="val">${controls.filter(c=>c.open).length}</div></div>
     </section>
 
-    ${podium.length && podium[0].grand > 0 ? `
+    ${scoresPublic() && podium.length && podium[0].grand > 0 ? `
       <div class="pub-section-head"><h2 class="t-h2">Topp tre · Overall</h2><span class="muted">Live</span></div>
       <div class="podium">
         ${renderPodiumStep(podium[1], 2, 'p2')}
@@ -415,7 +422,7 @@ function renderPatrols(totals) {
             <div class="name">${escapeHtml(p.name || '')}</div>
             <div class="kar">${escapeHtml(p.kar || '')}</div>
             <div class="progress"><span style="width:${pct}%"></span></div>
-            <div class="progress-label"><span>${done} / ${ctrlCount} kontroller</span><span>${t?.grand || 0} p</span></div>
+            <div class="progress-label"><span>${done} / ${ctrlCount} kontroller</span>${scoresPublic() ? `<span>${t?.grand || 0} p</span>` : ''}</div>
           </button>`;
         }).join('')}
       </div>
@@ -426,6 +433,7 @@ function renderPatrols(totals) {
 // --- Tab: Scoreboard -------------------------------------------------------
 let scoreView = 'overall'; // 'overall' | 'avd:<key>' | 'kar'
 function renderScoreboard(totals) {
+  if (!scoresPublic()) return renderCompletionBoard(totals);
   const tabs = [
     { key: 'overall', label: 'Overall' },
     ...AVDELNINGAR.filter(a => patrols.some(p => p.avdelning === a.key))
@@ -507,6 +515,62 @@ function renderScoreboard(totals) {
   `;
 }
 
+// Scores unpublished: show which controls each patrol has completed (green
+// check per control) without revealing points or ranking. Rows are in
+// patrol-number order so nothing about the standings leaks.
+function renderCompletionBoard(totals) {
+  const tabs = [
+    { key: 'overall', label: 'Alla' },
+    ...AVDELNINGAR.filter(a => patrols.some(p => p.avdelning === a.key))
+      .map(a => ({ key: 'avd:' + a.key, label: a.key }))
+  ];
+  if (!tabs.some(t => t.key === scoreView)) scoreView = 'overall';
+
+  const totalMap = Object.fromEntries(totals.map(t => [t.id, t]));
+  const ctrls = [...controls].sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0));
+  const rows = patrols
+    .filter(p => !scoreView.startsWith('avd:') || p.avdelning === scoreView.slice(4))
+    .slice()
+    .sort((a, b) => (a.number || 0) - (b.number || 0) || (a.name || '').localeCompare(b.name || '', 'sv'));
+
+  const body = rows.length ? `
+    <div class="lb lb-matrix"><table>
+      <thead><tr>
+        <th>Patrull</th><th>Kår</th><th class="num">Klara</th>
+        ${ctrls.map(c => `<th class="num">${c.nummer ?? ''}</th>`).join('')}
+      </tr></thead>
+      <tbody>
+        ${rows.map(p => {
+          const t = totalMap[p.id];
+          return `<tr class="is-clickable" data-patrol="${escapeHtml(p.id)}">
+            <td>
+              <span class="pname">${escapeHtml(p.name || '')}</span>
+              <div style="font-size:12px;color:var(--fg3);"><span class="dot ${avdSlug(p.avdelning)}"></span>${escapeHtml(p.avdelning || '')}</div>
+            </td>
+            <td><span class="pkar">${escapeHtml(p.kar || '')}</span></td>
+            <td class="num">${t?.count || 0}/${ctrls.length}</td>
+            ${ctrls.map(c => t?.perControl?.[c.id]
+              ? `<td class="num done-check">${icon('check', { size: 18, stroke: 3 })}</td>`
+              : `<td class="num"><span class="muted">—</span></td>`).join('')}
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table></div>
+  ` : '<div class="empty"><h3>Inga patruller att visa</h3></div>';
+
+  return `
+    <div class="pub-section-head">
+      <h2 class="t-h2">Genomförda kontroller</h2>
+      <span class="muted">Live-uppdaterad</span>
+    </div>
+    <div class="pub-notice">${icon('info', { size: 16 })}<span>Poängen är inte publicerade ännu. En grön bock visar att patrullen genomfört kontrollen.</span></div>
+    <div class="sub-tabs">
+      ${tabs.map(t => `<button data-view="${t.key}" class="${scoreView === t.key ? 'active' : ''}">${escapeHtml(t.label)}</button>`).join('')}
+    </div>
+    ${body}
+  `;
+}
+
 // --- Totals helper ---------------------------------------------------------
 function computeTotals() {
   const map = {};
@@ -578,6 +642,7 @@ function openPatrolModal(patrolId) {
   if (!patrol) return;
 
   const anon = comp?.anonymousControls !== false;
+  const showScores = scoresPublic();
   const controlName = (c) => (anon && c.open) ? `Kontroll ${c.nummer ?? '?'}` : (c.name || `Kontroll ${c.nummer ?? '?'}`);
 
   // Gather this patrol's score for every control, in control-number order.
@@ -615,25 +680,28 @@ function openPatrolModal(patrolId) {
         <button type="button" class="icon-btn" id="pub-modal-close" aria-label="Stäng">${icon('x', { size: 20 })}</button>
       </div>
 
-      <div class="pub-modal-totals">
+      <div class="pub-modal-totals ${showScores ? '' : 'no-scores'}">
         <div>
           <div class="val">${totals.done}<span class="of">/${sorted.length}</span></div>
           <div class="lbl">Kontroller</div>
         </div>
-        <div>
-          <div class="val">${totals.poang}</div>
-          <div class="lbl">Poäng</div>
-        </div>
-        <div>
-          <div class="val">${totals.extra}</div>
-          <div class="lbl">Extra</div>
-        </div>
-        <div class="grand">
-          <div class="val">${grand}</div>
-          <div class="lbl">Totalt</div>
-        </div>
+        ${showScores ? `
+          <div>
+            <div class="val">${totals.poang}</div>
+            <div class="lbl">Poäng</div>
+          </div>
+          <div>
+            <div class="val">${totals.extra}</div>
+            <div class="lbl">Extra</div>
+          </div>
+          <div class="grand">
+            <div class="val">${grand}</div>
+            <div class="lbl">Totalt</div>
+          </div>
+        ` : ''}
       </div>
 
+      ${showScores ? '' : `<p class="pub-modal-hint muted t-sm">Poängen är inte publicerade ännu — en grön bock visar genomförd kontroll.</p>`}
       ${anon ? `<p class="pub-modal-hint muted t-sm">Anonyma kontroller: namn visas först när kontrollen stängts.</p>` : ''}
 
       <div class="pub-modal-list">
@@ -646,10 +714,12 @@ function openPatrolModal(patrolId) {
               <div class="pub-modal-row is-done">
                 <div class="num">#${escapeHtml(String(control.nummer ?? '?'))}</div>
                 <div class="name ${hidden ? 'is-hidden' : ''}">${escapeHtml(name)}</div>
-                <div class="pts">
-                  <span class="main">${Number(score.poang) || 0}</span>
-                  ${extra > 0 ? `<span class="extra">+${extra}</span>` : ''}
-                </div>
+                ${showScores ? `
+                  <div class="pts">
+                    <span class="main">${Number(score.poang) || 0}</span>
+                    ${extra > 0 ? `<span class="extra">+${extra}</span>` : ''}
+                  </div>
+                ` : `<div class="pts done-icon">${icon('check', { size: 20, stroke: 3 })}</div>`}
                 ${score.note ? `<div class="note">${escapeHtml(score.note)}</div>` : ''}
               </div>
             `;

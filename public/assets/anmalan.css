@@ -1,0 +1,254 @@
+/* ESKIL — Anmälan (public registration page). Mobile-first, single column.
+   Relies on tokens.css + app.css for inputs, buttons, cards and badges. */
+
+body { background: var(--bg-muted); }
+
+/* --- Hero ------------------------------------------------------------------ */
+.anm-hero {
+  position: relative;
+  background: var(--scout-blue);
+  color: var(--white);
+  padding: max(env(safe-area-inset-top), 20px) 0 28px;
+  overflow: hidden;
+}
+.anm-hero-pattern {
+  position: absolute; inset: 0;
+  background-image: radial-gradient(rgba(255,255,255,0.06) 1.5px, transparent 1.5px);
+  background-size: 28px 28px;
+  mask-image: linear-gradient(180deg, black 0%, transparent 90%);
+  pointer-events: none;
+}
+.anm-hero-inner {
+  position: relative; z-index: 1;
+  max-width: 640px; margin: 0 auto;
+  padding: 20px var(--sp-5) 0;
+}
+.anm-hero-inner h1 {
+  font-family: var(--font-display);
+  font-size: clamp(26px, 6vw, 36px);
+  margin: 6px 0 2px;
+  line-height: 1.1;
+}
+.anm-hero .sub { color: rgba(255,255,255,0.85); font-size: 14px; }
+.anm-period-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  margin-top: 14px;
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 13px; font-weight: 600;
+}
+.anm-period-chip .dot-live {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--spaer-green);
+  box-shadow: 0 0 0 3px rgba(65,166,42,0.3);
+}
+.anm-period-chip.closed .dot-live { background: var(--utm-pink); box-shadow: 0 0 0 3px rgba(226,0,122,0.25); }
+.anm-period-chip.before .dot-live { background: var(--rover-yellow); box-shadow: 0 0 0 3px rgba(226,224,0,0.25); }
+
+/* --- Page shell ------------------------------------------------------------ */
+.anm-page {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: var(--sp-5) var(--sp-5) 140px; /* room for sticky price bar */
+}
+.anm-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: var(--sp-5);
+  margin-bottom: var(--sp-4);
+}
+.anm-card h2 { font-size: 18px; margin: 0 0 var(--sp-4); font-family: var(--font-display); }
+.anm-info {
+  background: var(--scout-blue-50);
+  border: 1px solid var(--scout-blue-200);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+  font-size: 14px;
+  margin-bottom: var(--sp-4);
+  white-space: pre-wrap;
+}
+
+/* --- Steps indicator ------------------------------------------------------- */
+.anm-steps {
+  display: flex; align-items: center; gap: 8px;
+  margin: 0 0 var(--sp-5);
+  font-size: 13px; font-weight: 700;
+}
+.anm-steps .step {
+  display: inline-flex; align-items: center; gap: 8px;
+  color: var(--fg3);
+}
+.anm-steps .step .n {
+  width: 24px; height: 24px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--border); color: var(--fg2);
+  font-size: 12px;
+}
+.anm-steps .step.active { color: var(--scout-blue); }
+.anm-steps .step.active .n { background: var(--scout-blue); color: #fff; }
+.anm-steps .step.done .n { background: var(--spaer-green); color: #fff; }
+.anm-steps .sep { flex: 0 0 24px; height: 2px; background: var(--border); border-radius: 2px; }
+
+/* --- Patrol cards ---------------------------------------------------------- */
+.anm-patrol {
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--r-md);
+  padding: var(--sp-4);
+  margin-bottom: var(--sp-3);
+  background: var(--bg-muted);
+  position: relative;
+}
+.anm-patrol .anm-patrol-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: var(--sp-3);
+}
+.anm-patrol .anm-patrol-head strong { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--fg3); }
+.anm-patrol .remove-patrol { color: var(--utm-pink); }
+.anm-patrol .grid-3 {
+  display: grid; grid-template-columns: 1fr; gap: var(--sp-3);
+}
+@media (min-width: 560px) {
+  .anm-patrol .grid-3 { grid-template-columns: 2fr 1.4fr 0.9fr; }
+}
+
+/* --- Sticky price bar ------------------------------------------------------ */
+.anm-pricebar {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 40;
+  background: var(--white);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -8px 24px rgba(0,25,45,0.10);
+  padding: 10px var(--sp-5) calc(10px + env(safe-area-inset-bottom));
+}
+.anm-pricebar .inner {
+  max-width: 640px; margin: 0 auto;
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4);
+}
+.anm-pricebar .total .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--fg3); font-weight: 700; }
+.anm-pricebar .total .val { font-family: var(--font-display); font-size: 24px; font-weight: 700; color: var(--scout-blue); line-height: 1.1; }
+.anm-pricebar .total .val small { font-size: 14px; font-weight: 600; }
+.anm-price-rows { max-width: 640px; margin: 6px auto 0; font-size: 13px; color: var(--fg2); }
+.anm-price-rows .r { display: flex; justify-content: space-between; padding: 1px 0; }
+
+/* --- Payment step ---------------------------------------------------------- */
+.anm-due {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding: var(--sp-4);
+  background: var(--scout-blue);
+  color: #fff;
+  border-radius: var(--r-md);
+  margin-bottom: var(--sp-4);
+}
+.anm-due .lbl { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; opacity: .8; }
+.anm-due .val { font-family: var(--font-display); font-size: 30px; font-weight: 700; }
+.anm-ref {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3);
+  border: 1.5px dashed var(--border-strong);
+  border-radius: var(--r-md);
+  padding: 10px 14px;
+  margin-bottom: var(--sp-4);
+  background: var(--bg-muted);
+}
+.anm-ref .code { font-family: var(--font-mono); font-weight: 700; font-size: 18px; letter-spacing: .06em; }
+.anm-ref .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--fg3); font-weight: 700; }
+
+.anm-method {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  margin-bottom: var(--sp-3);
+  overflow: hidden;
+  background: var(--white);
+}
+.anm-method-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px;
+  font-weight: 700;
+}
+.anm-method-head .tag {
+  margin-left: auto;
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--fg3);
+}
+.anm-method-body { padding: 0 14px 14px; font-size: 14px; color: var(--fg2); }
+.anm-method-body .mono-big { font-family: var(--font-mono); font-size: 18px; font-weight: 700; color: var(--fg1); }
+.anm-qr {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: var(--sp-4);
+  background: var(--bg-muted);
+  border-radius: var(--r-md);
+  margin-top: var(--sp-3);
+}
+.anm-qr .qr-box { background: #fff; padding: 12px; border-radius: var(--r-sm); border: 1px solid var(--border); }
+.anm-qr .qr-box img, .anm-qr .qr-box canvas { display: block; }
+.anm-qr .hint { font-size: 12px; color: var(--fg3); text-align: center; }
+
+/* --- Payments list / status ------------------------------------------------ */
+.anm-payment-row {
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+.anm-payment-row:last-child { border-bottom: none; }
+.anm-payment-row .ref { font-family: var(--font-mono); font-weight: 700; }
+.anm-payment-row .amt { margin-left: auto; font-family: var(--font-mono); font-weight: 700; }
+.anm-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+  border-radius: 999px; padding: 3px 10px;
+}
+.anm-badge.paid { background: #e3f4dd; color: #2d7a1c; }
+.anm-badge.pending { background: #fdf3d8; color: #8a6d00; }
+.anm-badge.cancelled { background: #fbe0ef; color: #a30f66; }
+
+/* --- Success --------------------------------------------------------------- */
+.anm-success {
+  text-align: center;
+  padding: var(--sp-8) var(--sp-5);
+}
+.anm-success .check-ring {
+  width: 64px; height: 64px; border-radius: 50%;
+  background: #e3f4dd; color: #2d7a1c;
+  display: inline-flex; align-items: center; justify-content: center;
+  margin-bottom: var(--sp-4);
+}
+.anm-link-box {
+  display: flex; align-items: center; gap: var(--sp-2);
+  background: var(--bg-muted);
+  border: 1.5px dashed var(--border-strong);
+  border-radius: var(--r-md);
+  padding: 10px 12px;
+  margin: var(--sp-4) 0;
+}
+.anm-link-box input {
+  flex: 1; border: none; background: transparent;
+  font-family: var(--font-mono); font-size: 13px; color: var(--fg1);
+  min-width: 0;
+}
+.anm-link-box input:focus { outline: none; }
+
+/* --- Patrol summary rows (manage view) ------------------------------------- */
+.anm-sum-row {
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+.anm-sum-row:last-child { border-bottom: none; }
+.anm-sum-row .n { color: var(--fg3); font-family: var(--font-mono); }
+.anm-sum-row .meta { margin-left: auto; color: var(--fg3); font-size: 13px; white-space: nowrap; }
+
+/* --- Footer ---------------------------------------------------------------- */
+.anm-foot {
+  text-align: center;
+  color: var(--fg3);
+  font-size: 13px;
+  padding: var(--sp-6) var(--sp-5) calc(var(--sp-8) + 90px);
+}
+
+/* Focus states for large tap targets on mobile */
+.anm-page .input, .anm-page .select, .anm-page .textarea { font-size: 16px; } /* prevent iOS zoom */

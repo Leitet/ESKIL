@@ -14,7 +14,9 @@ import {
   db, doc, getDoc, getDocs, collection, query, where
 } from '../firebase.js';
 import {
-  escapeHtml, toast, withBusy, confirmDialog
+  escapeHtml, toast, withBusy, confirmDialog,
+  registrationSettings, REG_PRICING_MODELS, registrationUrl, copyToClipboard,
+  AVDELNINGAR, allowedAvdelningar
 } from '../utils.js';
 import { createManagementForm } from '../managementform.js';
 import { icon } from '../icons.js';
@@ -24,6 +26,7 @@ import { initMapPicker } from '../mappicker.js';
 const TABS = [
   { key: 'basic',      label: 'Grund'           },
   { key: 'rules',      label: 'Regler & info'   },
+  { key: 'anmalan',    label: 'Anmälan'         },
   { key: 'startfinish',label: 'Start/Mål'       },
   { key: 'management', label: 'Tävlingsledning' },
   { key: 'members',    label: 'Användare'       }
@@ -88,6 +91,7 @@ export async function renderCompetitionSettings(app, user, cid) {
     const body = wrap.querySelector('#tab-body');
     if (activeTab === 'basic')       body.appendChild(renderBasicTab(comp, cid, refresh, isDemoReadOnly, isSuperAdmin));
     if (activeTab === 'rules')       body.appendChild(renderRulesTab(comp, cid, refresh, isDemoReadOnly));
+    if (activeTab === 'anmalan')     body.appendChild(renderAnmalanTab(comp, cid, refresh, isDemoReadOnly));
     if (activeTab === 'startfinish') body.appendChild(renderStartFinishTab(comp, cid, refresh, isDemoReadOnly));
     if (activeTab === 'management')  body.appendChild(renderManagementTab(comp, cid, refresh, isDemoReadOnly));
     if (activeTab === 'members')     body.appendChild(renderMembersTab(comp, cid, user, refresh));
@@ -173,12 +177,38 @@ function renderBasicTab(comp, cid, refresh, readOnly, isSuperAdmin) {
         <label class="field" for="description">Beskrivning</label>
         <textarea class="textarea" id="description">${escapeHtml(comp.description || '')}</textarea>
       </div>
+      <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
+        <label class="field">Avdelningar som deltar</label>
+        <div class="field-hint" style="margin-bottom:var(--sp-3);">Endast valda avdelningar visas i t.ex. anmälan och patrullformulär. Minst en måste vara vald.</div>
+        <div class="row wrap" style="gap:6px;">
+          ${(() => {
+            const allowed = new Set(allowedAvdelningar(comp).map(a => a.key));
+            return AVDELNINGAR.map(a => {
+              const checked = allowed.has(a.key);
+              return `<label style="display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1.5px solid ${checked ? 'var(--scout-blue)' : 'var(--border)'};border-radius:999px;background:${checked ? 'var(--scout-blue-100)' : 'var(--white)'};cursor:pointer;font-size:13px;font-weight:600;">
+                <input type="checkbox" data-avd-part="${a.key}" ${checked ? 'checked' : ''} style="margin:0;">
+                <span class="dot ${a.short}" style="margin:0;"></span>${a.key}
+              </label>`;
+            }).join('');
+          })()}
+        </div>
+      </div>
     </form>
     ${readOnly ? '<p class="muted t-sm">Skrivskyddad demotävling — bara superadministratör kan ändra.</p>' : saveRow('Spara grunduppgifter')}
   `);
   host.appendChild(card);
 
+  // Live-restyle the avdelnings-chips as they're toggled.
+  card.querySelectorAll('[data-avd-part]').forEach(cb => cb.addEventListener('change', () => {
+    const label = cb.closest('label');
+    label.style.borderColor = cb.checked ? 'var(--scout-blue)' : 'var(--border)';
+    label.style.background = cb.checked ? 'var(--scout-blue-100)' : 'var(--white)';
+  }));
+
   wireSave(card, async () => {
+    const avdelningar = [...card.querySelectorAll('[data-avd-part]')]
+      .filter(cb => cb.checked).map(cb => cb.dataset.avdPart);
+    if (!avdelningar.length) throw new Error('Minst en avdelning måste vara vald.');
     await updateCompetition(cid, {
       name: card.querySelector('#name').value.trim(),
       shortName: card.querySelector('#shortName').value.trim(),
@@ -186,7 +216,8 @@ function renderBasicTab(comp, cid, refresh, readOnly, isSuperAdmin) {
       date: card.querySelector('#date').value || null,
       location: card.querySelector('#location').value.trim(),
       organizer: card.querySelector('#organizer').value.trim(),
-      description: card.querySelector('#description').value.trim()
+      description: card.querySelector('#description').value.trim(),
+      avdelningar
     });
     await refresh();
   });
@@ -230,6 +261,16 @@ function renderRulesTab(comp, cid, refresh, readOnly) {
           <div class="field-hint" style="margin-top:2px;">Patruller ser bara "Kontroll N" tills de fått poäng — då avslöjas kontrollens namn och poängen.</div>
         </span>
       </label>
+
+      <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
+        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
+          <input type="checkbox" id="publicScores" ${comp.publicScores !== false ? 'checked' : ''} style="margin-top:4px;">
+          <span>
+            <strong>Publicera poäng på publika sidan</strong>
+            <div class="field-hint" style="margin-top:2px;">Avbockad: publika sidan visar bara en grön bock när en patrull genomfört en kontroll — inga poäng, totaler eller placeringar. Bocka i när poängställningen ska publiceras (kan även växlas från poängtabellen).</div>
+          </span>
+        </label>
+      </div>
 
       <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
         <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
@@ -307,6 +348,7 @@ function renderRulesTab(comp, cid, refresh, readOnly) {
   wireSave(card, async () => {
     await updateCompetition(cid, {
       anonymousControls: card.querySelector('#anonymousControls').checked,
+      publicScores: card.querySelector('#publicScores').checked,
       autoCloseControls: card.querySelector('#autoCloseControls').checked,
       startTimes: {
         enabled: card.querySelector('#st-enabled').checked,
@@ -316,6 +358,322 @@ function renderRulesTab(comp, cid, refresh, readOnly) {
         lastStart: card.querySelector('#st-lastStart').value || null
       },
       generalInfo: card.querySelector('#generalInfo').value.trim()
+    });
+    await refresh();
+  });
+
+  return host;
+}
+
+function renderAnmalanTab(comp, cid, refresh, readOnly) {
+  const host = document.createElement('div');
+  host.className = 'field-group';
+  const s = registrationSettings(comp);
+
+  // Local working copy of payment methods — rendered/synced below.
+  const methods = s.methods.map(m => ({ ...m }));
+
+  const priceFieldBlocks = `
+    <div data-price-block="patrull" class="mt-3" style="max-width:280px;">
+      <label class="field" for="rp-perPatrol">Kostnad per patrull (kr)</label>
+      <input class="input" id="rp-perPatrol" type="number" min="0" value="${s.pricing.perPatrol}">
+    </div>
+    <div data-price-block="scout" class="mt-3" style="max-width:280px;">
+      <label class="field" for="rp-perScout">Kostnad per scout (kr)</label>
+      <input class="input" id="rp-perScout" type="number" min="0" value="${s.pricing.perScout}">
+    </div>
+    <div data-price-block="kar" class="mt-3" style="max-width:280px;">
+      <label class="field" for="rp-flat">Kostnad per kår (kr)</label>
+      <input class="input" id="rp-flat" type="number" min="0" value="${s.pricing.flat}">
+    </div>
+    <div data-price-block="dynamisk" class="mt-3">
+      <div class="grid grid-2" style="max-width:560px;">
+        <div>
+          <label class="field" for="rp-base">Fast grundkostnad (kr)</label>
+          <input class="input" id="rp-base" type="number" min="0" value="${s.pricing.base}">
+        </div>
+        <div>
+          <label class="field" for="rp-perUnit">Avgift per enhet (kr)</label>
+          <input class="input" id="rp-perUnit" type="number" min="0" value="${s.pricing.perUnit}">
+        </div>
+      </div>
+      <div class="row wrap mt-3" style="gap:var(--sp-4);">
+        <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="radio" name="rp-unit" value="patrull" ${s.pricing.unit === 'patrull' ? 'checked' : ''}> Avgift per patrull
+        </label>
+        <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="radio" name="rp-unit" value="scout" ${s.pricing.unit === 'scout' ? 'checked' : ''}> Avgift per scout
+        </label>
+      </div>
+    </div>
+  `;
+
+  const card = section('Anmälan', `
+    <form class="field-group" ${readOnly ? 'inert' : ''}>
+      <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
+        <input type="checkbox" id="reg-enabled" ${s.enabled ? 'checked' : ''} style="margin-top:4px;">
+        <span>
+          <strong>Öppna för anmälan</strong>
+          <div class="field-hint" style="margin-top:2px;">Kårer/patruller anmäler sig via den publika anmälningssidan. Länken hittar du längst ner.</div>
+        </span>
+      </label>
+
+      <div id="reg-fields" style="display:${s.enabled ? 'block' : 'none'};" class="field-group">
+        <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
+          <label class="field">Anmälningssätt</label>
+          <div class="row wrap" style="gap:var(--sp-4);">
+            <label style="display:inline-flex;align-items:flex-start;gap:8px;cursor:pointer;max-width:280px;">
+              <input type="radio" name="reg-mode" value="kar" ${s.mode === 'kar' ? 'checked' : ''} style="margin-top:3px;">
+              <span><strong>Kårvis</strong><div class="field-hint">En anmälan per kår — samtliga patruller anmäls och betalas tillsammans.</div></span>
+            </label>
+            <label style="display:inline-flex;align-items:flex-start;gap:8px;cursor:pointer;max-width:280px;">
+              <input type="radio" name="reg-mode" value="patrull" ${s.mode === 'patrull' ? 'checked' : ''} style="margin-top:3px;">
+              <span><strong>Patrullvis</strong><div class="field-hint">Varje patrull ansvarar för sin egen anmälan och betalning.</div></span>
+            </label>
+          </div>
+        </div>
+
+        <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
+          <label class="field">Anmälningsperiod</label>
+          <div class="grid grid-2" style="max-width:460px;">
+            <div>
+              <label class="field" for="reg-opens">Öppnar</label>
+              <input class="input" id="reg-opens" type="date" value="${s.opensAt || ''}">
+            </div>
+            <div>
+              <label class="field" for="reg-closes">Stänger</label>
+              <input class="input" id="reg-closes" type="date" value="${s.closesAt || ''}">
+            </div>
+          </div>
+          <div class="field-hint">Under perioden kan anmälningar skapas och ändras. Efteråt kan anmälare bara titta på sin anmälan och anmäla förhinder.</div>
+        </div>
+
+        <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
+          <label class="field">Prismodell</label>
+          <div class="field-group" style="gap:var(--sp-2);">
+            ${REG_PRICING_MODELS.map(m => `
+              <label style="display:inline-flex;align-items:flex-start;gap:8px;cursor:pointer;">
+                <input type="radio" name="rp-model" value="${m.key}" ${s.pricing.model === m.key ? 'checked' : ''} style="margin-top:3px;">
+                <span><strong>${escapeHtml(m.label)}</strong><div class="field-hint">${escapeHtml(m.hint)}</div></span>
+              </label>
+            `).join('')}
+          </div>
+          ${priceFieldBlocks}
+        </div>
+
+        <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
+          <label class="field">Betalningssätt</label>
+          <div class="field-hint" style="margin-bottom:var(--sp-3);">Visas på betalningssidan. Swish genererar en QR-kod med belopp och betalningsreferens låsta.</div>
+          <div id="method-list"></div>
+          <button type="button" class="btn btn-secondary btn-sm" id="add-method">${icon('plus', { size: 14 })} Lägg till betalningssätt</button>
+        </div>
+
+        <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
+          <label class="field">Egna fält i anmälan</label>
+          <div class="field-hint" style="margin-bottom:var(--sp-3);">Fritextfrågor som anmälaren fyller i — t.ex. "Information till tävlingsledningen" (en per anmälan) eller "Allergier" (en per patrull).</div>
+          <div id="field-list"></div>
+          <button type="button" class="btn btn-secondary btn-sm" id="add-field">${icon('plus', { size: 14 })} Lägg till fält</button>
+        </div>
+
+        <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
+          <label class="field" for="reg-info">Information på anmälningssidan</label>
+          <textarea class="textarea" id="reg-info" rows="3" placeholder="Ex. Anmälan är bindande. Frågor? Kontakta…">${escapeHtml(s.info)}</textarea>
+        </div>
+
+        <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
+          <label class="field">Publik anmälningslänk</label>
+          <div class="row" style="gap:var(--sp-2);align-items:center;flex-wrap:wrap;">
+            <code style="background:var(--bg-muted);padding:6px 10px;border-radius:var(--r-sm);font-size:13px;">${escapeHtml(registrationUrl(cid))}</code>
+            <button type="button" class="btn btn-ghost btn-sm" id="copy-reg-link">${icon('copy', { size: 14 })} Kopiera</button>
+            <a class="btn btn-ghost btn-sm" href="/a/${cid}" target="_blank" rel="noopener">${icon('external', { size: 14 })} Öppna</a>
+          </div>
+        </div>
+      </div>
+    </form>
+    ${readOnly ? '' : saveRow('Spara anmälningsinställningar')}
+  `);
+  host.appendChild(card);
+
+  // --- enable toggle ---------------------------------------------------------
+  const enabledBox = card.querySelector('#reg-enabled');
+  const fields = card.querySelector('#reg-fields');
+  enabledBox.addEventListener('change', () => {
+    fields.style.display = enabledBox.checked ? 'block' : 'none';
+  });
+
+  // --- pricing model visibility ---------------------------------------------
+  const applyPriceVisibility = () => {
+    const m = card.querySelector('input[name="rp-model"]:checked').value;
+    card.querySelectorAll('[data-price-block]').forEach(b => {
+      b.style.display = b.dataset.priceBlock === m ? 'block' : 'none';
+    });
+  };
+  card.querySelectorAll('input[name="rp-model"]').forEach(r => r.addEventListener('change', applyPriceVisibility));
+  applyPriceVisibility();
+
+  // --- payment methods editor ------------------------------------------------
+  const methodList = card.querySelector('#method-list');
+  const renderMethods = () => {
+    methodList.innerHTML = methods.length ? methods.map((m, i) => `
+      <div class="card" data-midx="${i}" style="padding:var(--sp-4);background:var(--bg-muted);box-shadow:none;margin-bottom:var(--sp-3);">
+        <div class="row wrap" style="gap:var(--sp-3);align-items:flex-end;">
+          <div>
+            <label class="field">Typ</label>
+            <select class="select" data-mf="type" style="max-width:160px;">
+              <option value="swish" ${m.type === 'swish' ? 'selected' : ''}>Swish</option>
+              <option value="bankgiro" ${m.type === 'bankgiro' ? 'selected' : ''}>Bankgiro</option>
+              <option value="faktura" ${m.type === 'faktura' ? 'selected' : ''}>Faktura</option>
+            </select>
+          </div>
+          ${m.type !== 'faktura' ? `
+            <div style="flex:1;min-width:180px;">
+              <label class="field">${m.type === 'swish' ? 'Swish-nummer' : 'Bankgironummer'}</label>
+              <input class="input" data-mf="number" value="${escapeHtml(m.number || '')}" placeholder="${m.type === 'swish' ? '123 456 78 90' : '123-4567'}">
+            </div>
+          ` : `
+            <div style="flex:1;min-width:220px;">
+              <label class="field">Fakturainstruktioner</label>
+              <input class="input" data-mf="info" value="${escapeHtml(m.info || '')}" placeholder="Ex. Maila fakturaadress till kassor@kåren.se">
+            </div>
+          `}
+          <div style="min-width:140px;">
+            <label class="field">Etikett (valfri)</label>
+            <input class="input" data-mf="label" value="${escapeHtml(m.label || '')}" placeholder="Ex. Swish till kassören">
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm" data-mremove="${i}" style="color:var(--utm-pink);">${icon('trash', { size: 14 })}</button>
+        </div>
+      </div>
+    `).join('') : '<p class="muted t-sm">Inga betalningssätt tillagda ännu.</p>';
+  };
+  const syncMethods = () => {
+    methodList.querySelectorAll('[data-midx]').forEach(row => {
+      const i = Number(row.dataset.midx);
+      const field = f => row.querySelector(`[data-mf="${f}"]`);
+      methods[i] = {
+        type: field('type').value,
+        label: field('label').value,
+        number: field('number') ? field('number').value : (methods[i].number || ''),
+        info: field('info') ? field('info').value : (methods[i].info || '')
+      };
+    });
+  };
+  methodList.addEventListener('input', syncMethods);
+  methodList.addEventListener('change', (e) => {
+    if (e.target.matches('[data-mf="type"]')) {
+      syncMethods();
+      const i = Number(e.target.closest('[data-midx]').dataset.midx);
+      methods[i].type = e.target.value;
+      renderMethods();
+    }
+  });
+  methodList.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-mremove]');
+    if (!btn) return;
+    syncMethods();
+    methods.splice(Number(btn.dataset.mremove), 1);
+    renderMethods();
+  });
+  card.querySelector('#add-method').addEventListener('click', () => {
+    syncMethods();
+    methods.push({ type: 'swish', label: '', number: '', info: '' });
+    renderMethods();
+  });
+  renderMethods();
+
+  // --- custom fields editor --------------------------------------------------
+  const customFields = s.fields.map(f => ({ ...f }));
+  const fieldList = card.querySelector('#field-list');
+  const renderFields = () => {
+    fieldList.innerHTML = customFields.length ? customFields.map((f, i) => `
+      <div class="card" data-fidx="${i}" style="padding:var(--sp-4);background:var(--bg-muted);box-shadow:none;margin-bottom:var(--sp-3);">
+        <div class="row wrap" style="gap:var(--sp-3);align-items:flex-end;">
+          <div style="flex:1;min-width:220px;">
+            <label class="field">Fältets rubrik</label>
+            <input class="input" data-ff="label" value="${escapeHtml(f.label || '')}" placeholder="Ex. Allergier">
+          </div>
+          <div>
+            <label class="field">Frågan ställs</label>
+            <select class="select" data-ff="scope" style="max-width:170px;">
+              <option value="anmalan" ${f.scope !== 'patrull' ? 'selected' : ''}>Per anmälan</option>
+              <option value="patrull" ${f.scope === 'patrull' ? 'selected' : ''}>Per patrull</option>
+            </select>
+          </div>
+          <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding-bottom:8px;">
+            <input type="checkbox" data-ff="required" ${f.required ? 'checked' : ''} style="margin:0;"> Obligatoriskt
+          </label>
+          <button type="button" class="btn btn-ghost btn-sm" data-fremove="${i}" style="color:var(--utm-pink);">${icon('trash', { size: 14 })}</button>
+        </div>
+      </div>
+    `).join('') : '<p class="muted t-sm">Inga egna fält tillagda.</p>';
+  };
+  const syncFields = () => {
+    fieldList.querySelectorAll('[data-fidx]').forEach(row => {
+      const i = Number(row.dataset.fidx);
+      customFields[i] = {
+        id: customFields[i].id,
+        label: row.querySelector('[data-ff="label"]').value,
+        scope: row.querySelector('[data-ff="scope"]').value,
+        required: row.querySelector('[data-ff="required"]').checked
+      };
+    });
+  };
+  fieldList.addEventListener('input', syncFields);
+  fieldList.addEventListener('change', syncFields);
+  fieldList.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-fremove]');
+    if (!btn) return;
+    syncFields();
+    customFields.splice(Number(btn.dataset.fremove), 1);
+    renderFields();
+  });
+  card.querySelector('#add-field').addEventListener('click', () => {
+    syncFields();
+    customFields.push({ id: crypto.randomUUID(), label: '', scope: 'anmalan', required: false });
+    renderFields();
+  });
+  renderFields();
+
+  card.querySelector('#copy-reg-link').addEventListener('click', () => {
+    copyToClipboard(registrationUrl(cid));
+    toast('Länk kopierad', 'success');
+  });
+
+  wireSave(card, async () => {
+    syncMethods();
+    const num = id => Number(card.querySelector(id).value) || 0;
+    await updateCompetition(cid, {
+      registration: {
+        enabled: enabledBox.checked,
+        mode: card.querySelector('input[name="reg-mode"]:checked').value,
+        opensAt: card.querySelector('#reg-opens').value || null,
+        closesAt: card.querySelector('#reg-closes').value || null,
+        info: card.querySelector('#reg-info').value.trim(),
+        pricing: {
+          model: card.querySelector('input[name="rp-model"]:checked').value,
+          perPatrol: num('#rp-perPatrol'),
+          perScout: num('#rp-perScout'),
+          flat: num('#rp-flat'),
+          base: num('#rp-base'),
+          unit: card.querySelector('input[name="rp-unit"]:checked').value,
+          perUnit: num('#rp-perUnit')
+        },
+        methods: methods
+          .filter(m => m.type === 'faktura' ? true : (m.number || '').trim())
+          .map(m => ({
+            type: m.type,
+            label: (m.label || '').trim(),
+            number: (m.number || '').trim(),
+            info: (m.info || '').trim()
+          })),
+        fields: (syncFields(), customFields)
+          .filter(f => (f.label || '').trim())
+          .map(f => ({
+            id: f.id,
+            label: f.label.trim(),
+            scope: f.scope === 'patrull' ? 'patrull' : 'anmalan',
+            required: f.required === true
+          }))
+      }
     });
     await refresh();
   });

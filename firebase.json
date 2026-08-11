@@ -8,6 +8,7 @@
       { "source": "/k/**", "destination": "/k.html" },
       { "source": "/s/**", "destination": "/s.html" },
       { "source": "/t/**", "destination": "/t.html" },
+      { "source": "/a/**", "destination": "/a.html" },
       { "source": "/app/**", "destination": "/index.html" },
       { "source": "**", "destination": "/index.html" }
     ],

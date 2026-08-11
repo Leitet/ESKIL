@@ -103,6 +103,25 @@ service cloud.firestore {
         }
       }
 
+      // Registrations (Anmälan) — the doc ID is the secret manage link, same
+      // trust model as control reporter URLs. Anyone holding the link may read
+      // and update their registration while registration is enabled; only
+      // competition members may list all registrations. Period enforcement
+      // (open/closed dates) is handled in the UI by design.
+      match /registrations/{regId} {
+        allow get: if true;
+        allow list: if isCompMember(cid);
+        allow create: if isCompAdmin(cid) || (
+             get(/databases/$(database)/documents/competitions/$(cid)).data.registration.enabled == true
+          && !compIsDemo(cid)
+        );
+        allow update: if isCompAdmin(cid) || (
+             get(/databases/$(database)/documents/competitions/$(cid)).data.registration.enabled == true
+          && !compIsDemo(cid)
+        );
+        allow delete: if isCompAdmin(cid);
+      }
+
       // Invites
       match /invites/{inviteId} {
         allow read: if true; // token-based lookup

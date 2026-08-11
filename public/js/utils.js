@@ -9,6 +9,16 @@ export const AVDELNINGAR = [
   { key: 'Ledare',     short: 'le', range: '18+',         color: 'var(--black)'         }
 ];
 
+// Which avdelningar participate in a competition. Stored as an array of keys
+// in comp.avdelningar; a missing/empty value means all (backward compatible).
+// Returns entries from AVDELNINGAR so callers get key/short/range/color.
+export function allowedAvdelningar(comp) {
+  const keys = Array.isArray(comp?.avdelningar) ? comp.avdelningar : null;
+  if (!keys || !keys.length) return AVDELNINGAR;
+  const filtered = AVDELNINGAR.filter(a => keys.includes(a.key));
+  return filtered.length ? filtered : AVDELNINGAR;
+}
+
 // Default role presets for new competitions.
 export const DEFAULT_MANAGEMENT_ROLES = [
   { id: 'leader',        label: 'Tävlingsledare', visibility: 'public'   },
@@ -112,7 +122,7 @@ export function toast(msg, kind = '') {
   setTimeout(() => t.remove(), 3000);
 }
 
-export function confirmDialog(message) {
+export function confirmDialog(message, { okLabel = 'Ta bort', danger = true } = {}) {
   return new Promise(resolve => {
     const overlay = el('div', { class: 'modal-overlay' });
     const modal = el('div', { class: 'modal' });
@@ -121,7 +131,7 @@ export function confirmDialog(message) {
       <div class="modal-body">${escapeHtml(message)}</div>
       <div class="modal-foot">
         <button class="btn btn-ghost" data-cancel>Avbryt</button>
-        <button class="btn btn-danger" data-ok>Ta bort</button>
+        <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" data-ok>${escapeHtml(okLabel)}</button>
       </div>`;
     overlay.appendChild(modal);
     overlay.addEventListener('click', e => {
@@ -404,4 +414,132 @@ export async function withBusy(btn, label, fn) {
   const reset = busyButton(btn, label);
   try { return await fn(); }
   finally { reset(); }
+}
+
+// --- Registration (Anmälan) -------------------------------------------------
+
+export const REG_PRICING_MODELS = [
+  { key: 'patrull',  label: 'Patrullvis',  hint: 'Fast kostnad per anmäld patrull.' },
+  { key: 'scout',    label: 'Scoutvis',    hint: 'Fast kostnad per anmäld person, oavsett antal patruller.' },
+  { key: 'kar',      label: 'Kårvis',      hint: 'En fast anmälningskostnad för hela kåren.' },
+  { key: 'dynamisk', label: 'Dynamisk',    hint: 'Fast grundkostnad plus avgift per patrull eller per person.' }
+];
+
+// Normalized registration settings with defaults. `mode` is how kårer anmäler
+// sig (kårvis = one registration per kår covering all patrols; patrullvis =
+// each patrol registers and pays on its own).
+export function registrationSettings(comp) {
+  const r = comp?.registration || {};
+  return {
+    enabled: r.enabled === true,
+    mode: r.mode === 'patrull' ? 'patrull' : 'kar',
+    opensAt: r.opensAt || null,   // 'YYYY-MM-DD', inclusive
+    closesAt: r.closesAt || null, // 'YYYY-MM-DD', inclusive
+    info: r.info || '',
+    pricing: {
+      model: ['patrull','scout','kar','dynamisk'].includes(r.pricing?.model) ? r.pricing.model : 'patrull',
+      perPatrol: Number(r.pricing?.perPatrol) || 0,
+      perScout: Number(r.pricing?.perScout) || 0,
+      flat: Number(r.pricing?.flat) || 0,
+      base: Number(r.pricing?.base) || 0,
+      unit: r.pricing?.unit === 'scout' ? 'scout' : 'patrull',
+      perUnit: Number(r.pricing?.perUnit) || 0
+    },
+    methods: Array.isArray(r.methods) ? r.methods : [],
+    // Custom free-text fields on the registration form. scope 'anmalan' asks
+    // once per registration, 'patrull' asks per patrol (e.g. allergies).
+    fields: (Array.isArray(r.fields) ? r.fields : [])
+      .filter(f => f && f.id && (f.label || '').trim())
+      .map(f => ({
+        id: f.id,
+        label: f.label.trim(),
+        scope: f.scope === 'patrull' ? 'patrull' : 'anmalan',
+        required: f.required === true
+      }))
+  };
+}
+
+// Where in the registration window we are right now: 'unconfigured' | 'before'
+// | 'open' | 'closed'. Dates compared as local YYYY-MM-DD strings, inclusive.
+export function registrationState(comp, today = new Date()) {
+  const s = registrationSettings(comp);
+  if (!s.enabled) return 'unconfigured';
+  const d = [
+    today.getFullYear(),
+    String(today.getMonth() + 1).padStart(2, '0'),
+    String(today.getDate()).padStart(2, '0')
+  ].join('-');
+  if (s.opensAt && d < s.opensAt) return 'before';
+  if (s.closesAt && d > s.closesAt) return 'closed';
+  return 'open';
+}
+
+// Compute the price for a set of patrols under the competition's pricing
+// model. Returns { total, rows } where rows explain the sum line by line.
+export function computeRegistrationPrice(pricing, patrols) {
+  const nPatrols = patrols.length;
+  const nScouts = patrols.reduce((s, p) => s + (Number(p.antal) || 0), 0);
+  const kr = (n) => `${n} kr`;
+  const rows = [];
+  let total = 0;
+  switch (pricing.model) {
+    case 'scout':
+      total = pricing.perScout * nScouts;
+      rows.push({ label: `${nScouts} scouter × ${kr(pricing.perScout)}`, amount: total });
+      break;
+    case 'kar':
+      total = nPatrols > 0 ? pricing.flat : 0;
+      rows.push({ label: 'Fast avgift för kåren', amount: total });
+      break;
+    case 'dynamisk': {
+      const n = pricing.unit === 'scout' ? nScouts : nPatrols;
+      const per = pricing.perUnit * n;
+      total = (n > 0 ? pricing.base : 0) + per;
+      if (n > 0) rows.push({ label: 'Grundavgift', amount: pricing.base });
+      rows.push({ label: `${n} ${pricing.unit === 'scout' ? 'scouter' : 'patruller'} × ${kr(pricing.perUnit)}`, amount: per });
+      break;
+    }
+    case 'patrull':
+    default:
+      total = pricing.perPatrol * nPatrols;
+      rows.push({ label: `${nPatrols} patruller × ${kr(pricing.perPatrol)}`, amount: total });
+      break;
+  }
+  return { total, rows, nPatrols, nScouts };
+}
+
+// Payment reference like "AH26-K7PM": competition initials + 2-digit year +
+// 4 random chars. EVERY character (prefix included) is restricted to an
+// alphabet without lookalikes — no 0/O, 1/I/L — so references survive
+// handwriting and being read aloud. Year is dropped from the prefix when its
+// digits aren't safe (e.g. 2030/2031); uniqueness lives in the random part.
+const REF_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+export function makePaymentReference(comp) {
+  const safe = (s) => [...String(s).toUpperCase()].filter(ch => REF_ALPHABET.includes(ch)).join('');
+  const src = (comp?.shortName || comp?.name || 'ES')
+    .replace(/[åä]/gi, 'a').replace(/[ö]/gi, 'o')
+    .replace(/[0-9]/g, '');
+  const fromWords = safe(src.split(/\s+/).map(w => w[0] || '').join(''));
+  // Prefer word initials; if they don't yield 2 safe letters, take the first
+  // safe letters of the name instead (e.g. "Lindsdalsjakten" → "ND").
+  const initials = (fromWords.length >= 2 ? fromWords : safe(src.replace(/\s+/g, ''))).slice(0, 2) || 'ES';
+  const yyRaw = safe(String(comp?.year || '').slice(-2));
+  const yy = yyRaw.length === 2 ? yyRaw : '';
+  const rnd = new Uint32Array(4);
+  crypto.getRandomValues(rnd);
+  const code = [...rnd].map(v => REF_ALPHABET[v % REF_ALPHABET.length]).join('');
+  return `${initials}${yy}-${code}`;
+}
+
+// Swish prefilled-QR payload. Format: C<number>;<amount>;<message>;<mask>
+// where the trailing mask lists which fields stay EDITABLE in the app
+// (0 = everything locked — number, amount and message are all fixed).
+export function swishQrString(number, amount, message) {
+  const digits = String(number || '').replace(/[^0-9]/g, '');
+  const amt = Number.isInteger(amount) ? String(amount) : Number(amount).toFixed(2);
+  return `C${digits};${amt};${message};0`;
+}
+
+export function registrationUrl(competitionId, regId = null) {
+  return `${location.origin}/a/${competitionId}${regId ? '/' + regId : ''}`;
 }

@@ -1,6 +1,6 @@
 import { layout, setTopbarCompetition } from '../app.js';
-import { getCompetition, listPatrols, listControls, listAllScores, updateControl } from '../store.js';
-import { AVDELNINGAR, escapeHtml, rankPatrols, rankKarer, RANKING_RULES_TEXT, toast } from '../utils.js';
+import { getCompetition, listPatrols, listControls, listAllScores, updateControl, updateCompetition } from '../store.js';
+import { allowedAvdelningar, escapeHtml, rankPatrols, rankKarer, RANKING_RULES_TEXT, toast } from '../utils.js';
 import { icon } from '../icons.js';
 import { compActionsHtml } from './competition.js';
 
@@ -13,6 +13,9 @@ export async function renderScoreboard(app, user, cid) {
   if (!comp) { wrap.innerHTML = `<div class="empty"><h3>Tävlingen hittades inte</h3></div>`; return; }
   setTopbarCompetition(cid, comp, user);
 
+  const isAdmin = user.role === 'super-admin' || (comp.admins || []).includes(user.uid);
+  const canTogglePublic = isAdmin && !(comp.demo && user.role !== 'super-admin');
+
   wrap.innerHTML = `
     <div class="page-head">
       <div>
@@ -21,6 +24,7 @@ export async function renderScoreboard(app, user, cid) {
       </div>
       <div class="btn-row">
         ${compActionsHtml(cid, comp, user)}
+        ${canTogglePublic ? `<button class="btn btn-secondary btn-sm" id="toggle-public-scores"></button>` : ''}
         <button class="btn btn-ghost btn-sm" id="refresh">Uppdatera</button>
       </div>
     </div>
@@ -30,6 +34,7 @@ export async function renderScoreboard(app, user, cid) {
       <a href="/app/c/${cid}/patrols" data-link>Patruller</a>
       <a href="/app/c/${cid}/controls" data-link>Kontroller</a>
       <a href="/app/c/${cid}/scoreboard" data-link class="active">Poängtabell</a>
+      <a href="/app/c/${cid}/anmalan" data-link>Anmälan</a>
     </div>
 
     <div class="scoreboard-controls">
@@ -37,7 +42,7 @@ export async function renderScoreboard(app, user, cid) {
       <select class="select" id="view" style="max-width:220px;">
         <option value="overall">Overall (alla)</option>
         <optgroup label="Per avdelning">
-          ${AVDELNINGAR.map(a => `<option value="avd:${a.key}">${a.key}</option>`).join('')}
+          ${allowedAvdelningar(comp).map(a => `<option value="avd:${a.key}">${a.key}</option>`).join('')}
         </optgroup>
         <optgroup label="Per kår">
           <option value="by-kar">Gruppera per kår</option>
@@ -64,7 +69,30 @@ export async function renderScoreboard(app, user, cid) {
   const content = wrap.querySelector('#content');
   content.innerHTML = `<div class="muted">Räknar poäng…</div>`;
 
-  const isAdmin = user.role === 'super-admin' || (comp.admins || []).includes(user.uid);
+  // Toggle for whether the public page shows points or only completion checks.
+  const pubBtn = wrap.querySelector('#toggle-public-scores');
+  const paintPubBtn = () => {
+    if (!pubBtn) return;
+    const pub = comp.publicScores !== false;
+    pubBtn.innerHTML = pub
+      ? `${icon('eye-off', { size: 14 })} Dölj poäng publikt`
+      : `${icon('eye', { size: 14 })} Publicera poäng`;
+    pubBtn.title = pub
+      ? 'Publika sidan visar poäng och placeringar. Klicka för att bara visa gröna bockar för genomförda kontroller.'
+      : 'Publika sidan visar bara gröna bockar för genomförda kontroller. Klicka för att publicera poängen.';
+  };
+  paintPubBtn();
+  pubBtn?.addEventListener('click', async () => {
+    const next = !(comp.publicScores !== false);
+    try {
+      await updateCompetition(cid, { publicScores: next });
+      comp.publicScores = next;
+      paintPubBtn();
+      toast(next ? 'Poängen är nu publika' : 'Poängen är nu dolda på publika sidan', 'success');
+    } catch (e) {
+      toast('Fel: ' + e.message, 'error');
+    }
+  });
 
   let patrols = [], controls = [], scores = [];
   async function load() {

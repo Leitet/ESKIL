@@ -18,6 +18,19 @@ att köra gratis på Spark-planen.
 - **PDF + QR-kod** — varje kontroll kan skrivas ut med info och en skanbar QR
   som öppnar rapportsidan.
 - **Magic-link-inloggning** med långa sessioner (Firebase Auth `browserLocalPersistence`).
+- **Anmälan** (`/a/<cid>`) — publik anmälningssida (kårvis eller patrullvis) med
+  fyra prismodeller, betalningssteg (Swish-QR med låst belopp/referens, bankgiro,
+  faktura), egna fritextfält (per anmälan eller per patrull, t.ex. "Allergier"),
+  hemlig ändringslänk via e-post, mellanskillnadsbetalning vid utökning,
+  avanmälan under perioden och förhinderanmälan efteråt. Adminflik med
+  betalningsavprickning per referens och import till patrullistan. När en
+  betalning prickas av mailas anmälningsansvarig automatiskt (länken går till
+  anmälningssidan där kvittot laddas ner som PDF, genererat i klienten), och
+  när anmälan är fullbetald importeras dess patruller automatiskt till
+  patrullistan (dubbletter hoppas över).
+- **Avdelningar per tävling** — under Inställningar → Grund väljs vilka
+  avdelningar som deltar; endast valda visas i anmälan, patrullformulär och
+  poängtabellens filter (`competitions/{cid}.avdelningar`, saknas = alla).
 
 ## Teknik
 
@@ -130,10 +143,15 @@ Super-admin kan läsa/skriva allt och administrera alla tävlingar.
 public/
   index.html            # SPA-ingång (login + admin-UI)
   k.html                # Kontrollens rapportsida (ingen auth)
+  s.html                # Patrullens startkort (ingen auth)
+  t.html                # Publik tävlingssida (ingen auth)
+  a.html                # Publik anmälningssida (ingen auth)
   assets/
     tokens.css          # Scouterna Design System tokens
     app.css             # Adminsida-styles
     report.css          # Kontrollsida, inkl. nattläge
+    public.css          # Publika tävlingssidan
+    anmalan.css         # Anmälningssidan (mobile-first)
   js/
     app.js              # SPA-bootstrap, route-tabell, topbar
     auth.js             # Magic-link-inloggning
@@ -141,8 +159,12 @@ public/
     router.js           # Enkel path-baserad router
     store.js            # Firestore-åtkomst
     pdf.js              # PDF + QR-generering (lazy-loaded CDN-libar)
+    qr.js               # QR-kodslib (lazy-loaded CDN), används av anmälans Swish-QR
     report.js           # Kontrollsida (k.html) logik
-    utils.js            # Hjälpare
+    start.js            # Startkort (s.html) logik
+    public.js           # Publik tävlingssida (t.html) logik
+    anmalan.js          # Anmälningssida (a.html) logik
+    utils.js            # Hjälpare (inkl. prisberäkning + Swish-QR-payload)
     views/              # En fil per vy (login, home, competition, patrols, ...)
 
 firestore.rules         # Säkerhetsregler
@@ -166,7 +188,21 @@ competitions/{cid}               { name, shortName, year, date, location,
                                    notering, open }
     scores/{patrolId}            { patrolId, poang, extraPoang, note,
                                    reportedAt, reporter }
+  registrations/{regId}          { kar, contact: {name,email,phone},
+                                   patrols: [{name,avdelning,antal}],
+                                   mode, totalAmount, cancelled,
+                                   payments: [{id,amount,reference,paid,paidAt}],
+                                   forhinder: [{patrol,message,at}],
+                                   createdAt, updatedAt }
 ```
+
+Tävlingens anmälningsinställningar ligger i `competitions/{cid}.registration`
+(enabled, mode kår/patrull, opensAt/closesAt, prismodell, betalningssätt).
+Anmälans dokument-ID är hemligheten i ändringslänken `/a/<cid>/<regId>` — samma
+förtroendemodell som kontrollernas rapportsida. Länken mailas till
+anmälningsansvarig via Firebase Auths e-postlänksmekanism (fungerar på
+Spark-planen; ingen egen mailserver behövs). Periodgränserna upprätthålls i
+UI:t.
 
 Kontrollens dokument-ID är det som står i URL:en på rapportsidan — det är
 "säkerheten" för kontrollerna (security by obscurity, så som specat). Poäng

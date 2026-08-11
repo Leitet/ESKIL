@@ -4,7 +4,7 @@ import {
   updatePatrolOrders
 } from '../store.js';
 import {
-  AVDELNINGAR, escapeHtml, toast, confirmDialog, withBusy, startUrl,
+  allowedAvdelningar, escapeHtml, toast, confirmDialog, withBusy, startUrl,
   copyToClipboard, patrolStartTime, startTimeSettings, effectiveIntervalSec
 } from '../utils.js';
 import { renderQrToImg, downloadStartPdf } from '../pdf.js';
@@ -68,13 +68,14 @@ export async function renderPatrols(app, user, cid) {
       <a href="/app/c/${cid}/patrols" data-link class="active">Patruller</a>
       <a href="/app/c/${cid}/controls" data-link>Kontroller</a>
       <a href="/app/c/${cid}/scoreboard" data-link>Poängtabell</a>
+      <a href="/app/c/${cid}/anmalan" data-link>Anmälan</a>
     </div>
 
     <div class="scoreboard-controls">
       <input class="input" id="q" placeholder="Sök namn, kår, nummer…" style="max-width:260px;">
       <select class="select" id="avd" style="max-width:200px;">
         <option value="alla">Alla avdelningar</option>
-        ${AVDELNINGAR.map(a => `<option value="${a.key}">${a.key}</option>`).join('')}
+        ${allowedAvdelningar(comp).map(a => `<option value="${a.key}">${a.key}</option>`).join('')}
       </select>
       ${st.enabled && isAdmin ? `<span class="muted t-sm" id="drag-hint">Dra patruller för att ändra starttid</span>` : ''}
     </div>
@@ -170,7 +171,7 @@ export async function renderPatrols(app, user, cid) {
       tbl.querySelectorAll('[data-edit]').forEach(b => {
         b.addEventListener('click', () => {
           const row = state.rows.find(r => r.id === b.dataset.edit);
-          openPatrolModal(cid, row);
+          openPatrolModal(cid, comp, row);
         });
       });
       tbl.querySelectorAll('[data-start]').forEach(b => {
@@ -217,7 +218,7 @@ export async function renderPatrols(app, user, cid) {
   wrap.querySelector('#q').addEventListener('input', e => { state.q = e.target.value; render(); });
   wrap.querySelector('#avd').addEventListener('change', e => { state.filter = e.target.value; render(); });
   if (isAdmin) {
-    wrap.querySelector('#new').addEventListener('click', () => openPatrolModal(cid, null, state.rows.length));
+    wrap.querySelector('#new').addEventListener('click', () => openPatrolModal(cid, comp, null, state.rows.length));
   }
 
   unsub = watchPatrols(cid, rows => {
@@ -305,7 +306,7 @@ async function openStartCardModal(cid, patrol) {
   }));
 }
 
-function openPatrolModal(cid, patrol, fallbackOrder = null) {
+function openPatrolModal(cid, comp, patrol, fallbackOrder = null) {
   const isEdit = !!patrol;
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
@@ -332,7 +333,7 @@ function openPatrolModal(cid, patrol, fallbackOrder = null) {
             <label class="field" for="avd">Avdelning</label>
             <select class="select" id="avd" required>
               <option value="">Välj avdelning…</option>
-              ${AVDELNINGAR.map(a => `<option value="${a.key}" ${patrol?.avdelning === a.key ? 'selected' : ''}>${a.key} (${a.range})</option>`).join('')}
+              ${allowedAvdelningar(comp).map(a => `<option value="${a.key}" ${patrol?.avdelning === a.key ? 'selected' : ''}>${a.key} (${a.range})</option>`).join('')}
             </select>
           </div>
           <div>

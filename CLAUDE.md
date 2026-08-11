@@ -15,6 +15,11 @@ loaded from CDN. Runs on Firebase Spark (free) plan.
 - **The control ID is the secret.** `/k/<cid>/<ctrlId>` is the reporter URL.
   Firestore rules allow anonymous score writes only when the control document
   has `open == true`.
+- **The registration ID is the secret too.** `/a/<cid>/<regId>` is the manage
+  link for a registration (Anmälan). Anonymous create/update is allowed while
+  `competition.registration.enabled == true`; the open/close period is
+  enforced in the UI only. The manage link is emailed via Firebase Auth's
+  email-link mechanism — the only free email channel on Spark.
 - **Sessions are long-lived.** `browserLocalPersistence` is set explicitly —
   users stay signed in until they log out manually.
 - **Design system is `public/assets/tokens.css`.** Do not redefine tokens;
