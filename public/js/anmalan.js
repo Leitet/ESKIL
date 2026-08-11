@@ -429,7 +429,7 @@ function renderPay() {
     </div>
     <p class="muted t-sm mt-3" style="text-align:center;">
       ${confirmable ? 'Anmälan registreras direkt — betalningen bekräftas av tävlingsledningen när den kommit in.<br>' : ''}
-      Ett kvitto (PDF) mailas till er när betalningen har registrerats av tävlingsledningen.
+      När tävlingsledningen registrerat betalningen får ni ett mail med länk till ert kvitto (PDF).
     </p>
   `;
 }
@@ -626,7 +626,8 @@ async function sendManageLink() {
 
 function emailStatusHtml() {
   if (emailStatus === 'sent') {
-    return `<p id="email-status" class="t-sm" style="color:var(--spaer-green);font-weight:600;">${icon('check', { size: 14 })} Länken har skickats till ${escapeHtml(reg.contact.email)}.</p>`;
+    return `<p id="email-status" class="t-sm" style="color:var(--spaer-green);font-weight:600;">${icon('check', { size: 14 })} Länken har skickats till ${escapeHtml(reg.contact.email)}.
+      <span class="muted" style="font-weight:400;display:block;">Mailet skickas av Firebase och har rubriken "Logga in" — länken i det öppnar er anmälan.</span></p>`;
   }
   if (emailStatus === 'failed') {
     return `<p id="email-status" class="t-sm" style="color:var(--utm-pink);font-weight:600;">Mailet kunde inte skickas — spara länken ovan!</p>`;
@@ -738,7 +739,7 @@ function renderManage() {
           <p class="muted t-sm" style="margin-top:-8px;">
             Betalningar bekräftas <strong>manuellt</strong> av tävlingsledningen när de synts på kontot —
             det kan därför dröja någon dag innan statusen ändras här, även om ni redan har betalat.
-            När betalningen registrerats mailas ett kvitto (PDF) till er.
+            När betalningen registrerats får ni ett mail, och kvittot (PDF) kan hämtas här på sidan.
           </p>
         ` : ''}
         ${reg.payments.map(p => `

@@ -38,6 +38,9 @@ async function loadConfig() {
 const config = await loadConfig();
 const app = initializeApp(config);
 const auth = getAuth(app);
+// All Firebase-sent emails (magic links, anmälan manage-links/receipt
+// notifications) use the Swedish template instead of the English default.
+auth.languageCode = 'sv';
 
 // On localhost, point Firestore at the emulator directly via init settings.
 // IMPORTANT: we pin to 127.0.0.1 (IPv4) instead of `localhost`. On macOS,
