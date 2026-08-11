@@ -734,6 +734,13 @@ function renderManage() {
     ${(reg.payments || []).length ? `
       <div class="anm-card">
         <h2>Betalningar</h2>
+        ${reg.payments.some(p => !p.paid) ? `
+          <p class="muted t-sm" style="margin-top:-8px;">
+            Betalningar bekräftas <strong>manuellt</strong> av tävlingsledningen när de synts på kontot —
+            det kan därför dröja någon dag innan statusen ändras här, även om ni redan har betalat.
+            När betalningen registrerats mailas ett kvitto (PDF) till er.
+          </p>
+        ` : ''}
         ${reg.payments.map(p => `
           <div class="anm-payment-row">
             <span class="ref">${escapeHtml(p.reference)}</span>
