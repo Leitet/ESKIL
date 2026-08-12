@@ -14,6 +14,9 @@ import {
   collection, addDoc, getDocs, onSnapshot, query, where, orderBy,
   serverTimestamp, deleteField, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
+import {
+  getFunctions, httpsCallable, connectFunctionsEmulator
+} from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js';
 
 const isLocalHost = ['localhost', '127.0.0.1', '0.0.0.0'].includes(location.hostname);
 
@@ -56,6 +59,12 @@ const db = isLocalHost
     })
   : getFirestore(app);
 
+// Cloud Functions (callables) — deployed in europe-west1.
+const functions = getFunctions(app, 'europe-west1');
+if (isLocalHost) {
+  try { connectFunctionsEmulator(functions, EMU_HOST, 5001); } catch {}
+}
+
 if (isLocalHost && !window.__eskilAuthEmulatorConnected) {
   try {
     connectAuthEmulator(auth, `http://${EMU_HOST}:9099`, { disableWarnings: true });
@@ -71,7 +80,7 @@ if (isLocalHost && !window.__eskilAuthEmulatorConnected) {
 // load. Dropping it.
 
 export {
-  app, auth, db,
+  app, auth, db, functions, httpsCallable,
   isSignInWithEmailLink, sendSignInLinkToEmail, signInWithEmailLink,
   onAuthStateChanged, signOut,
   doc, getDoc, setDoc, updateDoc, deleteDoc,

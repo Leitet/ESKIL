@@ -4,7 +4,8 @@
 
 import { layout, setTopbarCompetition } from '../app.js';
 import {
-  getCompetition, listRegistrations, updateRegistration, listPatrols, createPatrol
+  getCompetition, listRegistrations, updateRegistration, deleteRegistration,
+  listPatrols, createPatrol
 } from '../store.js';
 import { downloadReceiptPdf } from '../pdf.js';
 import {
@@ -159,6 +160,7 @@ export async function renderAnmalanAdmin(app, user, cid) {
           <div class="btn-row">
             <a class="btn btn-ghost btn-sm" href="/a/${cid}/${escapeHtml(r.id)}" target="_blank" rel="noopener">${icon('external', { size: 14 })} Öppna</a>
             ${isAdmin && !r.cancelled && importable.length ? `<button class="btn btn-secondary btn-sm" data-import="${escapeHtml(r.id)}">${icon('users', { size: 14 })} Importera ${importable.length} till patrullistan</button>` : ''}
+            ${isAdmin ? `<button class="btn btn-ghost btn-sm" data-delete-reg="${escapeHtml(r.id)}" style="color:var(--utm-pink);">${icon('trash', { size: 14 })} Radera</button>` : ''}
           </div>
         </div>
 
@@ -308,6 +310,23 @@ export async function renderAnmalanAdmin(app, user, cid) {
         toast(paidToast(`${hit.r.kar}: ${hit.p.amount} kr markerad som betald`, res, hit.r.contact?.email), 'success');
       } catch (e) { toast('Fel: ' + e.message, 'error'); }
     }));
+
+    content.querySelectorAll('[data-delete-reg]').forEach(b => b.addEventListener('click', () => withBusy(b, 'Raderar…', async () => {
+      const r = regs.find(x => x.id === b.dataset.deleteReg);
+      if (!r) return;
+      const ok = await confirmDialog(
+        `Radera anmälan för ${r.kar || 'okänd kår'} permanent? ` +
+        `Patruller, betalningar och förhinder i anmälan försvinner och kårens ändringslänk slutar fungera. ` +
+        `Patruller som redan importerats till patrullistan ligger kvar och tas i så fall bort där. Detta går inte att ångra.`,
+        { okLabel: 'Radera anmälan' }
+      );
+      if (!ok) return;
+      try {
+        await deleteRegistration(cid, r.id);
+        toast('Anmälan raderad');
+        await load();
+      } catch (e) { toast('Fel: ' + e.message, 'error'); }
+    })));
 
     content.querySelectorAll('[data-import]').forEach(b => b.addEventListener('click', () => withBusy(b, 'Importerar…', async () => {
       const r = regs.find(x => x.id === b.dataset.import);

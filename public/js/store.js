@@ -317,3 +317,7 @@ export async function createRegistration(cid, regId, data) {
 export async function updateRegistration(cid, regId, data) {
   await updateDoc(doc(db, 'competitions', cid, 'registrations', regId), data);
 }
+
+export async function deleteRegistration(cid, regId) {
+  await deleteDoc(doc(db, 'competitions', cid, 'registrations', regId));
+}

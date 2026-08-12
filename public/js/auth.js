@@ -7,7 +7,7 @@
 // browsers and left users stuck on the loading splash.
 
 import {
-  auth,
+  auth, functions, httpsCallable,
   isSignInWithEmailLink, sendSignInLinkToEmail, signInWithEmailLink,
   onAuthStateChanged, signOut
 } from './firebase.js';
@@ -19,11 +19,20 @@ export function watchAuth(cb) {
 }
 
 export async function sendMagicLink(email) {
-  const actionCodeSettings = {
-    url: `${location.origin}/app`,
-    handleCodeInApp: true
-  };
-  await sendSignInLinkToEmail(auth, email, actionCodeSettings);
+  // The login mail is sent by our requestLoginLink function through Brevo
+  // (branded, from noreply@eskilscout.se) instead of Firebase Auth's generic
+  // template. Throttle errors ("vänta en minut") must reach the user, so only
+  // unexpected failures fall back to Firebase's own email channel.
+  try {
+    await httpsCallable(functions, 'requestLoginLink')({ email });
+  } catch (e) {
+    if (e.code === 'functions/resource-exhausted' || e.code === 'functions/invalid-argument') throw e;
+    console.warn('[ESKIL] requestLoginLink failed — falling back to Firebase mail:', e);
+    await sendSignInLinkToEmail(auth, email, {
+      url: `${location.origin}/app`,
+      handleCodeInApp: true
+    });
+  }
   try { localStorage.setItem(EMAIL_KEY, email); } catch {}
 }
 

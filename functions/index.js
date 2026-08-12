@@ -14,6 +14,7 @@
 //  - registration cancelled          → notice to tävlingsledningen
 
 const { onDocumentCreated, onDocumentUpdated } = require('firebase-functions/v2/firestore');
+const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { setGlobalOptions } = require('firebase-functions/v2');
 const { logger } = require('firebase-functions');
 const admin = require('firebase-admin');
@@ -26,6 +27,11 @@ setGlobalOptions({ region: 'europe-west1', maxInstances: 10 });
 
 const APP_URL = 'https://eskilscout.se';
 const MAIL_COLLECTION = 'mail';
+// Where the magic-link lands after sign-in. The action link itself is hosted
+// on the Firebase auth domain; once the eskilscout.se certificate is live the
+// host can be swapped by setting LOGIN_LINK_HOST = 'eskilscout.se'.
+const LOGIN_CONTINUE_URL = 'https://eskil-scout.web.app/app';
+const LOGIN_LINK_HOST = null;
 
 // --- Helpers -----------------------------------------------------------------
 
@@ -111,6 +117,68 @@ async function queueMail(doc) {
 }
 
 // --- Triggers ------------------------------------------------------------------
+
+// --- Magic-link login mail ----------------------------------------------------
+// The client calls this instead of Firebase Auth's own sendSignInLinkToEmail,
+// so the login mail goes through Brevo with our branding instead of the
+// generic "Sign in to eskil-scout" template from noreply@firebaseapp.com.
+// Throttled per address (the endpoint is necessarily unauthenticated — it IS
+// the login), state kept in loginRequests/{email} which has no rules match,
+// so only this function can touch it.
+
+const LOGIN_MIN_INTERVAL_MS = 60 * 1000; // 1 request/minute per address
+const LOGIN_MAX_PER_DAY = 10;
+
+exports.requestLoginLink = onCall(async (req) => {
+  const email = String((req.data && req.data.email) || '').trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    throw new HttpsError('invalid-argument', 'Ogiltig e-postadress.');
+  }
+
+  // Throttle
+  const today = new Date().toISOString().slice(0, 10);
+  const throttleRef = db.doc(`loginRequests/${email}`);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(throttleRef);
+    const d = snap.exists ? snap.data() : {};
+    const now = Date.now();
+    if (d.lastSentAt && now - d.lastSentAt < LOGIN_MIN_INTERVAL_MS) {
+      throw new HttpsError('resource-exhausted', 'En länk skickades nyss — vänta en minut och försök igen.');
+    }
+    const count = d.day === today ? (d.count || 0) : 0;
+    if (count >= LOGIN_MAX_PER_DAY) {
+      throw new HttpsError('resource-exhausted', 'För många inloggningslänkar idag — försök igen imorgon.');
+    }
+    tx.set(throttleRef, { lastSentAt: now, day: today, count: count + 1 });
+  });
+
+  let link = await admin.auth().generateSignInWithEmailLink(email, {
+    url: LOGIN_CONTINUE_URL,
+    handleCodeInApp: true
+  });
+  if (LOGIN_LINK_HOST) {
+    link = link.replace(/^https:\/\/[^/]+/, `https://${LOGIN_LINK_HOST}`);
+  }
+
+  const body = `
+    <p>Hej!</p>
+    <p>Klicka på knappen för att logga in i ESKIL. Länken kan bara användas en gång
+    och går ut efter en stund — begär en ny från inloggningssidan om den hunnit sluta gälla.</p>
+    ${button(link, 'Logga in i ESKIL')}
+    <p style="font-size:13px;color:#8a8a8a;">Begärde du inte den här länken kan du tryggt ignorera mailet —
+    ingen kan logga in utan åtkomst till din inkorg.</p>
+  `;
+  await queueMail({
+    to: [email],
+    message: {
+      subject: 'Logga in i ESKIL',
+      html: layout({ shortName: 'Logga in', organizer: 'ESKIL' }, body),
+      text: `Logga in i ESKIL med den här länken (engångslänk): ${link}`
+    }
+  });
+  logger.info(`Login link mail queued for ${email}`);
+  return { ok: true };
+});
 
 exports.onRegistrationCreated = onDocumentCreated('competitions/{cid}/registrations/{regId}', async (event) => {
   const { cid, regId } = event.params;
