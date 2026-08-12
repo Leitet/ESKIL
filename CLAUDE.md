@@ -50,7 +50,7 @@ See `README.md` for the layout — every file there is load-bearing.
   carry `ansvariga: [{email, name}]` + flat `ansvarigaEmails[]`; ansvariga may
   update their control but never the ansvariga fields themselves. A `closed`
   competition is read-only for everyone but admins, and closing wipes
-  users + ansvariga (GDPR cleanup) — admins remain.
+  users + ansvariga + each control's `telefon` (GDPR cleanup) — admins remain.
 - `.../patrols/{pid}` — publicly readable (for the reporter page).
 - `.../controls/{ctrlId}` — publicly readable; writable by competition admins.
 - `.../controls/{ctrlId}/scores/{patrolId}` — one doc per patrol×control; the

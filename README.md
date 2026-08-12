@@ -152,7 +152,8 @@ reglerna matchar mot). Tre nivåer:
   Inställningar → Användare.
 
 **Avsluta tävling** (Inställningar → Grund): raderar samtliga användare och
-kontrollansvariga inklusive namn (endast administratörer ligger kvar), stänger
+kontrollansvariga inklusive namn samt kontrollernas telefonnummer (endast
+administratörer ligger kvar), stänger
 alla kontroller och gör tävlingen skrivskyddad (`closed: true`). Kan
 återöppnas, men de borttagna personerna återställs inte.
 
@@ -208,7 +209,7 @@ competitions/{cid}               { name, shortName, year, date, location,
                                    notering }
   controls/{ctrlId}              { nummer, name, maxPoang, minPoang,
                                    extraPoang, lat, lng, information,
-                                   notering, open,
+                                   notering, open, telefon,
                                    ansvariga: [{email, name}],
                                    ansvarigaEmails: [email] }
     scores/{patrolId}            { patrolId, poang, extraPoang, note,

@@ -116,16 +116,17 @@ export async function setCompetitionUsers(cid, entries) {
 }
 
 // Close (avsluta) a competition: wipe users and kontrollansvariga (including
-// their names — only admins remain), close every control for reporting and
-// mark the competition read-only. Reversible via reopenCompetition, but the
-// removed people are gone for good.
+// their names) plus each control's on-site phone number — only admins remain.
+// Also closes every control for reporting and marks the competition
+// read-only. Reversible via reopenCompetition, but the removed people/numbers
+// are gone for good.
 export async function closeCompetition(cid) {
   const controls = await listControls(cid);
   for (let i = 0; i < controls.length; i += 400) {
     const batch = writeBatch(db);
     controls.slice(i, i + 400).forEach(c => {
       batch.update(doc(db, 'competitions', cid, 'controls', c.id), {
-        open: false, ansvariga: [], ansvarigaEmails: []
+        open: false, ansvariga: [], ansvarigaEmails: [], telefon: ''
       });
     });
     await batch.commit();

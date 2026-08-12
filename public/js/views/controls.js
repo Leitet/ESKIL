@@ -113,7 +113,7 @@ export async function renderControls(app, user, cid) {
       return;
     }
 
-    const COL_COUNT = 7 + (dragEnabled ? 1 : 0);
+    const COL_COUNT = 8 + (dragEnabled ? 1 : 0);
     tbl.innerHTML = `
       <div class="table-wrap">
         <table class="t">
@@ -125,6 +125,7 @@ export async function renderControls(app, user, cid) {
               ${th('maxPoang', 'Max', state, { num: true })}
               ${th('minPoang', 'Min', state, { num: true })}
               ${th('extraPoang', 'Extra', state, { num: true })}
+              <th>Telefon</th>
               <th>Status</th>
               <th class="actions"></th>
             </tr>
@@ -140,6 +141,7 @@ export async function renderControls(app, user, cid) {
                 <td class="num">${r.maxPoang ?? ''}</td>
                 <td class="num">${r.minPoang ?? ''}</td>
                 <td class="num">${r.extraPoang ?? ''}</td>
+                <td>${r.telefon ? `<a class="mono t-sm" href="tel:${escapeHtml(r.telefon)}" style="color:var(--scout-blue);text-decoration:none;white-space:nowrap;">${escapeHtml(r.telefon)}</a>` : '<span class="muted">—</span>'}</td>
                 <td>${r.open ? '<span class="badge badge-green">Öppen</span>' : '<span class="badge badge-gray">Stängd</span>'}</td>
                 <td class="actions">
                   <a class="btn btn-ghost btn-sm" href="/app/c/${cid}/controls/${r.id}" data-link>Öppna</a>
@@ -277,6 +279,12 @@ export function openControlModal(cid, control, onSaved, { manageAnsvariga = true
             </div>
             <div class="field-hint" style="margin-bottom:var(--sp-3);">Första gruppen utan avdelningar är default och gäller för alla som inte har en egen grupp.</div>
             <div id="groups"></div>
+          </div>
+
+          <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
+            <label class="field" for="telefon">Telefon till kontrollen</label>
+            <input class="input" id="telefon" type="tel" value="${escapeHtml(control?.telefon || '')}" placeholder="070-123 45 67" style="max-width:260px;">
+            <div class="field-hint">Till någon som är på plats på kontrollen, så att sekretariatet kan nå den under tävlingen. Visas bara internt och raderas när tävlingen avslutas.</div>
           </div>
 
           <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
@@ -478,6 +486,7 @@ export function openControlModal(cid, control, onSaved, { manageAnsvariga = true
         lng: overlay.querySelector('#lng').value ? Number(overlay.querySelector('#lng').value) : null,
         placement: overlay.querySelector('#placement').value.trim(),
         instructions: cleanGroups,
+        telefon: overlay.querySelector('#telefon').value.trim(),
         notering: overlay.querySelector('#notering').value.trim(),
         open: overlay.querySelector('#open').checked
       };

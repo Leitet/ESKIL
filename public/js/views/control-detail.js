@@ -80,6 +80,12 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
             <div class="t-over">Placeringsbeskrivning</div>
             <p class="t-serif" style="color:var(--fg2);">${escapeHtml(control.placement)}</p>
           </div>` : ''}
+        ${control.telefon ? `
+          <div class="mt-4">
+            <div class="t-over" style="color:var(--scout-blue);">Telefon till kontrollen</div>
+            <p class="t-sm" style="margin:4px 0;"><a class="mono" href="tel:${escapeHtml(control.telefon)}" style="color:var(--scout-blue);text-decoration:none;font-weight:600;">${escapeHtml(control.telefon)}</a>
+            <span class="muted"> · någon på plats vid kontrollen</span></p>
+          </div>` : ''}
         ${control.notering ? `
           <div class="mt-4">
             <div class="t-over" style="color:var(--utm-pink);">Intern notering</div>
