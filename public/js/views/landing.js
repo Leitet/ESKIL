@@ -79,19 +79,28 @@ export async function renderLanding(app, user) {
     <div class="pub-section-head"><h2 class="t-h2">Vad är ESKIL?</h2><span class="muted">Byggt av scouter, för scouter</span></div>
     <div class="landing-grid">
       <div class="card">
-        <div class="landing-feature-icon">${icon('send', { size: 22 })}</div>
-        <h3 class="t-h4" style="margin:10px 0 6px;">Anmälan online</h3>
-        <p class="t-sm" style="color:var(--fg2);margin:0;">Kårer anmäler sina patruller på webben — med Swish-QR, betalningsreferenser och kvitton som mailas automatiskt.</p>
+        <img class="landing-shot" src="/assets/landing/anmalan.png" alt="Anmälningssidan i mobilen" loading="lazy">
+        <div class="row" style="gap:10px;align-items:center;">
+          <div class="landing-feature-icon">${icon('send', { size: 22 })}</div>
+          <h3 class="t-h4" style="margin:0;">Anmälan online</h3>
+        </div>
+        <p class="t-sm mt-3" style="color:var(--fg2);margin-bottom:var(--sp-4);">Kårer anmäler sina patruller på webben — med Swish-QR, betalningsreferenser och kvitton som mailas automatiskt.</p>
       </div>
       <div class="card">
-        <div class="landing-feature-icon">${icon('check', { size: 22 })}</div>
-        <h3 class="t-h4" style="margin:10px 0 6px;">Rapportera i mobilen</h3>
-        <p class="t-sm" style="color:var(--fg2);margin:0;">Kontrollanter rapporterar poäng direkt i mobilen via en QR-kod — fungerar även offline i skogen, med nattläge som skonar mörkerseendet.</p>
+        <img class="landing-shot" src="/assets/landing/rapportera.png" alt="Poängrapportering i mobilen" loading="lazy">
+        <div class="row" style="gap:10px;align-items:center;">
+          <div class="landing-feature-icon">${icon('check', { size: 22 })}</div>
+          <h3 class="t-h4" style="margin:0;">Rapportera i mobilen</h3>
+        </div>
+        <p class="t-sm mt-3" style="color:var(--fg2);margin-bottom:var(--sp-4);">Kontrollanter rapporterar poäng direkt i mobilen via en QR-kod — fungerar även offline i skogen, med nattläge som skonar mörkerseendet.</p>
       </div>
       <div class="card">
-        <div class="landing-feature-icon">${icon('trophy', { size: 22 })}</div>
-        <h3 class="t-h4" style="margin:10px 0 6px;">Live-resultat</h3>
-        <p class="t-sm" style="color:var(--fg2);margin:0;">Poängtabeller uppdateras i realtid på den publika tävlingssidan — per avdelning, per kår och overall, med digitala startkort för patrullerna.</p>
+        <img class="landing-shot" src="/assets/landing/resultat.png" alt="Live-uppdaterad poängtabell" loading="lazy">
+        <div class="row" style="gap:10px;align-items:center;">
+          <div class="landing-feature-icon">${icon('trophy', { size: 22 })}</div>
+          <h3 class="t-h4" style="margin:0;">Live-resultat</h3>
+        </div>
+        <p class="t-sm mt-3" style="color:var(--fg2);margin-bottom:var(--sp-4);">Poängtabeller uppdateras i realtid på den publika tävlingssidan — per avdelning, per kår och overall, med digitala startkort för patrullerna.</p>
       </div>
     </div>
   `;

@@ -639,9 +639,18 @@ body { background: var(--bg-muted); }
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: var(--sp-4);
   margin-bottom: var(--sp-8);
+  align-items: stretch;
 }
+/* Equal-height cards: fill the grid row, push the CTA row to the bottom. */
+.landing-grid > .card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+.landing-grid > .card .btn-row { margin-top: auto; }
 .landing-card {
-  display: block;
+  display: flex;
   text-decoration: none;
   color: inherit;
   transition: transform var(--dur-base) var(--ease), box-shadow var(--dur-base) var(--ease);
@@ -656,6 +665,19 @@ body { background: var(--bg-muted); }
   background: var(--scout-blue-50);
   color: var(--scout-blue);
   display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+/* Screenshot from the demo track at the top of a feature card */
+.landing-shot {
+  width: calc(100% + 2 * var(--sp-5));
+  margin: calc(-1 * var(--sp-5)) calc(-1 * var(--sp-5)) var(--sp-4);
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  border-bottom: 1px solid var(--border);
+  display: block;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  object-position: top;
+  background: var(--bg-muted);
 }
 
 /* Shared avdelning dot (reused from app.css) */
