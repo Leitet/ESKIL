@@ -237,6 +237,16 @@ export async function renderAnmalanAdmin(app, user, cid) {
               <input class="input" id="pay-ref" placeholder="Betalningsreferens, ex. AH26-K7PM" style="text-transform:uppercase;">
             </div>
             <button class="btn btn-primary btn-sm" id="mark-paid">${icon('check', { size: 14 })} Markera betald</button>
+            ${(() => {
+              const unpaidRegs = active.filter(r => {
+                const t = paySum(r), p = paySum(r, true);
+                return t > 0 && p < t && (r.contact?.email || '').trim();
+              });
+              return !comp.demo && unpaidRegs.length ? `
+                <span class="spacer"></span>
+                <button class="btn btn-secondary btn-sm" id="remind-all">${icon('mail', { size: 14 })} Påminn alla obetalda (${unpaidRegs.length})</button>
+              ` : '';
+            })()}
           </div>
         </div>
       ` : ''}
@@ -276,6 +286,10 @@ export async function renderAnmalanAdmin(app, user, cid) {
           </div>
           <div class="btn-row">
             <a class="btn btn-ghost btn-sm" href="/a/${cid}/${escapeHtml(r.id)}" target="_blank" rel="noopener">${icon('external', { size: 14 })} Öppna</a>
+            ${isAdmin && !comp.demo && !r.cancelled && !fullyPaid && total > 0 && (r.contact?.email || '').trim() ? `
+              <button class="btn btn-secondary btn-sm" data-remind="${escapeHtml(r.id)}" title="${r.reminderSentAt ? 'Senast påmind ' + escapeHtml(formatDate(r.reminderSentAt)) : 'Mailar en betalningspåminnelse med referens och belopp'}">
+                ${icon('mail', { size: 14 })} Påminn om betalning${r.reminderSentAt ? ` <span class="muted">(${escapeHtml(formatDate(r.reminderSentAt))})</span>` : ''}
+              </button>` : ''}
             ${isAdmin && !r.cancelled && importable.length ? `<button class="btn btn-secondary btn-sm" data-import="${escapeHtml(r.id)}">${icon('users', { size: 14 })} Importera ${importable.length} till patrullistan</button>` : ''}
             ${isAdmin ? `<button class="btn btn-ghost btn-sm" data-delete-reg="${escapeHtml(r.id)}" style="color:var(--utm-pink);">${icon('trash', { size: 14 })} Radera</button>` : ''}
           </div>
@@ -427,6 +441,43 @@ export async function renderAnmalanAdmin(app, user, cid) {
         toast(paidToast(`${hit.r.kar}: ${hit.p.amount} kr markerad som betald`, res, hit.r.contact?.email), 'success');
       } catch (e) { toast('Fel: ' + e.message, 'error'); }
     }));
+
+    content.querySelector('#remind-all')?.addEventListener('click', (e) => withBusy(e.currentTarget, 'Skickar…', async () => {
+      const unpaidRegs = regs.filter(r => {
+        const t = paySum(r), p = paySum(r, true);
+        return !r.cancelled && t > 0 && p < t && (r.contact?.email || '').trim();
+      });
+      if (!(await confirmDialog(
+        `Skicka betalningspåminnelse till ${unpaidRegs.length} anmälningar som inte är fullbetalda?`,
+        { okLabel: `Påminn ${unpaidRegs.length} st`, danger: false }
+      ))) return;
+      try {
+        const stamp = new Date().toISOString();
+        for (const r of unpaidRegs) {
+          await updateRegistration(cid, r.id, { reminderRequestedAt: stamp });
+        }
+        toast(`Påminnelser skickas till ${unpaidRegs.length} mottagare`, 'success');
+        await load();
+      } catch (err) { toast('Fel: ' + err.message, 'error'); }
+    }));
+
+    // Betalningspåminnelse — kassören stämplar reminderRequestedAt; Cloud
+    // Function onRegistrationUpdated ser stämpeln, mailar de obetalda
+    // referenserna med ändringslänken och skriver reminderSentAt tillbaka.
+    content.querySelectorAll('[data-remind]').forEach(b => b.addEventListener('click', () => withBusy(b, 'Skickar…', async () => {
+      const r = regs.find(x => x.id === b.dataset.remind);
+      if (!r) return;
+      const unpaid = (r.payments || []).filter(p => !p.paid);
+      if (!(await confirmDialog(
+        `Skicka betalningspåminnelse till ${r.contact?.email || ''}? Gäller ${unpaid.map(p => `${p.amount} kr (${p.reference})`).join(' + ')}.`,
+        { okLabel: 'Skicka påminnelse', danger: false }
+      ))) return;
+      try {
+        await updateRegistration(cid, r.id, { reminderRequestedAt: new Date().toISOString() });
+        toast('Påminnelsen skickas till ' + (r.contact?.email || ''), 'success');
+        await load();
+      } catch (e) { toast('Fel: ' + e.message, 'error'); }
+    })));
 
     content.querySelectorAll('[data-delete-reg]').forEach(b => b.addEventListener('click', () => withBusy(b, 'Raderar…', async () => {
       const r = regs.find(x => x.id === b.dataset.deleteReg);

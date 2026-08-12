@@ -93,6 +93,12 @@ att köra gratis på Spark-planen.
   5 min före första patrullens starttid på tävlingsdatumet (kräver datum +
   starttider); kartans bildtext visar när.
 
+- **Betalningspåminnelse** (Anmälan-fliken) — kassören skickar manuell
+  påminnelse per obetald anmälan eller "Påminn alla obetalda": mail med
+  obetalda belopp + referenser och länk till anmälningssidans
+  betalningsinstruktioner. Knappen visar när senaste påminnelsen gick ut
+  (`reminderRequestedAt` stämplas av UI:t, funktionen mailar och skriver
+  `reminderSentAt` tillbaka).
 - **Skicka PM** (Anmälan-fliken) — massutskick till alla aktiva anmälningars
   kontaktpersoner: ämne + text (med färdiga mallar: PM inför tävlingen,
   ändrade starttider, ändrad samlingsplats, inställd tävling — {luckor} i

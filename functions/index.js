@@ -265,6 +265,39 @@ exports.onRegistrationUpdated = onDocumentUpdated('competitions/{cid}/registrati
     }));
   }
 
+  // 1b) Payment reminder requested by the kassör (reminderRequestedAt stamped
+  // by the admin UI) → mail the contact the unpaid references with the manage
+  // link, and stamp reminderSentAt back so the UI shows when.
+  if (after.reminderRequestedAt && after.reminderRequestedAt !== before.reminderRequestedAt) {
+    const unpaid = (after.payments || []).filter(p => !p.paid);
+    if (!after.cancelled && unpaid.length && after.contact && after.contact.email) {
+      const replyTo = managementEmails(comp)[0] || undefined;
+      const url = manageUrl(cid, regId);
+      const totalDue = unpaid.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+      const body = `
+        <p>Hej ${esc(after.contact.name || '')}!</p>
+        <p>En vänlig påminnelse: er anmälan${after.kar ? ` för <strong>${esc(after.kar)}</strong>` : ''} till
+        <strong>${esc(compLabel(comp))}</strong> har betalningar som ännu inte prickats av:</p>
+        <ul style="padding-left:18px;">
+          ${unpaid.map(p => `<li><strong>${Number(p.amount) || 0} kr</strong> — referens <strong style="font-family:monospace;">${esc(p.reference || '')}</strong></li>`).join('')}
+        </ul>
+        <p>Totalt att betala: <strong>${totalDue} kr</strong>. Betalningsinstruktionerna finns på er
+        anmälningssida — ange referensen vid betalning så prickas den av. Har ni redan betalt de
+        senaste dagarna kan ni bortse från denna påminnelse.</p>
+        ${button(url, 'Visa anmälan och betalningsinstruktioner')}
+      `;
+      jobs.push(queueMail({
+        to: [after.contact.email],
+        ...(replyTo ? { replyTo } : {}),
+        message: {
+          subject: `Påminnelse: betalning för ${compLabel(comp)}`,
+          html: layout(comp, body, replyTo ? 'Svar på mailet går till tävlingsledningen.' : undefined),
+          text: `Påminnelse: ${unpaid.map(p => `${p.amount} kr (ref ${p.reference})`).join(', ')} är inte betalt för ${compLabel(comp)}. Instruktioner: ${url}`
+        }
+      }).then(() => event.data.after.ref.update({ reminderSentAt: FieldValue.serverTimestamp() })));
+    }
+  }
+
   // 2) Förhinder appended → notify tävlingsledningen.
   const beforeCount = (before.forhinder || []).length;
   const newForhinder = (after.forhinder || []).slice(beforeCount);
