@@ -9,7 +9,7 @@ import { courseLegs, drawCourseOnMap, addCourseChip, competitionArea } from './c
 import {
   AVDELNINGAR, escapeHtml, formatDate, publicManagement, patrolStartTime,
   startFinishPoints, parkingPoint, rankPatrols, rankKarer, RANKING_RULES_TEXT,
-  wireOverlayClose
+  wireOverlayClose, controlsAutoReleased, controlsReleaseTime
 } from './utils.js';
 import { ensureLeaflet } from './leaflet.js';
 import { icon } from './icons.js';
@@ -81,7 +81,11 @@ function scoresPublic() { return comp?.publicScores !== false; }
 // control positions and the drawn course — a shaded "Tävlingsområde" polygon
 // is shown instead (start/mål + parkering stay visible). UI-level only, like
 // publicScores: startkort and reporter links (secret URLs) always show all.
-function controlsPublic() { return comp?.publicControls !== false; }
+// With autoReleaseControls the course releases itself 5 min before the first
+// patrol's start on the competition date (see controlsAutoReleased).
+function controlsPublic() {
+  return comp?.publicControls !== false || controlsAutoReleased(comp);
+}
 
 async function boot() {
   const parsed = parsePath();
@@ -103,17 +107,31 @@ async function boot() {
   // Live updates for competition, patrols, and every control's scores
   unsubs.push(onSnapshot(doc(db, 'competitions', cid), snap => {
     if (!snap.exists()) return;
-    const prevControlsPublic = comp?.publicControls !== false;
+    const prevShown = controlsPublic();
     comp = { id: cid, ...snap.data() };
     // The map instance is normally kept across re-renders; when the admin
     // flips "Visa kontrollplatser publikt" it must be rebuilt so open public
     // pages switch between tävlingsområde and controls live.
-    if (prevControlsPublic !== (comp.publicControls !== false) && pubMap) {
+    if (prevShown !== controlsPublic() && pubMap) {
       try { pubMap.remove(); } catch {}
       pubMap = null;
     }
     render();
   }));
+
+  // Timed auto-release: no snapshot fires when the clock passes the release
+  // moment, so poll it — when the state flips, rebuild the map so an open
+  // public page reveals the course by itself 5 min before first start.
+  let lastShown = controlsPublic();
+  const releaseTick = setInterval(() => {
+    if (!comp) return;
+    const shown = controlsPublic();
+    if (shown === lastShown) return;
+    lastShown = shown;
+    if (pubMap) { try { pubMap.remove(); } catch {} pubMap = null; }
+    render();
+  }, 20000);
+  unsubs.push(() => clearInterval(releaseTick));
   unsubs.push(onSnapshot(collection(db, 'competitions', cid, 'patrols'), snap => {
     patrols = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     render();
@@ -438,9 +456,13 @@ function renderMap() {
     <div class="map-card">
       <div id="pub-map"></div>
       <div class="foot">
-        <span>${controlsPublic()
-          ? 'Kontrollpositioner — exakta platser kan skilja något.'
-          : 'Kontrollernas platser visas här när tävlingsledningen släpper dem.'}</span>
+        <span>${(() => {
+          if (controlsPublic()) return 'Kontrollpositioner — exakta platser kan skilja något.';
+          const rel = controlsReleaseTime(comp);
+          return rel
+            ? `Banan släpps här ${rel.toLocaleDateString('sv-SE', { day: 'numeric', month: 'long' })} kl ${rel.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })} — 5 min före första start.`
+            : 'Kontrollernas platser visas här när tävlingsledningen släpper dem.';
+        })()}</span>
       </div>
     </div>
     ${notesBlock}

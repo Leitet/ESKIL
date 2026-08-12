@@ -320,6 +320,13 @@ function renderRulesTab(comp, cid, refresh, readOnly) {
             <div class="field-hint" style="margin-top:2px;">Avbockad: publika kartan visar start/mål, parkering och ett skuggat "Tävlingsområde" — men inga kontroller eller spår. Bocka i på tävlingsdagen. Startkort och inloggade ser alltid allt.</div>
           </span>
         </label>
+        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin-top:var(--sp-3);padding-left:26px;">
+          <input type="checkbox" id="autoReleaseControls" ${comp.autoReleaseControls ? 'checked' : ''} style="margin-top:4px;">
+          <span>
+            <strong>Släpp banan automatiskt 5 min före första start</strong>
+            <div class="field-hint" style="margin-top:2px;">Gäller när kontrollplatserna är dolda: publika kartan visar kontroller och spår av sig själv 5 minuter före första patrullens starttid på tävlingsdatumet. Kräver att datum och starttider är satta.</div>
+          </span>
+        </label>
       </div>
 
       <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
@@ -400,6 +407,7 @@ function renderRulesTab(comp, cid, refresh, readOnly) {
       anonymousControls: card.querySelector('#anonymousControls').checked,
       publicScores: card.querySelector('#publicScores').checked,
       publicControls: card.querySelector('#publicControls').checked,
+      autoReleaseControls: card.querySelector('#autoReleaseControls').checked,
       autoCloseControls: card.querySelector('#autoCloseControls').checked,
       startTimes: {
         enabled: card.querySelector('#st-enabled').checked,

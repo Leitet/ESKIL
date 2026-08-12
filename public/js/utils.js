@@ -300,6 +300,27 @@ export function rankKarer(rows) {
 //     intervalMinutes: number,   // used when mode='interval'
 //     lastStart: "HH:MM"          // used when mode='range'
 //   }
+// When hidden control positions should be auto-released on the public page:
+// 5 minutes before the first patrol's start, anchored on the competition
+// DATE (comp.date + firstStart). Deliberately NOT the wall-clock anchoring
+// patrolStartDateTime uses for countdowns — the course must not "release"
+// the evening before just because today's HH:MM has passed. Returns a Date,
+// or null when auto-release is off or date/start times aren't configured.
+export function controlsReleaseTime(comp) {
+  if (!comp?.autoReleaseControls) return null;
+  const s = startTimeSettings(comp);
+  if (!s.enabled || !comp.date) return null;
+  const [h, m] = String(s.firstStart || '').split(':').map(Number);
+  const [Y, Mo, D] = String(comp.date).split('-').map(Number);
+  if (![h, m, Y, Mo, D].every(Number.isFinite)) return null;
+  return new Date(Y, Mo - 1, D, h, m - 5);
+}
+
+export function controlsAutoReleased(comp, now = new Date()) {
+  const t = controlsReleaseTime(comp);
+  return !!t && now >= t;
+}
+
 export function startTimeSettings(comp) {
   const s = comp?.startTimes || {};
   return {

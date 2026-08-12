@@ -63,7 +63,10 @@ att köra gratis på Spark-planen.
   och spår — start/mål och parkering syns fortfarande. Startkort, rapportsidor
   och inloggade ser alltid allt; togglas den släpps banan live på öppna
   publika sidor. UI-nivå, som poängpubliceringen (`publicControls`, saknas =
-  visas).
+  visas). Med "Släpp banan automatiskt 5 min före första start"
+  (`autoReleaseControls`) släpper öppna publika sidor banan av sig själva
+  5 min före första patrullens starttid på tävlingsdatumet (kräver datum +
+  starttider); kartans bildtext visar när.
 
 ## Teknik
 
