@@ -71,8 +71,10 @@ function manageUrl(cid, regId) {
 }
 
 // Shared mail chrome — deliberately simple inline-styled HTML that renders
-// fine in every mail client.
-function layout(comp, bodyHtml) {
+// fine in every mail client. `replyHint` must match whether the message has a
+// Reply-To: the sender is noreply@, so never invite replies unless they
+// actually land somewhere.
+function layout(comp, bodyHtml, replyHint = 'Mailet går inte att svara på.') {
   return `
   <div style="margin:0 auto;max-width:560px;font-family:Helvetica,Arial,sans-serif;color:#282727;">
     <div style="background:#003660;color:#ffffff;padding:22px 26px;border-radius:10px 10px 0 0;">
@@ -83,7 +85,7 @@ function layout(comp, bodyHtml) {
       ${bodyHtml}
       <p style="color:#8a8a8a;font-size:12px;margin-top:28px;border-top:1px solid #e8eef4;padding-top:12px;">
         Detta mail skickades automatiskt av ESKIL för ${esc(comp.organizer || compLabel(comp))}.
-        Svara gärna på mailet om du har frågor.
+        ${esc(replyHint)}
       </p>
     </div>
   </div>`;
@@ -143,7 +145,7 @@ exports.onRegistrationCreated = onDocumentCreated('competitions/{cid}/registrati
     ...(replyTo ? { replyTo } : {}),
     message: {
       subject: `Anmälan mottagen — ${compLabel(comp)}`,
-      html: layout(comp, body),
+      html: layout(comp, body, replyTo ? 'Svar på mailet går till tävlingsledningen.' : undefined),
       text: `Tack för er anmälan till ${compLabel(comp)}. ${(reg.patrols || []).length} patruller, ${nScouts(reg)} scouter. Se och ändra er anmälan: ${url}`
     }
   });
@@ -180,7 +182,7 @@ exports.onRegistrationUpdated = onDocumentUpdated('competitions/{cid}/registrati
       ...(replyTo ? { replyTo } : {}),
       message: {
         subject: `Kvitto ${payment.reference} — ${compLabel(comp)}`,
-        html: layout(comp, body),
+        html: layout(comp, body, replyTo ? 'Svar på mailet går till tävlingsledningen.' : undefined),
         text: `Er betalning på ${payment.amount} kr (referens ${payment.reference}) är registrerad. Kvitto bifogas. ${url}`,
         attachments: [{
           filename: `kvitto-${String(payment.reference || 'betalning').replace(/[^\w-]+/g, '_')}.pdf`,
@@ -211,7 +213,7 @@ exports.onRegistrationUpdated = onDocumentUpdated('competitions/{cid}/registrati
         ...(after.contact && after.contact.email ? { replyTo: after.contact.email } : {}),
         message: {
           subject: `Förhinder — ${after.kar || 'okänd kår'} (${compLabel(comp)})`,
-          html: layout(comp, body),
+          html: layout(comp, body, after.contact && after.contact.email ? 'Svar på mailet går direkt till anmälaren.' : undefined),
           text: `${after.kar}: ${newForhinder.map(f => `${f.patrol || 'Hela anmälan'}: ${f.message}`).join(' | ')}`
         }
       }));
@@ -235,9 +237,10 @@ exports.onRegistrationUpdated = onDocumentUpdated('competitions/{cid}/registrati
       `;
       jobs.push(queueMail({
         to,
+        ...(after.contact && after.contact.email ? { replyTo: after.contact.email } : {}),
         message: {
           subject: `Avanmälan — ${after.kar || 'okänd kår'} (${compLabel(comp)})`,
-          html: layout(comp, body),
+          html: layout(comp, body, after.contact && after.contact.email ? 'Svar på mailet går direkt till anmälaren.' : undefined),
           text: `${after.kar} har avanmält sig. ${paid > 0 ? paid + ' kr inbetalt — ev. återbetalning.' : ''}`
         }
       }));

@@ -82,7 +82,29 @@ export async function updateCompetition(cid, data) {
   await updateDoc(doc(db, 'competitions', cid), data);
 }
 
+// Batched deletes — Firestore caps a batch at 500 ops.
+async function deleteRefs(refs) {
+  for (let i = 0; i < refs.length; i += 450) {
+    const batch = writeBatch(db);
+    refs.slice(i, i + 450).forEach(r => batch.delete(r));
+    await batch.commit();
+  }
+}
+
 export async function deleteCompetition(cid) {
+  // Firestore never deletes subcollections with their parent, so remove
+  // everything that lives under the competition first — otherwise patrols,
+  // controls, scores and registrations linger as orphaned documents.
+  const controlsSnap = await getDocs(collection(db, 'competitions', cid, 'controls'));
+  for (const c of controlsSnap.docs) {
+    const scores = await getDocs(collection(db, 'competitions', cid, 'controls', c.id, 'scores'));
+    await deleteRefs(scores.docs.map(d => d.ref));
+  }
+  await deleteRefs(controlsSnap.docs.map(d => d.ref));
+  for (const sub of ['patrols', 'registrations', 'invites']) {
+    const snap = await getDocs(collection(db, 'competitions', cid, sub));
+    await deleteRefs(snap.docs.map(d => d.ref));
+  }
   await deleteDoc(doc(db, 'competitions', cid));
 }
 
