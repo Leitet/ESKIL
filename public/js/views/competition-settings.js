@@ -8,14 +8,14 @@
 
 import { layout, setTopbarCompetition } from '../app.js';
 import {
-  getCompetition, updateCompetition, deleteCompetition,
+  getCompetition, updateCompetition, deleteCompetition, copyCompetition,
   setCompetitionUsers, listControls, closeCompetition, reopenCompetition
 } from '../store.js';
 import {
   db, doc, getDoc, getDocs, collection, query, where
 } from '../firebase.js';
 import {
-  escapeHtml, toast, withBusy, confirmDialog,
+  escapeHtml, toast, withBusy, confirmDialog, wireOverlayClose,
   registrationSettings, REG_PRICING_MODELS, registrationUrl, copyToClipboard,
   AVDELNINGAR, allowedAvdelningar,
   isCompAdminUser, normEmail
@@ -91,7 +91,7 @@ export async function renderCompetitionSettings(app, user, cid) {
     });
 
     const body = wrap.querySelector('#tab-body');
-    if (activeTab === 'basic')       body.appendChild(renderBasicTab(comp, cid, refresh, isDemoReadOnly, isSuperAdmin));
+    if (activeTab === 'basic')       body.appendChild(renderBasicTab(comp, cid, refresh, isDemoReadOnly, isSuperAdmin, user));
     if (activeTab === 'rules')       body.appendChild(renderRulesTab(comp, cid, refresh, isDemoReadOnly));
     if (activeTab === 'anmalan')     body.appendChild(renderAnmalanTab(comp, cid, refresh, isDemoReadOnly));
     if (activeTab === 'startfinish') body.appendChild(renderStartFinishTab(comp, cid, refresh, isDemoReadOnly));
@@ -141,7 +141,7 @@ function wireSave(host, handler, label = 'Sparar…') {
 
 // ---- tabs ------------------------------------------------------------------
 
-function renderBasicTab(comp, cid, refresh, readOnly, isSuperAdmin) {
+function renderBasicTab(comp, cid, refresh, readOnly, isSuperAdmin, user) {
   const host = document.createElement('div');
   host.className = 'field-group';
 
@@ -261,6 +261,82 @@ function renderBasicTab(comp, cid, refresh, readOnly, isSuperAdmin) {
       }));
     }
     host.appendChild(lifecycle);
+  }
+
+  // Copy to next year — the annual restart in five minutes. Also available
+  // on the demo (as a template) since it only needs public reads + create.
+  if (!user?.demoViewer) {
+    const copyCard = document.createElement('section');
+    copyCard.className = 'card mt-6';
+    copyCard.innerHTML = `
+      <h3 class="t-h3" style="margin-top:0;">Kopiera till ny tävling</h3>
+      <p class="muted">Skapa nästa års tävling från den här: kontroller (med instruktioner,
+      positioner och utslagsfrågor), spåret, inställningar, prismodell och tävlingsledning
+      följer med. Patruller, poäng, anmälningar och användare gör det inte. Kontrollerna får
+      nya hemliga rapportlänkar, facit och telefonnummer nollställs och anmälan är avstängd
+      tills du öppnar den.</p>
+      <button class="btn btn-secondary mt-4" id="copy-comp">Kopiera till ny tävling</button>
+    `;
+    copyCard.querySelector('#copy-comp').addEventListener('click', () => {
+      const nextYear = (Number(comp.year) || new Date().getFullYear()) + 1;
+      const suggestName = (s) => String(s || '').includes(String(comp.year))
+        ? String(s).replaceAll(String(comp.year), String(nextYear))
+        : `${s || ''}`.trim();
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      overlay.innerHTML = `
+        <div class="modal" style="max-width:520px;">
+          <div class="modal-head"><h3>Kopiera "${escapeHtml(comp.name || '')}"</h3></div>
+          <div class="modal-body field-group">
+            <div class="grid grid-2">
+              <div>
+                <label class="field" for="cp-short">Kort namn</label>
+                <input class="input" id="cp-short" value="${escapeHtml(suggestName(comp.shortName))}">
+              </div>
+              <div>
+                <label class="field" for="cp-year">År</label>
+                <input class="input" id="cp-year" type="number" value="${nextYear}">
+              </div>
+            </div>
+            <div>
+              <label class="field" for="cp-name">Fullständigt namn</label>
+              <input class="input" id="cp-name" required value="${escapeHtml(suggestName(comp.name))}">
+            </div>
+            <div>
+              <label class="field" for="cp-date">Datum (kan sättas senare)</label>
+              <input class="input" id="cp-date" type="date">
+            </div>
+          </div>
+          <div class="modal-foot">
+            <button class="btn btn-ghost" id="cp-cancel">Avbryt</button>
+            <button class="btn btn-primary" id="cp-create">Skapa kopian</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+      const close = () => overlay.remove();
+      wireOverlayClose(overlay, close);
+      overlay.querySelector('#cp-cancel').addEventListener('click', close);
+      overlay.querySelector('#cp-create').addEventListener('click', (e) => withBusy(e.currentTarget, 'Kopierar…', async () => {
+        const name = overlay.querySelector('#cp-name').value.trim();
+        if (!name) { toast('Ange ett namn.', 'error'); return; }
+        try {
+          const newCid = await copyCompetition(cid, {
+            name,
+            shortName: overlay.querySelector('#cp-short').value.trim(),
+            year: overlay.querySelector('#cp-year').value,
+            date: overlay.querySelector('#cp-date').value || null
+          }, user);
+          close();
+          toast('Tävlingen kopierad', 'success');
+          navigate(`/app/c/${newCid}/settings`);
+        } catch (err) {
+          console.error(err);
+          toast('Kunde inte kopiera: ' + err.message, 'error');
+        }
+      }));
+    });
+    host.appendChild(copyCard);
   }
 
   // Danger zone (delete) — super-admin only

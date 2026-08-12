@@ -93,6 +93,89 @@ export async function updateCompetition(cid, data) {
   await updateDoc(doc(db, 'competitions', cid), data);
 }
 
+// Copy a competition to a new year: controls (instructions, positions,
+// utslagsfråga — but no facit, phone numbers or ansvariga), settings,
+// pricing, management and the drawn track. NOT copied: patrols, scores,
+// registrations, stations, utskick, users. Registration is carried over but
+// disabled with the period cleared so nothing opens by accident. The creator
+// becomes the sole admin of the copy.
+export async function copyCompetition(cid, { name, shortName, year, date }, user) {
+  const src = await getCompetition(cid);
+  if (!src) throw new Error('Tävlingen hittades inte.');
+
+  const data = {
+    name, shortName, year: Number(year) || null, date: date || null,
+    location: src.location || '',
+    organizer: src.organizer || '',
+    description: src.description || '',
+    generalInfo: src.generalInfo || '',
+    closed: false,
+    demo: false,
+    adminEmails: [],
+    userEmails: []
+  };
+  if (Array.isArray(src.avdelningar) && src.avdelningar.length) data.avdelningar = src.avdelningar;
+  for (const k of ['startTimes', 'startFinish', 'parking', 'management',
+                   'publicScores', 'publicControls', 'autoReleaseControls',
+                   'anonymousControls', 'autoCloseControls']) {
+    if (src[k] !== undefined) data[k] = src[k];
+  }
+  if (src.registration) {
+    data.registration = { ...src.registration, enabled: false, opensAt: null, closesAt: null };
+  }
+
+  const newCid = await createCompetition(data, user);
+
+  // Controls — new ids (fresh secret reporter URLs), everything closed,
+  // person-bound fields cleared, tiebreaker facit reset.
+  const controls = await listControls(cid);
+  const idMap = {};
+  for (let i = 0; i < controls.length; i += 400) {
+    const batch = writeBatch(db);
+    controls.slice(i, i + 400).forEach(c => {
+      const ref = doc(collection(db, 'competitions', newCid, 'controls'));
+      idMap[c.id] = ref.id;
+      const copy = {
+        nummer: c.nummer ?? null,
+        name: c.name || '',
+        maxPoang: c.maxPoang ?? 0,
+        minPoang: c.minPoang ?? 0,
+        extraPoang: c.extraPoang ?? 0,
+        placement: c.placement || '',
+        notering: '',
+        telefon: '',
+        ansvariga: [],
+        ansvarigaEmails: [],
+        open: false
+      };
+      if (Number.isFinite(c.lat)) { copy.lat = c.lat; copy.lng = c.lng; }
+      if (Array.isArray(c.instructions)) copy.instructions = c.instructions;
+      else if (c.information) copy.information = c.information;
+      if (c.utslag) {
+        copy.utslag = true;
+        copy.utslagFraga = c.utslagFraga || '';
+        copy.utslagSvar = null;
+      }
+      batch.set(ref, copy);
+    });
+    await batch.commit();
+  }
+
+  // The drawn track — leg keys reference control ids, remap them.
+  const track = await getTrack(cid).catch(() => null);
+  if (track && track.legs && Object.keys(track.legs).length) {
+    const legs = {};
+    for (const [key, wps] of Object.entries(track.legs)) {
+      let newKey = key;
+      for (const [oldId, newId] of Object.entries(idMap)) newKey = newKey.replaceAll(oldId, newId);
+      legs[newKey] = wps;
+    }
+    await saveTrack(newCid, { speedKmh: track.speedKmh ?? 4, legs });
+  }
+
+  return newCid;
+}
+
 // Batched deletes — Firestore caps a batch at 500 ops.
 async function deleteRefs(refs) {
   for (let i = 0; i < refs.length; i += 450) {

@@ -101,6 +101,13 @@ att köra gratis på Spark-planen.
   mail per anmälan (avanmälda hoppas över) med mottagarens ändringslänk och
   reply-to till tävlingsledningen, och stämplar tillbaka sentAt + antal
   mottagare (historik visas i dialogen).
+- **Kopiera tävling till nästa år** (Inställningar → Grund) — skapar nästa
+  års tävling från årets: kontroller (instruktioner, positioner,
+  utslagsfrågor — nya hemliga rapportlänkar, facit/telefon/ansvariga
+  nollställda, allt stängt), spåret (ben-nycklarna mappas om till de nya
+  kontroll-id:na), inställningar, prismodell (anmälan avstängd med rensad
+  period) och tävlingsledning. Patruller, poäng, anmälningar och användare
+  kopieras inte; skaparen blir ensam admin.
 - **GDPR & cookies** — ESKIL använder inga cookies (ingen banner behövs):
   inloggning via IndexedDB, övrig lokal lagring är strikt nödvändig
   (nattläge, offlinekö, pseudonymt rapportörs-id). Integritetspolicy på
