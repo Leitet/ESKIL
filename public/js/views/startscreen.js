@@ -35,8 +35,10 @@ export async function renderStartScreen(app, user, cid) {
     app.innerHTML = `<div class="page"><div class="empty"><h3>Tävlingen hittades inte</h3></div></div>`;
     return;
   }
+  // Demo competitions are open for exploration — anyone may watch the demo
+  // startskärm (it only renders publicly readable start times).
   const isAdmin = isCompAdminUser(comp, user);
-  if (!isAdmin) {
+  if (!isAdmin && !comp.demo) {
     app.innerHTML = `<div class="page"><div class="empty"><h3>Inte tillgängligt</h3><p>Bara tävlingsadministratörer kan öppna startskärmen.</p></div></div>`;
     return;
   }

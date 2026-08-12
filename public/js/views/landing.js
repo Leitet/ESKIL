@@ -55,12 +55,9 @@ export async function renderLanding(app, user) {
     ` : ''}
 
     ${demos.length ? `
-      <div class="pub-section-head"><h2 class="t-h2">Testa ESKIL</h2><span class="muted">Utforska utan konto</span></div>
+      <div class="pub-section-head"><h2 class="t-h2">Testa ESKIL</h2><span class="muted">Demospåret är öppet för alla — inget konto behövs</span></div>
       <div class="landing-grid">
-        ${demos.map(c => compCard(c, {
-          badge: '<span class="badge badge-orange">Demo</span>',
-          blurb: 'Ett komplett demospår med patruller, kontroller och live-poäng — klicka runt fritt.'
-        })).join('')}
+        ${demoCards(demos[0])}
       </div>
     ` : ''}
 
@@ -101,6 +98,44 @@ export async function renderLanding(app, user) {
           <h3 class="t-h4" style="margin:0;">Live-resultat</h3>
         </div>
         <p class="t-sm mt-3" style="color:var(--fg2);margin-bottom:var(--sp-4);">Poängtabeller uppdateras i realtid på den publika tävlingssidan — per avdelning, per kår och overall, med digitala startkort för patrullerna.</p>
+      </div>
+    </div>
+  `;
+}
+
+// Three doors into the demo competition — public page, the admin views
+// (account-free read-only demo mode, see guard() in app.js) and the
+// startskärm. Everything a curious kår needs to evaluate ESKIL in one row.
+function demoCards(c) {
+  return `
+    <div class="card landing-card">
+      <div class="row" style="gap:10px;align-items:center;">
+        <div class="landing-feature-icon">${icon('globe', { size: 22 })}</div>
+        <h3 class="t-h4" style="margin:0;">Tävlingssidan</h3>
+      </div>
+      <p class="t-sm mt-3" style="color:var(--fg2);">Det deltagare och föräldrar ser: live-poäng, startlista med nedräkning, karta med spåret och digitala startkort.</p>
+      <div class="btn-row" style="margin-top:auto;">
+        <a class="btn btn-primary btn-sm" href="/t/${c.id}">Öppna tävlingssidan ${icon('arrow-right', { size: 14 })}</a>
+      </div>
+    </div>
+    <div class="card landing-card">
+      <div class="row" style="gap:10px;align-items:center;">
+        <div class="landing-feature-icon">${icon('users', { size: 22 })}</div>
+        <h3 class="t-h4" style="margin:0;">Administratörsvyn</h3>
+      </div>
+      <p class="t-sm mt-3" style="color:var(--fg2);">Utforska tävlingen som tävlingsledningen ser den — Läget-dashboarden, spårdragningen, kontroller och poäng. Ingen inloggning behövs, klicka runt fritt.</p>
+      <div class="btn-row" style="margin-top:auto;">
+        <a class="btn btn-primary btn-sm" href="/app/c/${c.id}" data-link>Öppna som administratör ${icon('arrow-right', { size: 14 })}</a>
+      </div>
+    </div>
+    <div class="card landing-card">
+      <div class="row" style="gap:10px;align-items:center;">
+        <div class="landing-feature-icon">${icon('clock', { size: 22 })}</div>
+        <h3 class="t-h4" style="margin:0;">Startskärmen</h3>
+      </div>
+      <p class="t-sm mt-3" style="color:var(--fg2);">Projektorvyn vid startplatsen: nästa patrull i bild med nedräkning, startkortets QR och GÅ-signal — rullar av sig själv.</p>
+      <div class="btn-row" style="margin-top:auto;">
+        <a class="btn btn-primary btn-sm" href="/app/c/${c.id}/startscreen" target="_blank" rel="noopener">Öppna startskärmen ${icon('external', { size: 14 })}</a>
       </div>
     </div>
   `;

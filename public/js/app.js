@@ -5,7 +5,7 @@ import {
   watchAuth, doSignOut,
   pendingMagicLink, savedSigninEmail, completeMagicLink, clearMagicLinkParams
 } from './auth.js';
-import { ensureUser, getUser } from './store.js';
+import { ensureUser, getUser, getCompetition } from './store.js';
 import { route, startRouter, dispatch, navigate, setRouteChangeHandler } from './router.js';
 import { toast, escapeHtml, isCompAdminUser } from './utils.js';
 
@@ -36,16 +36,16 @@ route('/',             () => renderLanding(app, currentUser));
 route('/app',          () => guard(() => renderHome(app, currentUser)));
 route('/app/settings', () => guard(() => renderSettings(app, currentUser)));
 route('/app/admin/users', () => guard(() => renderAdminUsers(app, currentUser)));
-route('/app/c/:cid',                          (p) => guard(() => renderCompetition(app, currentUser, p.cid)));
-route('/app/c/:cid/settings',                 (p) => guard(() => renderCompetitionSettings(app, currentUser, p.cid)));
-route('/app/c/:cid/startscreen',              (p) => guard(() => renderStartScreen(app, currentUser, p.cid)));
-route('/app/c/:cid/patrols',                  (p) => guard(() => renderPatrols(app, currentUser, p.cid)));
-route('/app/c/:cid/controls',                 (p) => guard(() => renderControls(app, currentUser, p.cid)));
-route('/app/c/:cid/controls/:ctrlId',         (p) => guard(() => renderControlDetail(app, currentUser, p.cid, p.ctrlId)));
-route('/app/c/:cid/scoreboard',               (p) => guard(() => renderScoreboard(app, currentUser, p.cid)));
-route('/app/c/:cid/anmalan',                  (p) => guard(() => renderAnmalanAdmin(app, currentUser, p.cid)));
-route('/app/c/:cid/laget',                    (p) => guard(() => renderLaget(app, currentUser, p.cid)));
-route('/app/c/:cid/track',                    (p) => guard(() => renderTrack(app, currentUser, p.cid)));
+route('/app/c/:cid',                          (p) => guard(() => renderCompetition(app, currentUser, p.cid), p.cid));
+route('/app/c/:cid/settings',                 (p) => guard(() => renderCompetitionSettings(app, currentUser, p.cid), p.cid));
+route('/app/c/:cid/startscreen',              (p) => guard(() => renderStartScreen(app, currentUser, p.cid), p.cid));
+route('/app/c/:cid/patrols',                  (p) => guard(() => renderPatrols(app, currentUser, p.cid), p.cid));
+route('/app/c/:cid/controls',                 (p) => guard(() => renderControls(app, currentUser, p.cid), p.cid));
+route('/app/c/:cid/controls/:ctrlId',         (p) => guard(() => renderControlDetail(app, currentUser, p.cid, p.ctrlId), p.cid));
+route('/app/c/:cid/scoreboard',               (p) => guard(() => renderScoreboard(app, currentUser, p.cid), p.cid));
+route('/app/c/:cid/anmalan',                  (p) => guard(() => renderAnmalanAdmin(app, currentUser, p.cid), p.cid));
+route('/app/c/:cid/laget',                    (p) => guard(() => renderLaget(app, currentUser, p.cid), p.cid));
+route('/app/c/:cid/track',                    (p) => guard(() => renderTrack(app, currentUser, p.cid), p.cid));
 
 // ---- Per-view cleanup ------------------------------------------------------
 // Views with live subscriptions (watchControls/watchPatrols/watchScores…)
@@ -61,9 +61,21 @@ function runViewCleanup() {
   if (fn) { try { fn(); } catch (e) { console.warn('[ESKIL] view cleanup failed:', e); } }
 }
 
-function guard(render) {
+// Demo competitions are explorable WITHOUT an account: every admin view of a
+// demo comp runs on publicly readable data, and the Firestore rules block all
+// writes for non-super-admins anyway. The landing page links straight into
+// /app/c/<demo> — guard() then installs this read-only stand-in user.
+const DEMO_VIEWER = Object.freeze({ uid: null, email: '', role: 'user', demoViewer: true });
+
+async function guard(render, cid = null) {
   runViewCleanup();
-  if (!currentUser) {
+  if (!currentUser && cid) {
+    const comp = await getCompetition(cid).catch(() => null);
+    if (!currentUser && comp?.demo) currentUser = DEMO_VIEWER; // re-check after await
+  }
+  // The demo viewer only exists inside competition routes — home/settings
+  // still ask for a real sign-in.
+  if (!currentUser || (currentUser.demoViewer && !cid)) {
     renderLogin(app);
     return;
   }
@@ -94,15 +106,25 @@ export function renderTopbar(extra) {
       </a>
       <div class="topbar-comp" id="topbar-comp"></div>
       <div class="topbar-right">
-        ${currentUser?.role === 'super-admin' ? '<span class="badge badge-blue">Super-admin</span>' : ''}
-        <span class="muted" title="${currentUser?.email ?? ''}">${currentUser?.email ?? ''}</span>
-        <a class="btn btn-ghost btn-sm" href="/app/settings" data-link>Inställningar</a>
-        <button class="btn btn-ghost btn-sm" id="sign-out">Logga ut</button>
+        ${currentUser?.demoViewer ? `
+          <span class="badge badge-orange">Demoläge — utforska fritt</span>
+          <a class="btn btn-ghost btn-sm" href="/" data-link>Till startsidan</a>
+          <button class="btn btn-secondary btn-sm" id="demo-login">Logga in</button>
+        ` : `
+          ${currentUser?.role === 'super-admin' ? '<span class="badge badge-blue">Super-admin</span>' : ''}
+          <span class="muted" title="${currentUser?.email ?? ''}">${currentUser?.email ?? ''}</span>
+          <a class="btn btn-ghost btn-sm" href="/app/settings" data-link>Inställningar</a>
+          <button class="btn btn-ghost btn-sm" id="sign-out">Logga ut</button>
+        `}
       </div>
     </div>
   `;
-  bar.querySelector('#sign-out').addEventListener('click', async () => {
+  bar.querySelector('#sign-out')?.addEventListener('click', async () => {
     await doSignOut();
+    navigate('/app');
+  });
+  bar.querySelector('#demo-login')?.addEventListener('click', () => {
+    currentUser = null;
     navigate('/app');
   });
   return bar;

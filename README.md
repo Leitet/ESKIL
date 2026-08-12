@@ -19,8 +19,12 @@ att köra gratis på Spark-planen.
   som öppnar rapportsidan.
 - **Magic-link-inloggning** med långa sessioner (Firebase Auth `browserLocalPersistence`).
 - **Publik startsida** (`/`) — promotar ESKIL och listar tävlingar öppna för
-  anmälan, pågående/kommande, demospåret och avslutade tävlingar med resultat,
-  plus inloggning.
+  anmälan, pågående/kommande och avslutade tävlingar med resultat, plus
+  inloggning. Sektionen "Testa ESKIL" har tre kort in i demospåret:
+  tävlingssidan, **administratörsvyn utan konto** (ett skrivskyddat demoläge —
+  guard() släpper in på demotävlingars adminvyer utan inloggning; alla dessa
+  vyer läser bara publik data och reglerna blockerar ändå skrivningar) och
+  startskärmen.
 - **Tävlingens publika sida** (`/t/<cid>`) — tävlingens egen "reklamsida" som
   kan skickas till kårerna innan tävlingen: hero med beskrivning och
   anmälnings-CTA när perioden är öppen ("Anmälan öppnar X" innan dess),
