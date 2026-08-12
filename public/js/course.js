@@ -78,6 +78,38 @@ export function drawCourseOnMap(L, map, legs, { color = '#003660' } = {}) {
   ).addTo(map));
 }
 
+// Convex hull (Andrew's monotone chain) of {lat,lng} points, buffered
+// outward from the centroid by ~`marginM` meters. Used to shade a
+// "Tävlingsområde" on public maps when control positions are hidden —
+// communicates where the competition happens without revealing any control.
+export function competitionArea(points, marginM = 120) {
+  const pts = points.filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+  if (pts.length < 3) return null;
+  const sorted = [...pts].sort((a, b) => a.lng - b.lng || a.lat - b.lat);
+  const cross = (o, a, b) => (a.lng - o.lng) * (b.lat - o.lat) - (a.lat - o.lat) * (b.lng - o.lng);
+  const lower = [], upper = [];
+  for (const p of sorted) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+    lower.push(p);
+  }
+  for (const p of [...sorted].reverse()) {
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
+    upper.push(p);
+  }
+  const hull = lower.slice(0, -1).concat(upper.slice(0, -1));
+  if (hull.length < 3) return null;
+
+  const cLat = hull.reduce((s, p) => s + p.lat, 0) / hull.length;
+  const cLng = hull.reduce((s, p) => s + p.lng, 0) / hull.length;
+  const mLat = marginM / 111320;
+  const mLng = marginM / (111320 * Math.cos(cLat * Math.PI / 180));
+  return hull.map(p => {
+    const dLat = p.lat - cLat, dLng = p.lng - cLng;
+    const n = Math.hypot(dLat / mLat, dLng / mLng) || 1;
+    return [p.lat + dLat / n, p.lng + dLng / n];
+  });
+}
+
 // Small bottom-left chip with track stats ("Spår 3,7 km · ca 56 min gång").
 // Only meaningful when a track is drawn — callers guard on hasDrawn.
 export function addCourseChip(L, map, legs, speedKmh) {

@@ -57,6 +57,13 @@ att köra gratis på Spark-planen.
   Finns ett ritat spår används det alltid på alla kartor: offentliga sidan,
   startkortets översiktskarta (med chip "Spår X km · ca Y min gång") och
   Läget-kartan (dämpad bakgrundslinje). Delade hjälpare i `js/course.js`.
+- **Tävlingsområde** — per-tävlingsinställning (Inställningar → Regler & info:
+  "Visa kontrollplatser på publika sidan"). Avbockad visar publika kartan ett
+  skuggat konvext "Tävlingsområde" (buffrat ~120 m) i stället för kontroller
+  och spår — start/mål och parkering syns fortfarande. Startkort, rapportsidor
+  och inloggade ser alltid allt; togglas den släpps banan live på öppna
+  publika sidor. UI-nivå, som poängpubliceringen (`publicControls`, saknas =
+  visas).
 
 ## Teknik
 

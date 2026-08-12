@@ -314,6 +314,16 @@ function renderRulesTab(comp, cid, refresh, readOnly) {
 
       <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
         <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
+          <input type="checkbox" id="publicControls" ${comp.publicControls !== false ? 'checked' : ''} style="margin-top:4px;">
+          <span>
+            <strong>Visa kontrollplatser på publika sidan</strong>
+            <div class="field-hint" style="margin-top:2px;">Avbockad: publika kartan visar start/mål, parkering och ett skuggat "Tävlingsområde" — men inga kontroller eller spår. Bocka i på tävlingsdagen. Startkort och inloggade ser alltid allt.</div>
+          </span>
+        </label>
+      </div>
+
+      <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
+        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
           <input type="checkbox" id="autoCloseControls" ${comp.autoCloseControls ? 'checked' : ''} style="margin-top:4px;">
           <span>
             <strong>Stäng kontroller automatiskt</strong>
@@ -389,6 +399,7 @@ function renderRulesTab(comp, cid, refresh, readOnly) {
     await updateCompetition(cid, {
       anonymousControls: card.querySelector('#anonymousControls').checked,
       publicScores: card.querySelector('#publicScores').checked,
+      publicControls: card.querySelector('#publicControls').checked,
       autoCloseControls: card.querySelector('#autoCloseControls').checked,
       startTimes: {
         enabled: card.querySelector('#st-enabled').checked,

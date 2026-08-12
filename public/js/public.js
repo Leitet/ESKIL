@@ -5,7 +5,7 @@
 
 import { db, doc, onSnapshot, collection } from './firebase.js';
 import { getCompetition, listPatrols, listControls, getTrack } from './store.js';
-import { courseLegs, drawCourseOnMap, addCourseChip } from './course.js';
+import { courseLegs, drawCourseOnMap, addCourseChip, competitionArea } from './course.js';
 import {
   AVDELNINGAR, escapeHtml, formatDate, publicManagement, patrolStartTime,
   startFinishPoints, parkingPoint, rankPatrols, rankKarer, RANKING_RULES_TEXT,
@@ -77,6 +77,12 @@ function cleanup() {
 // Missing field means public (backward compatible with existing competitions).
 function scoresPublic() { return comp?.publicScores !== false; }
 
+// Per-competition setting: when publicControls is false the public map hides
+// control positions and the drawn course — a shaded "Tävlingsområde" polygon
+// is shown instead (start/mål + parkering stay visible). UI-level only, like
+// publicScores: startkort and reporter links (secret URLs) always show all.
+function controlsPublic() { return comp?.publicControls !== false; }
+
 async function boot() {
   const parsed = parsePath();
   if (!parsed) return renderNotFound('Ogiltig länk.');
@@ -96,7 +102,17 @@ async function boot() {
 
   // Live updates for competition, patrols, and every control's scores
   unsubs.push(onSnapshot(doc(db, 'competitions', cid), snap => {
-    if (snap.exists()) { comp = { id: cid, ...snap.data() }; render(); }
+    if (!snap.exists()) return;
+    const prevControlsPublic = comp?.publicControls !== false;
+    comp = { id: cid, ...snap.data() };
+    // The map instance is normally kept across re-renders; when the admin
+    // flips "Visa kontrollplatser publikt" it must be rebuilt so open public
+    // pages switch between tävlingsområde and controls live.
+    if (prevControlsPublic !== (comp.publicControls !== false) && pubMap) {
+      try { pubMap.remove(); } catch {}
+      pubMap = null;
+    }
+    render();
   }));
   unsubs.push(onSnapshot(collection(db, 'competitions', cid, 'patrols'), snap => {
     patrols = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -148,21 +164,42 @@ async function renderLeafletMap(withPos, sfPoints = [], park = null) {
       maxZoom: 19, attribution: '© OpenStreetMap'
     }).addTo(map);
 
-    // Course line: start → controls in nummer order → finish. When a track
-    // has been drawn in the Spår editor it is always the one shown — drawn
-    // legs follow the actual path (solid), undrawn legs stay dashed fågelväg.
     const ordered = [...withPos].sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0));
-    const { legs, hasDrawn } = courseLegs(comp, ordered, track);
-    drawCourseOnMap(L, map, legs);
-    if (hasDrawn) addCourseChip(L, map, legs, track && track.speedKmh);
+    if (controlsPublic()) {
+      // Course line: start → controls in nummer order → finish. When a track
+      // has been drawn in the Spår editor it is always the one shown — drawn
+      // legs follow the actual path (solid), undrawn legs stay dashed fågelväg.
+      const { legs, hasDrawn } = courseLegs(comp, ordered, track);
+      drawCourseOnMap(L, map, legs);
+      if (hasDrawn) addCourseChip(L, map, legs, track && track.speedKmh);
 
-    // Control markers — label = only the number
-    for (const c of ordered) {
-      L.circleMarker([c.lat, c.lng], {
-        radius: 14, color: '#ffffff', weight: 3, fillColor: '#E95F13', fillOpacity: 0.95
-      })
-        .bindTooltip(String(c.nummer ?? '?'), { permanent: true, direction: 'center', className: 'map-label' })
-        .addTo(map);
+      // Control markers — label = only the number
+      for (const c of ordered) {
+        L.circleMarker([c.lat, c.lng], {
+          radius: 14, color: '#ffffff', weight: 3, fillColor: '#E95F13', fillOpacity: 0.95
+        })
+          .bindTooltip(String(c.nummer ?? '?'), { permanent: true, direction: 'center', className: 'map-label' })
+          .addTo(map);
+      }
+    } else {
+      // Controls hidden until race day — shade the competition area instead.
+      // The hull is computed from control + start/mål positions but reveals
+      // no individual point (convex hull, buffered ~120 m outward).
+      const area = competitionArea([...ordered, ...sfPoints]);
+      if (area) {
+        L.polygon(area, {
+          color: '#003660', weight: 2, dashArray: '8 8', opacity: 0.8,
+          fillColor: '#003660', fillOpacity: 0.10, interactive: false
+        }).addTo(map);
+        const label = L.control({ position: 'bottomleft' });
+        label.onAdd = () => {
+          const div = L.DomUtil.create('div');
+          div.style.cssText = 'background:rgba(255,255,255,.92);border:1px solid #d2dde8;border-radius:8px;padding:4px 10px;font:600 12px/1.5 Helvetica,Arial,sans-serif;color:#003660;box-shadow:0 1px 4px rgba(0,0,0,.15);';
+          div.textContent = 'Tävlingsområde';
+          return div;
+        };
+        label.addTo(map);
+      }
     }
 
     // Start/finish markers — distinctive yellow
@@ -395,11 +432,15 @@ function renderMap() {
   ` : '';
 
   return `
-    <div class="pub-section-head"><h2 class="t-h2">Karta</h2><span class="muted">${withPos.length} kontroller${sf.length ? ' · start/mål' : ''}${park ? ' · parkering' : ''}</span></div>
+    <div class="pub-section-head"><h2 class="t-h2">Karta</h2><span class="muted">${controlsPublic()
+      ? `${withPos.length} kontroller${sf.length ? ' · start/mål' : ''}${park ? ' · parkering' : ''}`
+      : `tävlingsområde${sf.length ? ' · start/mål' : ''}${park ? ' · parkering' : ''}`}</span></div>
     <div class="map-card">
       <div id="pub-map"></div>
       <div class="foot">
-        <span>Kontrollpositioner — exakta platser kan skilja något.</span>
+        <span>${controlsPublic()
+          ? 'Kontrollpositioner — exakta platser kan skilja något.'
+          : 'Kontrollernas platser visas här när tävlingsledningen släpper dem.'}</span>
       </div>
     </div>
     ${notesBlock}
