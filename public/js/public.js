@@ -11,7 +11,7 @@ import {
   patrolStartDateTime, startTimeSettings, allowedAvdelningar,
   registrationSettings, registrationState,
   startFinishPoints, parkingPoint, rankPatrols, rankKarer, RANKING_RULES_TEXT,
-  wireOverlayClose, controlsAutoReleased, controlsReleaseTime
+  wireOverlayClose, controlsAutoReleased, controlsReleaseTime, utslagRows, isNumSet
 } from './utils.js';
 import { ensureLeaflet } from './leaflet.js';
 import { icon } from './icons.js';
@@ -784,7 +784,45 @@ function renderScoreboard(totals) {
       ${tabs.map(t => `<button data-view="${t.key}" class="${scoreView === t.key ? 'active' : ''}">${escapeHtml(t.label)}</button>`).join('')}
     </div>
     ${body}
+    ${renderUtslagPanel(totals)}
   `;
+}
+
+// Tiebreaker reveal — shown only once the facit is set (and scores are
+// public): the question, the correct answer and everyone's guesses sorted by
+// closeness, so patrols can see how the shared places were separated.
+function renderUtslagPanel(totals) {
+  const uc = controls
+    .filter(c => c.utslag && isNumSet(c.utslagSvar))
+    .sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0));
+  if (!uc.length) return '';
+  const perControlOf = Object.fromEntries(totals.map(t => [t.id, t.perControl || {}]));
+  return uc.map(c => {
+    const per = {};
+    patrols.forEach(p => { const s = perControlOf[p.id]?.[c.id]; if (s) per[p.id] = s; });
+    const rows = utslagRows(c, patrols, per);
+    return `
+      <div class="pub-section-head" style="margin-top:var(--sp-8);">
+        <h2 class="t-h2">Utslagsfrågan</h2>
+        <span class="muted">Kontroll ${c.nummer ?? '?'} · ${escapeHtml(c.name || '')}</span>
+      </div>
+      <div class="lb">
+        ${c.utslagFraga ? `<p style="margin:14px 16px 4px;font-family:var(--font-serif, Georgia, serif);font-size:18px;">"${escapeHtml(c.utslagFraga)}"</p>` : ''}
+        <p style="margin:6px 16px 10px;">Rätt svar: <strong style="font-size:20px;color:var(--scout-blue);">${Number(c.utslagSvar)}</strong></p>
+        <table>
+          <thead><tr><th class="rank">#</th><th>Patrull</th><th class="num">Svar</th><th class="num">Från facit</th></tr></thead>
+          <tbody>
+            ${rows.map(r => `<tr>
+              <td class="rank">${r.patrol.number ?? ''}</td>
+              <td><span class="pname">${escapeHtml(r.patrol.name || '')}</span> <span class="pkar">${escapeHtml(r.patrol.kar || '')}</span></td>
+              <td class="num">${r.gissning != null ? r.gissning : '—'}</td>
+              <td class="num">${r.diff != null ? (r.diff === 0 ? '🎯 Rätt!' : '±' + r.diff) : '—'}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }).join('');
 }
 
 // Scores unpublished: show which controls each patrol has completed (green

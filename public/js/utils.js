@@ -234,26 +234,71 @@ export const RANKING_RULES_TEXT = [
   { title: 'Totalpoäng',                rule: 'Summan av kontrollpoäng och ordningspoäng.' },
   { title: 'Högst ordningspoäng',       rule: 'Vid lika totalpoäng jämförs extrapoängen.' },
   { title: 'Flest maxade kontroller',   rule: 'Vid lika ordningspoäng: den som tagit full maxpoäng på flest kontroller.' },
+  { title: 'Utslagsfråga',              rule: 'Har tävlingen en utslagskontroll vinner den vars svar ligger närmast rätt svar (ett svar slår inget svar). Räknas först när tävlingsledningen angett rätt svar.' },
   { title: 'Delad placering',           rule: 'Går det inte att avgöra efter detta får de inblandade dela på platsen.' }
 ];
 
+// Strict numeric check — Number(null) and Number('') are 0, so a missing
+// facit/guess must never slip through as the number zero.
+export const isNumSet = (v) => v != null && v !== '' && Number.isFinite(Number(v));
+
+// Tiebreaker controls whose facit is set — only these participate in the
+// ranking. Sorted by control number so the first utslagskontroll decides
+// before the next.
+export function utslagControls(controls) {
+  return (controls || [])
+    .filter(c => c.utslag && isNumSet(c.utslagSvar))
+    .sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0));
+}
+
+// Rows for an utslagsfråga panel: every patrol's guess on one tiebreaker
+// control sorted by closeness to the facit (patrols without a guess last).
+// `perPatrolScore` maps patrolId → that control's score doc.
+export function utslagRows(control, patrols, perPatrolScore) {
+  const hasFacit = isNumSet(control.utslagSvar);
+  const svar = hasFacit ? Number(control.utslagSvar) : null;
+  return patrols.map(p => {
+    const g = perPatrolScore[p.id]?.utslagGissning;
+    const gissning = isNumSet(g) ? Number(g) : null;
+    const diff = hasFacit && gissning != null ? Math.abs(gissning - svar) : null;
+    return { patrol: p, gissning, diff };
+  }).sort((a, b) => {
+    if ((a.gissning == null) !== (b.gissning == null)) return a.gissning == null ? 1 : -1;
+    if (a.diff != null && b.diff != null && a.diff !== b.diff) return a.diff - b.diff;
+    return (a.patrol.number ?? 0) - (b.patrol.number ?? 0);
+  });
+}
+
 // Rank an array of "total" rows. Each row must have: grand, extra, perControl
-// (ctrlId → score doc). `controls` supplies each control's maxPoang. Returns
-// a new array with { ...row, rank, maxedCount } sorted by the three rules.
+// (ctrlId → score doc). `controls` supplies each control's maxPoang and any
+// utslagskontroller. Returns a new array with { ...row, rank, maxedCount,
+// utslagDiffs } sorted by the rules in RANKING_RULES_TEXT.
 export function rankPatrols(totals, controls) {
   const ctrlMax = Object.fromEntries(controls.map(c => [c.id, Number(c.maxPoang) || 0]));
+  const utslag = utslagControls(controls);
   const enriched = totals.map(r => {
     let maxedCount = 0;
     for (const [ctrlId, s] of Object.entries(r.perControl || {})) {
       const max = ctrlMax[ctrlId];
       if (max > 0 && (Number(s.poang) || 0) >= max) maxedCount++;
     }
-    return { ...r, maxedCount };
+    // Distance from facit per utslagskontroll; no guess = Infinity, so a
+    // patrol that answered always beats one that didn't.
+    const utslagDiffs = utslag.map(c => {
+      const g = r.perControl?.[c.id]?.utslagGissning;
+      return isNumSet(g) ? Math.abs(Number(g) - Number(c.utslagSvar)) : Infinity;
+    });
+    return { ...r, maxedCount, utslagDiffs };
   });
+  const sameDiffs = (a, b) =>
+    (a.utslagDiffs || []).every((d, i) => d === (b.utslagDiffs || [])[i]);
   enriched.sort((a, b) => {
     if ((b.grand || 0) !== (a.grand || 0)) return (b.grand || 0) - (a.grand || 0);
     if ((b.extra || 0) !== (a.extra || 0)) return (b.extra || 0) - (a.extra || 0);
     if ((b.maxedCount || 0) !== (a.maxedCount || 0)) return (b.maxedCount || 0) - (a.maxedCount || 0);
+    for (let i = 0; i < (a.utslagDiffs || []).length; i++) {
+      if (a.utslagDiffs[i] !== b.utslagDiffs[i]) return a.utslagDiffs[i] < b.utslagDiffs[i] ? -1 : 1;
+    }
     return 0;
   });
   // Standard competition ranking (1, 2, 2, 4): tied rows share rank.
@@ -262,7 +307,8 @@ export function rankPatrols(totals, controls) {
     const tied = prev
       && (r.grand       || 0) === (prev.grand       || 0)
       && (r.extra       || 0) === (prev.extra       || 0)
-      && (r.maxedCount  || 0) === (prev.maxedCount  || 0);
+      && (r.maxedCount  || 0) === (prev.maxedCount  || 0)
+      && sameDiffs(r, prev);
     r.rank = tied ? prevRank : i + 1;
     if (!tied) prevRank = i + 1;
     prev = r;

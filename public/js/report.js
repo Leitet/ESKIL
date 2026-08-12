@@ -469,6 +469,8 @@ async function main() {
     let poang = seed ? Number(seed.poang) : midP;
     let extra = seed ? Number(seed.extraPoang) : 0;
     let note = seed?.note || '';
+    const isUtslag = !!control.utslag;
+    const seedGissning = seed?.utslagGissning;
 
     const overlay = document.createElement('div');
     overlay.className = 'sheet-overlay';
@@ -501,6 +503,14 @@ async function main() {
             <div class="score-display" id="eval">${extra}<span class="range">0 – ${maxE}</span></div>
             <button type="button" class="step-btn" id="eplus" aria-label="Öka extra">${icon('plus', { size: 28 })}</button>
           </div>
+        ` : ''}
+
+        ${isUtslag ? `
+          <div style="margin-top:18px;" class="r-label-inline">Utslagsfråga${control.utslagFraga ? `: ${escapeHtml(control.utslagFraga)}` : ''}</div>
+          <input type="number" class="r-input" id="gissning-input" inputmode="decimal" step="any"
+            value="${seedGissning != null && Number.isFinite(Number(seedGissning)) ? seedGissning : ''}"
+            placeholder="Patrullens svar" style="display:block;">
+          <div style="font-size:13px;color:var(--r-fg-muted);margin-top:4px;">Vid lika poäng vinner patrullen närmast rätt svar — glöm inte fylla i!</div>
         ` : ''}
 
         <div style="margin-top:18px;" class="r-label-inline">Notering (frivilligt)</div>
@@ -569,19 +579,22 @@ async function main() {
       poang = Math.max(minP, Math.min(maxP, Number(poang) || 0));
       extra = Math.max(0, Math.min(maxE, Number(extra) || 0));
       const noteVal = overlay.querySelector('#note').value.trim();
+      const gissningRaw = isUtslag ? overlay.querySelector('#gissning-input').value.trim() : '';
+      const gissning = gissningRaw !== '' && Number.isFinite(Number(gissningRaw)) ? Number(gissningRaw) : null;
       const reporter = reporterId();
       // Queue locally first so the report survives even if the tab is closed
       // mid-save. Firestore's setDoc is idempotent on our keys (patrolId) so
       // the retry on reconnect cannot create duplicates.
       enqueue(cid, ctrlId, {
-        patrolId: patrol.id, poang, extraPoang: extra, note: noteVal, reporter
+        patrolId: patrol.id, poang, extraPoang: extra, note: noteVal, reporter,
+        ...(gissning != null ? { utslagGissning: gissning } : {})
       });
       sync.render();
 
       saveBtn.disabled = true; saveBtn.textContent = 'Sparar…';
       try {
         await withTimeout(
-          upsertScore(cid, ctrlId, patrol.id, poang, extra, noteVal, reporter),
+          upsertScore(cid, ctrlId, patrol.id, poang, extra, noteVal, reporter, gissning),
           navigator.onLine ? 5000 : 500
         );
         removeFromQueue(cid, ctrlId, patrol.id);
@@ -670,7 +683,7 @@ async function main() {
     let synced = [], failed = [];
     try {
       ({ synced, failed } = await flushQueue(cid, ctrlId,
-        (item) => upsertScore(cid, ctrlId, item.patrolId, item.poang, item.extraPoang, item.note, item.reporter)
+        (item) => upsertScore(cid, ctrlId, item.patrolId, item.poang, item.extraPoang, item.note, item.reporter, item.utslagGissning ?? null)
       ));
     } finally {
       syncInFlight = false;

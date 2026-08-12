@@ -121,14 +121,14 @@ service cloud.firestore {
           allow create: if isSuperAdmin() || (
                get(/databases/$(database)/documents/competitions/$(cid)/controls/$(ctrlId)).data.open == true
             && !compIsDemo(cid)
-            && request.resource.data.keys().hasOnly(['patrolId','poang','extraPoang','note','reportedAt','reporter'])
+            && request.resource.data.keys().hasOnly(['patrolId','poang','extraPoang','note','reportedAt','reporter','utslagGissning'])
             && request.resource.data.poang is number
             && request.resource.data.patrolId is string
           );
           allow update: if isSuperAdmin() || (
                get(/databases/$(database)/documents/competitions/$(cid)/controls/$(ctrlId)).data.open == true
             && !compIsDemo(cid)
-            && request.resource.data.keys().hasOnly(['patrolId','poang','extraPoang','note','reportedAt','reporter'])
+            && request.resource.data.keys().hasOnly(['patrolId','poang','extraPoang','note','reportedAt','reporter','utslagGissning'])
           );
           allow delete: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
         }

@@ -278,17 +278,22 @@ export async function listAllScores(cid) {
   return out;
 }
 
-export async function upsertScore(cid, ctrlId, patrolId, poang, extraPoang, note, reporter) {
+export async function upsertScore(cid, ctrlId, patrolId, poang, extraPoang, note, reporter, utslagGissning = null) {
   // One score per patrol per control. Use patrolId as the doc id to keep it unique.
   const ref = doc(db, 'competitions', cid, 'controls', ctrlId, 'scores', patrolId);
-  await setDoc(ref, {
+  const data = {
     patrolId,
     poang: Number(poang) || 0,
     extraPoang: Number(extraPoang) || 0,
     note: note || '',
     reportedAt: serverTimestamp(),
     reporter: reporter || ''
-  });
+  };
+  // Tiebreaker guess (utslagskontroll) — only written when actually given.
+  if (utslagGissning != null && Number.isFinite(Number(utslagGissning))) {
+    data.utslagGissning = Number(utslagGissning);
+  }
+  await setDoc(ref, data);
 }
 
 export async function deleteScore(cid, ctrlId, scoreId) {

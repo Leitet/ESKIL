@@ -56,7 +56,10 @@ See `README.md` for the layout — every file there is load-bearing.
 - `.../patrols/{pid}` — publicly readable (for the reporter page).
 - `.../controls/{ctrlId}` — publicly readable; writable by competition admins.
 - `.../controls/{ctrlId}/scores/{patrolId}` — one doc per patrol×control; the
-  doc id IS the patrolId so re-reporting overwrites.
+  doc id IS the patrolId so re-reporting overwrites. May carry
+  `utslagGissning` (the patrol's tiebreaker guess) when the control has
+  `utslag: true` + `utslagFraga`/`utslagSvar`; ranking uses it only once
+  `utslagSvar` is set. Beware `Number(null) === 0` — use utils.isNumSet.
 - `.../track/main` — the drawn course ("Spår" tab): waypoints per leg keyed
   `<fromKey>__<toKey>` plus `speedKmh`. The leg sequence itself is derived
   from control number order at render time, never stored. Publicly readable

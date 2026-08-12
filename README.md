@@ -12,7 +12,16 @@ att köra gratis på Spark-planen.
   Äventyrare, Utmanare, Rover, Ledare), kår, notering.
 - **Kontroller** — nummer, namn, max/min/extra poäng, position (lat/lng),
   information, notering, öppen/stängd.
-- **Poängtabell** — sortering Overall, per avdelning, per kår.
+- **Poängtabell** — sortering Overall, per avdelning, per kår. Placeringar
+  avgörs av totalpoäng → extrapoäng → flest maxade kontroller →
+  **utslagsfråga** → delad placering.
+- **Utslagskontroll** — en kontroll kan markeras som utslagskontroll med en
+  fråga (t.ex. "Hur många knopar är det i burken?"). Kontrollanten rapporterar
+  patrullens svar på rapportsidan; vid i övrigt lika resultat vinner den som
+  ligger närmast rätt svar (ett svar slår inget svar). Utslaget räknas först
+  när tävlingsledningen angett facit på kontrollen — då visas facit och alla
+  gissningar sorterade på närhet på både admin- och publika poängtabellen
+  (publikt endast när poängen är publicerade).
 - **Kontrollens rapportsida** (`/k/<cid>/<ctrlId>`) — ingen inloggning, hemlig
   URL, mobiloptimerad, **nattläge**.
 - **PDF + QR-kod** — varje kontroll kan skrivas ut med info och en skanbar QR

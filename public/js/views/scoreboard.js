@@ -1,6 +1,6 @@
 import { layout, setTopbarCompetition } from '../app.js';
 import { getCompetition, listPatrols, listControls, listAllScores, updateControl, updateCompetition } from '../store.js';
-import { allowedAvdelningar, escapeHtml, rankPatrols, rankKarer, RANKING_RULES_TEXT, toast, isCompAdminUser } from '../utils.js';
+import { allowedAvdelningar, escapeHtml, rankPatrols, rankKarer, RANKING_RULES_TEXT, utslagRows, isNumSet, toast, isCompAdminUser } from '../utils.js';
 import { icon } from '../icons.js';
 import { compActionsHtml } from './competition.js';
 
@@ -66,6 +66,7 @@ export async function renderScoreboard(app, user, cid) {
     </details>
 
     <div id="content"></div>
+    <div id="utslag-section"></div>
   `;
 
   const content = wrap.querySelector('#content');
@@ -105,6 +106,7 @@ export async function renderScoreboard(app, user, cid) {
         listAllScores(cid)
       ]);
       render();
+      renderUtslagSection();
       maybeAutoCloseReadyControls();
     } catch (e) {
       console.error(e);
@@ -149,6 +151,45 @@ export async function renderScoreboard(app, user, cid) {
   });
   wrap.querySelector('#view').addEventListener('change', render);
   wrap.querySelector('#sort').addEventListener('change', render);
+
+  // Tiebreaker panel: facit + every guess per utslagskontroll, closest first.
+  // Shown to admins even before the facit is set (with a reminder) — the
+  // public page only reveals it once the answer is in and scores are public.
+  function renderUtslagSection() {
+    const host = wrap.querySelector('#utslag-section');
+    const uc = controls
+      .filter(c => c.utslag)
+      .sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0));
+    if (!uc.length) { host.innerHTML = ''; return; }
+    host.innerHTML = uc.map(c => {
+      const per = {};
+      scores.filter(s => s.controlId === c.id).forEach(s => { per[s.patrolId] = s; });
+      const rows = utslagRows(c, patrols, per);
+      const hasFacit = isNumSet(c.utslagSvar);
+      return `
+        <div class="card mt-6">
+          <div class="t-over" style="color:var(--avent-orange);">Utslagsfråga — kontroll ${c.nummer ?? '?'} · ${escapeHtml(c.name || '')}</div>
+          ${c.utslagFraga ? `<p class="t-serif" style="font-size:17px;margin:8px 0 4px;">"${escapeHtml(c.utslagFraga)}"</p>` : ''}
+          ${hasFacit
+            ? `<p style="margin:4px 0 var(--sp-3);">Rätt svar: <strong style="font-size:18px;color:var(--scout-blue);">${Number(c.utslagSvar)}</strong></p>`
+            : `<p class="muted t-sm" style="margin:4px 0 var(--sp-3);">Rätt svar är inte angivet ännu — utslaget påverkar inte placeringarna. Fyll i facit på kontrollen när det är dags.</p>`}
+          <div class="table-wrap"><table class="t">
+            <thead><tr><th class="num">#</th><th>Patrull</th><th class="num">Svar</th>${hasFacit ? '<th class="num">Från facit</th>' : ''}</tr></thead>
+            <tbody>
+              ${rows.map(r => `
+                <tr>
+                  <td class="num">${r.patrol.number ?? ''}</td>
+                  <td><strong>${escapeHtml(r.patrol.name || '')}</strong> <span class="muted t-sm">${escapeHtml(r.patrol.kar || '')}</span></td>
+                  <td class="num">${r.gissning != null ? r.gissning : '<span class="muted">—</span>'}</td>
+                  ${hasFacit ? `<td class="num">${r.diff != null ? (r.diff === 0 ? '<span class="badge badge-green">Rätt!</span>' : '±' + r.diff) : '<span class="muted">—</span>'}</td>` : ''}
+                </tr>
+              `).join('')}
+            </tbody>
+          </table></div>
+        </div>
+      `;
+    }).join('');
+  }
 
   function computeTotals() {
     const map = {};

@@ -258,6 +258,23 @@ export function openControlModal(cid, control, onSaved, { manageAnsvariga = true
           </div>
 
           <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
+            <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
+              <input type="checkbox" id="utslag" ${control?.utslag ? 'checked' : ''} style="margin-top:4px;">
+              <span>
+                <strong>Utslagskontroll</strong>
+                <div class="field-hint" style="margin-top:2px;">Kontrollen har en utslagsfråga (t.ex. "Hur många knopar är det i burken?"). Kontrollanten rapporterar patrullens svar, och vid lika poäng vinner den som ligger närmast rätt svar.</div>
+              </span>
+            </label>
+            <div id="utslag-fields" style="margin-top:var(--sp-3);${control?.utslag ? '' : 'display:none;'}">
+              <label class="field" for="utslagFraga">Utslagsfråga</label>
+              <input class="input" id="utslagFraga" value="${escapeHtml(control?.utslagFraga || '')}" placeholder="Ex. Hur många knopar är det i burken?">
+              <label class="field mt-3" for="utslagSvar">Rätt svar</label>
+              <input class="input" id="utslagSvar" type="number" step="any" value="${control?.utslagSvar ?? ''}" placeholder="Lämna tomt tills facit är klart" style="max-width:260px;">
+              <div class="field-hint">Utslaget räknas i placeringarna först när rätt svar är angivet — och då visas facit och alla gissningar på poängtabellen.</div>
+            </div>
+          </div>
+
+          <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
             <div class="t-over" style="color:var(--scout-blue);margin-bottom:var(--sp-3);">Placering</div>
             <div class="field-hint" style="margin-bottom:var(--sp-3);">Klicka på kartan för att placera kontrollen. Markören kan dras för att finjustera.</div>
             <div id="picker-map" style="height:300px;width:100%;border-radius:var(--r-md);border:1.5px solid var(--border-strong);background:var(--bg-muted);"></div>
@@ -426,6 +443,10 @@ export function openControlModal(cid, control, onSaved, { manageAnsvariga = true
     renderGroups();
   });
 
+  overlay.querySelector('#utslag').addEventListener('change', (e) => {
+    overlay.querySelector('#utslag-fields').style.display = e.target.checked ? '' : 'none';
+  });
+
   // --- Map picker for placement ------------------------------------------
   const latInput = overlay.querySelector('#lat');
   const lngInput = overlay.querySelector('#lng');
@@ -495,7 +516,12 @@ export function openControlModal(cid, control, onSaved, { manageAnsvariga = true
         instructions: cleanGroups,
         telefon: overlay.querySelector('#telefon').value.trim(),
         notering: overlay.querySelector('#notering').value.trim(),
-        open: overlay.querySelector('#open').checked
+        open: overlay.querySelector('#open').checked,
+        utslag: overlay.querySelector('#utslag').checked,
+        utslagFraga: overlay.querySelector('#utslagFraga').value.trim(),
+        utslagSvar: overlay.querySelector('#utslagSvar').value.trim() !== ''
+          ? Number(overlay.querySelector('#utslagSvar').value)
+          : null
       };
       let cleanAnsvariga = null;
       if (manageAnsvariga) {
