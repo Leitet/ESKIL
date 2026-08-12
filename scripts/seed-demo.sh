@@ -149,6 +149,42 @@ write "competitions/$CID/stations/demo-station" '{
   "createdAt": {"timestampValue":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'"}
 }'
 
+# --- Drawn track (Spår editor doc) -------------------------------------------
+# One or two waypoints per leg, bulging gently outward from the loop so the
+# course looks hand-drawn on every map (public page, startkort, Läget) and
+# the Spår tab opens with a complete example.
+TRACK_LEGS=$(python3 -c "
+import json, math
+S = ('__start', 56.73661, 16.27872)
+C = [  # id, lat, lng — keep aligned with the ctrl() calls above
+  ('demo-c01', 56.73875, 16.27459), ('demo-c02', 56.73996, 16.27753),
+  ('demo-c03', 56.74128, 16.28258), ('demo-c04', 56.74389, 16.28039),
+  ('demo-c05', 56.74575, 16.28114), ('demo-c06', 56.74748, 16.28354),
+  ('demo-c07', 56.74842, 16.27635), ('demo-c08', 56.74534, 16.27277),
+  ('demo-c09', 56.74308, 16.27285), ('demo-c10', 56.73960, 16.27191),
+]
+nodes = [S] + C + [('__mal', S[1], S[2])]
+cx = sum(n[1] for n in nodes) / len(nodes)
+cy = sum(n[2] for n in nodes) / len(nodes)
+legs = {}
+for a, b in zip(nodes, nodes[1:]):
+    mlat, mlng = (a[1] + b[1]) / 2, (a[2] + b[2]) / 2
+    # push the midpoint slightly away from the loop centre (lng scaled for lat)
+    dlat, dlng = mlat - cx, (mlng - cy) * 0.55
+    n = math.hypot(dlat, dlng) or 1
+    legs[f'{a[0]}__{b[0]}'] = [{'lat': round(mlat + dlat / n * 0.0006, 6),
+                                'lng': round(mlng + dlng / n * 0.0011, 6)}]
+print(json.dumps({k: {'arrayValue': {'values': [
+    {'mapValue': {'fields': {'lat': {'doubleValue': p['lat']},
+                             'lng': {'doubleValue': p['lng']}}}} for p in v
+]}} for k, v in legs.items()}))
+")
+write "competitions/$CID/track/main" '{
+  "speedKmh": {"integerValue": "4"},
+  "legs": {"mapValue": {"fields": '"$TRACK_LEGS"'}},
+  "updatedAt": {"timestampValue":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'"}
+}'
+
 # --- Patrols (30 patruller across all six avdelningar + six kårer) ----------
 patrol() {
   local id="$1" order="$2" number="$3" name="$4" avd="$5" kar="$6" antal="$7"
