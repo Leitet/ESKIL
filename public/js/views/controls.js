@@ -4,7 +4,7 @@ import {
   updateControlNumbers, setCompetitionUsers
 } from '../store.js';
 import {
-  AVDELNINGAR, escapeHtml, toast, confirmDialog, withBusy, startFinishPoints, parkingPoint,
+  AVDELNINGAR, allowedAvdelningar, escapeHtml, toast, confirmDialog, withBusy, startFinishPoints, parkingPoint,
   isCompAdminUser, normEmail
 } from '../utils.js';
 import { navigate } from '../router.js';
@@ -195,7 +195,7 @@ export async function renderControls(app, user, cid) {
 
   if (isAdmin) {
     wrap.querySelector('#new').addEventListener('click', () => {
-      openControlModal(cid, null, (id) => navigate(`/app/c/${cid}/controls/${id}`));
+      openControlModal(cid, null, (id) => navigate(`/app/c/${cid}/controls/${id}`), { comp });
     });
   }
 
@@ -215,7 +215,7 @@ function th(key, label, state, opts = {}) {
 // opts.manageAnsvariga: whether the current user may edit the kontrollansvariga
 // list (admins only — a kontrollansvarig can edit the control itself but not
 // its permissions; the security rules enforce the same).
-export function openControlModal(cid, control, onSaved, { manageAnsvariga = true } = {}) {
+export function openControlModal(cid, control, onSaved, { manageAnsvariga = true, comp = null } = {}) {
   const isEdit = !!control;
   const ansvariga = (control?.ansvariga || []).map(a => ({ ...a }));
   // Normalize legacy single-field instructions into the group format.
@@ -379,7 +379,12 @@ export function openControlModal(cid, control, onSaved, { manageAnsvariga = true
           ${groups.length > 1 ? `<button type="button" class="btn btn-ghost btn-sm" data-rm="${i}" style="color:var(--utm-pink);">Ta bort grupp</button>` : ''}
         </div>
         <div class="row wrap" style="gap:6px;margin-bottom:var(--sp-3);">
-          ${AVDELNINGAR.map(a => {
+          ${AVDELNINGAR.filter(a =>
+            // Only the avdelningar chosen for this competition — plus any
+            // already ticked on the group, so stale choices stay removable.
+            allowedAvdelningar(comp).some(x => x.key === a.key)
+            || (g.avdelningar || []).includes(a.key)
+          ).map(a => {
             const checked = (g.avdelningar || []).includes(a.key);
             return `<label style="display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1.5px solid ${checked ? 'var(--scout-blue)' : 'var(--border)'};border-radius:999px;background:${checked ? 'var(--scout-blue-100)' : 'var(--white)'};cursor:pointer;font-size:13px;font-weight:600;">
               <input type="checkbox" data-avd="${i}:${a.key}" ${checked ? 'checked' : ''} style="margin:0;">
