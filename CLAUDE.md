@@ -39,6 +39,8 @@ See `README.md` for the layout — every file there is load-bearing.
   hosting rewrites to `/index.html`.
 - `public/k.html` — reporter page. All `/k/*` routes rewritten to
   `/k.html`.
+- `public/m.html` — start/finish station (`/m/<cid>/<stationId>`), anonymous
+  like the reporter page; the station id is the secret.
 
 ## Firestore rules model
 
@@ -55,6 +57,12 @@ See `README.md` for the layout — every file there is load-bearing.
 - `.../controls/{ctrlId}` — publicly readable; writable by competition admins.
 - `.../controls/{ctrlId}/scores/{patrolId}` — one doc per patrol×control; the
   doc id IS the patrolId so re-reporting overwrites.
+- `.../stations/{stationId}/passages/{patrolId}` — start/finish check-outs
+  (`startAt`/`finishAt` timestamps), doc id IS the patrolId. Anonymous clients
+  may only touch `patrolId`/`startAt`/`finishAt` (affectedKeys guard); station
+  `list` requires membership so secret ids can't be enumerated. The "Läget"
+  dashboard derives queue pressure per control from these + score `reportedAt`
+  order, assuming patrols run the course in control-number order.
 
 Anonymous score writes only when the enclosing control has `open == true`.
 

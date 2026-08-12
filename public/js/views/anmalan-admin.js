@@ -51,6 +51,7 @@ export async function renderAnmalanAdmin(app, user, cid) {
 
     <div class="tabs">
       <a href="/app/c/${cid}" data-link>Översikt</a>
+      <a href="/app/c/${cid}/laget" data-link>Läget</a>
       <a href="/app/c/${cid}/patrols" data-link>Patruller</a>
       <a href="/app/c/${cid}/controls" data-link>Kontroller</a>
       <a href="/app/c/${cid}/scoreboard" data-link>Poängtabell</a>

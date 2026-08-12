@@ -134,6 +134,31 @@ service cloud.firestore {
         }
       }
 
+      // Start/Mål-station — the station doc ID is the secret in the station
+      // URL (/m/<cid>/<stationId>), same trust model as reporter links. The
+      // station crew checks patrols out at start and in at mål; passages hold
+      // one doc per patrol with server timestamps. Anyone holding the link
+      // may write passages while the competition is open; list is member-only
+      // so the secret can't be enumerated anonymously.
+      match /stations/{stationId} {
+        allow get: if true;
+        allow list: if isCompMember(cid);
+        allow create, update, delete: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
+
+        match /passages/{patrolId} {
+          allow read: if true;
+          allow create: if isCompAdmin(cid) || (
+               !compIsDemo(cid) && !compClosed(cid)
+            && request.resource.data.keys().hasOnly(['patrolId', 'startAt', 'finishAt'])
+          );
+          allow update: if isCompAdmin(cid) || (
+               !compIsDemo(cid) && !compClosed(cid)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['startAt', 'finishAt'])
+          );
+          allow delete: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
+        }
+      }
+
       // Registrations (Anmälan) — the doc ID is the secret manage link, same
       // trust model as control reporter URLs. Anyone holding the link may read
       // and update their registration while registration is enabled; only

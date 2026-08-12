@@ -34,6 +34,18 @@ att köra gratis på Spark-planen.
 - **Avdelningar per tävling** — under Inställningar → Grund väljs vilka
   avdelningar som deltar; endast valda visas i anmälan, patrullformulär och
   poängtabellens filter (`competitions/{cid}.avdelningar`, saknas = alla).
+- **Läget** (flik på tävlingen) — sekretariatets tävlingsdagsvy. Live-KPI:er
+  (ej startade / ute i skogen / i mål / varningar), karta och tabell med
+  **kötryck per kontroll**: kö nu (patruller på väg från föregående kontroll),
+  median-mellantid med trendpil när tiderna stiger, och heat-färg
+  (grönt/gult/rött — kö ≥ 4 eller kö + 45 min utan rapport = flaskhals).
+  Patruller som varit tysta ≥ 60 min flaggas. Kön beräknas ur
+  rapporteringsordningen (antagande: patrullerna går bana i nummerordning
+  start → 1 → 2 → …).
+- **Start/Mål-station** (`/m/<cid>/<stationId>`) — hemlig länk/QR (skapas från
+  Läget) för funktionärerna vid start och mål: checka ut patruller vid start
+  och in vid målgång med ett tryck, ångra med bekräftelse. Ingen inloggning.
+  In-/utcheckningarna ger Läget dess start-/måldata.
 
 ## Teknik
 
@@ -166,12 +178,14 @@ public/
   s.html                # Patrullens startkort (ingen auth)
   t.html                # Publik tävlingssida (ingen auth)
   a.html                # Publik anmälningssida (ingen auth)
+  m.html                # Start/Mål-stationen (ingen auth, hemlig URL)
   assets/
     tokens.css          # Scouterna Design System tokens
     app.css             # Adminsida-styles
     report.css          # Kontrollsida, inkl. nattläge
     public.css          # Publika tävlingssidan
     anmalan.css         # Anmälningssidan (mobile-first)
+    station.css         # Start/Mål-stationen
   js/
     app.js              # SPA-bootstrap, route-tabell, topbar
     auth.js             # Magic-link-inloggning
@@ -184,6 +198,7 @@ public/
     start.js            # Startkort (s.html) logik
     public.js           # Publik tävlingssida (t.html) logik
     anmalan.js          # Anmälningssida (a.html) logik
+    station.js          # Start/Mål-stationen (m.html) logik
     utils.js            # Hjälpare (inkl. prisberäkning + Swish-QR-payload)
     views/              # En fil per vy (login, home, competition, patrols, ...)
 
@@ -220,7 +235,15 @@ competitions/{cid}               { name, shortName, year, date, location,
                                    payments: [{id,amount,reference,paid,paidAt}],
                                    forhinder: [{patrol,message,at}],
                                    createdAt, updatedAt }
+  stations/{stationId}           { createdAt }   # doc-id = hemlig stations-URL
+    passages/{patrolId}          { patrolId, startAt?, finishAt? }
 ```
+
+Stationens passager: doc-id = patrullens id så om-checkning skriver över.
+Anonyma klienter får bara skriva fälten `patrolId`/`startAt`/`finishAt`
+(reglerna diffar `affectedKeys`), och stationslistan kan inte räknas upp utan
+inloggning — själva stations-id:t är hemligheten, som för kontrollernas
+rapportsidor.
 
 Tävlingens anmälningsinställningar ligger i `competitions/{cid}.registration`
 (enabled, mode kår/patrull, opensAt/closesAt, prismodell, betalningssätt).

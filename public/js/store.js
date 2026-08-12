@@ -3,7 +3,7 @@
 import {
   db, doc, getDoc, setDoc, updateDoc, deleteDoc,
   collection, addDoc, getDocs, onSnapshot, query, where, orderBy,
-  serverTimestamp, writeBatch
+  serverTimestamp, deleteField, writeBatch
 } from './firebase.js';
 
 // --- Users -----------------------------------------------------------------
@@ -293,6 +293,44 @@ export async function upsertScore(cid, ctrlId, patrolId, poang, extraPoang, note
 
 export async function deleteScore(cid, ctrlId, scoreId) {
   await deleteDoc(doc(db, 'competitions', cid, 'controls', ctrlId, 'scores', scoreId));
+}
+
+// --- Start/Mål-station --------------------------------------------------------
+// One station per competition (the doc ID is the secret in /m/<cid>/<sid>).
+// Passages: one doc per patrol with startAt/finishAt server timestamps.
+
+export async function listStations(cid) {
+  const snap = await getDocs(collection(db, 'competitions', cid, 'stations'));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+export async function createStation(cid) {
+  const ref = await addDoc(collection(db, 'competitions', cid, 'stations'), {
+    createdAt: serverTimestamp()
+  });
+  return ref.id;
+}
+
+export async function getStation(cid, stationId) {
+  const snap = await getDoc(doc(db, 'competitions', cid, 'stations', stationId));
+  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+}
+
+export function watchPassages(cid, stationId, cb) {
+  return onSnapshot(
+    collection(db, 'competitions', cid, 'stations', stationId, 'passages'),
+    snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+  );
+}
+
+// field: 'startAt' | 'finishAt'. value=true stamps now, value=false clears.
+export async function setPassage(cid, stationId, patrolId, field, value) {
+  const ref = doc(db, 'competitions', cid, 'stations', stationId, 'passages', patrolId);
+  if (value) {
+    await setDoc(ref, { patrolId, [field]: serverTimestamp() }, { merge: true });
+  } else {
+    await updateDoc(ref, { [field]: deleteField() });
+  }
 }
 
 // --- Registrations (Anmälan) ------------------------------------------------

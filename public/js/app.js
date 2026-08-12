@@ -21,6 +21,7 @@ import { renderControls } from './views/controls.js';
 import { renderControlDetail } from './views/control-detail.js';
 import { renderScoreboard } from './views/scoreboard.js';
 import { renderAnmalanAdmin } from './views/anmalan-admin.js';
+import { renderLaget } from './views/laget.js';
 import { renderSettings } from './views/settings.js';
 import { renderAdminUsers } from './views/admin-users.js';
 
@@ -42,6 +43,7 @@ route('/app/c/:cid/controls',                 (p) => guard(() => renderControls(
 route('/app/c/:cid/controls/:ctrlId',         (p) => guard(() => renderControlDetail(app, currentUser, p.cid, p.ctrlId)));
 route('/app/c/:cid/scoreboard',               (p) => guard(() => renderScoreboard(app, currentUser, p.cid)));
 route('/app/c/:cid/anmalan',                  (p) => guard(() => renderAnmalanAdmin(app, currentUser, p.cid)));
+route('/app/c/:cid/laget',                    (p) => guard(() => renderLaget(app, currentUser, p.cid)));
 
 // ---- Per-view cleanup ------------------------------------------------------
 // Views with live subscriptions (watchControls/watchPatrols/watchScores…)
