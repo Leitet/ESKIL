@@ -196,7 +196,7 @@ function footHtml() {
           <img src="/assets/logo-scouterna-tagline-white.svg" alt="Scouterna">
           <span>· ESKIL</span>
         </div>
-        <span class="muted">Vill din kår använda ESKIL? <a href="/app" data-link style="color:#a7bccf;">Logga in</a> eller kontakta oss.</span>
+        <span class="muted">Vill din kår använda ESKIL? <a href="/app" data-link style="color:#a7bccf;">Logga in</a> eller kontakta oss. · <a href="/integritet" style="color:#a7bccf;">Integritet &amp; GDPR</a></span>
       </div>
     </footer>
   `;

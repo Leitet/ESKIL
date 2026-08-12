@@ -245,13 +245,14 @@ function renderBasicTab(comp, cid, refresh, readOnly, isSuperAdmin) {
       lifecycle.innerHTML = `
         <h3 class="t-h3" style="margin-top:0;">Avsluta tävling</h3>
         <p class="muted">När tävlingen är genomförd: raderar samtliga användare och kontrollansvariga
-        (inklusive namn — bara administratörer ligger kvar), stänger alla kontroller för rapportering
-        och gör tävlingen skrivskyddad. Resultat och publika sidor går fortfarande att titta på.
-        Kan återöppnas, men de borttagna personerna återställs inte.</p>
+        (inklusive namn — bara administratörer ligger kvar), kontrollernas telefonnummer samt
+        anmälningarnas kontaktuppgifter, fritextsvar och förhinder (GDPR-gallring), stänger alla
+        kontroller för rapportering och gör tävlingen skrivskyddad. Resultat och publika sidor går
+        fortfarande att titta på. Kan återöppnas, men de raderade uppgifterna återställs inte.</p>
         <button class="btn btn-secondary mt-4" id="close-comp">Avsluta tävling</button>
       `;
       lifecycle.querySelector('#close-comp').addEventListener('click', (e) => withBusy(e.currentTarget, 'Avslutar…', async () => {
-        if (!(await confirmDialog(`Avsluta "${comp.name}"? Alla användare och kontrollansvariga raderas (administratörer ligger kvar) och alla kontroller stängs.`, { okLabel: 'Avsluta tävling' }))) return;
+        if (!(await confirmDialog(`Avsluta "${comp.name}"? Alla användare och kontrollansvariga raderas (administratörer ligger kvar), anmälningarnas kontaktuppgifter och fritextsvar rensas och alla kontroller stängs.`, { okLabel: 'Avsluta tävling' }))) return;
         try {
           await closeCompetition(cid);
           toast('Tävlingen är avslutad', 'success');

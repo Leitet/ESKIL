@@ -396,7 +396,8 @@ function renderFooter() {
         </div>
         <span class="muted">${scoresPublic()
           ? 'Poängtabellen uppdateras direkt när kontrollanter rapporterar.'
-          : 'Poängen publiceras av tävlingsledningen — tills dess visas bara genomförda kontroller.'}</span>
+          : 'Poängen publiceras av tävlingsledningen — tills dess visas bara genomförda kontroller.'}
+          · <a href="/integritet" style="color:#a7bccf;">Integritet &amp; GDPR</a></span>
       </div>
     </footer>
   `;

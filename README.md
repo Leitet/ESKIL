@@ -93,6 +93,16 @@ att köra gratis på Spark-planen.
   5 min före första patrullens starttid på tävlingsdatumet (kräver datum +
   starttider); kartans bildtext visar när.
 
+- **GDPR & cookies** — ESKIL använder inga cookies (ingen banner behövs):
+  inloggning via IndexedDB, övrig lokal lagring är strikt nödvändig
+  (nattläge, offlinekö, pseudonymt rapportörs-id). Integritetspolicy på
+  `/integritet` (statisk sida, länkad från startsidan, publika sidor,
+  anmälan och inloggningen). Att avsluta en tävling GDPR-gallrar användare,
+  kontrollansvariga, kontrolltelefoner samt anmälningarnas kontaktuppgifter,
+  fritextsvar (t.ex. allergier) och förhinder — patrullnamn, resultat och
+  betalningsbelopp/referenser bevaras. Inloggningen förklarar vad som sparas
+  och när det raderas.
+
 ## Teknik
 
 - Statiska filer i `public/` — inga byggsteg.

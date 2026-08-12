@@ -131,6 +131,24 @@ export async function closeCompetition(cid) {
     });
     await batch.commit();
   }
+  // GDPR-gallring av anmälningarna: kontaktuppgifter, fritextsvar (t.ex.
+  // allergier) och förhinder-meddelanden raderas — kår, patrullnamn och
+  // betalningsstatus (belopp/referenser, ingen persondata) behålls som
+  // tävlingshistorik/bokföringsunderlag.
+  const regsSnap = await getDocs(collection(db, 'competitions', cid, 'registrations'));
+  for (let i = 0; i < regsSnap.docs.length; i += 400) {
+    const batch = writeBatch(db);
+    regsSnap.docs.slice(i, i + 400).forEach(d => {
+      const r = d.data();
+      batch.update(d.ref, {
+        contact: { name: '', email: '', phone: '' },
+        answers: {},
+        patrols: (r.patrols || []).map(p => ({ ...p, answers: {} })),
+        forhinder: []
+      });
+    });
+    await batch.commit();
+  }
   await updateDoc(doc(db, 'competitions', cid), {
     closed: true, users: [], userEmails: []
   });

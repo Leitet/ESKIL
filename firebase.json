@@ -10,6 +10,7 @@
       { "source": "/t/**", "destination": "/t.html" },
       { "source": "/a/**", "destination": "/a.html" },
       { "source": "/m/**", "destination": "/m.html" },
+      { "source": "/integritet", "destination": "/integritet.html" },
       { "source": "/app/**", "destination": "/index.html" },
       { "source": "**", "destination": "/index.html" }
     ],

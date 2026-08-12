@@ -141,7 +141,7 @@ function hero(sub = 'Anmälan') {
 }
 
 function footer() {
-  return `<div class="anm-foot">ESKIL · anmälan · ${escapeHtml(comp.organizer || comp.shortName || '')}</div>`;
+  return `<div class="anm-foot">ESKIL · anmälan · ${escapeHtml(comp.organizer || comp.shortName || '')} · <a href="/integritet" style="color:inherit;">Integritet &amp; GDPR</a></div>`;
 }
 
 function steps(active) {
@@ -211,6 +211,7 @@ function renderForm() {
     <form id="anm-form">
       <div class="anm-card">
         <h2>${karvis ? 'Kår och kontakt' : 'Kontaktuppgifter'}</h2>
+        <p class="muted" style="font-size:13px;margin:4px 0 0;">Uppgifterna används bara för att administrera anmälan och raderas när tävlingen avslutas — <a href="/integritet" target="_blank" rel="noopener">integritet &amp; GDPR</a>.</p>
         <div class="field-group">
           <div>
             <label class="field" for="f-kar">Kår</label>

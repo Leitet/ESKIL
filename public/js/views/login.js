@@ -30,6 +30,7 @@ export function renderLogin(app) {
       </div>
 
       <p class="mt-6" style="font-size:13px;color:#a7bccf;">Sessioner sparas på enheten — du behöver bara logga in igen om du loggar ut manuellt eller rensar webbläsardata.</p>
+      <p style="font-size:13px;color:#a7bccf;max-width:520px;">När du loggar in sparas din e-postadress (och ditt namn om tävlingsledningen angett det) för att ge dig rätt behörighet under tävlingen. När en tävling avslutas raderas namn och e-post automatiskt för alla utom administratörerna. ESKIL använder inga cookies — <a href="/integritet" style="color:#d2dde8;">läs mer om integritet &amp; GDPR</a>.</p>
     </div>
   `;
 

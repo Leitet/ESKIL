@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Integritet & GDPR — ESKIL</title>
+  <link rel="icon" href="/assets/scout-symbol.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/tokens.css">
+  <link rel="stylesheet" href="/assets/public.css">
+  <style>
+    .privacy { max-width: 760px; margin: 0 auto; padding: var(--sp-8) var(--sp-5) var(--sp-16); }
+    .privacy h2 { font-family: var(--font-display); color: var(--scout-blue); margin: var(--sp-8) 0 var(--sp-3); }
+    .privacy p, .privacy li { line-height: 1.6; color: var(--fg2); }
+    .privacy ul { padding-left: 20px; }
+    .privacy table { width: 100%; border-collapse: collapse; font-size: 14px; margin: var(--sp-3) 0; }
+    .privacy th, .privacy td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .privacy th { color: var(--scout-blue); }
+    .no-cookies {
+      background: var(--white); border: 1px solid var(--border); border-left: 4px solid var(--spaer-green);
+      border-radius: var(--r-lg); padding: var(--sp-4) var(--sp-5); margin: var(--sp-5) 0;
+    }
+  </style>
+</head>
+<body style="background: var(--bg-muted);">
+  <header class="pub-hero" style="padding: var(--sp-8) 0;">
+    <div class="pub-hero-pattern"></div>
+    <div class="page">
+      <div class="pub-brand">
+        <img src="/assets/logo-scouterna-tagline-white.svg" alt="Scouterna" style="height:32px;">
+        <span class="divider"></span>
+        <span class="sublabel">ESKIL</span>
+      </div>
+      <h1 style="font-family:var(--font-display);font-weight:200;font-size:clamp(32px,5vw,52px);margin:16px 0 4px;">Integritet &amp; GDPR</h1>
+      <p class="lede" style="margin-top:4px;">Så hanterar ESKIL personuppgifter — och därför behövs ingen cookie-banner.</p>
+    </div>
+  </header>
+
+  <main class="privacy">
+    <div class="no-cookies">
+      <strong>ESKIL använder inga cookies.</strong> Ingen spårning, ingen analys, inga
+      tredjepartskakor — därför visas ingen cookie-banner. Den lokala lagring som sker i din
+      webbläsare (se nedan) är strikt nödvändig för funktioner du själv använder.
+    </div>
+
+    <h2>Vem ansvarar för uppgifterna?</h2>
+    <p>Personuppgiftsansvarig för en tävlings uppgifter är den arrangerande scoutkåren
+    (tävlingsledningen). ESKIL är verktyget som kåren använder. Kontaktuppgifter till
+    tävlingsledningen finns på respektive tävlings publika sida.</p>
+
+    <h2>Vilka uppgifter behandlas — och varför?</h2>
+    <table>
+      <tr><th>Uppgifter</th><th>Ändamål</th></tr>
+      <tr><td>E-postadress (och namn om tävlingsledningen angett det) för administratörer, användare och kontrollansvariga</td><td>Inloggning och behörigheter — din e-postadress är din behörighet.</td></tr>
+      <tr><td>Anmälans kontaktperson: namn, e-post, telefon</td><td>Bekräftelser, kvitton och kontakt kring anmälan.</td></tr>
+      <tr><td>Patrullnamn, avdelning, antal deltagare samt eventuella fritextsvar (t.ex. allergier)</td><td>Genomföra tävlingen. Fritextsvaren ser bara tävlingsledningen.</td></tr>
+      <tr><td>Telefonnummer till kontroller</td><td>Så att sekretariatet når kontrollen under tävlingsdagen. Visas aldrig publikt.</td></tr>
+      <tr><td>Tävlingsledningens kontaktuppgifter</td><td>Visas på tävlingssidan i den mån tävlingsledningen valt det.</td></tr>
+    </table>
+    <p>Rättslig grund är fullgörande av avtalet med anmälande kår samt arrangörens berättigade
+    intresse av att genomföra tävlingen.</p>
+
+    <h2>Hur länge sparas uppgifterna?</h2>
+    <p>När tävlingsledningen <strong>avslutar en tävling</strong> raderas automatiskt:</p>
+    <ul>
+      <li>alla användare och kontrollansvariga (namn och e-post) — administratörerna ligger kvar tills tävlingen raderas,</li>
+      <li>kontrollernas telefonnummer,</li>
+      <li>anmälningarnas kontaktuppgifter, fritextsvar och förhindermeddelanden.</li>
+    </ul>
+    <p>Resultat utan personuppgifter (patrullnamn, kår, poäng) bevaras som tävlingshistorik, liksom
+    betalningsbelopp och referenser (innehåller ingen persondata). Raderas hela tävlingen försvinner
+    allt. Kontakta tävlingsledningen om du vill få uppgifter rättade eller raderade tidigare.</p>
+
+    <h2>Lokal lagring i din webbläsare</h2>
+    <p>Ingen av posterna nedan är en cookie — inget av detta skickas automatiskt till servern, och
+    inget används för spårning.</p>
+    <table>
+      <tr><th>Vad</th><th>Varför</th></tr>
+      <tr><td>Inloggningssession (IndexedDB, endast inloggade)</td><td>Håller dig inloggad tills du loggar ut. Raderas när du loggar ut eller rensar webbplatsdata.</td></tr>
+      <tr><td>Dag-/nattläge på rapportsidan</td><td>Kommer ihåg ditt val av läge.</td></tr>
+      <tr><td>Offlinekö för poängrapporter</td><td>Sparar rapporter lokalt tills mobilnätet i skogen kommer tillbaka, sedan rensas kön.</td></tr>
+      <tr><td>Slumpmässigt rapportörs-id på rapportsidan</td><td>Pseudonymt id (utan koppling till person) så tävlingsledningen ser att rapporter kommer från samma enhet.</td></tr>
+    </table>
+
+    <h2>Tredje parter</h2>
+    <p>När du använder ESKIL laddas resurser från följande leverantörer, som då ser din
+    IP-adress (nödvändigt för att leverera själva tjänsten):</p>
+    <ul>
+      <li><strong>Google Firebase</strong> — drift av webbplats, databas och inloggning.</li>
+      <li><strong>Brevo</strong> — skickar transaktionsmail (inloggningslänkar, bekräftelser, kvitton).</li>
+      <li><strong>OpenStreetMap &amp; Esri</strong> — kartbilder.</li>
+      <li><strong>jsDelivr &amp; unpkg</strong> — öppna kodbibliotek (kartor, PDF, QR).</li>
+    </ul>
+    <p>Ingen av dessa får personuppgifter från ESKIL utöver vad själva sidladdningen innebär, och
+    ESKIL delar aldrig uppgifter för marknadsföring.</p>
+
+    <h2>Dina rättigheter</h2>
+    <p>Du har rätt att begära utdrag, rättelse eller radering av dina uppgifter — kontakta
+    tävlingsledningen för den aktuella tävlingen. Du kan också lämna klagomål till
+    Integritetsskyddsmyndigheten (IMY).</p>
+  </main>
+
+  <footer class="pub-foot">
+    <div class="page">
+      <div style="display:flex;align-items:center;gap:var(--sp-4);">
+        <img src="/assets/logo-scouterna-tagline-white.svg" alt="Scouterna" style="height:28px;">
+        <span>· ESKIL</span>
+      </div>
+      <span class="muted"><a href="/" style="color:#a7bccf;">Till startsidan</a></span>
+    </div>
+  </footer>
+</body>
+</html>
