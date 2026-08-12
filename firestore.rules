@@ -150,7 +150,10 @@ service cloud.firestore {
       // so the secret can't be enumerated anonymously.
       match /stations/{stationId} {
         allow get: if true;
-        allow list: if isCompMember(cid);
+        // list is member-only so secret station ids can't be enumerated —
+        // except on demo competitions, where the account-free demo mode
+        // shows the station card on Läget (check-ins are blocked anyway).
+        allow list: if isCompMember(cid) || compIsDemo(cid);
         allow create, update, delete: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
 
         match /passages/{patrolId} {

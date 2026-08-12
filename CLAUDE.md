@@ -64,7 +64,9 @@ See `README.md` for the layout — every file there is load-bearing.
 - `.../stations/{stationId}/passages/{patrolId}` — start/finish check-outs
   (`startAt`/`finishAt` timestamps), doc id IS the patrolId. Anonymous clients
   may only touch `patrolId`/`startAt`/`finishAt` (affectedKeys guard); station
-  `list` requires membership so secret ids can't be enumerated. The "Läget"
+  `list` requires membership so secret ids can't be enumerated (except demo
+  competitions, where the account-free demo mode shows the station card and
+  check-ins are blocked anyway). The "Läget"
   dashboard derives queue pressure per control from these + score `reportedAt`
   order, assuming patrols run the course in control-number order.
 
