@@ -750,3 +750,38 @@ body { background: var(--bg-muted); }
   .start-row { grid-template-columns: 56px 1fr auto; }
   .start-row .st-link { display: none; }
 }
+
+/* Mini-startskärm: next start highlighted, GÅR NU-state pulses */
+.start-row.is-next {
+  background: var(--scout-blue);
+  color: #fff;
+  padding-top: 16px; padding-bottom: 16px;
+}
+.start-row.is-next:hover { background: #00284a; }
+.start-row.is-next .st-time { color: var(--rover-yellow); font-size: 24px; }
+.start-row.is-next .st-who .nm { font-size: 19px; }
+.start-row.is-next .st-who .sub { color: #a7bccf; }
+.start-row.is-next .st-count { color: #fff; font-size: 18px; }
+.start-row.is-next .st-link { color: #a7bccf; }
+.start-row.is-now .st-count {
+  color: var(--rover-yellow);
+  animation: ga-nu-pulse 1s ease-in-out infinite;
+}
+.start-row.is-now:not(.is-next) .st-count { color: var(--utm-pink); }
+@keyframes ga-nu-pulse { 50% { opacity: 0.45; } }
+
+/* Startlista: scrollable window over all starts, past rows dimmed */
+.starts-list {
+  position: relative;
+  max-height: 440px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.start-row.is-past { opacity: 0.55; }
+.start-row.is-past .st-time { color: var(--fg3); }
+.start-row.is-past .st-count { color: var(--fg3); font-weight: 400; }
+.start-row.is-now .st-count {
+  color: var(--utm-pink);
+  animation: ga-nu-pulse 1s ease-in-out infinite;
+}
+@keyframes ga-nu-pulse { 50% { opacity: 0.4; } }

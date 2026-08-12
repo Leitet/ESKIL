@@ -26,9 +26,13 @@ att köra gratis på Spark-planen.
   anmälnings-CTA när perioden är öppen ("Anmälan öppnar X" innan dess),
   KPI:er (fjärde kortet växlar: öppna kontroller under tävling → dagar kvar →
   spårlängd), alla valda avdelningar, tävlingsledning, karta med spår eller
-  tävlingsområde, samt **Kommande starter** — en live-lista på tävlingsdagen
-  med nedräkning per patrull och länk till respektive startkort (startkorten
-  nås även från patrullmodalen). Allt uppdateras live via snapshots + tickar.
+  tävlingsområde, samt **Startlistan** — en skrollbar live-lista på
+  tävlingsdagen över ALLA starter: genomförda nedtonade ("startade"),
+  kommande med nedräkning (sekundprecision sista 10 min, pulserande "GÅR NU"
+  i startögonblicket), liveklocka, autoskroll till nästa start och länk till
+  respektive startkort (startkorten nås även från patrullmodalen).
+  Besökarens skrollposition bevaras över live-uppdateringar. Allt på sidan
+  uppdateras live via snapshots + tickar.
 - **Anmälan** (`/a/<cid>`) — publik anmälningssida (kårvis eller patrullvis) med
   fyra prismodeller, betalningssteg (Swish-QR med låst belopp/referens, bankgiro,
   faktura), egna fritextfält (per anmälan eller per patrull, t.ex. "Allergier"),

@@ -135,12 +135,31 @@ async function boot() {
   }, 20000);
   unsubs.push(() => clearInterval(releaseTick));
 
-  // Keep the "Kommande starter" countdowns fresh — re-render every 20 s while
-  // the section is on screen (the map node survives re-renders, see render()).
-  const startsTick = setInterval(() => {
-    if (comp && parsePath()?.tab === 'overview' && upcomingStarts().length) render();
-  }, 20000);
-  unsubs.push(() => clearInterval(startsTick));
+  // Keep the startlista alive: every second the clock, countdowns and row
+  // states (upcoming → GÅR NU → startade) are patched in place — no
+  // re-render, so the visitor's scroll position in the list never moves.
+  const clockTick = setInterval(() => {
+    const clock = document.getElementById('pub-clock');
+    if (!clock) return;
+    const now = new Date();
+    clock.textContent = now.toLocaleTimeString('sv-SE');
+    document.querySelectorAll('.start-row .st-count[data-dt]').forEach(el => {
+      const dt = new Date(el.dataset.dt);
+      const row = el.closest('.start-row');
+      if (dt - now <= -60000) {
+        el.textContent = 'startade';
+        row?.classList.add('is-past');
+        row?.classList.remove('is-now');
+      } else {
+        const cd = countdownText(dt, now);
+        el.textContent = cd;
+        row?.classList.toggle('is-now', cd === 'GÅR NU');
+        row?.classList.remove('is-past');
+      }
+    });
+  }, 1000);
+  unsubs.push(() => clearInterval(clockTick));
+
   unsubs.push(onSnapshot(collection(db, 'competitions', cid, 'patrols'), snap => {
     patrols = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     render();
@@ -275,6 +294,12 @@ function render() {
     pubMap = null;
   }
 
+  // Preserve the visitor's position in the scrollable startlista across
+  // re-renders (snapshots fire on every score report). null = list is new →
+  // auto-scroll so the next upcoming start sits at the top.
+  const oldStartsList = document.getElementById('starts-list');
+  const savedStartsScroll = oldStartsList ? oldStartsList.scrollTop : null;
+
   root.innerHTML = `
     ${renderHero()}
     <div class="pub-tabs-bar">
@@ -298,6 +323,19 @@ function render() {
       setTab(cid, a.dataset.tab);
     });
   });
+
+  const startsList = document.getElementById('starts-list');
+  if (startsList) {
+    if (savedStartsScroll != null) {
+      startsList.scrollTop = savedStartsScroll;
+    } else {
+      const next = startsList.querySelector('.start-row:not(.is-past)');
+      if (next) {
+        const delta = next.getBoundingClientRect().top - startsList.getBoundingClientRect().top;
+        startsList.scrollTop = Math.max(0, delta - 6);
+      }
+    }
+  }
 
   if (tab === 'overview') {
     const newHost = document.getElementById('pub-map');
@@ -425,45 +463,63 @@ function renderRegistrationCta() {
   return ''; // closed → inget skrik om det; tävlingssidan lever vidare
 }
 
-// Upcoming starts — a light live version of the startskärm. Only meaningful
-// on the competition day (start times are wall-clock anchored), or on demo
-// competitions where the schedule rolls with the clock.
-function upcomingStarts(now = new Date()) {
+// The full start list — every patrol with a start time, past and upcoming,
+// so visitors can scroll back through who has started and ahead through
+// everyone still to come. Only meaningful on the competition day (start
+// times are wall-clock anchored), or on demo competitions where the
+// schedule rolls with the clock.
+function startRows(now = new Date()) {
   const s = startTimeSettings(comp);
   if (!s.enabled || !patrols.length) return [];
   if (!comp.demo && comp.date && daysUntilComp() !== 0) return [];
   return patrols
     .map(p => ({ p, dt: patrolStartDateTime(comp, p, now, patrols.length) }))
-    .filter(x => x.dt && x.dt.getTime() > now.getTime() - 60000)
-    .sort((a, b) => a.dt - b.dt)
-    .slice(0, 8);
+    .filter(x => x.dt)
+    .sort((a, b) => a.dt - b.dt);
 }
 
+// Under 10 min the countdown runs with seconds (startskärm feel); at/after
+// the start moment it flips to GÅR NU until the row rotates out.
 function countdownText(dt, now = new Date()) {
-  const min = Math.round((dt - now) / 60000);
-  if (min <= 0) return 'nu';
+  const ms = dt - now;
+  if (ms <= 0) return 'GÅR NU';
+  const totalSec = Math.ceil(ms / 1000);
+  if (totalSec < 600) {
+    const m = Math.floor(totalSec / 60), s = totalSec % 60;
+    return `om ${m}:${String(s).padStart(2, '0')}`;
+  }
+  const min = Math.round(totalSec / 60);
   if (min < 60) return `om ${min} min`;
   return `om ${Math.floor(min / 60)} h ${min % 60} min`;
 }
 
-function renderUpcomingStarts() {
+// The live start list: a scrollable window over ALL starts — already-started
+// patrols dimmed with "startade", the rest counting down (seconds under
+// 10 min, GÅR NU at the moment). The 1 s tick patches clock, countdowns and
+// row states in place; rows are only rebuilt when data actually changes, and
+// render() preserves the visitor's scroll position.
+function renderStartList() {
   const cid = parsePath()?.cid;
   const now = new Date();
-  const rows = upcomingStarts(now);
+  const rows = startRows(now);
   if (!rows.length) return '';
   return `
-    <div class="pub-section-head"><h2 class="t-h2">Kommande starter</h2><span class="muted">Live · klicka för startkort</span></div>
-    <div class="starts-list">
+    <div class="pub-section-head">
+      <h2 class="t-h2">Startlista</h2>
+      <span class="muted">Live · klicka för startkort · <span class="mono" id="pub-clock">${now.toLocaleTimeString('sv-SE')}</span></span>
+    </div>
+    <div class="starts-list" id="starts-list">
       ${rows.map(({ p, dt }) => {
-        const cd = countdownText(dt, now);
+        const past = dt - now <= -60000;
+        const cd = past ? 'startade' : countdownText(dt, now);
         return `
-          <a class="start-row ${cd === 'nu' ? 'is-now' : ''}" href="/s/${escapeHtml(cid || '')}/${escapeHtml(p.id)}" target="_blank" rel="noopener">
+          <a class="start-row ${past ? 'is-past' : ''} ${cd === 'GÅR NU' ? 'is-now' : ''}" href="/s/${escapeHtml(cid || '')}/${escapeHtml(p.id)}" target="_blank" rel="noopener">
             <span class="st-time">${dt.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })}</span>
             <span class="st-who">
               <span class="nm">#${p.number ?? '—'} ${escapeHtml(p.name || '')}</span>
               <span class="sub"><span class="dot ${avdSlug(p.avdelning)}"></span>${escapeHtml(p.avdelning || '')}${p.kar ? ' · ' + escapeHtml(p.kar) : ''}</span>
             </span>
-            <span class="st-count">${escapeHtml(cd)}</span>
+            <span class="st-count" data-dt="${dt.toISOString()}">${escapeHtml(cd)}</span>
             <span class="st-link">Startkort →</span>
           </a>
         `;
@@ -499,7 +555,7 @@ function renderOverview(totals) {
       <div class="pub-kpi"><div class="label">${kpi4.label}</div><div class="val">${kpi4.val}</div></div>
     </section>
 
-    ${renderUpcomingStarts()}
+    ${renderStartList()}
 
     ${scoresPublic() && podium.length && podium[0].grand > 0 ? `
       <div class="pub-section-head"><h2 class="t-h2">Topp tre · Overall</h2><span class="muted">Live</span></div>
