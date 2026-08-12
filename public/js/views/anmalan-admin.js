@@ -3,7 +3,6 @@
 // registration period, and imports registered patrols into the patrol list.
 
 import { layout, setTopbarCompetition } from '../app.js';
-import { auth, sendSignInLinkToEmail } from '../firebase.js';
 import {
   getCompetition, listRegistrations, updateRegistration, listPatrols, createPatrol
 } from '../store.js';
@@ -215,23 +214,6 @@ export async function renderAnmalanAdmin(app, user, cid) {
     `;
   }
 
-  // Mail the contact that their payment is registered. The email (sent via
-  // Firebase Auth's email-link channel — the only one on Spark) links to the
-  // manage page where the receipt PDF can be downloaded.
-  async function sendReceiptMail(r) {
-    if (!r.contact?.email) return false;
-    try {
-      await sendSignInLinkToEmail(auth, r.contact.email, {
-        url: registrationUrl(cid, r.id),
-        handleCodeInApp: true
-      });
-      return true;
-    } catch (e) {
-      console.warn('Receipt mail failed:', e);
-      return false;
-    }
-  }
-
   // Create patrol docs for a registration's patrols that aren't already in
   // the patrol list (matched on name+kår, numbered after the highest existing).
   // Returns how many were added.
@@ -255,7 +237,9 @@ export async function renderAnmalanAdmin(app, user, cid) {
     return added;
   }
 
-  // Returns { mailed, imported } when marking paid, or null when un-marking.
+  // Returns { imported } when marking paid, or null when un-marking. The
+  // receipt mail (PDF attached) is sent by the Cloud Function that reacts to
+  // the payment flipping to paid — nothing to send from here.
   // Once the registration is fully paid its patrols are auto-imported into
   // the patrol list.
   async function setPaid(regId, payId, paidValue) {
@@ -269,8 +253,7 @@ export async function renderAnmalanAdmin(app, user, cid) {
     if (paidValue) {
       const fullyPaid = payments.length > 0 && payments.every(p => p.paid);
       const imported = (fullyPaid && !r.cancelled) ? await importPatrolsFromReg(r) : 0;
-      const mailed = await sendReceiptMail(r);
-      result = { mailed, imported };
+      result = { imported };
     }
     await load();
     return result;
@@ -279,7 +262,7 @@ export async function renderAnmalanAdmin(app, user, cid) {
   function paidToast(prefix, res, email) {
     const parts = [prefix];
     if (res?.imported) parts.push(`${res.imported} patrull${res.imported === 1 ? '' : 'er'} importerad${res.imported === 1 ? '' : 'e'} till patrullistan`);
-    parts.push(res?.mailed ? `kvitto mailat till ${email}` : 'kvittomailet kunde inte skickas');
+    if (email) parts.push(`kvitto mailas till ${email}`);
     return parts.join(' · ');
   }
 
@@ -289,7 +272,7 @@ export async function renderAnmalanAdmin(app, user, cid) {
       const email = regs.find(x => x.id === regId)?.contact?.email;
       try {
         const res = await setPaid(regId, payId, true);
-        toast(paidToast('Markerad som betald', res, email), res?.mailed ? 'success' : 'error');
+        toast(paidToast('Markerad som betald', res, email), 'success');
       }
       catch (e) { toast('Fel: ' + e.message, 'error'); }
     })));
@@ -321,7 +304,7 @@ export async function renderAnmalanAdmin(app, user, cid) {
       if (hit.p.paid) { toast('Den betalningen är redan markerad som betald'); return; }
       try {
         const res = await setPaid(hit.r.id, hit.p.id, true);
-        toast(paidToast(`${hit.r.kar}: ${hit.p.amount} kr markerad som betald`, res, hit.r.contact?.email), res?.mailed ? 'success' : 'error');
+        toast(paidToast(`${hit.r.kar}: ${hit.p.amount} kr markerad som betald`, res, hit.r.contact?.email), 'success');
       } catch (e) { toast('Fel: ' + e.message, 'error'); }
     }));
 

@@ -167,9 +167,12 @@ public/
     utils.js            # Hjälpare (inkl. prisberäkning + Swish-QR-payload)
     views/              # En fil per vy (login, home, competition, patrols, ...)
 
+functions/              # Cloud Functions — transaktionsmail via Trigger Email
+  index.js              # Firestore-triggers som köar mail i `mail`-collectionen
+  receipt-pdf.js        # Node-port av kvitto-PDF:n (bilaga i kvittomail)
 firestore.rules         # Säkerhetsregler
 firestore.indexes.json  # Index
-firebase.json           # Hosting + Firestore-config
+firebase.json           # Hosting + Firestore + Functions-config
 .firebaserc             # Projekt-alias (uppdatera till eget projekt-id)
 ```
 
@@ -209,11 +212,33 @@ Kontrollens dokument-ID är det som står i URL:en på rapportsidan — det är
 kan rapporteras anonymt **endast** när `control.open == true`, annars blockerar
 Firestore-reglerna skrivningen.
 
+## E-post (Blaze + Trigger Email)
+
+Transaktionsmail (anmälningsbekräftelse med ändringslänk, kvitto med
+PDF-bilaga, förhinder-/avanmälningsnotiser till tävlingsledningen) skickas av
+Cloud Functions i `functions/` som skriver dokument till Firestore-collectionen
+`mail`; **Trigger Email-extensionen** (`firebase/firestore-send-email`,
+konfigurerad med Brevo-SMTP, avsändare `noreply@eskilscout.se`) levererar dem.
+Klienter kan aldrig skriva i `mail` (ingen rules-match = deny) — det är därför
+de anonyma sidorna är säkra trots mailutskick.
+
+Kräver **Blaze-planen** (inom fria kvoter ≈ 0 kr/mån — sätt budgetlarm).
+Extension-parametrar: collection `mail`, default FROM
+`ESKIL <noreply@eskilscout.se>`, SMTP via Brevo.
+
+Deploy av functions (ingår inte i CI-workflowen):
+
+```bash
+cd functions && npm install && cd ..
+npx firebase-tools deploy --only functions
+```
+
 ## Noteringar / avvägningar
 
-- **Ingen Cloud Functions** används — passar Spark-planen utan att lämna
-  gratiskvoter. Inbjudan sker genom att en befintlig användare läggs till i
-  tävlingens `admins`/`users`-array efter att de loggat in en gång.
+- **Cloud Functions används enbart för mail** (`functions/`) — all övrig logik
+  är fortsatt klient + Firestore-regler. Inbjudan sker genom att en befintlig
+  användare läggs till i tävlingens `admins`/`users`-array efter att de
+  loggat in en gång.
 - **PDF-genereringen sker i klienten** — jsPDF + qrcodejs laddas lazily från
   CDN första gången användaren klickar.
 - **Nattläge** på rapportsidan använder en djupröd palett som bevarar

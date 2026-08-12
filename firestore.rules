@@ -36,8 +36,16 @@ service cloud.firestore {
     // A competition flagged with demo: true is read-only for everyone except
     // super-admins. Used for the bundled "Demospår" that ships in prod so new
     // users can explore without being able to deface it.
+    // NOTE: must use .get() with a default — competitions created without the
+    // demo field would otherwise make this expression ERROR (reading a missing
+    // property is an evaluation error in rules), which denied every anonymous
+    // score/registration write on those competitions.
     function compIsDemo(cid) {
-      return get(/databases/$(database)/documents/competitions/$(cid)).data.demo == true;
+      return get(/databases/$(database)/documents/competitions/$(cid)).data.get('demo', false) == true;
+    }
+
+    function registrationEnabled(cid) {
+      return get(/databases/$(database)/documents/competitions/$(cid)).data.get('registration', {}).get('enabled', false) == true;
     }
 
     // --- Users
@@ -111,14 +119,8 @@ service cloud.firestore {
       match /registrations/{regId} {
         allow get: if true;
         allow list: if isCompMember(cid);
-        allow create: if isCompAdmin(cid) || (
-             get(/databases/$(database)/documents/competitions/$(cid)).data.registration.enabled == true
-          && !compIsDemo(cid)
-        );
-        allow update: if isCompAdmin(cid) || (
-             get(/databases/$(database)/documents/competitions/$(cid)).data.registration.enabled == true
-          && !compIsDemo(cid)
-        );
+        allow create: if isCompAdmin(cid) || (registrationEnabled(cid) && !compIsDemo(cid));
+        allow update: if isCompAdmin(cid) || (registrationEnabled(cid) && !compIsDemo(cid));
         allow delete: if isCompAdmin(cid);
       }
 

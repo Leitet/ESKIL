@@ -4,7 +4,9 @@
 
 ESKIL is a scout competition admin system. It is built **static** — no build
 step, no bundler. All JS is ES modules served from `public/`, Firebase SDK
-loaded from CDN. Runs on Firebase Spark (free) plan.
+loaded from CDN. Runs on Firebase Blaze plan (within the free quotas) — the
+paid plan exists ONLY for transactional email (Cloud Functions + the Trigger
+Email extension). Production domain: https://eskilscout.se.
 
 ## Architectural invariants
 
@@ -65,8 +67,16 @@ first sign-in. Other users get `role: "user"`.
 - Don't bake Firebase client config into JS. Prod uses
   `/__/firebase/init.json` (auto-provisioned); local dev uses
   `public/firebase-config.json` (gitignored).
-- Don't introduce Cloud Functions without a clear plan — this breaks the
-  free-plan constraint.
+- Cloud Functions (`functions/`) exist ONLY for transactional mail: they react
+  to registration documents and queue mail docs in the `mail` collection,
+  which the Trigger Email extension (Brevo SMTP) delivers. Never add a rules
+  match for `/mail/**` — clients must not be able to write mail docs. Keep all
+  other logic client-side + rules. Functions deploy manually:
+  `npx firebase-tools deploy --only functions` (not part of CI).
+- In firestore.rules, always read optional competition fields with
+  `.get('field', default)` — reading a missing property is an evaluation
+  ERROR that silently denies anonymous writes (this broke score reporting on
+  competitions without the `demo` field).
 
 ## Running locally
 

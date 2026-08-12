@@ -1,0 +1,14 @@
+{
+  "name": "eskil-functions",
+  "description": "ESKIL Cloud Functions — transactional mail via the Trigger Email extension",
+  "private": true,
+  "main": "index.js",
+  "engines": {
+    "node": "20"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "firebase-functions": "^6.1.0",
+    "jspdf": "^2.5.2"
+  }
+}

@@ -6,11 +6,10 @@
 // 1) Uppgifter — kår, kontakt, patruller, with a live-updating price bar.
 // 2) Betalning — configured payment methods; Swish renders a QR code with
 //    amount and reference locked.
-// The confirmation screen shows the manage link and emails it to the contact
-// (delivered via Firebase Auth's email-link mechanism — the only email
-// channel available on the free plan).
+// The confirmation screen shows the manage link; a Cloud Function
+// (functions/index.js) also emails it to the contact when the registration
+// document is created, via the Trigger Email extension.
 
-import { auth, sendSignInLinkToEmail } from './firebase.js';
 import {
   getCompetition, getRegistration, createRegistration, updateRegistration
 } from './store.js';
@@ -432,7 +431,7 @@ function renderPay() {
     </div>
     <p class="muted t-sm mt-3" style="text-align:center;">
       ${confirmable ? 'Anmälan registreras direkt — betalningen bekräftas av tävlingsledningen när den kommit in.<br>' : ''}
-      När tävlingsledningen registrerat betalningen får ni ett mail med länk till ert kvitto (PDF).
+      När tävlingsledningen registrerat betalningen får ni ett kvitto (PDF) via e-post.
     </p>
   `;
 }
@@ -585,7 +584,8 @@ async function persistNew(pay) {
   });
   reg = await getRegistration(cid, regId);
   history.replaceState({}, '', `/a/${cid}/${regId}`);
-  sendManageLink().catch(() => {});
+  // A Cloud Function reacts to the new registration document and emails the
+  // confirmation (with this manage link) to the contact — nothing to do here.
 }
 
 async function persistEdit(pay) {
@@ -612,36 +612,6 @@ async function persistEdit(pay) {
   reg = await getRegistration(cid, reg.id);
 }
 
-// Email the manage link via Firebase Auth's sign-in-link mechanism (works on
-// the free plan; the email contains a link that lands on the manage page).
-let emailStatus = 'none'; // 'none' | 'sent' | 'failed'
-async function sendManageLink() {
-  try {
-    await sendSignInLinkToEmail(auth, reg.contact.email, {
-      url: registrationUrl(cid, reg.id),
-      handleCodeInApp: true
-    });
-    emailStatus = 'sent';
-  } catch (e) {
-    console.warn('Mail send failed:', e);
-    emailStatus = 'failed';
-  }
-  // Refresh status line if the done view is showing.
-  const el = document.getElementById('email-status');
-  if (el) el.outerHTML = emailStatusHtml();
-}
-
-function emailStatusHtml() {
-  if (emailStatus === 'sent') {
-    return `<p id="email-status" class="t-sm" style="color:var(--spaer-green);font-weight:600;">${icon('check', { size: 14 })} Länken har skickats till ${escapeHtml(reg.contact.email)}.
-      <span class="muted" style="font-weight:400;display:block;">Mailet skickas av Firebase och har rubriken "Logga in" — länken i det öppnar er anmälan.</span></p>`;
-  }
-  if (emailStatus === 'failed') {
-    return `<p id="email-status" class="t-sm" style="color:var(--utm-pink);font-weight:600;">Mailet kunde inte skickas — spara länken ovan!</p>`;
-  }
-  return `<p id="email-status" class="t-sm muted">Skickar länken till ${escapeHtml(reg.contact.email)}…</p>`;
-}
-
 // --- Step 3: done -----------------------------------------------------------
 function renderDone() {
   const url = registrationUrl(cid, reg.id);
@@ -656,7 +626,8 @@ function renderDone() {
         <input readonly value="${escapeHtml(url)}" onclick="this.select()">
         <button type="button" class="btn btn-secondary btn-sm" id="copy-link">${icon('copy', { size: 14 })} Kopiera</button>
       </div>
-      ${emailStatusHtml()}
+      <p class="t-sm" style="color:var(--spaer-green);font-weight:600;">${icon('mail', { size: 14 })} Ett bekräftelsemail med länken skickas till ${escapeHtml(reg.contact.email)}.
+        <span class="muted" style="font-weight:400;display:block;">Kolla skräpposten om det dröjer.</span></p>
       <div class="btn-row" style="justify-content:center;margin-top:var(--sp-5);">
         <button class="btn btn-primary" id="goto-manage">Visa min anmälan ${icon('arrow-right', { size: 16 })}</button>
       </div>
@@ -746,7 +717,7 @@ function renderManage() {
           <p class="muted t-sm" style="margin-top:-8px;">
             Betalningar bekräftas <strong>manuellt</strong> av tävlingsledningen när de synts på kontot —
             det kan därför dröja någon dag innan statusen ändras här, även om ni redan har betalat.
-            När betalningen registrerats får ni ett mail, och kvittot (PDF) kan hämtas här på sidan.
+            När betalningen registrerats får ni ett kvitto (PDF) via e-post — det kan även hämtas här på sidan.
           </p>
         ` : ''}
         ${reg.payments.map(p => `
