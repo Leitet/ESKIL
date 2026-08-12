@@ -142,6 +142,13 @@ att köra gratis på Spark-planen.
   Export = zip (JSZip via CDN) med backup.json + CSV:er för resultat,
   patruller, kontroller, anmälningar + README. Admin får numera alltid
   skriva poäng i reglerna (justeringar/restore).
+- **Offline-hårdning (PWA)** — en service worker (`public/sw.js`) gör
+  rapportsidan, startkortet och stationssidan öppningsbara helt utan nät:
+  network-first med cachat skal som fallback för /k, /s, /m, stale-while-
+  revalidate för egna assets + Firebase/CDN-libbar (Firestore/auth/karttiles
+  rörs aldrig). Firestore kör persistent IndexedDB-cache (multi-tab) så
+  datat finns kvar offline. Tillsammans med offlinekön: tappar kontrollanten
+  sidan i skogen kan den öppnas igen och rapporteringen fortsätta.
 - **GDPR & cookies** — ESKIL använder inga cookies (ingen banner behövs):
   inloggning via IndexedDB, övrig lokal lagring är strikt nödvändig
   (nattläge, offlinekö, pseudonymt rapportörs-id). Integritetspolicy på

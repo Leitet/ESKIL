@@ -38,5 +38,11 @@
 </main>
 
 <script type="module" src="/js/report.js"></script>
+  <script>
+    // Offline-hårdning: service workern gör sidan öppningsbar helt utan nät.
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+  </script>
 </body>
 </html>

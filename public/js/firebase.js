@@ -10,6 +10,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
 import {
   getFirestore, initializeFirestore,
+  persistentLocalCache, persistentMultipleTabManager,
   doc, getDoc, setDoc, updateDoc, deleteDoc,
   collection, addDoc, getDocs, onSnapshot, query, where, orderBy,
   serverTimestamp, deleteField, writeBatch
@@ -51,13 +52,20 @@ auth.languageCode = 'sv';
 // IPv4, so every request waits out the IPv6 timeout before falling back.
 // That was the ~30s-per-save pain, not WebChannel.
 const EMU_HOST = '127.0.0.1';
+// Persistent local cache (IndexedDB): reporter/startkort pages can render
+// their data with no network at all — critical in the woods, where the
+// service worker serves the page shell and this serves the data. Multi-tab
+// manager so several open ESKIL tabs share the cache instead of erroring.
 const db = isLocalHost
   ? initializeFirestore(app, {
       host: `${EMU_HOST}:8080`,
       ssl: false,
       experimentalForceLongPolling: true,
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
     })
-  : getFirestore(app);
+  : initializeFirestore(app, {
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+    });
 
 // Cloud Functions (callables) — deployed in europe-west1.
 const functions = getFunctions(app, 'europe-west1');
