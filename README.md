@@ -18,6 +18,9 @@ att köra gratis på Spark-planen.
 - **PDF + QR-kod** — varje kontroll kan skrivas ut med info och en skanbar QR
   som öppnar rapportsidan.
 - **Magic-link-inloggning** med långa sessioner (Firebase Auth `browserLocalPersistence`).
+- **Publik startsida** (`/`) — promotar ESKIL och listar tävlingar öppna för
+  anmälan, pågående/kommande, demospåret och avslutade tävlingar med resultat,
+  plus inloggning.
 - **Anmälan** (`/a/<cid>`) — publik anmälningssida (kårvis eller patrullvis) med
   fyra prismodeller, betalningssteg (Swish-QR med låst belopp/referens, bankgiro,
   faktura), egna fritextfält (per anmälan eller per patrull, t.ex. "Allergier"),

@@ -633,6 +633,31 @@ body { background: var(--bg-muted); }
 .pub-modal-totals.no-scores { grid-template-columns: 1fr; }
 .pub-modal-row .pts.done-icon { color: var(--success); }
 
+/* Landing page (/) — competition cards + feature pitch */
+.landing-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-8);
+}
+.landing-card {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  transition: transform var(--dur-base) var(--ease), box-shadow var(--dur-base) var(--ease);
+}
+.landing-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+.landing-feature-icon {
+  width: 44px; height: 44px;
+  border-radius: var(--r-md);
+  background: var(--scout-blue-50);
+  color: var(--scout-blue);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+
 /* Shared avdelning dot (reused from app.css) */
 .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
 .dot.sp { background: var(--spaer-green); }

@@ -11,6 +11,7 @@ import { toast, escapeHtml, isCompAdminUser } from './utils.js';
 
 import { icon } from './icons.js';
 import { renderLogin } from './views/login.js';
+import { renderLanding } from './views/landing.js';
 import { renderHome } from './views/home.js';
 import { renderCompetition } from './views/competition.js';
 import { renderCompetitionSettings } from './views/competition-settings.js';
@@ -27,7 +28,9 @@ const app = document.getElementById('app');
 let currentUser = null;
 
 // Route table — every /app/* route is gated by auth.
-route('/',             () => navigate('/app', true));
+// Root = public landing page (no auth) — promotes ESKIL, lists competitions
+// open for registration / ongoing / finished, and links to login.
+route('/',             () => renderLanding(app, currentUser));
 route('/app',          () => guard(() => renderHome(app, currentUser)));
 route('/app/settings', () => guard(() => renderSettings(app, currentUser)));
 route('/app/admin/users', () => guard(() => renderAdminUsers(app, currentUser)));

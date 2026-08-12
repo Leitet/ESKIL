@@ -50,6 +50,13 @@ export async function deleteUser(uid) {
 
 // --- Competitions ----------------------------------------------------------
 
+// All competitions, unauthenticated — competition meta is public by design
+// (the public pages /t/<cid> are open) and the landing page lists them.
+export async function listAllCompetitions() {
+  const snap = await getDocs(collection(db, 'competitions'));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
 export async function listCompetitionsForUser(user) {
   const snap = await getDocs(collection(db, 'competitions'));
   const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
