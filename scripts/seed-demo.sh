@@ -19,18 +19,18 @@ DBPATH="projects/$PROJECT/databases/(default)/documents"
 echo "Seeding Demospår → $HOST ($PROJECT)"
 
 # --- Dynamic first-start time -------------------------------------------------
-# Anchor firstStart roughly 40 minutes before NOW so there's always a mix of
-# patrols that have already started and many still upcoming. Rounded down to
-# the nearest 5-minute mark for tidy times. Re-running the seed late in the
-# day keeps the demo fresh — you don't end up with 30 patruller that already
-# started at 10:00 this morning.
+# Anchor firstStart 150 minutes before NOW: patrols 1–15 have officially
+# started, 16–30 are upcoming, and the scores/passages below paint a
+# mid-race snapshot around the seed moment. The Läget view pins its demo
+# clock to the newest timestamp in the data (+5 min = the seed moment), so
+# the snapshot never ages — re-seeding only refreshes the clock times shown.
 FIRST_START=$(python3 -c '
 from datetime import datetime, timedelta
-t = datetime.now() - timedelta(minutes=40)
+t = datetime.now() - timedelta(minutes=150)
 t = t.replace(minute=(t.minute // 5) * 5, second=0, microsecond=0)
 print(t.strftime("%H:%M"))
 ')
-echo "  firstStart: $FIRST_START (anchored ~40 min before now, 10-min interval × 30 patruller)"
+echo "  firstStart: $FIRST_START (anchored 150 min before now, 10-min interval × 30 patruller)"
 
 write() {
   local doc_path="$1"; local fields_json="$2"
@@ -142,6 +142,12 @@ purge_subcol() {
 }
 purge_subcol patrols
 for n in 01 02 03 04 05 06 07 08 09 10; do purge_subcol "controls/demo-c$n/scores"; done
+purge_subcol "stations/demo-station/passages"
+
+# --- Start/Mål-station (stable id so the Läget card + /m link survive re-seeds)
+write "competitions/$CID/stations/demo-station" '{
+  "createdAt": {"timestampValue":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'"}
+}'
 
 # --- Patrols (30 patruller across all six avdelningar + six kårer) ----------
 patrol() {
@@ -199,68 +205,100 @@ patrol demo-p28 27 28 "Funktionärerna"  "Ledare"     "Nybro Scoutkår"       5
 patrol demo-p29 28 29 "Reserv"          "Ledare"     "Kalmar Scoutkår"      3
 patrol demo-p30 29 30 "Veteranerna"     "Ledare"     "Lindsdals Scoutkår"   4
 
-# --- Pre-scored results — many, varied, so the scoreboard feels alive -------
+# --- Mid-race snapshot: scores + station passages ----------------------------
+# One coherent race story anchored at the seed moment (minutes-ago offsets):
+# patrols report controls in course order (prefix 1..k) with plausible leg
+# times, so the Läget dashboard tells a story instead of noise:
+#   · p01/p02 finished (I mål)
+#   · p05–p08 stuck at position 5 → kö 4 mot kontroll 6 "Hinderbana" = RÖD
+#   · p11/p13 heading to kontroll 3 → kö 2 = GUL (and c1: p09+p14 → GUL)
+#   · leg times into kontroll 2 rising (12→22 min) → trendpil ↑
+#   · p09 checked out but never reported → varning "Tyst i 70 min"
+#   · p15–p30 not started yet
+# The newest timestamp is -5 min; Läget's demo clock = newest + 5 min = the
+# seed moment, so these relative numbers hold forever.
 score() {
-  local ctrl_id="$1" patrol_id="$2" poang="$3" extra="$4"
+  local ctrl_id="$1" patrol_id="$2" poang="$3" extra="$4" ts="$5"
   write "competitions/$CID/controls/$ctrl_id/scores/$patrol_id" "{
     \"patrolId\":   {\"stringValue\":\"$patrol_id\"},
     \"poang\":      {\"integerValue\":\"$poang\"},
     \"extraPoang\": {\"integerValue\":\"$extra\"},
     \"note\":       {\"stringValue\":\"\"},
-    \"reportedAt\": {\"timestampValue\":\"2026-05-01T10:30:00Z\"},
+    \"reportedAt\": {\"timestampValue\":\"$ts\"},
     \"reporter\":   {\"stringValue\":\"demo\"}
   }"
 }
 
-# Generate a varied score matrix via Python: top patrols rapportera fler
-# kontroller, lägre ranking rapporterar färre. Determinstic via seed so the
-# demo looks the same every re-seed.
-#
-# Patrol 11 and 12 are force-tied on total + extra + maxedCount so the demo
-# shows "delad placering" in action (tiebreaker 3 exhausted → shared rank).
-SCORE_MATRIX=$(python3 -c "
+# Lines: "score <ctrl> <patrol> <poang> <extra> <iso>" and
+#        "passage <patrol> <startIso> [finishIso]"
+# Points are deterministic (seed 42). p05/p06 are force-tied on total +
+# extra + maxedCount so the demo shows "delad placering" (they queue side
+# by side at Hinderbanan too).
+RACE_MATRIX=$(python3 -c "
 import random
+from datetime import datetime, timezone, timedelta
 random.seed(42)
-# Max poäng per control — align with the ctrl() calls above
+now = datetime.now(timezone.utc)
+iso = lambda m: (now - timedelta(minutes=m)).strftime('%Y-%m-%dT%H:%M:%SZ')
+
 ctrl_max   = {1:10, 2:10, 3:15, 4:10, 5:15, 6:10, 7:10, 8:15, 9:10, 10:15}
 ctrl_extra = {1:2,  2:0,  3:3,  4:2,  5:0,  6:0,  7:2,  8:5,  9:0,  10:5}
 
-# Identical score pattern for the force-tied pair. Lands around rank ~10.
-# Total: 7+10+9+8+9+8 = 51, extra 1, maxed = 1 (c2 hits max).
-TIE_PAIR = {11, 12}
-TIE_SCORES = [
-    (1,  7, 1),
-    (2, 10, 0),   # maxed (max 10)
-    (3,  9, 0),
-    (5,  8, 0),
-    (7,  9, 0),
-    (9,  8, 0),
-]
+# patrol -> (checkout_min_ago, finish_min_ago | None, {ctrl: report_min_ago})
+story = {
+  1:  (150, 15, {1:138, 2:125, 3:112, 4:99, 5:87, 6:74, 7:61, 8:48, 9:34, 10:21}),
+  2:  (140, 5,  {1:128, 2:116, 3:104, 4:91, 5:79, 6:66, 7:53, 8:40, 9:17, 10:10}),
+  3:  (130, None, {1:118, 2:106, 3:93, 4:81, 5:68, 6:55, 7:35, 8:20}),
+  4:  (120, None, {1:108, 2:96, 3:83, 4:70, 5:55, 6:30}),
+  5:  (110, None, {1:98, 2:85, 3:72, 4:58, 5:35}),
+  6:  (100, None, {1:88, 2:75, 3:62, 4:48, 5:28}),
+  7:  (90,  None, {1:78, 2:59, 3:45, 4:34, 5:24}),
+  8:  (80,  None, {1:70, 2:48, 3:38, 4:29, 5:21}),
+  9:  (70,  None, {}),                      # checked out, then silence → varning
+  10: (60,  None, {1:48, 2:28, 3:14}),
+  11: (50,  None, {1:40, 2:21}),
+  12: (40,  None, {1:28}),
+  13: (30,  None, {1:17, 2:5}),
+  14: (20,  None, {}),                      # fresh checkout, walking to c1
+}
 
-# 30 patruller. First 10 are the high-performers, middle 10 mid, last 10 just started.
-for i in range(1, 31):
-    if i in TIE_PAIR:
-        for c, poang, extra in TIE_SCORES:
-            print(f'demo-c{c:02d} demo-p{i:02d} {poang} {extra}')
-        continue
-    if i <= 10:     n = random.randint(7, 9)
-    elif i <= 20:   n = random.randint(4, 6)
-    else:           n = random.randint(1, 3)
-    controls = random.sample(range(1, 11), n)
-    for c in controls:
-        mx = ctrl_max[c]
-        # top-10 tend to score higher; bottom tend lower
-        floor = int(mx * (0.6 if i <= 10 else 0.4 if i <= 20 else 0.2))
-        poang = random.randint(floor, mx)
-        extra = random.randint(0, ctrl_extra[c]) if ctrl_extra[c] and random.random() < 0.4 else 0
-        print(f'demo-c{c:02d} demo-p{i:02d} {poang} {extra}')
+# Identical scores for the tied pair (delad placering): total 48, extra 1,
+# maxed 1 (c2 hits its max 10).
+TIE_PAIR = {5, 6}
+TIE_POINTS = {1: (8, 1), 2: (10, 0), 3: (12, 0), 4: (7, 0), 5: (11, 0)}
+
+for i, (out_ago, fin_ago, reports) in story.items():
+    pid = f'demo-p{i:02d}'
+    passage = f'passage {pid} {iso(out_ago)}'
+    if fin_ago is not None:
+        passage += f' {iso(fin_ago)}'
+    print(passage)
+    for c, ago in sorted(reports.items()):
+        if i in TIE_PAIR:
+            poang, extra = TIE_POINTS[c]
+        else:
+            mx = ctrl_max[c]
+            floor = int(mx * (0.6 if i <= 4 else 0.45))
+            poang = random.randint(floor, mx)
+            extra = random.randint(0, ctrl_extra[c]) if ctrl_extra[c] and random.random() < 0.4 else 0
+        print(f'score demo-c{c:02d} {pid} {poang} {extra} {iso(ago)}')
 ")
 
 SCORE_COUNT=0
-while IFS=' ' read -r c p poang extra; do
-  [ -z "$c" ] && continue
-  score "$c" "$p" "$poang" "$extra"
-  SCORE_COUNT=$((SCORE_COUNT + 1))
-done <<< "$SCORE_MATRIX"
+PASS_COUNT=0
+while read -r kind a b c d e; do
+  case "$kind" in
+    score)
+      score "$a" "$b" "$c" "$d" "$e"
+      SCORE_COUNT=$((SCORE_COUNT + 1))
+      ;;
+    passage)
+      FIELDS="\"patrolId\":{\"stringValue\":\"$a\"},\"startAt\":{\"timestampValue\":\"$b\"}"
+      [ -n "$c" ] && FIELDS="$FIELDS,\"finishAt\":{\"timestampValue\":\"$c\"}"
+      write "competitions/$CID/stations/demo-station/passages/$a" "{$FIELDS}"
+      PASS_COUNT=$((PASS_COUNT + 1))
+      ;;
+  esac
+done <<< "$RACE_MATRIX"
 
-echo "✅ Demospår seedat ($CID) · 10 kontroller · 30 patruller · $SCORE_COUNT poängrapporter"
+echo "✅ Demospår seedat ($CID) · 10 kontroller · 30 patruller · $SCORE_COUNT poängrapporter · $PASS_COUNT passager"

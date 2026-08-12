@@ -387,11 +387,14 @@ export function patrolStartDateTime(comp, patrol, today = new Date(), totalPatro
   const iv = effectiveIntervalSec(comp, totalPatrols);
 
   // Demo competitions ignore the stored HH:MM and roll the whole schedule
-  // so that the current moment always sits ~4 intervals into the start
-  // window. A few patrols have "already started", the rest are upcoming —
-  // regardless of what time of day someone opens the demo.
+  // so that the current moment always sits ~15 intervals into the start
+  // window — half the field has started, half is upcoming, regardless of
+  // what time of day someone opens the demo. The offset matches the seeded
+  // station passages in scripts/seed-demo.sh (check-outs 150–20 min ago at
+  // 10-min intervals), so planned and actual times line up on the station
+  // page and the Läget dashboard.
   if (comp?.demo) {
-    const base = new Date(today.getTime() - 4 * iv * 1000);
+    const base = new Date(today.getTime() - 15 * iv * 1000);
     base.setSeconds(0, 0);
     base.setMinutes(Math.floor(base.getMinutes() / 5) * 5);
     base.setSeconds(base.getSeconds() + idx * iv);
@@ -408,8 +411,10 @@ export function patrolStartDateTime(comp, patrol, today = new Date(), totalPatro
 
 // Compute the derived start time for a patrol given its startOrder (0-based).
 // Returns "HH:MM" or null if start times are disabled or inputs invalid.
-export function patrolStartTime(comp, patrol, totalPatrols = null) {
-  const d = patrolStartDateTime(comp, patrol, new Date(), totalPatrols);
+// `today` lets demo views pass their pinned virtual clock so planned times
+// stay consistent with the frozen demo snapshot.
+export function patrolStartTime(comp, patrol, totalPatrols = null, today = new Date()) {
+  const d = patrolStartDateTime(comp, patrol, today, totalPatrols);
   if (!d) return null;
   return d.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
 }

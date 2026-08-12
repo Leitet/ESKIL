@@ -29,6 +29,22 @@ function fmtClock(ts) {
   return d.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
 }
 
+// Demospår: pin the clock to the newest passage timestamp (+5 min) so the
+// planned start times roll in step with the frozen seeded snapshot instead
+// of the wall clock (see the demo branch of patrolStartDateTime).
+function virtualNow() {
+  if (!comp?.demo) return new Date();
+  let max = null;
+  for (const p of Object.values(passages)) {
+    for (const ts of [p.startAt, p.finishAt]) {
+      if (!ts) continue;
+      const d = typeof ts.toDate === 'function' ? ts.toDate() : new Date(ts);
+      if (!max || d > max) max = d;
+    }
+  }
+  return max ? new Date(max.getTime() + 5 * 60000) : new Date();
+}
+
 async function main() {
   const parsed = parsePath();
   if (!parsed) return renderError('Ogiltig länk.');
@@ -76,6 +92,8 @@ function render() {
       <h1>${mode === 'start' ? 'Checka ut vid start' : 'Checka in vid mål'}</h1>
     </div>
 
+    ${comp.demo ? `<div class="st-demo-note">Demospår — utforska gärna, men in-/utcheckning är avstängd.</div>` : ''}
+
     <div class="st-kpis">
       <div class="st-kpi"><div class="v">${counts.waiting}</div><div class="l">Ej startade</div></div>
       <div class="st-kpi ${counts.out ? 'warn' : ''}"><div class="v">${counts.out}</div><div class="l">Ute i skogen</div></div>
@@ -108,7 +126,7 @@ function patrolBtn(p) {
   const pass = passages[p.id] || {};
   const field = mode === 'start' ? 'startAt' : 'finishAt';
   const checked = !!pass[field];
-  const planned = mode === 'start' ? patrolStartTime(comp, p, patrols.length) : null;
+  const planned = mode === 'start' ? patrolStartTime(comp, p, patrols.length, virtualNow()) : null;
   const sub = checked
     ? `<span class="st-checked-at">${mode === 'start' ? 'Startade' : 'I mål'} ${fmtClock(pass[field])}</span>`
     : (mode === 'start'
@@ -124,6 +142,7 @@ function patrolBtn(p) {
 }
 
 async function onTap(patrolId) {
+  if (comp.demo) { toast('Demospår — in-/utcheckning är avstängd.'); return; }
   const p = patrols.find(x => x.id === patrolId);
   if (!p) return;
   const field = mode === 'start' ? 'startAt' : 'finishAt';

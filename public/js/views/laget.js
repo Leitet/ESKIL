@@ -189,8 +189,20 @@ export async function renderLaget(app, user, cid) {
   const toDate = (ts) => ts && typeof ts.toDate === 'function' ? ts.toDate() : (ts ? new Date(ts) : null);
   const minSince = (d, now) => d ? Math.floor((now - d) / 60000) : null;
 
+  // Demospår: pin the clock to the newest timestamp in the data (+5 min).
+  // The seeded snapshot is one frozen mid-race moment — with a real clock it
+  // would age into "everything red, everyone silent" within the hour.
+  function virtualNow() {
+    if (!comp.demo) return new Date();
+    let max = null;
+    const consider = (ts) => { const d = toDate(ts); if (d && (!max || d > max)) max = d; };
+    Object.values(passages).forEach(p => { consider(p.startAt); consider(p.finishAt); });
+    Object.values(scoresByCtrl).forEach(list => list.forEach(s => consider(s.reportedAt)));
+    return max ? new Date(max.getTime() + 5 * 60000) : new Date();
+  }
+
   function compute() {
-    const now = new Date();
+    const now = virtualNow();
     const ordered = [...controls].sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0));
 
     // Per patrol: reports by control number, position (highest reported), timestamps.
@@ -321,7 +333,7 @@ export async function renderLaget(app, user, cid) {
         <tbody>
           ${rows.map(pp => {
             const p = pp.patrol;
-            const planned = patrolStartTime(comp, p, patrols.length);
+            const planned = patrolStartTime(comp, p, patrols.length, now);
             const status = pp.finishAt ? `<span class="badge badge-green">I mål ${formatTime(pp.finishAt)}</span>`
               : pp.warn ? `<span class="badge badge-pink">Tyst i ${pp.silentMin} min</span>`
               : pp.active ? '<span class="badge badge-blue">Ute</span>'

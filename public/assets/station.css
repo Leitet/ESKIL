@@ -13,6 +13,17 @@
 }
 .st-head h1 { margin: 4px 0 0; font-size: 24px; }
 
+.st-demo-note {
+  background: var(--white);
+  border: 1.5px solid var(--avent-orange);
+  border-radius: var(--r-md);
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--avent-orange);
+}
+
 .st-kpis {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
