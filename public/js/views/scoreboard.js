@@ -25,7 +25,8 @@ export async function renderScoreboard(app, user, cid) {
       </div>
       <div class="btn-row">
         ${compActionsHtml(cid, comp, user)}
-        ${isAdmin ? `<button class="btn btn-secondary btn-sm" id="dl-pdf">${icon('download', { size: 14 })} Resultat (PDF)</button>
+        ${isAdmin ? `<a class="btn btn-secondary btn-sm" href="/app/c/${cid}/ceremony" target="_blank" rel="noopener">${icon('trophy', { size: 14 })} Prisutdelning</a>
+        <button class="btn btn-secondary btn-sm" id="dl-pdf">${icon('download', { size: 14 })} Resultat (PDF)</button>
         <button class="btn btn-ghost btn-sm" id="dl-csv">${icon('download', { size: 14 })} CSV</button>` : ''}
         ${canTogglePublic ? `<button class="btn btn-secondary btn-sm" id="toggle-public-scores"></button>` : ''}
         <button class="btn btn-ghost btn-sm" id="refresh">Uppdatera</button>

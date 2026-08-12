@@ -121,6 +121,11 @@ att köra gratis på Spark-planen.
   kontroll-id:na), inställningar, prismodell (anmälan avstängd med rensad
   period) och tävlingsledning. Patruller, poäng, anmälningar och användare
   kopieras inte; skaparen blir ensam admin.
+- **Prisutdelningsläge** (`/app/c/<cid>/ceremony`, knapp på Poängtabellen) —
+  storbildsläge för ceremonin: välj avdelning eller Overall, avslöja pallen
+  med dramatik (trea… tvåa… ETTAN i guld) styrt med mellanslag/klick/pil,
+  delade placeringar visas tillsammans, avklarade kategorier bockas av.
+  Fungerar ihop med dolda publika poäng: mörkt på webben, avslöjas på scen.
 - **Poänghistorik & justeringslogg** — när en poäng skrivs över (kontrollant
   omrapporterar eller sekretariatet justerar) bevaras det gamla värdet i
   score-docens `history` (max 10, med rapportör och tid; följer med genom

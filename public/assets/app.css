@@ -542,3 +542,62 @@ table.t tr.sf-row.park-row td {
   .track-wrap { display: flex; flex-direction: column; }
   .track-fs { display: none; }
 }
+
+/* --- Prisutdelningsläge (ceremony) ------------------------------------------ */
+.ceremony {
+  position: fixed; inset: 0; z-index: 500;
+  background: var(--scout-blue);
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display);
+  cursor: default; user-select: none;
+  overflow: hidden;
+}
+.cer-loading { font-size: 22px; color: #a7bccf; }
+.cer-menu, .cer-stage { text-align: center; max-width: 900px; padding: 32px; }
+.cer-eyebrow { color: var(--rover-yellow); font-weight: 800; letter-spacing: .18em; font-size: clamp(12px, 1.4vw, 16px); text-transform: uppercase; }
+.cer-title { font-size: clamp(34px, 5vw, 64px); font-weight: 200; margin: 12px 0 4px; }
+.cer-cat-title { font-size: clamp(38px, 6vw, 72px); font-weight: 300; margin: 18px 0; display: flex; align-items: center; justify-content: center; gap: 16px; }
+.cer-sub { color: #d2dde8; font-size: clamp(16px, 2vw, 24px); }
+.cer-hint { color: #7d99b5; font-size: 14px; margin-top: 40px; }
+.cer-cats { display: flex; flex-direction: column; gap: 10px; margin-top: 28px; align-items: center; }
+.cer-cat {
+  display: inline-flex; align-items: center; gap: 12px;
+  font: inherit; font-size: clamp(18px, 2.2vw, 26px); font-weight: 600;
+  color: #fff; background: rgba(255,255,255,.07);
+  border: 1.5px solid rgba(255,255,255,.25); border-radius: 14px;
+  padding: 14px 30px; cursor: pointer; min-width: min(480px, 80vw);
+  justify-content: center;
+}
+.cer-cat:hover { background: rgba(255,255,255,.15); }
+.cer-cat.is-done { opacity: .55; }
+.cer-check { color: var(--spaer-green); font-weight: 800; }
+.cer-place-label { font-size: clamp(24px, 3.5vw, 44px); color: var(--rover-yellow); font-weight: 300; animation: cer-in .5s ease-out; }
+.cer-reveal { display: flex; flex-direction: column; gap: 18px; align-items: center; margin-top: 30px; animation: cer-pop .6s cubic-bezier(.2, 1.4, .4, 1); }
+.cer-winner { display: flex; align-items: center; gap: 24px; text-align: left; }
+.cer-medal {
+  width: clamp(64px, 8vw, 110px); height: clamp(64px, 8vw, 110px); border-radius: 50%;
+  background: #eef2f6; color: var(--scout-blue);
+  display: flex; align-items: center; justify-content: center;
+  font-size: clamp(34px, 4.5vw, 60px); font-weight: 800; flex-shrink: 0;
+  box-shadow: 0 6px 30px rgba(0,0,0,.35);
+}
+.cer-reveal.is-gold .cer-medal { background: var(--rover-yellow); }
+.cer-name { font-size: clamp(36px, 6vw, 84px); font-weight: 700; line-height: 1.05; }
+.cer-reveal.is-gold .cer-name { color: var(--rover-yellow); }
+.cer-meta { color: #a7bccf; font-size: clamp(15px, 1.8vw, 24px); }
+.cer-podium-title { font-size: clamp(34px, 5vw, 60px); font-weight: 300; color: var(--rover-yellow); margin: 10px 0 26px; }
+.cer-podium { display: flex; flex-direction: column; gap: 10px; align-items: stretch; max-width: 700px; margin: 0 auto; }
+.cer-podium-row {
+  display: grid; grid-template-columns: 54px 1fr auto auto; gap: 16px; align-items: center;
+  background: rgba(255,255,255,.07); border-radius: 12px; padding: 12px 20px; text-align: left;
+}
+.cer-podium-row.rank-1 { background: rgba(226,224,0,.16); border: 1px solid rgba(226,224,0,.5); }
+.cer-medal.small { width: 44px; height: 44px; font-size: 22px; }
+.cer-podium-row.rank-1 .cer-medal { background: var(--rover-yellow); }
+.cer-name-sm { font-size: clamp(18px, 2.4vw, 30px); font-weight: 700; }
+.cer-points { font-size: clamp(16px, 2vw, 24px); font-weight: 700; color: var(--rover-yellow); }
+.cer-pulse { animation: cer-pulse 1.6s ease-in-out infinite; }
+@keyframes cer-in { from { opacity: 0; transform: translateY(14px); } }
+@keyframes cer-pop { from { opacity: 0; transform: scale(.7); } }
+@keyframes cer-pulse { 50% { opacity: .5; } }
