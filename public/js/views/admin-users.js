@@ -84,6 +84,7 @@ export async function renderAdminUsers(app, user) {
         const uid = sel.dataset.roleChange;
         const role = sel.value;
         const target = users.find(u => u.id === uid);
+        if (!target) return;
         const prev = target.role;
         if (uid === user.uid && role !== 'super-admin') {
           const ok = await confirmDialog('Ta bort din egen super-admin-roll? Du förlorar åtkomst till den här sidan.');

@@ -8,7 +8,7 @@ import { AVDELNINGAR, escapeHtml, allInstructionGroups, internalManagement } fro
 import { ensureLeaflet } from './leaflet.js';
 import { icon } from './icons.js';
 import { haptic, bindHaptic, bindTap, lockScroll, unlockScroll } from './haptic.js';
-import { enqueue, removeFromQueue, listQueue, isPending, flushQueue, withTimeout } from './offline-queue.js';
+import { enqueue, removeFromQueue, listQueue, isPending, flushQueue, withTimeout, isPermanentError } from './offline-queue.js';
 
 const root = document.getElementById('root');
 const modeBtn = document.getElementById('mode-toggle');
@@ -61,7 +61,14 @@ function reporterId() {
 }
 
 // Wire up the flip card: (i) toggles, ✕ closes, map lazy-loads on first flip.
-let flipMapLoaded = false;
+// renderHead() rebuilds this DOM whenever the control opens/closes, so all
+// state that outlives one render (map instance, GPS watch, resize listener)
+// lives here at module level and is cleaned up before re-wiring — the old
+// one-shot `flipMapLoaded` flag left the map box permanently empty after a
+// rebuild, kept a leaked GPS watch running, and stacked resize listeners.
+let flipMap = null;          // active Leaflet instance (or null)
+let flipStopLocate = null;   // stops the geolocation watch of that instance
+let flipResizeHandler = null;
 function wireFlipCard(control) {
   const card = document.getElementById('flip-card');
   const inner = card?.querySelector('.flip-card-inner');
@@ -78,8 +85,10 @@ function wireFlipCard(control) {
   };
 
   const setFlipped = (on) => {
-    if (on && !flipMapLoaded && control.lat && control.lng) {
-      flipMapLoaded = true;
+    // Load the map when flipping to the back and the (fresh) host is empty —
+    // works both on first flip and after renderHead() replaced the DOM.
+    const mapHost = document.getElementById('flip-map');
+    if (on && control.lat && control.lng && mapHost && !mapHost.hasChildNodes()) {
       loadFlipMap(control.lat, control.lng);
     }
     card.classList.toggle('flipped', on);
@@ -92,15 +101,25 @@ function wireFlipCard(control) {
   closeBtn?.addEventListener('click', () => setFlipped(false));
   // Initial size once fonts etc. have painted
   requestAnimationFrame(applyHeight);
+  if (flipResizeHandler) window.removeEventListener('resize', flipResizeHandler);
+  flipResizeHandler = applyHeight;
   window.addEventListener('resize', applyHeight);
 }
 
 async function loadFlipMap(lat, lng) {
   const host = document.getElementById('flip-map');
   if (!host) return;
+  // Dispose the previous instance (renderHead replaced its DOM): stops any
+  // running GPS watch and detaches Leaflet's own window listeners.
+  flipStopLocate?.();
+  flipStopLocate = null;
+  if (flipMap) { try { flipMap.remove(); } catch {} flipMap = null; }
   try {
     const L = await ensureLeaflet();
+    // The card may have been rebuilt again while Leaflet loaded.
+    if (!host.isConnected) return;
     const map = L.map(host, { zoomControl: true, scrollWheelZoom: false, dragging: true }).setView([lat, lng], 16);
+    flipMap = map;
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19, attribution: '© OSM'
     }).addTo(map);
@@ -137,11 +156,13 @@ async function loadFlipMap(lat, lng) {
     function stopLocate(btn) {
       if (watchId != null) navigator.geolocation.clearWatch(watchId);
       watchId = null;
-      if (userMarker) { map.removeLayer(userMarker); userMarker = null; }
-      if (userLine) { map.removeLayer(userLine); userLine = null; }
+      if (userMarker) { try { map.removeLayer(userMarker); } catch {} userMarker = null; }
+      if (userLine) { try { map.removeLayer(userLine); } catch {} userLine = null; }
       distChip.hidden = true;
       if (btn) setBtnState(btn, false);
     }
+    // Let the next loadFlipMap (after a head rebuild) stop this watch.
+    flipStopLocate = () => stopLocate(null);
 
     function toggleLocate(btn) {
       if (!navigator.geolocation) { rtoast('Platstjänster stöds inte', 'err'); return; }
@@ -491,11 +512,18 @@ async function main() {
     `;
     document.body.appendChild(overlay);
     lockScroll();
-    const close = () => { overlay.remove(); unlockScroll(); };
-    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
-    const closeBtn = overlay.querySelector('#close');
-    closeBtn.onclick = close;
-    bindHaptic(closeBtn);
+    let closed = false;
+    const close = () => {
+      if (closed) return;
+      closed = true;
+      overlay.remove();
+      unlockScroll();
+    };
+    // No backdrop-tap close — the kontrollant may have picked points and
+    // typed a note; a stray tap above the sheet must not throw that away.
+    // bindTap fires on touchstart so the X responds instantly on iOS, which
+    // otherwise delays/swallows clicks under its double-tap-zoom heuristic.
+    bindTap(overlay.querySelector('#close'), close);
 
     const valEl = overlay.querySelector('#val');
     const inp = overlay.querySelector('#poang-input');
@@ -509,7 +537,17 @@ async function main() {
     // double-tap-to-zoom gesture.
     bindTap(overlay.querySelector('#minus'), () => setPoang(poang - 1));
     bindTap(overlay.querySelector('#plus'),  () => setPoang(poang + 1));
-    inp.addEventListener('input', e => setPoang(e.target.value));
+    // Don't clamp while the user is still typing — with min 5, typing "12"
+    // used to become "5" after the first keystroke and then "52" → 20.
+    // Track the raw value on input; clamp once on blur/change and at save.
+    inp.addEventListener('input', e => {
+      const n = Number(e.target.value);
+      if (Number.isFinite(n) && e.target.value.trim() !== '') {
+        poang = n;
+        valEl.firstChild.textContent = n + ' ';
+      }
+    });
+    inp.addEventListener('change', e => setPoang(e.target.value));
 
     if (maxE > 0) {
       const evalEl = overlay.querySelector('#eval');
@@ -526,6 +564,10 @@ async function main() {
     saveBtn.addEventListener('click', async () => {
       if (comp?.demo) { rtoast('Demospår — rapportering är avstängd.', 'err'); return; }
       if (!control.open) { rtoast('Kontrollen är stängd.', 'err'); return; }
+      // Final clamp — the input only clamps on blur, and a fast tap on Spara
+      // could race the change event.
+      poang = Math.max(minP, Math.min(maxP, Number(poang) || 0));
+      extra = Math.max(0, Math.min(maxE, Number(extra) || 0));
       const noteVal = overlay.querySelector('#note').value.trim();
       const reporter = reporterId();
       // Queue locally first so the report survives even if the tab is closed
@@ -548,9 +590,20 @@ async function main() {
         sync.render();
         close();
       } catch (e) {
-        // Either a timeout (offline) or a real error. Either way the item is
-        // already in the local queue and will be retried by trySync() when
-        // the user comes back online. We let them keep working.
+        if (isPermanentError(e)) {
+          // Firestore actively rejected the write (e.g. the control was just
+          // closed) — retrying can never succeed, so don't pretend it was
+          // saved and don't leave it poisoning the queue.
+          console.error('[ESKIL] score rejected:', e);
+          removeFromQueue(cid, ctrlId, patrol.id);
+          saveBtn.disabled = false;
+          saveBtn.textContent = existing ? 'Uppdatera poäng' : 'Spara poäng';
+          rtoast('Kunde inte spara — kontrollen kan ha stängts. Kontakta tävlingsledningen.', 'err');
+          sync.render();
+          return;
+        }
+        // Timeout / connectivity: the item is already in the local queue and
+        // will be retried by trySync() when the network comes back.
         console.warn('[ESKIL] score queued for later sync:', e.message);
         haptic(20);
         rtoast('Sparat offline — synkas när nätet kommer tillbaka');
@@ -603,14 +656,34 @@ async function main() {
     }
   };
 
+  let syncInFlight = false;
   async function trySync({ silent = false } = {}) {
     if (!navigator.onLine) { sync.render(); return; }
     const before = listQueue(cid, ctrlId).length;
     if (!before) { sync.render(); return; }
+    // online/visibilitychange can fire in quick succession — never run two
+    // flushes concurrently (a slow in-flight write could otherwise overwrite
+    // a newer score saved meanwhile).
+    if (syncInFlight) return;
+    syncInFlight = true;
     sync.render();
-    const synced = await flushQueue(cid, ctrlId,
-      (item) => upsertScore(cid, ctrlId, item.patrolId, item.poang, item.extraPoang, item.note, item.reporter)
-    );
+    let synced = [], failed = [];
+    try {
+      ({ synced, failed } = await flushQueue(cid, ctrlId,
+        (item) => upsertScore(cid, ctrlId, item.patrolId, item.poang, item.extraPoang, item.note, item.reporter)
+      ));
+    } finally {
+      syncInFlight = false;
+    }
+    if (failed.length) {
+      // Permanently rejected (e.g. the control was closed while the reports
+      // sat in the queue). This is data the user believes is saved — say so
+      // loudly, with patrol names, so they can alert tävlingsledningen.
+      const names = failed
+        .map(f => patrols.find(p => p.id === f.item.patrolId)?.name || 'okänd patrull');
+      console.error('[ESKIL] queued scores rejected:', failed);
+      rtoast(`${failed.length} rapport${failed.length === 1 ? '' : 'er'} avvisades (kontrollen kan ha stängts): ${names.join(', ')}. Kontakta tävlingsledningen!`, 'err');
+    }
     if (synced.length) {
       renderPatrols();
       if (!silent) {
@@ -655,9 +728,10 @@ async function main() {
   renderAvdelningar();
   renderPatrols();
 
-  // Flush silently on load — if the previous session left queued writes we
-  // want them to vanish without a toast unless they actually succeed here.
-  trySync({ silent: false });
+  // Flush on load — if the previous session left queued writes, sync them and
+  // tell the user (a toast here is informative, not noise: it explains why
+  // patrols suddenly flip to "reported").
+  trySync();
 }
 
 main().catch(e => {

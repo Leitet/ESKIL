@@ -373,6 +373,9 @@ function wireForm() {
     if (editing) {
       // Manage-mode save: compute the difference against what has already
       // been registered for payment. More → a new payment for the diff.
+      // Re-fetch first — the admin may have updated payments (marked paid)
+      // while this page sat open.
+      reg = await getRegistration(cid, reg.id).catch(() => null) || reg;
       const already = paymentsSum(reg);
       const diff = p.total - already;
       if (diff > 0) {
@@ -587,7 +590,11 @@ async function persistNew(pay) {
 
 async function persistEdit(pay) {
   const p = price();
-  const payments = [...(reg.payments || [])];
+  // Base the payments array on a FRESH read — this page can sit open for
+  // days, and writing a stale snapshot back would silently revert paid-flags
+  // the admin set in the meantime.
+  const fresh = await getRegistration(cid, reg.id).catch(() => null) || reg;
+  const payments = [...(fresh.payments || [])];
   if (pay) payments.push(paymentEntry(pay));
   await updateRegistration(cid, reg.id, {
     kar: draft.kar.trim(),
@@ -839,8 +846,11 @@ function wireManage() {
       at: isoNow()
     };
     try {
+      // Append to a fresh copy so concurrent submissions/admin edits aren't
+      // overwritten by this page's stale snapshot.
+      const fresh = await getRegistration(cid, reg.id).catch(() => null) || reg;
       await updateRegistration(cid, reg.id, {
-        forhinder: [...(reg.forhinder || []), entry],
+        forhinder: [...(fresh.forhinder || []), entry],
         updatedAt: isoNow()
       });
       reg = await getRegistration(cid, reg.id);

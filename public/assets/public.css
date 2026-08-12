@@ -496,7 +496,7 @@ body { background: var(--bg-muted); }
   background: rgba(15, 20, 30, 0.55);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
-  z-index: 100;
+  z-index: 1100; /* above Leaflet panes/controls (max 1000) */
   display: flex;
   align-items: center;
   justify-content: center;

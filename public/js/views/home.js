@@ -246,7 +246,7 @@ function openCreateModal(user) {
   document.body.appendChild(overlay);
 
   const close = () => overlay.remove();
-  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  // No backdrop-tap close — create form, a stray tap would lose typed data.
   overlay.querySelector('#x').onclick = close;
   overlay.querySelector('#cancel').onclick = close;
 

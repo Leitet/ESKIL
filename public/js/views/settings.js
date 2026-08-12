@@ -12,10 +12,19 @@ export async function renderSettings(app, user) {
   wrap.innerHTML = `<div class="muted">Laddar…</div>`;
   layout(wrap, { narrow: true });
 
-  const comps = await listCompetitionsForUser(user).catch(() => []);
+  // Don't mask load failures as "you have no competitions" — that reads as
+  // data loss to an admin. Surface the error instead.
+  let comps = [];
+  let loadError = null;
+  try { comps = await listCompetitionsForUser(user); }
+  catch (e) { console.error(e); loadError = e; }
   const mine = comps.filter(c =>
     user.role === 'super-admin' || (c.admins || []).includes(user.uid)
   );
+  if (loadError) {
+    wrap.innerHTML = `<div class="empty"><h3>Kunde inte ladda</h3><p>${escapeHtml(loadError.message)} — ladda om sidan för att försöka igen.</p></div>`;
+    return;
+  }
 
   wrap.innerHTML = `
     <div class="page-head">

@@ -1,5 +1,10 @@
 // Magic-link authentication. Email link is emailed by Firebase Auth;
-// clicking it returns the user to /auth-callback where we finalize sign-in.
+// clicking it returns the user to the app where app.js finalizes sign-in.
+//
+// The flow is split into small pieces (pending? saved email? complete!) so
+// app.js can drive a proper UI around it — the old all-in-one helper used
+// window.prompt(), which is blocked or auto-dismissed in several mobile
+// browsers and left users stuck on the loading splash.
 
 import {
   auth,
@@ -19,20 +24,29 @@ export async function sendMagicLink(email) {
     handleCodeInApp: true
   };
   await sendSignInLinkToEmail(auth, email, actionCodeSettings);
-  localStorage.setItem(EMAIL_KEY, email);
+  try { localStorage.setItem(EMAIL_KEY, email); } catch {}
 }
 
-export async function completeMagicLinkIfPresent() {
-  if (!isSignInWithEmailLink(auth, location.href)) return null;
-  let email = localStorage.getItem(EMAIL_KEY);
-  if (!email) {
-    email = window.prompt('Bekräfta din e-postadress för att slutföra inloggning:');
-    if (!email) return null;
-  }
-  const res = await signInWithEmailLink(auth, email, location.href);
-  localStorage.removeItem(EMAIL_KEY);
-  // Strip the sign-in params out of the URL so reloads don't retry.
+// True when the current URL carries magic-link sign-in params.
+export function pendingMagicLink() {
+  return isSignInWithEmailLink(auth, location.href);
+}
+
+// The email the link was requested for — null when the link is opened in a
+// different browser/device than where it was requested.
+export function savedSigninEmail() {
+  try { return localStorage.getItem(EMAIL_KEY); } catch { return null; }
+}
+
+// Remove the oobCode params so reloads don't retry a consumed link.
+export function clearMagicLinkParams() {
   history.replaceState({}, '', location.pathname);
+}
+
+export async function completeMagicLink(email) {
+  const res = await signInWithEmailLink(auth, email, location.href);
+  try { localStorage.removeItem(EMAIL_KEY); } catch {}
+  clearMagicLinkParams();
   return res.user;
 }
 

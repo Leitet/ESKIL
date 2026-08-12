@@ -1,4 +1,4 @@
-import { layout, setTopbarCompetition } from '../app.js';
+import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import {
   getCompetition, getControl, updateControl,
   watchScoresForControl, listPatrols, deleteScore
@@ -24,6 +24,9 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
     getControl(cid, ctrlId),
     listPatrols(cid).catch(() => [])
   ]);
+  // The user may have navigated away while we were loading — don't render a
+  // stale view over the new page or start subscriptions nothing will clean up.
+  if (!wrap.isConnected) return;
   if (!comp || !control) {
     wrap.innerHTML = `<div class="empty"><h3>Kontrollen hittades inte</h3></div>`;
     return;
@@ -106,7 +109,9 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
 
   // QR preview
   const qrHost = wrap.querySelector('#qr');
-  renderQrToImg(url, 180).then(img => { qrHost.innerHTML = ''; qrHost.appendChild(img); });
+  renderQrToImg(url, 180)
+    .then(img => { qrHost.innerHTML = ''; qrHost.appendChild(img); })
+    .catch(() => { qrHost.innerHTML = '<span class="muted t-sm">QR-koden kunde inte laddas — ladda om sidan.</span>'; });
 
   // Placering map — square, pinned on the control coordinates.
   const mapHost = wrap.querySelector('#placering-map');
@@ -164,6 +169,7 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
   const scoresEl = wrap.querySelector('#scores');
   const patrolById = Object.fromEntries(patrols.map(p => [p.id, p]));
   let autoCloseFired = false;
+  registerViewCleanup(() => { if (unsub) { unsub(); unsub = null; } });
   unsub = watchScoresForControl(cid, ctrlId, (rows) => {
     // Auto-close when every patrol has reported. Only admins can write the
     // control doc (per Firestore rules) so this runs just for admin viewers;

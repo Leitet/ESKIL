@@ -10,11 +10,12 @@ import { getCompetition, getPatrol, listControls, listPatrols } from './store.js
 import {
   escapeHtml, publicManagement, patrolStartTime, patrolStartDateTime,
   startFinishPoints, parkingPoint, startTimeSettings,
-  effectiveIntervalSec as effectiveIntervalSecValue
+  effectiveIntervalSec as effectiveIntervalSecValue,
+  wireOverlayClose
 } from './utils.js';
 import { ensureLeaflet } from './leaflet.js';
 import { icon } from './icons.js';
-import { bindHaptic, lockScroll, unlockScroll } from './haptic.js';
+import { bindHaptic, bindTap, lockScroll, unlockScroll } from './haptic.js';
 
 const root = document.getElementById('root');
 const modeBtn = document.getElementById('mode-toggle');
@@ -473,11 +474,19 @@ function openControlSheet(ctrlId) {
   `;
   document.body.appendChild(overlay);
   lockScroll();
-  const close = () => { overlay.remove(); unlockScroll(); };
-  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
-  const closeBtn = overlay.querySelector('#close');
-  closeBtn.onclick = close;
-  bindHaptic(closeBtn);
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    overlay.remove();
+    unlockScroll();
+  };
+  // bindTap fires on touchstart — instant, reliable closing on mobiles where
+  // iOS' double-tap-zoom heuristic delays or swallows plain clicks. The
+  // backdrop close only triggers when a still tap starts AND ends on the
+  // backdrop, so map-drags and scrolls can never close the sheet by mistake.
+  bindTap(overlay.querySelector('#close'), close);
+  wireOverlayClose(overlay, close);
 
   if (c.lat && c.lng) {
     ensureLeaflet().then(L => {
@@ -657,11 +666,15 @@ function openStartFinishSheet(kind) {
   `;
   document.body.appendChild(overlay);
   lockScroll();
-  const close = () => { overlay.remove(); unlockScroll(); };
-  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
-  const closeBtn = overlay.querySelector('#close');
-  closeBtn.onclick = close;
-  bindHaptic(closeBtn);
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    overlay.remove();
+    unlockScroll();
+  };
+  bindTap(overlay.querySelector('#close'), close);
+  wireOverlayClose(overlay, close);
 
   ensureLeaflet().then(L => {
     const host = overlay.querySelector('#sf-detail-map');

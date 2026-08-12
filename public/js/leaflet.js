@@ -5,6 +5,15 @@ let ready = null;
 export function ensureLeaflet() {
   if (ready) return ready;
   ready = new Promise((resolve, reject) => {
+    // Contain Leaflet's internal z-indexes (panes 400–700, controls 1000)
+    // inside the map element. Without this an inline map paints on top of
+    // any overlay/modal with a lower z-index than the panes.
+    if (!document.querySelector('style[data-leaflet-fix]')) {
+      const st = document.createElement('style');
+      st.setAttribute('data-leaflet-fix', '');
+      st.textContent = '.leaflet-container { isolation: isolate; }';
+      document.head.appendChild(st);
+    }
     if (window.L) return resolve(window.L);
     if (!document.querySelector('link[data-leaflet]')) {
       const css = document.createElement('link');

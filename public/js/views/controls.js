@@ -1,4 +1,4 @@
-import { layout, setTopbarCompetition } from '../app.js';
+import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import {
   getCompetition, watchControls, createControl, updateControl, deleteControl,
   updateControlNumbers
@@ -37,6 +37,7 @@ export async function renderControls(app, user, cid) {
   layout(wrap);
 
   const comp = await getCompetition(cid).catch(() => null);
+  if (!wrap.isConnected) return; // navigated away while loading
   if (!comp) { wrap.innerHTML = `<div class="empty"><h3>Tävlingen hittades inte</h3></div>`; return; }
   setTopbarCompetition(cid, comp, user);
   const isAdmin = user.role === 'super-admin' || (comp.admins || []).includes(user.uid);
@@ -193,6 +194,10 @@ export async function renderControls(app, user, cid) {
     });
   }
 
+  registerViewCleanup(() => {
+    if (unsub) { unsub(); unsub = null; }
+    if (sortableInstance) { sortableInstance.destroy(); sortableInstance = null; }
+  });
   unsub = watchControls(cid, rows => { state.rows = rows; render(); });
 }
 
@@ -291,8 +296,14 @@ export function openControlModal(cid, control, onSaved) {
   `;
   document.body.appendChild(overlay);
 
-  const close = () => overlay.remove();
-  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  let picker = null; // map picker — must be destroyed on close (leaks a Leaflet map otherwise)
+  const close = () => {
+    try { picker?.destroy(); } catch {}
+    picker = null;
+    overlay.remove();
+  };
+  // No backdrop-tap close on this modal — it's a large edit form and a stray
+  // tap outside would throw away everything typed. Close via X or Avbryt.
   overlay.querySelector('#x').onclick = close;
   overlay.querySelector('#cancel').onclick = close;
 
@@ -365,14 +376,17 @@ export function openControlModal(cid, control, onSaved) {
 
   (async () => {
     try {
-      const picker = await initMapPicker({
+      const p = await initMapPicker({
         container: mapEl,
         lat: currentPos?.[0],
         lng: currentPos?.[1],
         onChange: ({ lat, lng }) => updateCoords(lat, lng)
       });
+      // Modal may have been closed while the picker loaded.
+      if (!overlay.isConnected) { try { p.destroy(); } catch {} return; }
+      picker = p;
       overlay.querySelector('#use-gps').addEventListener('click', async () => {
-        try { await picker.useGeolocation(); }
+        try { await p.useGeolocation(); }
         catch (err) { toast('Kunde inte hämta plats: ' + err.message, 'error'); }
       });
     } catch (e) {

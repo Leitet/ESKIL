@@ -1,11 +1,12 @@
-import { layout, setTopbarCompetition } from '../app.js';
+import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import {
   getCompetition, watchPatrols, createPatrol, updatePatrol, deletePatrol,
   updatePatrolOrders
 } from '../store.js';
 import {
   allowedAvdelningar, escapeHtml, toast, confirmDialog, withBusy, startUrl,
-  copyToClipboard, patrolStartTime, startTimeSettings, effectiveIntervalSec
+  copyToClipboard, patrolStartTime, startTimeSettings, effectiveIntervalSec,
+  wireOverlayClose
 } from '../utils.js';
 import { renderQrToImg, downloadStartPdf } from '../pdf.js';
 import { icon } from '../icons.js';
@@ -37,6 +38,7 @@ export async function renderPatrols(app, user, cid) {
   layout(wrap);
 
   const comp = await getCompetition(cid).catch(() => null);
+  if (!wrap.isConnected) return; // navigated away while loading
   if (!comp) { wrap.innerHTML = `<div class="empty"><h3>Tävlingen hittades inte</h3></div>`; return; }
   setTopbarCompetition(cid, comp, user);
   const isAdmin = user.role === 'super-admin' || (comp.admins || []).includes(user.uid);
@@ -221,6 +223,10 @@ export async function renderPatrols(app, user, cid) {
     wrap.querySelector('#new').addEventListener('click', () => openPatrolModal(cid, comp, null, state.rows.length));
   }
 
+  registerViewCleanup(() => {
+    if (unsub) { unsub(); unsub = null; }
+    if (sortableInstance) { sortableInstance.destroy(); sortableInstance = null; }
+  });
   unsub = watchPatrols(cid, rows => {
     state.rows = rows;
     // Refresh the header line so the computed interval text stays in sync
@@ -282,12 +288,14 @@ async function openStartCardModal(cid, patrol) {
   document.body.appendChild(overlay);
 
   const close = () => overlay.remove();
-  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  wireOverlayClose(overlay, close);
   overlay.querySelector('#x').onclick = close;
   overlay.querySelector('#close').onclick = close;
 
   const qrHost = overlay.querySelector('#qr');
-  renderQrToImg(url, 200).then(img => { qrHost.innerHTML = ''; qrHost.appendChild(img); });
+  renderQrToImg(url, 200)
+    .then(img => { qrHost.innerHTML = ''; qrHost.appendChild(img); })
+    .catch(() => { qrHost.innerHTML = '<span class="muted t-sm">QR-koden kunde inte laddas — ladda om sidan.</span>'; });
 
   overlay.querySelector('#copy').addEventListener('click', async () => {
     await copyToClipboard(url);
@@ -355,7 +363,7 @@ function openPatrolModal(cid, comp, patrol, fallbackOrder = null) {
   document.body.appendChild(overlay);
 
   const close = () => overlay.remove();
-  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  // No backdrop-tap close — edit form, a stray tap would lose typed data.
   overlay.querySelector('#x').onclick = close;
   overlay.querySelector('#cancel').onclick = close;
 

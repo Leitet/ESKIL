@@ -490,7 +490,7 @@ html[data-mode="night"] .patrol-btn .p-score { background: var(--r-danger); }
 .sheet-overlay {
   position: fixed; inset: 0;
   background: rgba(0,0,0,0.5);
-  z-index: 40;
+  z-index: 1100; /* above Leaflet panes/controls (max 1000) */
   display: flex; align-items: flex-end;
   animation: fadeIn 0.2s;
 }
@@ -517,7 +517,7 @@ html[data-mode="night"] .sheet-overlay { background: rgba(0,0,0,0.85); }
   background: var(--r-chip-bg);
   color: var(--r-chip-fg);
   border: none;
-  width: 36px; height: 36px;
+  width: 44px; height: 44px; /* comfortable thumb target on mobile */
   border-radius: 999px;
   font-size: 20px;
   cursor: pointer;

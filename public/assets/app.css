@@ -352,7 +352,8 @@ table.t tr.sf-row.park-row td {
 /* Toasts / messages */
 .toast-wrap {
   position: fixed; bottom: var(--sp-6); left: 50%; transform: translateX(-50%);
-  z-index: 100; display: flex; flex-direction: column; gap: var(--sp-2);
+  z-index: 1400; /* above modals (1100) — feedback must always be visible */
+  display: flex; flex-direction: column; gap: var(--sp-2);
   pointer-events: none;
 }
 .toast {
@@ -376,7 +377,9 @@ table.t tr.sf-row.park-row td {
   position: fixed; inset: 0;
   background: rgba(0, 36, 63, 0.55);
   backdrop-filter: blur(4px);
-  z-index: 50;
+  /* Above Leaflet's internal z-indexes (panes 400–700, controls 1000) so an
+     inline map can never paint on top of a modal. Toasts sit above at 1400. */
+  z-index: 1100;
   display: flex; align-items: center; justify-content: center;
   padding: var(--sp-4);
   animation: fadeIn var(--dur-base) var(--ease);

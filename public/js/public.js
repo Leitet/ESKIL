@@ -7,7 +7,8 @@ import { db, doc, onSnapshot, collection } from './firebase.js';
 import { getCompetition, listPatrols, listControls } from './store.js';
 import {
   AVDELNINGAR, escapeHtml, formatDate, publicManagement, patrolStartTime,
-  startFinishPoints, parkingPoint, rankPatrols, rankKarer, RANKING_RULES_TEXT
+  startFinishPoints, parkingPoint, rankPatrols, rankKarer, RANKING_RULES_TEXT,
+  wireOverlayClose
 } from './utils.js';
 import { ensureLeaflet } from './leaflet.js';
 import { icon } from './icons.js';
@@ -122,11 +123,14 @@ async function boot() {
 
 window.addEventListener('popstate', () => render());
 
+let pubMap = null; // live Leaflet instance — reused across re-renders
+
 async function renderLeafletMap(withPos, sfPoints = [], park = null) {
   const host = document.getElementById('pub-map');
   if (!host || (!withPos.length && !sfPoints.length && !park)) return;
   try {
     const L = await ensureLeaflet();
+    if (!host.isConnected) return; // re-rendered while Leaflet loaded
     host.innerHTML = '';
     const allPts = [
       ...withPos.map(c => [c.lat, c.lng]),
@@ -136,6 +140,7 @@ async function renderLeafletMap(withPos, sfPoints = [], park = null) {
     const avgLat = allPts.reduce((s, p) => s + p[0], 0) / allPts.length;
     const avgLng = allPts.reduce((s, p) => s + p[1], 0) / allPts.length;
     const map = L.map(host, { zoomControl: true, scrollWheelZoom: false }).setView([avgLat, avgLng], 14);
+    pubMap = map;
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19, attribution: '© OpenStreetMap'
     }).addTo(map);
@@ -200,6 +205,16 @@ function render() {
 
   const totals = computeTotals();
 
+  // render() runs on every live snapshot (each score report). Recreating the
+  // map every time reset the visitor's pan/zoom mid-gesture and leaked the
+  // old instance — so keep the live map's DOM node and move it into the new
+  // markup instead.
+  const keepMapEl = (tab === 'overview' && pubMap) ? document.getElementById('pub-map') : null;
+  if (tab !== 'overview' && pubMap) {
+    try { pubMap.remove(); } catch {}
+    pubMap = null;
+  }
+
   root.innerHTML = `
     ${renderHero()}
     <div class="pub-tabs-bar">
@@ -225,10 +240,17 @@ function render() {
   });
 
   if (tab === 'overview') {
-    const withPos = controls.filter(c => c.lat && c.lng);
-    const sfPoints = startFinishPoints(comp);
-    const park = parkingPoint(comp);
-    if (withPos.length || sfPoints.length || park) renderLeafletMap(withPos, sfPoints, park);
+    const newHost = document.getElementById('pub-map');
+    if (keepMapEl && newHost) {
+      // Swap the freshly-rendered empty host for the live map's node.
+      newHost.replaceWith(keepMapEl);
+      requestAnimationFrame(() => { try { pubMap?.invalidateSize(); } catch {} });
+    } else {
+      const withPos = controls.filter(c => c.lat && c.lng);
+      const sfPoints = startFinishPoints(comp);
+      const park = parkingPoint(comp);
+      if (withPos.length || sfPoints.length || park) renderLeafletMap(withPos, sfPoints, park);
+    }
   }
 }
 
@@ -737,10 +759,16 @@ function openPatrolModal(patrolId) {
   `;
   document.body.appendChild(overlay);
 
-  const close = () => overlay.remove();
-  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  // The Escape listener must be removed however the modal closes — the old
+  // code only removed it on Escape itself, so every ✕/backdrop close leaked
+  // one document-level listener (each retaining its overlay DOM).
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  const close = () => {
+    overlay.remove();
+    document.removeEventListener('keydown', onKey);
+  };
+  wireOverlayClose(overlay, close);
   overlay.querySelector('#pub-modal-close').onclick = close;
-  const onKey = (e) => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } };
   document.addEventListener('keydown', onKey);
 }
 

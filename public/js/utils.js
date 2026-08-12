@@ -122,6 +122,23 @@ export function toast(msg, kind = '') {
   setTimeout(() => t.remove(), 3000);
 }
 
+// Close a modal/sheet when the user taps the dimmed backdrop — but ONLY when
+// the gesture both starts and ends on the backdrop, without moving. A plain
+// click handler fires on the overlay whenever a drag/scroll starts inside the
+// dialog and the pointer is released outside it (the click event targets the
+// common ancestor of down+up), which closed modals mid-edit and lost data.
+export function wireOverlayClose(overlay, close) {
+  let down = null;
+  overlay.addEventListener('pointerdown', (e) => {
+    down = e.target === overlay ? { x: e.clientX, y: e.clientY } : null;
+  });
+  overlay.addEventListener('pointerup', (e) => {
+    const moved = down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 12;
+    if (down && !moved && e.target === overlay) close();
+    down = null;
+  });
+}
+
 export function confirmDialog(message, { okLabel = 'Ta bort', danger = true } = {}) {
   return new Promise(resolve => {
     const overlay = el('div', { class: 'modal-overlay' });
@@ -134,9 +151,7 @@ export function confirmDialog(message, { okLabel = 'Ta bort', danger = true } = 
         <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" data-ok>${escapeHtml(okLabel)}</button>
       </div>`;
     overlay.appendChild(modal);
-    overlay.addEventListener('click', e => {
-      if (e.target === overlay) { overlay.remove(); resolve(false); }
-    });
+    wireOverlayClose(overlay, () => { overlay.remove(); resolve(false); });
     modal.querySelector('[data-cancel]').onclick = () => { overlay.remove(); resolve(false); };
     modal.querySelector('[data-ok]').onclick = () => { overlay.remove(); resolve(true); };
     document.body.appendChild(overlay);

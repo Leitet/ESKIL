@@ -210,6 +210,8 @@ function renderWindow(comp, patrols, now) {
         if (currentQrId !== qrKey) return;  // changed while loading
         qrHost.innerHTML = '';
         qrHost.appendChild(img);
+      }).catch(() => {
+        if (currentQrId === qrKey) qrHost.innerHTML = '<span style="opacity:.6;">QR-koden kunde inte laddas</span>';
       });
     } else {
       // Just update countdown + go-state

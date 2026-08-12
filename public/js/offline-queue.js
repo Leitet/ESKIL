@@ -45,8 +45,13 @@ export function enqueue(cid, ctrlId, item) {
   return entry;
 }
 
-export function removeFromQueue(cid, ctrlId, patrolId) {
-  const arr = load(cid, ctrlId).filter(x => x.patrolId !== patrolId);
+// Remove a queued item. When `queuedAt` is given, only that exact entry is
+// removed — so a flush that finishes AFTER the user queued a NEWER report for
+// the same patrol can't delete the newer entry (which would silently lose it).
+export function removeFromQueue(cid, ctrlId, patrolId, queuedAt = null) {
+  const arr = load(cid, ctrlId).filter(x =>
+    !(x.patrolId === patrolId && (queuedAt == null || x.queuedAt === queuedAt))
+  );
   save(cid, ctrlId, arr);
 }
 
@@ -69,22 +74,40 @@ export function withTimeout(p, ms) {
   });
 }
 
+// Firestore errors that will never succeed on retry — e.g. the control was
+// closed while the report sat in the queue (rules reject with
+// permission-denied). Keeping such an item queued would block every later
+// report behind it, forever, while the UI showed "Synkar…".
+export function isPermanentError(e) {
+  return ['permission-denied', 'invalid-argument', 'not-found', 'failed-precondition']
+    .includes(e?.code);
+}
+
 // Try to flush the queue for (cid, ctrlId). For each queued item, invoke
-// syncOne(item) — if it resolves, remove the item from the queue and call
-// onSynced(item). If it rejects, the item stays queued and we stop (since a
-// connectivity failure for one item will fail the rest too).
+// syncOne(item):
+//  - resolves            → remove from queue, report in `synced`
+//  - permanent rejection → remove from queue, report in `failed` (the caller
+//                          must tell the user — this is lost data otherwise)
+//  - other rejection     → connectivity: item stays queued, stop (the rest
+//                          would fail the same way)
 export async function flushQueue(cid, ctrlId, syncOne, { onSynced, timeoutMs = 6000 } = {}) {
   const items = load(cid, ctrlId);
   const synced = [];
+  const failed = [];
   for (const item of items) {
     try {
       await withTimeout(syncOne(item), timeoutMs);
-      removeFromQueue(cid, ctrlId, item.patrolId);
+      removeFromQueue(cid, ctrlId, item.patrolId, item.queuedAt);
       synced.push(item);
       onSynced?.(item);
-    } catch {
+    } catch (e) {
+      if (isPermanentError(e)) {
+        removeFromQueue(cid, ctrlId, item.patrolId, item.queuedAt);
+        failed.push({ item, error: e });
+        continue;
+      }
       break;
     }
   }
-  return synced;
+  return { synced, failed };
 }
