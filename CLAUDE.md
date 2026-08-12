@@ -43,7 +43,14 @@ See `README.md` for the layout — every file there is load-bearing.
 ## Firestore rules model
 
 - `users/{uid}` — a user's own doc.
-- `competitions/{cid}` — meta. `admins[]` and `users[]` arrays of uids.
+- `competitions/{cid}` — meta. Permissions are EMAIL-based (checked against
+  the verified `request.auth.token.email`, always lowercase): `adminEmails[]`,
+  `userEmails[]` (flat mirror of `users: [{email, name}]` — write both via
+  store.setCompetitionUsers). Legacy uid `admins[]` still honored. Controls
+  carry `ansvariga: [{email, name}]` + flat `ansvarigaEmails[]`; ansvariga may
+  update their control but never the ansvariga fields themselves. A `closed`
+  competition is read-only for everyone but admins, and closing wipes
+  users + ansvariga (GDPR cleanup) — admins remain.
 - `.../patrols/{pid}` — publicly readable (for the reporter page).
 - `.../controls/{ctrlId}` — publicly readable; writable by competition admins.
 - `.../controls/{ctrlId}/scores/{patrolId}` — one doc per patrol×control; the

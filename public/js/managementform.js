@@ -2,7 +2,7 @@
 // visibility toggle (publik / intern). Returns a controller with `.element`
 // (mount this) and `.read()` (call at save-time to get the current array).
 
-import { normalizeManagement } from './utils.js';
+import { normalizeManagement, normEmail } from './utils.js';
 import { escapeHtml } from './utils.js';
 import { icon } from './icons.js';
 
@@ -14,7 +14,9 @@ export function createManagementForm(comp, { seedDefaults = false } = {}) {
   const host = document.createElement('div');
   host.className = 'mgmt-form';
 
-  let items = normalizeManagement(comp, { seedDefaults });
+  const existingAdmins = new Set((comp?.adminEmails || []).map(normEmail));
+  let items = normalizeManagement(comp, { seedDefaults })
+    .map(r => ({ ...r, invite: existingAdmins.has(normEmail(r.email)) }));
 
   const roleCard = (r, idx) => `
     <div class="card mgmt-card" data-idx="${idx}" style="padding:var(--sp-4);margin-bottom:var(--sp-3);background:var(--bg-muted);box-shadow:none;">
@@ -49,6 +51,12 @@ export function createManagementForm(comp, { seedDefaults = false } = {}) {
       </div>
       <label class="field mt-3">E-post</label>
       <input class="input" data-field="${idx}:email" value="${escapeHtml(r.email || '')}" type="email" placeholder="namn@exempel.se">
+      <label class="mt-3" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;">
+        <input type="checkbox" data-invite="${idx}" ${r.invite ? 'checked' : ''} ${normEmail(r.email) ? '' : 'disabled'} style="margin:0;">
+        <span>Bjud in som administratör
+          ${existingAdmins.has(normEmail(r.email)) ? '<span class="badge badge-green" style="margin-left:4px;">Administratör</span>' : ''}
+        </span>
+      </label>
     </div>
   `;
 
@@ -91,6 +99,18 @@ export function createManagementForm(comp, { seedDefaults = false } = {}) {
         const idx = Number(idxStr);
         if (!items[idx]) return;
         items[idx][field] = inp.value;
+        // The invite checkbox needs a valid email to be actionable.
+        if (field === 'email') {
+          const cb = host.querySelector(`[data-invite="${idx}"]`);
+          if (cb) cb.disabled = !normEmail(inp.value);
+        }
+      });
+    });
+
+    host.querySelectorAll('[data-invite]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const idx = Number(cb.dataset.invite);
+        if (items[idx]) items[idx].invite = cb.checked;
       });
     });
   };
@@ -100,7 +120,8 @@ export function createManagementForm(comp, { seedDefaults = false } = {}) {
   return {
     element: host,
     read() {
-      // Drop roles where the label is blank — they're placeholders.
+      // Drop roles where the label is blank — they're placeholders. The
+      // runtime-only `invite` flag is intentionally not persisted.
       return items
         .map(r => ({
           id: r.id || randId(),
@@ -111,6 +132,14 @@ export function createManagementForm(comp, { seedDefaults = false } = {}) {
           email: (r.email || '').trim()
         }))
         .filter(r => r.label);
+    },
+    // Emails ticked "Bjud in som administratör". The caller unions these into
+    // comp.adminEmails at save — unticking never REMOVES an admin (that's done
+    // deliberately under Användare, not as a side effect of editing a role).
+    adminInvites() {
+      return items
+        .filter(r => r.invite && normEmail(r.email))
+        .map(r => normEmail(r.email));
     }
   };
 }

@@ -1,13 +1,13 @@
 import { layout, setTopbarCompetition } from '../app.js';
 import { getCompetition, listPatrols, listControls } from '../store.js';
-import { escapeHtml, formatDate, activeManagement } from '../utils.js';
+import { escapeHtml, formatDate, activeManagement, isCompAdminUser } from '../utils.js';
 import { icon } from '../icons.js';
 
 // "Redigera"-knappen i page-head btn-row. Offentlig sida + Startskärm bor
 // numera uppe i topbaren (via setTopbarCompetition) så de är synliga på
 // varje tävlingssida oavsett flik.
 export function compActionsHtml(cid, comp, user) {
-  const isAdmin = user.role === 'super-admin' || (comp.admins || []).includes(user.uid);
+  const isAdmin = isCompAdminUser(comp, user);
   return isAdmin
     ? `<a class="btn btn-ghost btn-sm" href="/app/c/${cid}/settings" data-link>Redigera</a>`
     : '';
@@ -30,7 +30,7 @@ export async function renderCompetition(app, user, cid) {
     return;
   }
 
-  const isAdmin = user.role === 'super-admin' || (comp.admins || []).includes(user.uid);
+  const isAdmin = isCompAdminUser(comp, user);
   setTopbarCompetition(cid, comp, user);
   const [patrols, controls] = await Promise.all([
     listPatrols(cid).catch(() => []),
@@ -45,7 +45,7 @@ export async function renderCompetition(app, user, cid) {
     <div class="page-head">
       <div>
         <div class="t-over" style="color:var(--avent-orange);">${escapeHtml(comp.shortName || '')} · ${comp.year || ''}${comp.demo ? ' · DEMO' : ''}</div>
-        <h1 class="t-d2" style="color:var(--scout-blue);">${escapeHtml(comp.name)} ${comp.demo ? '<span class="badge badge-orange" style="font-size:14px;vertical-align:middle;">Demospår</span>' : ''}</h1>
+        <h1 class="t-d2" style="color:var(--scout-blue);">${escapeHtml(comp.name)} ${comp.demo ? '<span class="badge badge-orange" style="font-size:14px;vertical-align:middle;">Demospår</span>' : ''}${comp.closed ? '<span class="badge badge-gray" style="font-size:14px;vertical-align:middle;">Avslutad</span>' : ''}</h1>
         <p class="muted">${comp.date ? formatDate(comp.date) : ''} ${comp.location ? '· ' + escapeHtml(comp.location) : ''}</p>
         ${comp.demo && user.role !== 'super-admin' ? '<p class="t-sm" style="color:var(--avent-orange);font-weight:600;">Demospår — du kan utforska men inte ändra.</p>' : ''}
       </div>

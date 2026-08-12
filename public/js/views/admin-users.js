@@ -125,12 +125,16 @@ export async function renderAdminUsers(app, user) {
   }
 
   function rowHtml(u) {
+    const uEmail = String(u.email || '').toLowerCase();
+    const isAdminOf = (c) =>
+      (c.admins || []).includes(u.id) || (c.adminEmails || []).includes(uEmail);
     const mine = comps.filter(c =>
-      (c.admins || []).includes(u.id) || (c.users || []).includes(u.id)
+      isAdminOf(c) || (c.userEmails || []).includes(uEmail) ||
+      (c.users || []).some(x => typeof x === 'string' && x === u.id)
     );
     const compLabels = mine.length
       ? mine.map(c => {
-          const isAdmin = (c.admins || []).includes(u.id);
+          const isAdmin = isAdminOf(c);
           return `<span class="badge ${isAdmin ? 'badge-blue' : 'badge-gray'}" title="${escapeHtml(c.name)}">${escapeHtml(c.shortName || c.name)}${isAdmin ? ' · admin' : ''}</span>`;
         }).join(' ')
       : '<span class="muted t-sm">—</span>';

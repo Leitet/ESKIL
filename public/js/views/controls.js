@@ -1,10 +1,11 @@
 import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import {
   getCompetition, watchControls, createControl, updateControl, deleteControl,
-  updateControlNumbers
+  updateControlNumbers, setCompetitionUsers
 } from '../store.js';
 import {
-  AVDELNINGAR, escapeHtml, toast, confirmDialog, withBusy, startFinishPoints, parkingPoint
+  AVDELNINGAR, escapeHtml, toast, confirmDialog, withBusy, startFinishPoints, parkingPoint,
+  isCompAdminUser, normEmail
 } from '../utils.js';
 import { navigate } from '../router.js';
 import { initMapPicker } from '../mappicker.js';
@@ -40,7 +41,7 @@ export async function renderControls(app, user, cid) {
   if (!wrap.isConnected) return; // navigated away while loading
   if (!comp) { wrap.innerHTML = `<div class="empty"><h3>Tävlingen hittades inte</h3></div>`; return; }
   setTopbarCompetition(cid, comp, user);
-  const isAdmin = user.role === 'super-admin' || (comp.admins || []).includes(user.uid);
+  const isAdmin = isCompAdminUser(comp, user);
 
   let state = { rows: [], sort: 'nummer', dir: 1 };
 
@@ -207,8 +208,12 @@ function th(key, label, state, opts = {}) {
   return `<th class="${cls}" data-key="${key}">${escapeHtml(label)} <span class="arrow">${arrow}</span></th>`;
 }
 
-export function openControlModal(cid, control, onSaved) {
+// opts.manageAnsvariga: whether the current user may edit the kontrollansvariga
+// list (admins only — a kontrollansvarig can edit the control itself but not
+// its permissions; the security rules enforce the same).
+export function openControlModal(cid, control, onSaved, { manageAnsvariga = true } = {}) {
   const isEdit = !!control;
+  const ansvariga = (control?.ansvariga || []).map(a => ({ ...a }));
   // Normalize legacy single-field instructions into the group format.
   let groups = Array.isArray(control?.instructions) && control.instructions.length
     ? control.instructions.map(g => ({ avdelningar: g.avdelningar || [], text: g.text || '' }))
@@ -285,16 +290,64 @@ export function openControlModal(cid, control, onSaved) {
               <span>Öppen för rapportering</span>
             </label>
           </div>
+
+          ${manageAnsvariga ? `
+            <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
+              <label class="field">Kontrollansvariga</label>
+              <div class="field-hint" style="margin-bottom:var(--sp-3);">Kan redigera och öppna/stänga den här kontrollen, och får läsåtkomst till resten av tävlingen. Rättigheterna gäller från deras första inloggning.</div>
+              <div id="ansvariga-list"></div>
+              <button type="button" class="btn btn-secondary btn-sm" id="add-ansvarig">${icon('plus', { size: 14 })} Lägg till kontrollansvarig</button>
+            </div>
+          ` : ''}
         </form>
       </div>
       <div class="modal-foot">
-        ${isEdit ? '<button class="btn btn-danger" id="del">Ta bort</button><div class="spacer"></div>' : ''}
+        ${isEdit && manageAnsvariga ? '<button class="btn btn-danger" id="del">Ta bort</button><div class="spacer"></div>' : ''}
         <button class="btn btn-ghost" id="cancel">Avbryt</button>
         <button class="btn btn-primary" id="save">${isEdit ? 'Spara' : 'Skapa kontroll'}</button>
       </div>
     </div>
   `;
   document.body.appendChild(overlay);
+
+  // --- Kontrollansvariga editor ---------------------------------------------
+  const ansvarigaList = overlay.querySelector('#ansvariga-list');
+  if (ansvarigaList) {
+    const renderAnsvariga = () => {
+      ansvarigaList.innerHTML = ansvariga.length ? ansvariga.map((a, i) => `
+        <div class="row wrap" data-aidx="${i}" style="gap:var(--sp-2);margin-bottom:var(--sp-2);align-items:center;">
+          <input class="input" type="email" required data-af="email" value="${escapeHtml(a.email || '')}" placeholder="e-post@exempel.se" style="max-width:240px;">
+          <input class="input" data-af="name" value="${escapeHtml(a.name || '')}" placeholder="Namn" style="max-width:200px;">
+          <button type="button" class="btn btn-ghost btn-sm" data-aremove="${i}" style="color:var(--utm-pink);">${icon('trash', { size: 14 })}</button>
+        </div>
+      `).join('') : '<p class="muted t-sm">Inga kontrollansvariga.</p>';
+    };
+    const syncAnsvariga = () => {
+      ansvarigaList.querySelectorAll('[data-aidx]').forEach(row => {
+        const i = Number(row.dataset.aidx);
+        ansvariga[i] = {
+          email: row.querySelector('[data-af="email"]').value,
+          name: row.querySelector('[data-af="name"]').value
+        };
+      });
+    };
+    ansvarigaList.addEventListener('input', syncAnsvariga);
+    ansvarigaList.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-aremove]');
+      if (!btn) return;
+      syncAnsvariga();
+      ansvariga.splice(Number(btn.dataset.aremove), 1);
+      renderAnsvariga();
+    });
+    overlay.querySelector('#add-ansvarig').addEventListener('click', () => {
+      syncAnsvariga();
+      ansvariga.push({ email: '', name: '' });
+      renderAnsvariga();
+      const rows = ansvarigaList.querySelectorAll('[data-aidx]');
+      rows[rows.length - 1]?.querySelector('[data-af="email"]')?.focus();
+    });
+    renderAnsvariga();
+  }
 
   let picker = null; // map picker — must be destroyed on close (leaks a Leaflet map otherwise)
   const close = () => {
@@ -395,7 +448,7 @@ export function openControlModal(cid, control, onSaved) {
     }
   })();
 
-  if (isEdit) {
+  if (isEdit && manageAnsvariga) {
     const delBtn = overlay.querySelector('#del');
     delBtn.addEventListener('click', async () => {
       if (!(await confirmDialog(`Ta bort kontroll "${control.name}"? Alla rapporterade poäng försvinner också.`))) return;
@@ -428,10 +481,32 @@ export function openControlModal(cid, control, onSaved) {
         notering: overlay.querySelector('#notering').value.trim(),
         open: overlay.querySelector('#open').checked
       };
+      let cleanAnsvariga = null;
+      if (manageAnsvariga) {
+        cleanAnsvariga = ansvariga
+          .map(a => ({ email: normEmail(a.email), name: (a.name || '').trim() }))
+          .filter(a => a.email);
+        data.ansvariga = cleanAnsvariga;
+        data.ansvarigaEmails = cleanAnsvariga.map(a => a.email);
+      }
       try {
         let id;
         if (isEdit) { await updateControl(cid, control.id, data); id = control.id; }
         else { id = await createControl(cid, data); }
+        // Kontrollansvariga get read access to the whole competition — mirror
+        // them into the competition's user list (union; removal is manual
+        // under Användare since they may be users in their own right).
+        if (cleanAnsvariga?.length) {
+          try {
+            const comp = await getCompetition(cid);
+            const users = (comp.users || []).filter(u => u && typeof u === 'object');
+            const known = new Set(users.map(u => normEmail(u.email)));
+            const additions = cleanAnsvariga.filter(a => !known.has(a.email));
+            if (additions.length) await setCompetitionUsers(cid, [...users, ...additions]);
+          } catch (e) {
+            console.warn('[ESKIL] could not mirror ansvariga into users:', e);
+          }
+        }
         close();
         toast('Sparat', 'success');
         onSaved?.(id);

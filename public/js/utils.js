@@ -9,6 +9,34 @@ export const AVDELNINGAR = [
   { key: 'Ledare',     short: 'le', range: '18+',         color: 'var(--black)'         }
 ];
 
+// --- Permissions --------------------------------------------------------------
+// Email-based (people can be invited before their first sign-in); legacy
+// uid-based admins are still honored. Mirrors the helpers in firestore.rules.
+
+export function normEmail(e) {
+  return String(e || '').trim().toLowerCase();
+}
+
+export function isCompAdminUser(comp, user) {
+  if (!user) return false;
+  if (user.role === 'super-admin') return true;
+  return (comp?.admins || []).includes(user.uid)
+    || (comp?.adminEmails || []).includes(normEmail(user.email));
+}
+
+export function isCompMemberUser(comp, user) {
+  if (isCompAdminUser(comp, user)) return true;
+  return (comp?.userEmails || []).includes(normEmail(user?.email));
+}
+
+// May this user edit the given control? Admins always; kontrollansvariga on
+// their own control while the competition isn't closed.
+export function canEditControl(comp, control, user) {
+  if (isCompAdminUser(comp, user)) return true;
+  if (comp?.closed) return false;
+  return (control?.ansvarigaEmails || []).includes(normEmail(user?.email));
+}
+
 // Which avdelningar participate in a competition. Stored as an array of keys
 // in comp.avdelningar; a missing/empty value means all (backward compatible).
 // Returns entries from AVDELNINGAR so callers get key/short/range/color.
@@ -479,6 +507,7 @@ export function registrationSettings(comp) {
 export function registrationState(comp, today = new Date()) {
   const s = registrationSettings(comp);
   if (!s.enabled) return 'unconfigured';
+  if (comp?.closed) return 'closed'; // avslutad tävling tar inte emot något
   const d = [
     today.getFullYear(),
     String(today.getMonth() + 1).padStart(2, '0'),

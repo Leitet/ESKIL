@@ -12,7 +12,8 @@
 import { getCompetition, watchPatrols } from '../store.js';
 import { db, doc, onSnapshot } from '../firebase.js';
 import {
-  escapeHtml, startTimeSettings, patrolStartDateTime, effectiveIntervalSec, startUrl
+  escapeHtml, startTimeSettings, patrolStartDateTime, effectiveIntervalSec, startUrl,
+  isCompAdminUser
 } from '../utils.js';
 import { renderQrToImg } from '../pdf.js';
 import { icon } from '../icons.js';
@@ -34,7 +35,7 @@ export async function renderStartScreen(app, user, cid) {
     app.innerHTML = `<div class="page"><div class="empty"><h3>Tävlingen hittades inte</h3></div></div>`;
     return;
   }
-  const isAdmin = user.role === 'super-admin' || (comp.admins || []).includes(user.uid);
+  const isAdmin = isCompAdminUser(comp, user);
   if (!isAdmin) {
     app.innerHTML = `<div class="page"><div class="empty"><h3>Inte tillgängligt</h3><p>Bara tävlingsadministratörer kan öppna startskärmen.</p></div></div>`;
     return;

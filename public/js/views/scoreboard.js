@@ -1,6 +1,6 @@
 import { layout, setTopbarCompetition } from '../app.js';
 import { getCompetition, listPatrols, listControls, listAllScores, updateControl, updateCompetition } from '../store.js';
-import { allowedAvdelningar, escapeHtml, rankPatrols, rankKarer, RANKING_RULES_TEXT, toast } from '../utils.js';
+import { allowedAvdelningar, escapeHtml, rankPatrols, rankKarer, RANKING_RULES_TEXT, toast, isCompAdminUser } from '../utils.js';
 import { icon } from '../icons.js';
 import { compActionsHtml } from './competition.js';
 
@@ -13,7 +13,7 @@ export async function renderScoreboard(app, user, cid) {
   if (!comp) { wrap.innerHTML = `<div class="empty"><h3>Tävlingen hittades inte</h3></div>`; return; }
   setTopbarCompetition(cid, comp, user);
 
-  const isAdmin = user.role === 'super-admin' || (comp.admins || []).includes(user.uid);
+  const isAdmin = isCompAdminUser(comp, user);
   const canTogglePublic = isAdmin && !(comp.demo && user.role !== 'super-admin');
 
   wrap.innerHTML = `

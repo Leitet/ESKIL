@@ -3,7 +3,7 @@ import {
   getCompetition, getControl, updateControl,
   watchScoresForControl, listPatrols, deleteScore
 } from '../store.js';
-import { escapeHtml, toast, copyToClipboard, reportUrl, confirmDialog, formatTime, allInstructionGroups, withBusy } from '../utils.js';
+import { escapeHtml, toast, copyToClipboard, reportUrl, confirmDialog, formatTime, allInstructionGroups, withBusy, isCompAdminUser, canEditControl } from '../utils.js';
 import { icon } from '../icons.js';
 import { navigate } from '../router.js';
 import { openControlModal } from './controls.js';
@@ -32,7 +32,10 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
     return;
   }
   setTopbarCompetition(cid, comp, user);
-  const isAdmin = user.role === 'super-admin' || (comp.admins || []).includes(user.uid);
+  const isAdmin = isCompAdminUser(comp, user);
+  // Kontrollansvariga may edit and open/close THIS control (not delete it,
+  // not change who is ansvarig) — the security rules enforce the same.
+  const canEdit = canEditControl(comp, control, user);
   const url = reportUrl(cid, ctrlId);
   const shortOf = (avd) => ({ 'Spårare':'sp','Upptäckare':'up','Äventyrare':'av','Utmanare':'ut','Rover':'ro','Ledare':'le' }[avd] || 'le');
 
@@ -45,8 +48,8 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
       </div>
       <div class="btn-row">
         <a class="btn btn-ghost" href="/app/c/${cid}/controls" data-link>${icon('arrow-left', { size: 16 })} Alla kontroller</a>
-        ${isAdmin ? '<button class="btn btn-secondary" id="edit">Redigera</button>' : ''}
-        ${isAdmin ? `<button class="btn btn-primary" id="toggle">${control.open ? 'Stäng' : 'Öppna'} för rapport</button>` : ''}
+        ${canEdit ? '<button class="btn btn-secondary" id="edit">Redigera</button>' : ''}
+        ${canEdit ? `<button class="btn btn-primary" id="toggle">${control.open ? 'Stäng' : 'Öppna'} för rapport</button>` : ''}
       </div>
     </div>
 
@@ -81,6 +84,13 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
           <div class="mt-4">
             <div class="t-over" style="color:var(--utm-pink);">Intern notering</div>
             <p class="t-sm">${escapeHtml(control.notering)}</p>
+          </div>` : ''}
+        ${(control.ansvariga || []).length ? `
+          <div class="mt-4">
+            <div class="t-over" style="color:var(--scout-blue);">Kontrollansvariga</div>
+            ${control.ansvariga.map(a => `
+              <p class="t-sm" style="margin:4px 0;">${a.name ? `<strong>${escapeHtml(a.name)}</strong> · ` : ''}<a href="mailto:${escapeHtml(a.email)}" style="color:var(--scout-blue);">${escapeHtml(a.email)}</a></p>
+            `).join('')}
           </div>` : ''}
       </div>
     </div>
@@ -148,12 +158,12 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
       toast('Kunde inte skapa PDF: ' + e.message, 'error');
     }
   }));
-  if (isAdmin) {
+  if (canEdit) {
     wrap.querySelector('#edit').addEventListener('click', () => {
       openControlModal(cid, { id: ctrlId, ...control }, (id) => {
         if (!id) navigate(`/app/c/${cid}/controls`);
         else renderControlDetail(app, user, cid, ctrlId);
-      });
+      }, { manageAnsvariga: isAdmin });
     });
     const toggleBtn = wrap.querySelector('#toggle');
     toggleBtn.addEventListener('click', () => withBusy(toggleBtn, control.open ? 'Stänger…' : 'Öppnar…', async () => {

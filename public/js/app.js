@@ -7,7 +7,7 @@ import {
 } from './auth.js';
 import { ensureUser, getUser } from './store.js';
 import { route, startRouter, dispatch, navigate, setRouteChangeHandler } from './router.js';
-import { toast, escapeHtml } from './utils.js';
+import { toast, escapeHtml, isCompAdminUser } from './utils.js';
 
 import { icon } from './icons.js';
 import { renderLogin } from './views/login.js';
@@ -107,7 +107,7 @@ export function renderTopbar(extra) {
 export function setTopbarCompetition(cid, comp, user) {
   const slot = document.getElementById('topbar-comp');
   if (!slot || !comp) return;
-  const isAdmin = user.role === 'super-admin' || (comp.admins || []).includes(user.uid);
+  const isAdmin = isCompAdminUser(comp, user);
   slot.innerHTML = `
     <a class="btn btn-secondary btn-sm" href="/t/${cid}" target="_blank" rel="noopener">Offentlig sida ${icon('external', { size: 14 })}</a>
     ${comp.startTimes?.enabled && isAdmin ? `<a class="btn btn-secondary btn-sm" href="/app/c/${cid}/startscreen" target="_blank" rel="noopener">Startskärm ${icon('external', { size: 14 })}</a>` : ''}

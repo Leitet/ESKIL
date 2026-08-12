@@ -130,12 +130,28 @@ Super-admin kan läsa/skriva allt och administrera alla tävlingar.
 > MÅSTE vara identiska för att bootstrap ska gå igenom både klienten
 > och reglerna.
 
-## Att bjuda in en användare
+## Rättighetsmodell (per tävling)
 
-1. Användaren loggar in med magisk länk en gång (skapar `users/<uid>`).
-2. En tävlingsadministratör går till **Inställningar** → anger användarens
-   e-post och rollen (admin eller användare).
-3. Användaren har nu åtkomst till tävlingen vid nästa inloggning.
+Alla rättigheter är **e-postbaserade** — personer kan bjudas in innan de
+loggat in första gången (magisk länk ger verifierad e-post i auth-token, som
+reglerna matchar mot). Tre nivåer:
+
+- **Administratörer** (`adminEmails`, äldre `admins`-uid-lista stöds också) —
+  full åtkomst. Tävlingsledningsroller med e-post kan bjudas in som admin
+  direkt via en kryssruta i Tävlingslednings-formuläret.
+- **Användare** (`users: [{email, name?}]` + platt `userEmails`-spegel för
+  reglerna) — läsåtkomst till admin-vyerna.
+- **Kontrollansvariga** (`ansvariga`/`ansvarigaEmails` på respektive kontroll,
+  0–flera per kontroll, e-post + namn) — kan redigera och öppna/stänga SIN
+  kontroll (inte radera den eller ändra vilka som är ansvariga; reglerna
+  blockerar eskalering via `affectedKeys`). Speglas automatiskt in i
+  användarlistan för läsåtkomst till resten, och visas samlat under
+  Inställningar → Användare.
+
+**Avsluta tävling** (Inställningar → Grund): raderar samtliga användare och
+kontrollansvariga inklusive namn (endast administratörer ligger kvar), stänger
+alla kontroller och gör tävlingen skrivskyddad (`closed: true`). Kan
+återöppnas, men de borttagna personerna återställs inte.
 
 ## Kataloglayout
 
@@ -181,14 +197,17 @@ firebase.json           # Hosting + Firestore + Functions-config
 ```
 users/{uid}                      { email, role: "super-admin" | "user" }
 competitions/{cid}               { name, shortName, year, date, location,
-                                   organizer, description,
-                                   admins: [uid], users: [uid],
+                                   organizer, description, closed,
+                                   admins: [uid], adminEmails: [email],
+                                   users: [{email, name}], userEmails: [email],
                                    createdBy, createdAt }
   patrols/{pid}                  { number, name, antal, avdelning, kar,
                                    notering }
   controls/{ctrlId}              { nummer, name, maxPoang, minPoang,
                                    extraPoang, lat, lng, information,
-                                   notering, open }
+                                   notering, open,
+                                   ansvariga: [{email, name}],
+                                   ansvarigaEmails: [email] }
     scores/{patrolId}            { patrolId, poang, extraPoang, note,
                                    reportedAt, reporter }
   registrations/{regId}          { kar, contact: {name,email,phone},

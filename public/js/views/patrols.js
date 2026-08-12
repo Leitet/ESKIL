@@ -6,7 +6,8 @@ import {
 import {
   allowedAvdelningar, escapeHtml, toast, confirmDialog, withBusy, startUrl,
   copyToClipboard, patrolStartTime, startTimeSettings, effectiveIntervalSec,
-  wireOverlayClose
+  wireOverlayClose,
+  isCompAdminUser
 } from '../utils.js';
 import { renderQrToImg, downloadStartPdf } from '../pdf.js';
 import { icon } from '../icons.js';
@@ -41,7 +42,7 @@ export async function renderPatrols(app, user, cid) {
   if (!wrap.isConnected) return; // navigated away while loading
   if (!comp) { wrap.innerHTML = `<div class="empty"><h3>Tävlingen hittades inte</h3></div>`; return; }
   setTopbarCompetition(cid, comp, user);
-  const isAdmin = user.role === 'super-admin' || (comp.admins || []).includes(user.uid);
+  const isAdmin = isCompAdminUser(comp, user);
   const st = startTimeSettings(comp);
 
   let state = {

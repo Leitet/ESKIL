@@ -1,6 +1,6 @@
 import { layout } from '../app.js';
 import { listCompetitionsForUser, createCompetition } from '../store.js';
-import { escapeHtml, formatDate, toast, withBusy } from '../utils.js';
+import { escapeHtml, formatDate, toast, withBusy, isCompAdminUser } from '../utils.js';
 import { createManagementForm } from '../managementform.js';
 import { icon } from '../icons.js';
 
@@ -70,8 +70,9 @@ export async function renderHome(app, user) {
         <h3 class="t-h3" style="color:var(--scout-blue);margin:6px 0 4px;">${escapeHtml(c.name)}</h3>
         <div class="muted t-sm">${c.date ? formatDate(c.date) : 'Datum saknas'} · ${escapeHtml(c.location || 'Plats saknas')}</div>
         <div class="mt-4 row" style="gap:6px;">
-          ${c.demo ? '<span class="badge badge-orange">Demo</span>' : `<span class="badge badge-gray">${(c.admins || []).length} admin</span>`}
-          ${ (c.admins || []).includes(user.uid) ? '<span class="badge badge-green">Admin</span>' : '' }
+          ${c.demo ? '<span class="badge badge-orange">Demo</span>' : `<span class="badge badge-gray">${(c.admins || []).length + (c.adminEmails || []).length} admin</span>`}
+          ${isCompAdminUser(c, user) && user.role !== 'super-admin' ? '<span class="badge badge-green">Admin</span>' : ''}
+          ${c.closed ? '<span class="badge badge-gray">Avslutad</span>' : ''}
           ${c.demo && user.role !== 'super-admin' ? '<span class="badge badge-gray">Läsbart</span>' : ''}
         </div>
       </a>

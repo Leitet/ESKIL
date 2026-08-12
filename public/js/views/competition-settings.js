@@ -8,7 +8,8 @@
 
 import { layout, setTopbarCompetition } from '../app.js';
 import {
-  getCompetition, updateCompetition, deleteCompetition
+  getCompetition, updateCompetition, deleteCompetition,
+  setCompetitionUsers, listControls, closeCompetition, reopenCompetition
 } from '../store.js';
 import {
   db, doc, getDoc, getDocs, collection, query, where
@@ -16,7 +17,8 @@ import {
 import {
   escapeHtml, toast, withBusy, confirmDialog,
   registrationSettings, REG_PRICING_MODELS, registrationUrl, copyToClipboard,
-  AVDELNINGAR, allowedAvdelningar
+  AVDELNINGAR, allowedAvdelningar,
+  isCompAdminUser, normEmail
 } from '../utils.js';
 import { createManagementForm } from '../managementform.js';
 import { icon } from '../icons.js';
@@ -48,7 +50,7 @@ export async function renderCompetitionSettings(app, user, cid) {
   setTopbarCompetition(cid, comp, user);
 
   const isSuperAdmin = user.role === 'super-admin';
-  const isAdmin = isSuperAdmin || (comp.admins || []).includes(user.uid);
+  const isAdmin = isSuperAdmin || isCompAdminUser(comp, user);
   if (!isAdmin) {
     wrap.innerHTML = `<div class="empty"><h3>Inte tillgängligt</h3><p>Bara tävlingsadministratörer kan öppna inställningarna.</p></div>`;
     return;
@@ -221,6 +223,44 @@ function renderBasicTab(comp, cid, refresh, readOnly, isSuperAdmin) {
     });
     await refresh();
   });
+
+  // Lifecycle: avsluta/återöppna tävlingen (competition admins)
+  if (!readOnly) {
+    const lifecycle = document.createElement('section');
+    lifecycle.className = 'card mt-6';
+    if (comp.closed) {
+      lifecycle.innerHTML = `
+        <h3 class="t-h3" style="margin-top:0;">Tävlingen är avslutad <span class="badge badge-gray">Avslutad</span></h3>
+        <p class="muted">Alla användare och kontrollansvariga är borttagna, kontrollerna är stängda och tävlingen är skrivskyddad för alla utom administratörer. Publika sidor och resultat går fortfarande att titta på.</p>
+        <button class="btn btn-secondary mt-4" id="reopen-comp">Återöppna tävlingen</button>
+      `;
+      lifecycle.querySelector('#reopen-comp').addEventListener('click', (e) => withBusy(e.currentTarget, 'Återöppnar…', async () => {
+        try {
+          await reopenCompetition(cid);
+          toast('Tävlingen är återöppnad', 'success');
+          await refresh();
+        } catch (err) { toast('Fel: ' + err.message, 'error'); }
+      }));
+    } else {
+      lifecycle.innerHTML = `
+        <h3 class="t-h3" style="margin-top:0;">Avsluta tävling</h3>
+        <p class="muted">När tävlingen är genomförd: raderar samtliga användare och kontrollansvariga
+        (inklusive namn — bara administratörer ligger kvar), stänger alla kontroller för rapportering
+        och gör tävlingen skrivskyddad. Resultat och publika sidor går fortfarande att titta på.
+        Kan återöppnas, men de borttagna personerna återställs inte.</p>
+        <button class="btn btn-secondary mt-4" id="close-comp">Avsluta tävling</button>
+      `;
+      lifecycle.querySelector('#close-comp').addEventListener('click', (e) => withBusy(e.currentTarget, 'Avslutar…', async () => {
+        if (!(await confirmDialog(`Avsluta "${comp.name}"? Alla användare och kontrollansvariga raderas (administratörer ligger kvar) och alla kontroller stängs.`, { okLabel: 'Avsluta tävling' }))) return;
+        try {
+          await closeCompetition(cid);
+          toast('Tävlingen är avslutad', 'success');
+          await refresh();
+        } catch (err) { toast('Fel: ' + err.message, 'error'); }
+      }));
+    }
+    host.appendChild(lifecycle);
+  }
 
   // Danger zone (delete) — super-admin only
   if (isSuperAdmin) {
@@ -919,7 +959,10 @@ function renderManagementTab(comp, cid, refresh, readOnly) {
   host.appendChild(card);
 
   wireSave(card, async () => {
-    await updateCompetition(cid, { management: mgmt.read() });
+    // Union — ticking "Bjud in som administratör" adds; removal happens
+    // deliberately under Användare, never as a side effect here.
+    const adminEmails = [...new Set([...(comp.adminEmails || []), ...mgmt.adminInvites()])];
+    await updateCompetition(cid, { management: mgmt.read(), adminEmails });
     await refresh();
   });
 
@@ -935,71 +978,115 @@ function renderMembersTab(comp, cid, user, refresh) {
   card.className = 'card';
   card.innerHTML = `
     <h3 class="t-h3" style="margin-top:0;">Användare & administratörer</h3>
-    <p class="muted t-sm" style="margin-top:-6px;">Bjud in en användare genom att skriva in deras e-postadress. De måste ha loggat in i ESKIL en gång först.</p>
+    <p class="muted t-sm" style="margin-top:-6px;">Ange e-postadress (och gärna namn) — personen behöver inte ha loggat in i ESKIL tidigare, rättigheterna gäller från första inloggningen. Kontrollansvariga utses på respektive kontroll.</p>
     <div id="member-body"><div class="muted">Laddar…</div></div>
   `;
   host.appendChild(card);
 
   const body = card.querySelector('#member-body');
+  const myEmail = normEmail(user.email);
+  // Legacy entries: users used to be uid arrays; treat string entries as uids.
+  const userEntries = (comp.users || []).filter(u => u && typeof u === 'object');
+  const legacyUserUids = (comp.users || []).filter(u => typeof u === 'string');
 
   (async () => {
-    const [adminEmails, userEmails] = await Promise.all([
+    const [legacyAdminEmails, legacyUserEmails, controls] = await Promise.all([
       lookupEmailsForUids(comp.admins || []),
-      lookupEmailsForUids(comp.users || [])
+      lookupEmailsForUids(legacyUserUids),
+      listControls(cid).catch(() => [])
     ]);
+
+    // Kontrollansvariga överblick: email -> { name, controls: [nr] }
+    const ansvariga = new Map();
+    for (const c of [...controls].sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0))) {
+      for (const a of (c.ansvariga || [])) {
+        const key = normEmail(a.email);
+        if (!key) continue;
+        if (!ansvariga.has(key)) ansvariga.set(key, { name: a.name || '', controls: [] });
+        ansvariga.get(key).controls.push(c.nummer ?? '?');
+        if (a.name && !ansvariga.get(key).name) ansvariga.get(key).name = a.name;
+      }
+    }
 
     body.innerHTML = `
       <div class="mt-4">
-        <h4 class="t-over">Administratörer (${(comp.admins || []).length})</h4>
+        <h4 class="t-over">Administratörer (${(comp.admins || []).length + (comp.adminEmails || []).length})</h4>
         <ul class="muted t-sm" style="padding-left:16px;margin:6px 0 10px;">
-          ${adminEmails.map((e, i) => `<li>
+          ${legacyAdminEmails.map((e, i) => `<li>
             ${escapeHtml(e || comp.admins[i])}
             ${comp.admins[i] !== user.uid ? `<button class="btn btn-ghost btn-sm" style="color:var(--utm-pink);margin-left:8px;" data-remove-admin="${comp.admins[i]}">Ta bort</button>` : '<span class="muted">(du)</span>'}
-          </li>`).join('') || '<li>—</li>'}
+          </li>`).join('')}
+          ${(comp.adminEmails || []).map(e => `<li>
+            ${escapeHtml(e)}
+            ${normEmail(e) !== myEmail ? `<button class="btn btn-ghost btn-sm" style="color:var(--utm-pink);margin-left:8px;" data-remove-admin-email="${escapeHtml(e)}">Ta bort</button>` : '<span class="muted">(du)</span>'}
+          </li>`).join('')}
+          ${!(comp.admins || []).length && !(comp.adminEmails || []).length ? '<li>—</li>' : ''}
         </ul>
         <div class="row">
-          <input class="input" placeholder="e-post@exempel.se" id="new-admin-email" style="max-width:320px;">
+          <input class="input" type="email" placeholder="e-post@exempel.se" id="new-admin-email" style="max-width:320px;">
           <button class="btn btn-secondary btn-sm" id="add-admin">${icon('plus', { size: 14 })} Lägg till admin</button>
         </div>
       </div>
 
       <div class="mt-6">
-        <h4 class="t-over">Övriga användare (läsåtkomst) (${(comp.users || []).length})</h4>
+        <h4 class="t-over">Användare — läsåtkomst (${userEntries.length + legacyUserUids.length})</h4>
         <ul class="muted t-sm" style="padding-left:16px;margin:6px 0 10px;">
-          ${userEmails.map((e, i) => `<li>
-            ${escapeHtml(e || comp.users[i])}
-            <button class="btn btn-ghost btn-sm" style="color:var(--utm-pink);margin-left:8px;" data-remove-user="${comp.users[i]}">Ta bort</button>
-          </li>`).join('') || '<li>—</li>'}
+          ${userEntries.map(u => `<li>
+            ${u.name ? `<strong>${escapeHtml(u.name)}</strong> · ` : ''}${escapeHtml(u.email)}
+            ${ansvariga.has(normEmail(u.email)) ? `<span class="badge badge-blue" style="margin-left:4px;">Kontrollansvarig</span>` : ''}
+            <button class="btn btn-ghost btn-sm" style="color:var(--utm-pink);margin-left:8px;" data-remove-user="${escapeHtml(u.email)}">Ta bort</button>
+          </li>`).join('')}
+          ${legacyUserEmails.map((e, i) => `<li>
+            ${escapeHtml(e || legacyUserUids[i])} <span class="muted">(äldre format)</span>
+            <button class="btn btn-ghost btn-sm" style="color:var(--utm-pink);margin-left:8px;" data-remove-legacy-user="${legacyUserUids[i]}">Ta bort</button>
+          </li>`).join('')}
+          ${!userEntries.length && !legacyUserUids.length ? '<li>—</li>' : ''}
         </ul>
-        <div class="row">
-          <input class="input" placeholder="e-post@exempel.se" id="new-user-email" style="max-width:320px;">
+        <div class="row wrap">
+          <input class="input" type="email" placeholder="e-post@exempel.se" id="new-user-email" style="max-width:280px;">
+          <input class="input" placeholder="Namn (frivilligt)" id="new-user-name" style="max-width:220px;">
           <button class="btn btn-secondary btn-sm" id="add-user">${icon('plus', { size: 14 })} Lägg till användare</button>
         </div>
       </div>
-    `;
 
-    const addByEmail = async (key, email, btn) => {
-      const uid = await findUidByEmail(email);
-      if (!uid) {
-        toast('Den e-postadressen har inte loggat in i ESKIL än.', 'error');
-        return;
-      }
-      const existing = comp[key] || [];
-      if (existing.includes(uid)) { toast('Användaren är redan tillagd'); return; }
-      await updateCompetition(cid, { [key]: [...existing, uid] });
-      await refresh();
-      toast('Tillagd', 'success');
-    };
+      <div class="mt-6">
+        <h4 class="t-over">Kontrollansvariga (${ansvariga.size})</h4>
+        ${ansvariga.size ? `
+          <ul class="muted t-sm" style="padding-left:16px;margin:6px 0 10px;">
+            ${[...ansvariga.entries()].map(([email, a]) => `<li>
+              ${a.name ? `<strong>${escapeHtml(a.name)}</strong> · ` : ''}${escapeHtml(email)}
+              <span class="muted">— kontroll ${a.controls.join(', ')}</span>
+            </li>`).join('')}
+          </ul>
+        ` : '<p class="muted t-sm" style="margin:6px 0 10px;">Inga kontrollansvariga utsedda.</p>'}
+        <p class="field-hint">Kontrollansvariga kan redigera och öppna/stänga sin kontroll, och har läsåtkomst till resten av tävlingen. De utses på respektive kontrollsida och står automatiskt med som användare ovan.</p>
+      </div>
+    `;
 
     const adminBtn = body.querySelector('#add-admin');
     adminBtn.addEventListener('click', () => withBusy(adminBtn, 'Lägger till…', async () => {
-      const email = body.querySelector('#new-admin-email').value.trim().toLowerCase();
-      if (email) await addByEmail('admins', email, adminBtn);
+      const email = normEmail(body.querySelector('#new-admin-email').value);
+      if (!email) return;
+      const existing = comp.adminEmails || [];
+      if (existing.includes(email)) { toast('Är redan administratör'); return; }
+      try {
+        await updateCompetition(cid, { adminEmails: [...existing, email] });
+        await refresh();
+        toast('Administratör tillagd', 'success');
+      } catch (e) { toast('Fel: ' + e.message, 'error'); }
     }));
+
     const userBtn = body.querySelector('#add-user');
     userBtn.addEventListener('click', () => withBusy(userBtn, 'Lägger till…', async () => {
-      const email = body.querySelector('#new-user-email').value.trim().toLowerCase();
-      if (email) await addByEmail('users', email, userBtn);
+      const email = normEmail(body.querySelector('#new-user-email').value);
+      const name = body.querySelector('#new-user-name').value.trim();
+      if (!email) return;
+      if (userEntries.some(u => normEmail(u.email) === email)) { toast('Användaren är redan tillagd'); return; }
+      try {
+        await setCompetitionUsers(cid, [...userEntries, { email, name }]);
+        await refresh();
+        toast('Användare tillagd', 'success');
+      } catch (e) { toast('Fel: ' + e.message, 'error'); }
     }));
 
     body.querySelectorAll('[data-remove-admin]').forEach(b => b.addEventListener('click', async () => {
@@ -1009,24 +1096,32 @@ function renderMembersTab(comp, cid, user, refresh) {
       try { await updateCompetition(cid, { admins: next }); await refresh(); toast('Borttagen'); }
       catch (e) { toast(e.message, 'error'); }
     }));
+    body.querySelectorAll('[data-remove-admin-email]').forEach(b => b.addEventListener('click', async () => {
+      if (!(await confirmDialog('Ta bort denna administratör?'))) return;
+      const email = normEmail(b.dataset.removeAdminEmail);
+      const next = (comp.adminEmails || []).filter(x => normEmail(x) !== email);
+      try { await updateCompetition(cid, { adminEmails: next }); await refresh(); toast('Borttagen'); }
+      catch (e) { toast(e.message, 'error'); }
+    }));
     body.querySelectorAll('[data-remove-user]').forEach(b => b.addEventListener('click', async () => {
       if (!(await confirmDialog('Ta bort denna användare?'))) return;
-      const uid = b.dataset.removeUser;
-      const next = (comp.users || []).filter(x => x !== uid);
-      try { await updateCompetition(cid, { users: next }); await refresh(); toast('Borttagen'); }
-      catch (e) { toast(e.message, 'error'); }
+      const email = normEmail(b.dataset.removeUser);
+      try {
+        await setCompetitionUsers(cid, userEntries.filter(u => normEmail(u.email) !== email));
+        await refresh(); toast('Borttagen');
+      } catch (e) { toast(e.message, 'error'); }
+    }));
+    body.querySelectorAll('[data-remove-legacy-user]').forEach(b => b.addEventListener('click', async () => {
+      if (!(await confirmDialog('Ta bort denna användare?'))) return;
+      const uid = b.dataset.removeLegacyUser;
+      try {
+        await updateCompetition(cid, { users: (comp.users || []).filter(x => x !== uid) });
+        await refresh(); toast('Borttagen');
+      } catch (e) { toast(e.message, 'error'); }
     }));
   })();
 
   return host;
-}
-
-async function findUidByEmail(email) {
-  try {
-    const snap = await getDocs(query(collection(db, 'users'), where('email', '==', email)));
-    if (snap.empty) return null;
-    return snap.docs[0].id;
-  } catch { return null; }
 }
 
 async function lookupEmailsForUids(uids) {

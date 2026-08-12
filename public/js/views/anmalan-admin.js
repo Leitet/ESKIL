@@ -9,7 +9,8 @@ import {
 import { downloadReceiptPdf } from '../pdf.js';
 import {
   escapeHtml, formatDate, toast, withBusy, confirmDialog,
-  registrationSettings, registrationState, registrationUrl, copyToClipboard
+  registrationSettings, registrationState, registrationUrl, copyToClipboard,
+  isCompAdminUser
 } from '../utils.js';
 import { icon } from '../icons.js';
 import { compActionsHtml } from './competition.js';
@@ -23,7 +24,7 @@ export async function renderAnmalanAdmin(app, user, cid) {
   if (!comp) { wrap.innerHTML = `<div class="empty"><h3>Tävlingen hittades inte</h3></div>`; return; }
   setTopbarCompetition(cid, comp, user);
 
-  const isAdmin = user.role === 'super-admin' || (comp.admins || []).includes(user.uid);
+  const isAdmin = isCompAdminUser(comp, user);
   const settings = registrationSettings(comp);
   const state = registrationState(comp);
 

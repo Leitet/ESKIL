@@ -54,11 +54,15 @@ export async function listCompetitionsForUser(user) {
   const snap = await getDocs(collection(db, 'competitions'));
   const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   if (user.role === 'super-admin') return all;
-  // Everyone can see demo competitions; otherwise only ones they belong to.
+  const email = String(user.email || '').trim().toLowerCase();
+  // Everyone can see demo competitions; otherwise only ones they belong to —
+  // as legacy uid-admin, email-invited admin, or email-invited user
+  // (kontrollansvariga are mirrored into userEmails when assigned).
   return all.filter(c =>
     c.demo === true ||
     (c.admins || []).includes(user.uid) ||
-    (c.users || []).includes(user.uid)
+    (c.adminEmails || []).includes(email) ||
+    (c.userEmails || []).includes(email)
   );
 }
 
@@ -89,6 +93,43 @@ async function deleteRefs(refs) {
     refs.slice(i, i + 450).forEach(r => batch.delete(r));
     await batch.commit();
   }
+}
+
+// Persist the user list: `users` holds {email, name} for display, and the
+// flat `userEmails` mirror is what the security rules check membership
+// against. Always write both through this helper so they can't drift.
+export async function setCompetitionUsers(cid, entries) {
+  const clean = entries
+    .map(e => ({ email: String(e.email || '').trim().toLowerCase(), name: (e.name || '').trim() }))
+    .filter(e => e.email);
+  await updateDoc(doc(db, 'competitions', cid), {
+    users: clean,
+    userEmails: clean.map(e => e.email)
+  });
+}
+
+// Close (avsluta) a competition: wipe users and kontrollansvariga (including
+// their names — only admins remain), close every control for reporting and
+// mark the competition read-only. Reversible via reopenCompetition, but the
+// removed people are gone for good.
+export async function closeCompetition(cid) {
+  const controls = await listControls(cid);
+  for (let i = 0; i < controls.length; i += 400) {
+    const batch = writeBatch(db);
+    controls.slice(i, i + 400).forEach(c => {
+      batch.update(doc(db, 'competitions', cid, 'controls', c.id), {
+        open: false, ansvariga: [], ansvarigaEmails: []
+      });
+    });
+    await batch.commit();
+  }
+  await updateDoc(doc(db, 'competitions', cid), {
+    closed: true, users: [], userEmails: []
+  });
+}
+
+export async function reopenCompetition(cid) {
+  await updateDoc(doc(db, 'competitions', cid), { closed: false });
 }
 
 export async function deleteCompetition(cid) {

@@ -15,22 +15,26 @@ service cloud.firestore {
       return isSignedIn() && userRole() == 'super-admin';
     }
 
-    function compAdmins(cid) {
-      return get(/databases/$(database)/documents/competitions/$(cid)).data.admins;
+    function compData(cid) {
+      return get(/databases/$(database)/documents/competitions/$(cid)).data;
     }
 
-    function compUsers(cid) {
-      return get(/databases/$(database)/documents/competitions/$(cid)).data.users;
+    // All sign-ins are email-link, so every authenticated user has a verified
+    // email claim. Permissions are email-based (people can be invited before
+    // their first sign-in); legacy uid-based admins are still honored.
+    function authEmail() {
+      return request.auth.token.email.lower();
     }
 
     function isCompAdmin(cid) {
-      return isSignedIn() && (isSuperAdmin() || request.auth.uid in compAdmins(cid));
+      return isSignedIn() && (isSuperAdmin()
+        || request.auth.uid in compData(cid).get('admins', [])
+        || authEmail() in compData(cid).get('adminEmails', []));
     }
 
     function isCompMember(cid) {
-      return isSignedIn() && (isSuperAdmin()
-        || request.auth.uid in compAdmins(cid)
-        || request.auth.uid in compUsers(cid));
+      return isCompAdmin(cid)
+        || (isSignedIn() && authEmail() in compData(cid).get('userEmails', []));
     }
 
     // A competition flagged with demo: true is read-only for everyone except
@@ -41,11 +45,16 @@ service cloud.firestore {
     // property is an evaluation error in rules), which denied every anonymous
     // score/registration write on those competitions.
     function compIsDemo(cid) {
-      return get(/databases/$(database)/documents/competitions/$(cid)).data.get('demo', false) == true;
+      return compData(cid).get('demo', false) == true;
+    }
+
+    // A closed (avslutad) competition is read-only for everyone but admins.
+    function compClosed(cid) {
+      return compData(cid).get('closed', false) == true;
     }
 
     function registrationEnabled(cid) {
-      return get(/databases/$(database)/documents/competitions/$(cid)).data.get('registration', {}).get('enabled', false) == true;
+      return compData(cid).get('registration', {}).get('enabled', false) == true;
     }
 
     // --- Users
@@ -86,10 +95,24 @@ service cloud.firestore {
         allow write: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
       }
 
-      // Controls — read public (ID is the secret); write by admins only
+      // Controls — read public (ID is the secret). Create/delete by admins;
+      // update also by the control's kontrollansvariga (email match), who may
+      // edit everything EXCEPT the ansvariga lists themselves (no adding
+      // friends / privilege changes) and only while the competition is open.
       match /controls/{ctrlId} {
         allow read: if true;
-        allow write: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
+        allow create: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
+        allow delete: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
+        allow update: if isSuperAdmin()
+          || (isCompAdmin(cid) && !compIsDemo(cid))
+          || (
+               isSignedIn()
+            && !compIsDemo(cid)
+            && !compClosed(cid)
+            && authEmail() in resource.data.get('ansvarigaEmails', [])
+            && !request.resource.data.diff(resource.data).affectedKeys()
+                 .hasAny(['ansvariga', 'ansvarigaEmails'])
+          );
 
         // Scores — anonymous create/update allowed if control is open AND the
         // competition isn't a demo. Super-admin can always seed scores.
@@ -119,8 +142,8 @@ service cloud.firestore {
       match /registrations/{regId} {
         allow get: if true;
         allow list: if isCompMember(cid);
-        allow create: if isCompAdmin(cid) || (registrationEnabled(cid) && !compIsDemo(cid));
-        allow update: if isCompAdmin(cid) || (registrationEnabled(cid) && !compIsDemo(cid));
+        allow create: if isCompAdmin(cid) || (registrationEnabled(cid) && !compIsDemo(cid) && !compClosed(cid));
+        allow update: if isCompAdmin(cid) || (registrationEnabled(cid) && !compIsDemo(cid) && !compClosed(cid));
         allow delete: if isCompAdmin(cid);
       }
 

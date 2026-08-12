@@ -4,7 +4,7 @@
 
 import { layout } from '../app.js';
 import { listCompetitionsForUser } from '../store.js';
-import { escapeHtml } from '../utils.js';
+import { escapeHtml, isCompAdminUser } from '../utils.js';
 import { icon } from '../icons.js';
 
 export async function renderSettings(app, user) {
@@ -19,7 +19,7 @@ export async function renderSettings(app, user) {
   try { comps = await listCompetitionsForUser(user); }
   catch (e) { console.error(e); loadError = e; }
   const mine = comps.filter(c =>
-    user.role === 'super-admin' || (c.admins || []).includes(user.uid)
+    isCompAdminUser(c, user)
   );
   if (loadError) {
     wrap.innerHTML = `<div class="empty"><h3>Kunde inte ladda</h3><p>${escapeHtml(loadError.message)} — ladda om sidan för att försöka igen.</p></div>`;
