@@ -299,6 +299,24 @@ export async function deleteScore(cid, ctrlId, scoreId) {
 // One station per competition (the doc ID is the secret in /m/<cid>/<sid>).
 // Passages: one doc per patrol with startAt/finishAt server timestamps.
 
+// --- Spårdragning ------------------------------------------------------------
+// One doc per competition: { speedKmh, legs: { "<fromKey>__<toKey>": [{lat,lng},…] } }.
+// The leg sequence itself is derived from control order at render time — the
+// doc only stores drawn waypoints, so renumbering controls keeps whatever
+// legs still connect the same pair.
+
+export async function getTrack(cid) {
+  const snap = await getDoc(doc(db, 'competitions', cid, 'track', 'main'));
+  return snap.exists() ? snap.data() : null;
+}
+
+export async function saveTrack(cid, data) {
+  await setDoc(doc(db, 'competitions', cid, 'track', 'main'), {
+    ...data,
+    updatedAt: serverTimestamp()
+  });
+}
+
 export async function listStations(cid) {
   const snap = await getDocs(collection(db, 'competitions', cid, 'stations'));
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));

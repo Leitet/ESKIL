@@ -134,6 +134,14 @@ service cloud.firestore {
         }
       }
 
+      // Spårdragning — the course polylines drawn in the Spår editor. One
+      // doc ("main") holding waypoints per leg. Same visibility as controls
+      // (which already expose every position publicly); only admins draw.
+      match /track/{docId} {
+        allow read: if true;
+        allow write: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
+      }
+
       // Start/Mål-station — the station doc ID is the secret in the station
       // URL (/m/<cid>/<stationId>), same trust model as reporter links. The
       // station crew checks patrols out at start and in at mål; passages hold

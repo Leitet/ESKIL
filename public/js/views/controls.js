@@ -62,6 +62,7 @@ export async function renderControls(app, user, cid) {
       <a href="/app/c/${cid}/laget" data-link>Läget</a>
       <a href="/app/c/${cid}/patrols" data-link>Patruller</a>
       <a href="/app/c/${cid}/controls" data-link class="active">Kontroller</a>
+      <a href="/app/c/${cid}/track" data-link>Spår</a>
       <a href="/app/c/${cid}/scoreboard" data-link>Poängtabell</a>
       <a href="/app/c/${cid}/anmalan" data-link>Anmälan</a>
     </div>

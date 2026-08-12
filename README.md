@@ -46,6 +46,14 @@ att köra gratis på Spark-planen.
   Läget) för funktionärerna vid start och mål: checka ut patruller vid start
   och in vid målgång med ett tryck, ångra med bekräftelse. Ingen inloggning.
   In-/utcheckningarna ger Läget dess start-/måldata.
+- **Spårdragning** (flik "Spår") — rita spåret mellan kontrollerna på en stor
+  karta (växla karta/satellit, fullskärmsläge). Bensekvensen härleds ur
+  kontrollernas nummerordning (start → 1 → 2 → … → mål när start/mål är
+  konfigurerat); klick i kartan lägger punkter på det aktiva benet, punkterna
+  dras för att justera och tas bort med dubbelklick. Panelen visar längd och
+  gångtid per ben samt total spårlängd och beräknad vandringstid med valbart
+  promenadtempo (3/4/5 km/h), exklusive och inklusive kontrolltid
+  (5 min/kontroll). Ben utan ritade punkter räknas som fågelväg (streckad).
 
 ## Teknik
 
@@ -237,6 +245,8 @@ competitions/{cid}               { name, shortName, year, date, location,
                                    createdAt, updatedAt }
   stations/{stationId}           { createdAt }   # doc-id = hemlig stations-URL
     passages/{patrolId}          { patrolId, startAt?, finishAt? }
+  track/main                     { speedKmh, legs: { "<från>__<till>":
+                                   [{lat,lng},…] }, updatedAt }
 ```
 
 Stationens passager: doc-id = patrullens id så om-checkning skriver över.
