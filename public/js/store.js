@@ -379,7 +379,29 @@ export async function listAllScores(cid) {
   return out;
 }
 
-export async function upsertScore(cid, ctrlId, patrolId, poang, extraPoang, note, reporter, utslagGissning = null) {
+// Snapshot the replaced values of a score doc for its history trail —
+// pushed onto `history` whenever a score is overwritten, so protests can be
+// resolved against a record of who reported what and when. Capped at the 10
+// most recent entries to keep the doc small.
+export function scoreHistoryEntry(existing) {
+  if (!existing) return null;
+  const entry = {
+    poang: Number(existing.poang) || 0,
+    extraPoang: Number(existing.extraPoang) || 0,
+    note: existing.note || '',
+    reporter: existing.reporter || '',
+    replacedAt: new Date().toISOString()
+  };
+  if (existing.reportedAt) {
+    const d = typeof existing.reportedAt.toDate === 'function' ? existing.reportedAt.toDate() : new Date(existing.reportedAt);
+    if (!isNaN(d)) entry.reportedAt = d.toISOString();
+  }
+  if (existing.utslagGissning != null) entry.utslagGissning = existing.utslagGissning;
+  if (existing.adjustNote) { entry.adjustNote = existing.adjustNote; entry.adjustedBy = existing.adjustedBy || ''; }
+  return entry;
+}
+
+export async function upsertScore(cid, ctrlId, patrolId, poang, extraPoang, note, reporter, utslagGissning = null, history = null) {
   // One score per patrol per control. Use patrolId as the doc id to keep it unique.
   const ref = doc(db, 'competitions', cid, 'controls', ctrlId, 'scores', patrolId);
   const data = {
@@ -394,6 +416,28 @@ export async function upsertScore(cid, ctrlId, patrolId, poang, extraPoang, note
   if (utslagGissning != null && Number.isFinite(Number(utslagGissning))) {
     data.utslagGissning = Number(utslagGissning);
   }
+  if (Array.isArray(history) && history.length) data.history = history.slice(-10);
+  await setDoc(ref, data);
+}
+
+// Sekretariat adjustment: overwrite a score with a MANDATORY motivation,
+// preserving the replaced values in the history trail. Requires competition
+// admin (rules allow admins to write scores even on closed controls).
+export async function adjustScore(cid, ctrlId, patrolId, existing, { poang, extraPoang, adjustNote, adjustedBy }) {
+  const ref = doc(db, 'competitions', cid, 'controls', ctrlId, 'scores', patrolId);
+  const history = [...(existing?.history || []), scoreHistoryEntry(existing)].filter(Boolean).slice(-10);
+  const data = {
+    patrolId,
+    poang: Number(poang) || 0,
+    extraPoang: Number(extraPoang) || 0,
+    note: existing?.note || '',
+    reportedAt: serverTimestamp(),
+    reporter: 'sekretariat',
+    adjustNote: adjustNote || '',
+    adjustedBy: adjustedBy || ''
+  };
+  if (existing?.utslagGissning != null) data.utslagGissning = existing.utslagGissning;
+  if (history.length) data.history = history;
   await setDoc(ref, data);
 }
 

@@ -121,6 +121,13 @@ att köra gratis på Spark-planen.
   kontroll-id:na), inställningar, prismodell (anmälan avstängd med rensad
   period) och tävlingsledning. Patruller, poäng, anmälningar och användare
   kopieras inte; skaparen blir ensam admin.
+- **Poänghistorik & justeringslogg** — när en poäng skrivs över (kontrollant
+  omrapporterar eller sekretariatet justerar) bevaras det gamla värdet i
+  score-docens `history` (max 10, med rapportör och tid; följer med genom
+  offlinekön). Sekretariatet justerar från kontrollsidan med **obligatorisk
+  motivering** (`adjustNote`/`adjustedBy`; anonyma rapportörer kan inte
+  skriva de fälten — reglerna begränsar dem till history). Poängtabellen
+  (admin) visar justeringsloggen: gammalt → nytt, vem, när, motivering.
 - **Backup, export & import** (Inställningar → Grund) — Backup = komplett
   JSON-dump (tävling + alla subcollections, timestamps serialiserade) som
   "Importera backup" läser tillbaka och återskapar som en NY tävling med

@@ -3,7 +3,7 @@
 // with the URL report (if the control is open).
 
 import { db, doc, onSnapshot } from './firebase.js';
-import { getCompetition, getControl, listPatrols, watchScoresForControl, upsertScore, deleteScore } from './store.js';
+import { getCompetition, getControl, listPatrols, watchScoresForControl, upsertScore, deleteScore, scoreHistoryEntry } from './store.js';
 import { AVDELNINGAR, escapeHtml, allInstructionGroups, internalManagement } from './utils.js';
 import { ensureLeaflet } from './leaflet.js';
 import { icon } from './icons.js';
@@ -582,19 +582,25 @@ async function main() {
       const gissningRaw = isUtslag ? overlay.querySelector('#gissning-input').value.trim() : '';
       const gissning = gissningRaw !== '' && Number.isFinite(Number(gissningRaw)) ? Number(gissningRaw) : null;
       const reporter = reporterId();
+      // Overwriting a confirmed score? Preserve the replaced values in the
+      // history trail so protests can be resolved ("vi fick 8, det står 5").
+      const history = existing
+        ? [...(existing.history || []), scoreHistoryEntry(existing)].filter(Boolean).slice(-10)
+        : null;
       // Queue locally first so the report survives even if the tab is closed
       // mid-save. Firestore's setDoc is idempotent on our keys (patrolId) so
       // the retry on reconnect cannot create duplicates.
       enqueue(cid, ctrlId, {
         patrolId: patrol.id, poang, extraPoang: extra, note: noteVal, reporter,
-        ...(gissning != null ? { utslagGissning: gissning } : {})
+        ...(gissning != null ? { utslagGissning: gissning } : {}),
+        ...(history ? { history } : {})
       });
       sync.render();
 
       saveBtn.disabled = true; saveBtn.textContent = 'Sparar…';
       try {
         await withTimeout(
-          upsertScore(cid, ctrlId, patrol.id, poang, extra, noteVal, reporter, gissning),
+          upsertScore(cid, ctrlId, patrol.id, poang, extra, noteVal, reporter, gissning, history),
           navigator.onLine ? 5000 : 500
         );
         removeFromQueue(cid, ctrlId, patrol.id);
@@ -683,7 +689,7 @@ async function main() {
     let synced = [], failed = [];
     try {
       ({ synced, failed } = await flushQueue(cid, ctrlId,
-        (item) => upsertScore(cid, ctrlId, item.patrolId, item.poang, item.extraPoang, item.note, item.reporter, item.utslagGissning ?? null)
+        (item) => upsertScore(cid, ctrlId, item.patrolId, item.poang, item.extraPoang, item.note, item.reporter, item.utslagGissning ?? null, item.history ?? null)
       ));
     } finally {
       syncInFlight = false;

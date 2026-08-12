@@ -70,6 +70,7 @@ export async function renderScoreboard(app, user, cid) {
 
     <div id="content"></div>
     <div id="utslag-section"></div>
+    <div id="adjust-log"></div>
   `;
 
   const content = wrap.querySelector('#content');
@@ -110,6 +111,7 @@ export async function renderScoreboard(app, user, cid) {
       ]);
       render();
       renderUtslagSection();
+      renderAdjustLog();
       maybeAutoCloseReadyControls();
     } catch (e) {
       console.error(e);
@@ -206,6 +208,58 @@ export async function renderScoreboard(app, user, cid) {
         </div>
       `;
     }).join('');
+  }
+
+  // Justeringslogg — every score that has been overwritten or adjusted, with
+  // the old values, who and when. Admin/members only (this is the trust
+  // trail for protests). Newest first.
+  function renderAdjustLog() {
+    const host = wrap.querySelector('#adjust-log');
+    if (!isAdmin) { host.innerHTML = ''; return; }
+    const ctrlById = Object.fromEntries(controls.map(c => [c.id, c]));
+    const patrolById = Object.fromEntries(patrols.map(p => [p.id, p]));
+    const entries = [];
+    for (const s of scores) {
+      const hist = s.history || [];
+      if (!hist.length && !s.adjustNote) continue;
+      // Each history entry was replaced by the NEXT one (or by the current doc).
+      hist.forEach((h, i) => {
+        const next = hist[i + 1] || s;
+        entries.push({
+          at: h.replacedAt || '',
+          ctrl: ctrlById[s.controlId], patrol: patrolById[s.patrolId],
+          from: h, to: next,
+          byAdjust: !!next.adjustNote,
+          adjustNote: next.adjustNote || '', adjustedBy: next.adjustedBy || '',
+          reporter: next.reporter || ''
+        });
+      });
+    }
+    if (!entries.length) { host.innerHTML = ''; return; }
+    entries.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+    const fmt = (v) => `${v.poang ?? 0}${Number(v.extraPoang) ? '+' + v.extraPoang : ''} p`;
+    host.innerHTML = `
+      <div class="card mt-6">
+        <div class="t-over" style="color:var(--scout-blue);">Justeringslogg</div>
+        <p class="muted t-sm" style="margin:4px 0 var(--sp-3);">Alla poäng som skrivits över eller justerats — gammalt värde, nytt värde, vem och när. Poäng justeras från kontrollens sida.</p>
+        <div class="table-wrap"><table class="t">
+          <thead><tr><th>När</th><th>Kontroll</th><th>Patrull</th><th class="num">Från</th><th class="num">Till</th><th>Av</th><th>Motivering</th></tr></thead>
+          <tbody>
+            ${entries.map(e => `
+              <tr>
+                <td class="muted t-sm" style="white-space:nowrap;">${e.at ? new Date(e.at).toLocaleString('sv-SE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+                <td>${e.ctrl ? `${e.ctrl.nummer ?? ''} · ${escapeHtml(e.ctrl.name || '')}` : '?'}</td>
+                <td><strong>${escapeHtml(e.patrol?.name || '?')}</strong></td>
+                <td class="num">${fmt(e.from)}</td>
+                <td class="num"><strong>${fmt(e.to)}</strong></td>
+                <td class="t-sm">${e.byAdjust ? `<span class="badge badge-blue">Sekretariat</span> ${escapeHtml(e.adjustedBy)}` : '<span class="muted">Kontrollant (omrapportering)</span>'}</td>
+                <td class="t-sm">${escapeHtml(e.adjustNote || '')}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table></div>
+      </div>
+    `;
   }
 
   function computeTotals() {

@@ -1,9 +1,9 @@
 import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import {
   getCompetition, getControl, updateControl,
-  watchScoresForControl, listPatrols, deleteScore
+  watchScoresForControl, listPatrols, deleteScore, adjustScore
 } from '../store.js';
-import { escapeHtml, toast, copyToClipboard, reportUrl, confirmDialog, formatTime, allInstructionGroups, withBusy, isCompAdminUser, canEditControl } from '../utils.js';
+import { escapeHtml, toast, copyToClipboard, reportUrl, confirmDialog, formatTime, allInstructionGroups, withBusy, wireOverlayClose, isCompAdminUser, canEditControl } from '../utils.js';
 import { icon } from '../icons.js';
 import { navigate } from '../router.js';
 import { openControlModal } from './controls.js';
@@ -184,6 +184,58 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
   // Score subscription
   const scoresEl = wrap.querySelector('#scores');
   const patrolById = Object.fromEntries(patrols.map(p => [p.id, p]));
+
+  // Sekretariat adjustment — mandatory motivation, old values preserved in
+  // the score's history trail (visible in the justeringslogg on Poängtabellen).
+  function openAdjustModal(s, patrol) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal" style="max-width:480px;">
+        <div class="modal-head"><h3>Justera poäng — ${escapeHtml(patrol.name || '')}</h3></div>
+        <div class="modal-body field-group">
+          <p class="muted t-sm" style="margin-top:0;">Nuvarande: <strong>${s.poang ?? 0} p</strong>${Number(s.extraPoang) ? ` + ${s.extraPoang} extra` : ''}.
+          Det gamla värdet sparas i justeringsloggen tillsammans med din motivering.</p>
+          <div class="grid grid-2">
+            <div>
+              <label class="field" for="adj-poang">Poäng</label>
+              <input class="input" id="adj-poang" type="number" value="${s.poang ?? 0}">
+            </div>
+            <div>
+              <label class="field" for="adj-extra">Extrapoäng</label>
+              <input class="input" id="adj-extra" type="number" value="${s.extraPoang ?? 0}">
+            </div>
+          </div>
+          <div>
+            <label class="field" for="adj-note">Motivering (obligatorisk)</label>
+            <textarea class="textarea" id="adj-note" rows="3" placeholder="Ex. Protest bifallen — kontrollanten rapporterade fel patrull."></textarea>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn btn-ghost" id="adj-cancel">Avbryt</button>
+          <button class="btn btn-primary" id="adj-save">Justera poängen</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    wireOverlayClose(overlay, close);
+    overlay.querySelector('#adj-cancel').addEventListener('click', close);
+    overlay.querySelector('#adj-save').addEventListener('click', (e) => withBusy(e.currentTarget, 'Justerar…', async () => {
+      const adjustNote = overlay.querySelector('#adj-note').value.trim();
+      if (!adjustNote) { toast('Motivering krävs för att justera poäng.', 'error'); return; }
+      try {
+        await adjustScore(cid, ctrlId, s.patrolId, s, {
+          poang: Number(overlay.querySelector('#adj-poang').value) || 0,
+          extraPoang: Number(overlay.querySelector('#adj-extra').value) || 0,
+          adjustNote,
+          adjustedBy: user?.email || ''
+        });
+        toast('Poängen justerad', 'success');
+        close();
+      } catch (err) { toast('Fel: ' + err.message, 'error'); }
+    }));
+  }
   let autoCloseFired = false;
   registerViewCleanup(() => { if (unsub) { unsub(); unsub = null; } });
   unsub = watchScoresForControl(cid, ctrlId, (rows) => {
@@ -239,11 +291,11 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
                 <td><strong>${escapeHtml(p.name || s.patrolId)}</strong></td>
                 <td>${escapeHtml(p.avdelning || '')}</td>
                 <td>${escapeHtml(p.kar || '')}</td>
-                <td class="num"><strong>${s.poang ?? 0}</strong></td>
+                <td class="num"><strong>${s.poang ?? 0}</strong>${s.adjustNote ? ' <span title="Justerad av sekretariatet">✎</span>' : ''}${(s.history || []).length ? ` <span class="muted t-sm" title="${(s.history || []).length} tidigare värden — se justeringsloggen på poängtabellen">↺${(s.history || []).length}</span>` : ''}</td>
                 <td class="num">${s.extraPoang ?? 0}</td>
                 <td class="muted t-sm">${formatTime(s.reportedAt)}</td>
                 <td class="muted t-sm">${escapeHtml((s.note || '').slice(0, 40))}</td>
-                ${isAdmin ? `<td class="actions"><button class="btn btn-ghost btn-sm" data-del="${s.id}" style="color:var(--utm-pink);">Radera</button></td>` : ''}
+                ${isAdmin ? `<td class="actions"><button class="btn btn-ghost btn-sm" data-adjust="${s.id}">Justera</button><button class="btn btn-ghost btn-sm" data-del="${s.id}" style="color:var(--utm-pink);">Radera</button></td>` : ''}
               </tr>`;
             }).join('')}
           </tbody>
@@ -251,6 +303,13 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
       </div>
     `;
     if (isAdmin) {
+      scoresEl.querySelectorAll('[data-adjust]').forEach(b => {
+        b.addEventListener('click', () => {
+          const s = rows.find(x => x.id === b.dataset.adjust);
+          const patrol = patrolById[s.patrolId] || {};
+          openAdjustModal(s, patrol);
+        });
+      });
       scoresEl.querySelectorAll('[data-del]').forEach(b => {
         b.addEventListener('click', async () => {
           if (await confirmDialog('Radera rapporterade poäng för denna patrull?')) {
