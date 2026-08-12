@@ -21,6 +21,14 @@ att köra gratis på Spark-planen.
 - **Publik startsida** (`/`) — promotar ESKIL och listar tävlingar öppna för
   anmälan, pågående/kommande, demospåret och avslutade tävlingar med resultat,
   plus inloggning.
+- **Tävlingens publika sida** (`/t/<cid>`) — tävlingens egen "reklamsida" som
+  kan skickas till kårerna innan tävlingen: hero med beskrivning och
+  anmälnings-CTA när perioden är öppen ("Anmälan öppnar X" innan dess),
+  KPI:er (fjärde kortet växlar: öppna kontroller under tävling → dagar kvar →
+  spårlängd), alla valda avdelningar, tävlingsledning, karta med spår eller
+  tävlingsområde, samt **Kommande starter** — en live-lista på tävlingsdagen
+  med nedräkning per patrull och länk till respektive startkort (startkorten
+  nås även från patrullmodalen). Allt uppdateras live via snapshots + tickar.
 - **Anmälan** (`/a/<cid>`) — publik anmälningssida (kårvis eller patrullvis) med
   fyra prismodeller, betalningssteg (Swish-QR med låst belopp/referens, bankgiro,
   faktura), egna fritextfält (per anmälan eller per patrull, t.ex. "Allergier"),

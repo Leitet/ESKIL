@@ -5,9 +5,11 @@
 
 import { db, doc, onSnapshot, collection } from './firebase.js';
 import { getCompetition, listPatrols, listControls, getTrack } from './store.js';
-import { courseLegs, drawCourseOnMap, addCourseChip, competitionArea } from './course.js';
+import { courseLegs, drawCourseOnMap, addCourseChip, competitionArea, courseDistance, fmtDist } from './course.js';
 import {
   AVDELNINGAR, escapeHtml, formatDate, publicManagement, patrolStartTime,
+  patrolStartDateTime, startTimeSettings, allowedAvdelningar,
+  registrationSettings, registrationState,
   startFinishPoints, parkingPoint, rankPatrols, rankKarer, RANKING_RULES_TEXT,
   wireOverlayClose, controlsAutoReleased, controlsReleaseTime
 } from './utils.js';
@@ -132,6 +134,13 @@ async function boot() {
     render();
   }, 20000);
   unsubs.push(() => clearInterval(releaseTick));
+
+  // Keep the "Kommande starter" countdowns fresh — re-render every 20 s while
+  // the section is on screen (the map node survives re-renders, see render()).
+  const startsTick = setInterval(() => {
+    if (comp && parsePath()?.tab === 'overview' && upcomingStarts().length) render();
+  }, 20000);
+  unsubs.push(() => clearInterval(startsTick));
   unsubs.push(onSnapshot(collection(db, 'competitions', cid, 'patrols'), snap => {
     patrols = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     render();
@@ -307,7 +316,9 @@ function render() {
 
 function renderHero() {
   const openCount = controls.filter(c => c.open).length;
-  const statusLabel = openCount > 0 ? 'Tävlingen pågår · live' : 'Tävlingen är inte aktiv';
+  const reg = registrationState(comp);
+  const regSettings = registrationSettings(comp);
+  const cid = parsePath()?.cid;
   return `
     <header class="pub-hero">
       <div class="pub-hero-pattern"></div>
@@ -319,7 +330,7 @@ function renderHero() {
             <span class="divider"></span>
             <span class="sublabel">ESKIL</span>
           </div>
-          ${openCount > 0 ? `<div class="status-pill"><span class="dot-live"></span>${escapeHtml(statusLabel)}</div>` : ''}
+          ${openCount > 0 ? `<div class="status-pill"><span class="dot-live"></span>Tävlingen pågår · live</div>` : ''}
         </div>
         <div class="t-over" style="color:var(--rover-yellow);">${escapeHtml(comp.shortName || '')} · ${comp.year || ''}</div>
         <h1>${escapeHtml(comp.name || '')}</h1>
@@ -329,6 +340,9 @@ function renderHero() {
           ${comp.location ? `<span><b>${escapeHtml(comp.location)}</b> · plats</span>` : ''}
           ${comp.organizer ? `<span><b>${escapeHtml(comp.organizer)}</b> · arrangör</span>` : ''}
         </div>
+        ${reg === 'open' ? `
+          <a class="hero-cta" href="/a/${escapeHtml(cid || '')}">Anmäl er nu${regSettings.closesAt ? ` — öppet t.o.m. ${escapeHtml(formatDate(regSettings.closesAt))}` : ''} →</a>
+        ` : ''}
       </div>
     </header>
   `;
@@ -351,6 +365,113 @@ function renderFooter() {
 }
 
 // --- Tab: Overview ---------------------------------------------------------
+
+// Days until the competition date (local midnight to local midnight);
+// null when no date is set. 0 = today.
+function daysUntilComp() {
+  if (!comp?.date) return null;
+  const [Y, M, D] = String(comp.date).split('-').map(Number);
+  if (![Y, M, D].every(Number.isFinite)) return null;
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((new Date(Y, M - 1, D) - today) / 86400000);
+}
+
+function pricingText(p) {
+  switch (p.model) {
+    case 'scout':    return p.perScout ? `${p.perScout} kr per scout` : '';
+    case 'kar':      return p.flat ? `${p.flat} kr per kår` : '';
+    case 'dynamisk': return `${p.base} kr per kår + ${p.perUnit} kr per ${p.unit === 'scout' ? 'scout' : 'patrull'}`;
+    default:         return p.perPatrol ? `${p.perPatrol} kr per patrull` : '';
+  }
+}
+
+// Registration call-to-action card — the reason this page can be sent to
+// kårer before the competition. Open → big CTA; upcoming → when it opens.
+function renderRegistrationCta() {
+  const state = registrationState(comp);
+  if (state === 'unconfigured') return '';
+  const s = registrationSettings(comp);
+  const cid = parsePath()?.cid;
+  const price = pricingText(s.pricing);
+
+  if (state === 'open') {
+    return `
+      <section class="reg-cta">
+        <div>
+          <div class="t-over" style="color:var(--avent-orange);">Anmälan</div>
+          <h2>Anmälan är öppen${s.closesAt ? ` t.o.m. ${escapeHtml(formatDate(s.closesAt))}` : ''}</h2>
+          <div class="reg-meta">
+            ${s.mode === 'patrull' ? 'Anmälan görs per patrull.' : 'Anmäl hela kåren på en gång — flera patruller i samma anmälan.'}
+            ${price ? ` Avgift: <b>${escapeHtml(price)}</b>.` : ''}
+            ${s.info ? `<br>${escapeHtml(s.info)}` : ''}
+          </div>
+        </div>
+        <a class="btn-anmal" href="/a/${escapeHtml(cid || '')}">Till anmälan →</a>
+      </section>
+    `;
+  }
+  if (state === 'before' && s.opensAt) {
+    return `
+      <section class="reg-cta is-info">
+        <div>
+          <div class="t-over" style="color:var(--upp-blue);">Anmälan</div>
+          <h2>Anmälan öppnar ${escapeHtml(formatDate(s.opensAt))}</h2>
+          <div class="reg-meta">${price ? `Avgift: <b>${escapeHtml(price)}</b>. ` : ''}${s.info ? escapeHtml(s.info) : 'Håll utkik här — anmälningslänken aktiveras när perioden öppnar.'}</div>
+        </div>
+      </section>
+    `;
+  }
+  return ''; // closed → inget skrik om det; tävlingssidan lever vidare
+}
+
+// Upcoming starts — a light live version of the startskärm. Only meaningful
+// on the competition day (start times are wall-clock anchored), or on demo
+// competitions where the schedule rolls with the clock.
+function upcomingStarts(now = new Date()) {
+  const s = startTimeSettings(comp);
+  if (!s.enabled || !patrols.length) return [];
+  if (!comp.demo && comp.date && daysUntilComp() !== 0) return [];
+  return patrols
+    .map(p => ({ p, dt: patrolStartDateTime(comp, p, now, patrols.length) }))
+    .filter(x => x.dt && x.dt.getTime() > now.getTime() - 60000)
+    .sort((a, b) => a.dt - b.dt)
+    .slice(0, 8);
+}
+
+function countdownText(dt, now = new Date()) {
+  const min = Math.round((dt - now) / 60000);
+  if (min <= 0) return 'nu';
+  if (min < 60) return `om ${min} min`;
+  return `om ${Math.floor(min / 60)} h ${min % 60} min`;
+}
+
+function renderUpcomingStarts() {
+  const cid = parsePath()?.cid;
+  const now = new Date();
+  const rows = upcomingStarts(now);
+  if (!rows.length) return '';
+  return `
+    <div class="pub-section-head"><h2 class="t-h2">Kommande starter</h2><span class="muted">Live · klicka för startkort</span></div>
+    <div class="starts-list">
+      ${rows.map(({ p, dt }) => {
+        const cd = countdownText(dt, now);
+        return `
+          <a class="start-row ${cd === 'nu' ? 'is-now' : ''}" href="/s/${escapeHtml(cid || '')}/${escapeHtml(p.id)}" target="_blank" rel="noopener">
+            <span class="st-time">${dt.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })}</span>
+            <span class="st-who">
+              <span class="nm">#${p.number ?? '—'} ${escapeHtml(p.name || '')}</span>
+              <span class="sub"><span class="dot ${avdSlug(p.avdelning)}"></span>${escapeHtml(p.avdelning || '')}${p.kar ? ' · ' + escapeHtml(p.kar) : ''}</span>
+            </span>
+            <span class="st-count">${escapeHtml(cd)}</span>
+            <span class="st-link">Startkort →</span>
+          </a>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
 function renderOverview(totals) {
   const avdCounts = {};
   patrols.forEach(p => { avdCounts[p.avdelning] = (avdCounts[p.avdelning] || 0) + 1; });
@@ -358,13 +479,27 @@ function renderOverview(totals) {
 
   const podium = [...totals].sort((a,b) => b.grand - a.grand).slice(0, 3);
 
+  // Fourth KPI adapts to where we are: live count during the race, countdown
+  // before it, track length as a teaser otherwise.
+  const openCount = controls.filter(c => c.open).length;
+  const days = daysUntilComp();
+  const trackDist = track && controlsPublic() ? courseDistance(courseLegs(comp, controls, track).legs) : 0;
+  const kpi4 = openCount > 0 ? { label: 'Öppna just nu', val: openCount }
+    : (days != null && days > 0) ? { label: days === 1 ? 'Dag kvar' : 'Dagar kvar', val: days }
+    : trackDist > 0 ? { label: 'Spårlängd', val: fmtDist(trackDist) }
+    : { label: 'Öppna just nu', val: openCount };
+
   return `
+    ${renderRegistrationCta()}
+
     <section class="pub-kpis">
       <div class="pub-kpi"><div class="label">Patruller</div><div class="val">${patrols.length}</div></div>
       <div class="pub-kpi"><div class="label">Kontroller</div><div class="val">${controls.length}</div></div>
       <div class="pub-kpi"><div class="label">Kårer</div><div class="val">${karer.size}</div></div>
-      <div class="pub-kpi"><div class="label">Öppna just nu</div><div class="val">${controls.filter(c=>c.open).length}</div></div>
+      <div class="pub-kpi"><div class="label">${kpi4.label}</div><div class="val">${kpi4.val}</div></div>
     </section>
+
+    ${renderUpcomingStarts()}
 
     ${scoresPublic() && podium.length && podium[0].grand > 0 ? `
       <div class="pub-section-head"><h2 class="t-h2">Topp tre · Overall</h2><span class="muted">Live</span></div>
@@ -375,9 +510,9 @@ function renderOverview(totals) {
       </div>
     ` : ''}
 
-    <div class="pub-section-head"><h2 class="t-h2">Avdelningar</h2><span class="muted">Klicka för detaljer</span></div>
+    <div class="pub-section-head"><h2 class="t-h2">Avdelningar</h2><span class="muted">${patrols.length ? 'Klicka för detaljer' : 'Avdelningar som tävlar'}</span></div>
     <div class="avd-cards">
-      ${AVDELNINGAR.filter(a => avdCounts[a.key]).map(a => `
+      ${allowedAvdelningar(comp).map(a => `
         <a class="avd-card ${avdSlug(a.key)}" data-avd="${a.key}" href="#">
           <div class="top">
             <span class="label">${a.key}</span>
@@ -385,7 +520,7 @@ function renderOverview(totals) {
           </div>
           <div class="bottom">
             <span class="count-label">Patruller</span>
-            <span class="count">${avdCounts[a.key]}</span>
+            <span class="count">${avdCounts[a.key] || 0}</span>
           </div>
         </a>
       `).join('')}
@@ -757,6 +892,7 @@ function openPatrolModal(patrolId) {
             ${patrol.antal ? ' · ' + escapeHtml(String(patrol.antal)) + ' deltagare' : ''}
             ${stime ? ' · <span class="mono" style="color:var(--scout-blue);">' + escapeHtml(stime) + '</span>' : ''}
           </div>
+          <a class="t-sm" style="display:inline-flex;align-items:center;gap:5px;margin-top:8px;color:var(--scout-blue);font-weight:600;" href="/s/${escapeHtml(parsePath()?.cid || '')}/${escapeHtml(patrol.id)}" target="_blank" rel="noopener">${icon('external', { size: 14 })} Öppna patrullens startkort</a>
         </div>
         <button type="button" class="icon-btn" id="pub-modal-close" aria-label="Stäng">${icon('x', { size: 20 })}</button>
       </div>
