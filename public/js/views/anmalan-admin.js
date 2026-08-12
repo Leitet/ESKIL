@@ -5,16 +5,41 @@
 import { layout, setTopbarCompetition } from '../app.js';
 import {
   getCompetition, listRegistrations, updateRegistration, deleteRegistration,
-  listPatrols, createPatrol
+  listPatrols, createPatrol, createUtskick, listUtskick
 } from '../store.js';
 import { downloadReceiptPdf } from '../pdf.js';
 import {
-  escapeHtml, formatDate, toast, withBusy, confirmDialog,
+  escapeHtml, formatDate, toast, withBusy, confirmDialog, wireOverlayClose,
   registrationSettings, registrationState, registrationUrl, copyToClipboard,
   isCompAdminUser
 } from '../utils.js';
 import { icon } from '../icons.js';
 import { compActionsHtml } from './competition.js';
+
+// Ready-made PM templates — {comp} is replaced with the competition label,
+// [HAKPARENTESER] are gaps the admin fills in before sending.
+const PM_MALLAR = [
+  {
+    key: 'pm', label: 'PM inför tävlingen',
+    subject: 'PM inför {comp}',
+    body: `Hej!\n\nHär kommer PM inför {comp}.\n\nSamling: [TID] vid [PLATS].\nFörsta start: [TID].\n\nAtt ta med:\n- [PACKLISTA]\n\nStartkort och karta finns på tävlingssidan. Vid frågor, kontakta tävlingsledningen.\n\nVäl mötta!`
+  },
+  {
+    key: 'starttider', label: 'Ändrade starttider',
+    subject: 'Ändrade starttider — {comp}',
+    body: `Hej!\n\nStarttiderna för {comp} har ändrats: [BESKRIV ÄNDRINGEN].\n\nDe uppdaterade tiderna syns på era startkort och på tävlingssidan — kontrollera er nya tid innan tävlingsdagen.\n\nVid frågor, kontakta tävlingsledningen.`
+  },
+  {
+    key: 'plats', label: 'Ändrad samlingsplats/parkering',
+    subject: 'Ändrad samlingsplats — {comp}',
+    body: `Hej!\n\nSamlingsplatsen för {comp} har ändrats till [NY PLATS]. [VÄGBESKRIVNING/PARKERING]\n\nUppdaterad karta finns på tävlingssidan.\n\nVid frågor, kontakta tävlingsledningen.`
+  },
+  {
+    key: 'installd', label: 'Inställd tävling',
+    subject: 'Inställd: {comp}',
+    body: `Hej!\n\nTyvärr måste vi ställa in {comp}. [ANLEDNING]\n\nErlagda anmälningsavgifter återbetalas — vi återkommer med detaljer om hur.\n\nVi beklagar det inträffade och hoppas få se er vid ett annat tillfälle.`
+  }
+];
 
 export async function renderAnmalanAdmin(app, user, cid) {
   const wrap = document.createElement('div');
@@ -45,6 +70,7 @@ export async function renderAnmalanAdmin(app, user, cid) {
       </div>
       <div class="btn-row">
         ${compActionsHtml(cid, comp, user)}
+        ${isAdmin && !comp.demo ? `<button class="btn btn-primary btn-sm" id="send-pm">${icon('send', { size: 14 })} Skicka PM</button>` : ''}
         <button class="btn btn-secondary btn-sm" id="copy-link">${icon('copy', { size: 14 })} Anmälningslänk</button>
       </div>
     </div>
@@ -67,6 +93,96 @@ export async function renderAnmalanAdmin(app, user, cid) {
     toast('Anmälningslänk kopierad', 'success');
   });
 
+  let regs = [];
+  wrap.querySelector('#send-pm')?.addEventListener('click', () => openPmModal());
+
+  // --- "Skicka PM" — massutskick till alla aktiva anmälningar -------------------
+  async function openPmModal() {
+    // Fetch fresh — the view may have early-returned (anmälan not enabled)
+    // before regs loaded, and the recipient list should be current anyway.
+    let allRegs = regs;
+    if (!allRegs.length) {
+      try { allRegs = await listRegistrations(cid); } catch { allRegs = []; }
+    }
+    const recipients = allRegs.filter(r => !r.cancelled && (r.contact?.email || '').trim());
+    const compName = `${comp.shortName || comp.name || ''}${comp.year ? ' ' + comp.year : ''}`;
+    const fill = (s) => s.replaceAll('{comp}', compName);
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal" style="max-width:640px;">
+        <div class="modal-head"><h3>Skicka PM till alla anmälda</h3></div>
+        <div class="modal-body">
+          ${recipients.length === 0 ? `
+            <div class="empty" style="padding:var(--sp-6);"><h3>Inga mottagare</h3>
+            <p>Det finns inga aktiva anmälningar med e-postadress att skicka till.</p></div>
+          ` : `
+            <p class="muted t-sm" style="margin-top:0;">Skickas till <strong>${recipients.length} anmälningsansvarig${recipients.length === 1 ? '' : 'a'}</strong>
+            (${recipients.slice(0, 3).map(r => escapeHtml(r.kar || r.contact.email)).join(', ')}${recipients.length > 3 ? ' m.fl.' : ''}).
+            Varje mail får automatiskt en knapp till mottagarens egen anmälningssida, och svar går till tävlingsledningen.</p>
+            <label class="field" for="pm-mall">Mall</label>
+            <select class="select" id="pm-mall" style="max-width:320px;">
+              <option value="">Eget meddelande</option>
+              ${PM_MALLAR.map(m => `<option value="${m.key}">${escapeHtml(m.label)}</option>`).join('')}
+            </select>
+            <label class="field mt-4" for="pm-subject">Ämne</label>
+            <input class="input" id="pm-subject" placeholder="Ex. PM inför ${escapeHtml(compName)}">
+            <label class="field mt-4" for="pm-body">Meddelande</label>
+            <textarea class="textarea" id="pm-body" rows="12" placeholder="Skriv PM:et här — eller välj en mall ovan och fyll i [luckorna]."></textarea>
+            <div class="field-hint">Text i [hakparenteser] är luckor att fylla i innan du skickar.</div>
+            <div id="pm-history" class="mt-4"></div>
+          `}
+        </div>
+        <div class="modal-foot">
+          <button class="btn btn-ghost" id="pm-cancel">Avbryt</button>
+          ${recipients.length ? `<button class="btn btn-primary" id="pm-send">${icon('send', { size: 14 })} Skicka till ${recipients.length} mottagare</button>` : ''}
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    wireOverlayClose(overlay, close);
+    overlay.querySelector('#pm-cancel').addEventListener('click', close);
+
+    overlay.querySelector('#pm-mall')?.addEventListener('change', (e) => {
+      const m = PM_MALLAR.find(x => x.key === e.target.value);
+      if (!m) return;
+      overlay.querySelector('#pm-subject').value = fill(m.subject);
+      overlay.querySelector('#pm-body').value = fill(m.body);
+    });
+
+    // Tidigare utskick — kvitto på vad som redan gått ut.
+    const history = overlay.querySelector('#pm-history');
+    if (history) {
+      listUtskick(cid).then(list => {
+        if (!history.isConnected || !list.length) return;
+        history.innerHTML = `
+          <div class="t-over" style="color:var(--scout-blue);margin-bottom:6px;">Tidigare utskick</div>
+          ${list.slice(0, 5).map(u => `
+            <div class="t-sm" style="padding:4px 0;border-top:1px solid var(--border);">
+              <strong>${escapeHtml(u.subject || '')}</strong>
+              <span class="muted"> · ${u.sentAt ? formatDate(u.sentAt) + ` · ${u.recipients ?? '?'} mottagare` : 'skickas…'}</span>
+            </div>
+          `).join('')}
+        `;
+      }).catch(() => {});
+    }
+
+    overlay.querySelector('#pm-send')?.addEventListener('click', (e) => withBusy(e.currentTarget, 'Skickar…', async () => {
+      const subject = overlay.querySelector('#pm-subject').value.trim();
+      const body = overlay.querySelector('#pm-body').value.trim();
+      if (!subject || !body) { toast('Fyll i både ämne och meddelande.', 'error'); return; }
+      if (/\[[^\]]+\]/.test(subject + body)
+        && !(await confirmDialog('Meddelandet innehåller ofyllda [luckor] från mallen. Skicka ändå?', { okLabel: 'Skicka ändå', danger: false }))) return;
+      try {
+        await createUtskick(cid, { subject, body }, user?.email || '');
+        toast(`PM:et skickas nu till ${recipients.length} mottagare`, 'success');
+        close();
+      } catch (err) { toast('Kunde inte skicka: ' + err.message, 'error'); }
+    }));
+  }
+
   const content = wrap.querySelector('#content');
 
   if (!settings.enabled) {
@@ -80,7 +196,6 @@ export async function renderAnmalanAdmin(app, user, cid) {
     return;
   }
 
-  let regs = [];
   let patrols = [];
 
   async function load() {

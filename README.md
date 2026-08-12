@@ -93,6 +93,14 @@ att köra gratis på Spark-planen.
   5 min före första patrullens starttid på tävlingsdatumet (kräver datum +
   starttider); kartans bildtext visar när.
 
+- **Skicka PM** (Anmälan-fliken) — massutskick till alla aktiva anmälningars
+  kontaktpersoner: ämne + text (med färdiga mallar: PM inför tävlingen,
+  ändrade starttider, ändrad samlingsplats, inställd tävling — {luckor} i
+  hakparenteser fylls i, med varning om de glöms). Admin skapar ett doc i
+  `competitions/{cid}/utskick`; Cloud Function `onUtskickCreated` skickar ett
+  mail per anmälan (avanmälda hoppas över) med mottagarens ändringslänk och
+  reply-to till tävlingsledningen, och stämplar tillbaka sentAt + antal
+  mottagare (historik visas i dialogen).
 - **GDPR & cookies** — ESKIL använder inga cookies (ingen banner behövs):
   inloggning via IndexedDB, övrig lokal lagring är strikt nödvändig
   (nattläge, offlinekö, pseudonymt rapportörs-id). Integritetspolicy på

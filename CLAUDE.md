@@ -92,7 +92,7 @@ first sign-in. Other users get `role: "user"`.
   `/__/firebase/init.json` (auto-provisioned); local dev uses
   `public/firebase-config.json` (gitignored).
 - Cloud Functions (`functions/`) exist ONLY for transactional mail: they react
-  to registration documents and queue mail docs in the `mail` collection,
+  to registration/utskick/control documents and queue mail docs in the `mail` collection,
   which the Trigger Email extension (Brevo SMTP) delivers. Never add a rules
   match for `/mail/**` — clients must not be able to write mail docs. Keep all
   other logic client-side + rules. Functions deploy manually:

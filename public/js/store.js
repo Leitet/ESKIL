@@ -340,6 +340,25 @@ export async function saveTrack(cid, data) {
   });
 }
 
+// --- PM-utskick ---------------------------------------------------------------
+// Creating a doc here triggers the onUtskickCreated Cloud Function, which
+// mails every active registration contact and stamps sentAt/recipients back.
+
+export async function createUtskick(cid, { subject, body }, createdBy) {
+  const ref = await addDoc(collection(db, 'competitions', cid, 'utskick'), {
+    subject, body, createdBy: createdBy || '', createdAt: serverTimestamp()
+  });
+  return ref.id;
+}
+
+export async function listUtskick(cid) {
+  const snap = await getDocs(query(
+    collection(db, 'competitions', cid, 'utskick'),
+    orderBy('createdAt', 'desc')
+  ));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
 export async function listStations(cid) {
   const snap = await getDocs(collection(db, 'competitions', cid, 'stations'));
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));

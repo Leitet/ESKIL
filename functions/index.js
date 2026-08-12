@@ -13,12 +13,14 @@
 //  - förhinder appended              → notice to tävlingsledningen
 //  - registration cancelled          → notice to tävlingsledningen
 //  - kontrollansvarig added          → welcome mail with control + report links
+//  - utskick created                 → PM fan-out to every active registration
 
 const { onDocumentCreated, onDocumentUpdated, onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { setGlobalOptions } = require('firebase-functions/v2');
 const { logger } = require('firebase-functions');
 const admin = require('firebase-admin');
+const { FieldValue } = require('firebase-admin/firestore');
 const QRCode = require('qrcode');
 const { renderReceiptPdfBase64 } = require('./receipt-pdf');
 
@@ -392,4 +394,52 @@ exports.onControlWritten = onDocumentWritten('competitions/{cid}/controls/{ctrlI
     });
   }));
   logger.info(`Kontrollansvarig mail queued for ${added.join(', ')} (${cid}/${ctrlId})`);
+});
+
+// --- PM-utskick till anmälda kårer ---------------------------------------------
+// An admin composes ämne + text in the Anmälan tab; the client creates a doc
+// in competitions/{cid}/utskick (rules: admin-only, exact keys). This trigger
+// fans it out: one mail per active registration (skipping cancelled and those
+// without a contact email), each with its own secret manage link, and stamps
+// sentAt + recipients back on the utskick doc as the receipt the UI shows.
+
+exports.onUtskickCreated = onDocumentCreated('competitions/{cid}/utskick/{utskickId}', async (event) => {
+  const { cid, utskickId } = event.params;
+  const utskick = event.data && event.data.data();
+  if (!utskick || !(utskick.subject || '').trim() || !(utskick.body || '').trim()) return;
+
+  const comp = await getComp(cid);
+  if (!comp || comp.demo) return;
+
+  const regsSnap = await db.collection(`competitions/${cid}/registrations`).get();
+  const regs = regsSnap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(r => !r.cancelled && r.contact && (r.contact.email || '').trim());
+
+  const replyTo = managementEmails(comp)[0] || undefined;
+  const bodyHtml = esc(utskick.body).replaceAll('\n', '<br>');
+
+  await Promise.all(regs.map(r => {
+    const url = manageUrl(cid, r.id);
+    const html = layout(comp, `
+      <div style="white-space:normal;">${bodyHtml}</div>
+      ${button(url, 'Visa er anmälan')}
+      <p style="font-size:13px;color:#8a8a8a;">Ni får detta utskick som anmälningsansvarig${r.kar ? ' för ' + esc(r.kar) : ''}.</p>
+    `, replyTo ? 'Svar på mailet går till tävlingsledningen.' : undefined);
+    return queueMail({
+      to: [r.contact.email.trim()],
+      ...(replyTo ? { replyTo } : {}),
+      message: {
+        subject: utskick.subject,
+        html,
+        text: `${utskick.body}\n\nEr anmälan: ${url}`
+      }
+    });
+  }));
+
+  await event.data.ref.update({
+    sentAt: FieldValue.serverTimestamp(),
+    recipients: regs.length
+  });
+  logger.info(`Utskick ${utskickId} queued to ${regs.length} recipient(s) (${cid})`);
 });

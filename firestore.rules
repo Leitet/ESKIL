@@ -183,6 +183,19 @@ service cloud.firestore {
         allow delete: if isCompAdmin(cid);
       }
 
+      // PM-utskick till anmälda kårer. Admin CREATES a doc here; the
+      // onUtskickCreated Cloud Function fans it out as mail to every active
+      // registration contact and stamps sentAt/recipients back (admin SDK,
+      // bypasses rules). Clients never write /mail/** directly.
+      match /utskick/{utskickId} {
+        allow read: if isCompMember(cid);
+        allow create: if isCompAdmin(cid) && !compIsDemo(cid)
+          && request.resource.data.keys().hasOnly(['subject', 'body', 'createdAt', 'createdBy'])
+          && request.resource.data.subject is string
+          && request.resource.data.body is string;
+        allow delete: if isCompAdmin(cid) && !compIsDemo(cid);
+      }
+
       // Invites
       match /invites/{inviteId} {
         allow read: if true; // token-based lookup
