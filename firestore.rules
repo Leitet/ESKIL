@@ -118,14 +118,16 @@ service cloud.firestore {
         // competition isn't a demo. Super-admin can always seed scores.
         match /scores/{scoreId} {
           allow read: if true;
-          allow create: if isSuperAdmin() || (
+          // Admins may always write scores (adjustments, backup restore) —
+          // anonymous reporters only while the control is open.
+          allow create: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid)) || (
                get(/databases/$(database)/documents/competitions/$(cid)/controls/$(ctrlId)).data.open == true
             && !compIsDemo(cid)
             && request.resource.data.keys().hasOnly(['patrolId','poang','extraPoang','note','reportedAt','reporter','utslagGissning'])
             && request.resource.data.poang is number
             && request.resource.data.patrolId is string
           );
-          allow update: if isSuperAdmin() || (
+          allow update: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid)) || (
                get(/databases/$(database)/documents/competitions/$(cid)/controls/$(ctrlId)).data.open == true
             && !compIsDemo(cid)
             && request.resource.data.keys().hasOnly(['patrolId','poang','extraPoang','note','reportedAt','reporter','utslagGissning'])

@@ -339,6 +339,64 @@ function renderBasicTab(comp, cid, refresh, readOnly, isSuperAdmin, user) {
     host.appendChild(copyCard);
   }
 
+  // Backup & export — full JSON dump (restorable), ZIP with structured data,
+  // and restore-from-file. Available to everyone signed in (reads are public
+  // for demo; import creates a fresh competition owned by the importer).
+  if (!user?.demoViewer) {
+    const buCard = document.createElement('section');
+    buCard.className = 'card mt-6';
+    buCard.innerHTML = `
+      <h3 class="t-h3" style="margin-top:0;">Backup & export</h3>
+      <p class="muted">Backupen är en komplett säkerhetskopia (JSON) som kan läsas tillbaka med
+      "Importera backup" — den återskapar tävlingen som en ny tävling med patruller, kontroller,
+      poäng, anmälningar, spår och stationer (rapport- och startkortslänkarna fortsätter fungera).
+      Exporten är en zip med strukturerad data: säkerhetskopian plus CSV-filer för resultat,
+      patruller, kontroller och anmälningar. Inga mail skickas vid import.</p>
+      <div class="btn-row mt-4" style="flex-wrap:wrap;">
+        <button class="btn btn-secondary" id="dl-backup">${icon('download', { size: 14 })} Ladda ner backup (JSON)</button>
+        <button class="btn btn-secondary" id="dl-zip">${icon('download', { size: 14 })} Exportera (ZIP)</button>
+        <button class="btn btn-ghost" id="do-import">Importera backup…</button>
+        <input type="file" id="import-file" accept="application/json,.json" style="display:none;">
+      </div>
+    `;
+    buCard.querySelector('#dl-backup').addEventListener('click', (e) => withBusy(e.currentTarget, 'Packar…', async () => {
+      try {
+        const { downloadBackup } = await import('../backup.js');
+        await downloadBackup(cid);
+        toast('Backupen laddas ner', 'success');
+      } catch (err) { console.error(err); toast('Fel: ' + err.message, 'error'); }
+    }));
+    buCard.querySelector('#dl-zip').addEventListener('click', (e) => withBusy(e.currentTarget, 'Packar…', async () => {
+      try {
+        const { downloadExportZip } = await import('../backup.js');
+        await downloadExportZip(cid);
+        toast('Exporten laddas ner', 'success');
+      } catch (err) { console.error(err); toast('Fel: ' + err.message, 'error'); }
+    }));
+    const fileInput = buCard.querySelector('#import-file');
+    buCard.querySelector('#do-import').addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files?.[0];
+      fileInput.value = '';
+      if (!file) return;
+      let dump;
+      try { dump = JSON.parse(await file.text()); }
+      catch { toast('Filen gick inte att läsa som JSON.', 'error'); return; }
+      const label = `${dump?.competition?.name || '?'} ${dump?.competition?.year || ''}`;
+      if (!(await confirmDialog(
+        `Återskapa "${label}" från backupen som en NY tävling? Befintliga tävlingar påverkas inte, och inga mail skickas.`,
+        { okLabel: 'Importera', danger: false }
+      ))) return;
+      try {
+        const { importCompetitionBackup } = await import('../backup.js');
+        const newCid = await importCompetitionBackup(dump, user);
+        toast('Tävlingen återskapad', 'success');
+        navigate(`/app/c/${newCid}`);
+      } catch (err) { console.error(err); toast('Import misslyckades: ' + err.message, 'error'); }
+    });
+    host.appendChild(buCard);
+  }
+
   // Danger zone (delete) — super-admin only
   if (isSuperAdmin) {
     const danger = document.createElement('section');

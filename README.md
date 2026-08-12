@@ -121,6 +121,15 @@ att köra gratis på Spark-planen.
   kontroll-id:na), inställningar, prismodell (anmälan avstängd med rensad
   period) och tävlingsledning. Patruller, poäng, anmälningar och användare
   kopieras inte; skaparen blir ensam admin.
+- **Backup, export & import** (Inställningar → Grund) — Backup = komplett
+  JSON-dump (tävling + alla subcollections, timestamps serialiserade) som
+  "Importera backup" läser tillbaka och återskapar som en NY tävling med
+  bevarade dokument-id:n (rapport-/startkorts-/stationslänkar fungerar).
+  Import triggar aldrig mail (`imported: true` på registrations/kontroller
+  som mail-funktionerna respekterar; utskickshistorik återimporteras inte).
+  Export = zip (JSZip via CDN) med backup.json + CSV:er för resultat,
+  patruller, kontroller, anmälningar + README. Admin får numera alltid
+  skriva poäng i reglerna (justeringar/restore).
 - **GDPR & cookies** — ESKIL använder inga cookies (ingen banner behövs):
   inloggning via IndexedDB, övrig lokal lagring är strikt nödvändig
   (nattläge, offlinekö, pseudonymt rapportörs-id). Integritetspolicy på

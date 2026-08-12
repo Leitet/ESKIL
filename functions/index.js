@@ -188,6 +188,7 @@ exports.onRegistrationCreated = onDocumentCreated('competitions/{cid}/registrati
   const { cid, regId } = event.params;
   const reg = event.data && event.data.data();
   if (!reg || !reg.contact || !reg.contact.email) return;
+  if (reg.imported) return; // backup restore — never re-send confirmations
 
   const comp = await getComp(cid);
   if (!comp || comp.demo) return;
@@ -368,6 +369,7 @@ exports.onControlWritten = onDocumentWritten('competitions/{cid}/controls/{ctrlI
   const before = event.data && event.data.before.exists ? event.data.before.data() : null;
   const after = event.data && event.data.after.exists ? event.data.after.data() : null;
   if (!after) return; // control deleted
+  if (!before && after.imported) return; // backup restore — no welcome mail
 
   const norm = (arr) => (arr || []).map(e => String(e || '').trim().toLowerCase()).filter(Boolean);
   const prev = new Set(norm(before && before.ansvarigaEmails));
