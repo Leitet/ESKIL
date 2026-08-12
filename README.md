@@ -261,7 +261,9 @@ Firestore-reglerna skrivningen.
 ## E-post (Blaze + Trigger Email)
 
 Transaktionsmail (anmälningsbekräftelse med ändringslänk, kvitto med
-PDF-bilaga, förhinder-/avanmälningsnotiser till tävlingsledningen) skickas av
+PDF-bilaga, förhinder-/avanmälningsnotiser till tävlingsledningen, samt
+välkomstmail till nyutsedda kontrollansvariga med kontrollänk och
+rapportsidans QR-kod) skickas av
 Cloud Functions i `functions/` som skriver dokument till Firestore-collectionen
 `mail`; **Trigger Email-extensionen** (`firebase/firestore-send-email`,
 konfigurerad med Brevo-SMTP, avsändare `noreply@eskilscout.se`) levererar dem.

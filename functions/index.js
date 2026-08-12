@@ -12,12 +12,14 @@
 //  - payment flips to paid           → receipt mail (PDF attached) to the contact
 //  - förhinder appended              → notice to tävlingsledningen
 //  - registration cancelled          → notice to tävlingsledningen
+//  - kontrollansvarig added          → welcome mail with control + report links
 
-const { onDocumentCreated, onDocumentUpdated } = require('firebase-functions/v2/firestore');
+const { onDocumentCreated, onDocumentUpdated, onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { setGlobalOptions } = require('firebase-functions/v2');
 const { logger } = require('firebase-functions');
 const admin = require('firebase-admin');
+const QRCode = require('qrcode');
 const { renderReceiptPdfBase64 } = require('./receipt-pdf');
 
 admin.initializeApp();
@@ -317,4 +319,77 @@ exports.onRegistrationUpdated = onDocumentUpdated('competitions/{cid}/registrati
 
   await Promise.all(jobs);
   if (jobs.length) logger.info(`${jobs.length} mail(s) queued for ${cid}/${regId}`);
+});
+
+// --- Kontrollansvarig utsedd ---------------------------------------------------
+// When an email appears in a control's ansvarigaEmails (assigned under
+// Inställningar → Användare or on the control itself), the appointee gets a
+// welcome mail: what the role means, how to sign in (their address IS the
+// permission), a link to the control in the admin, and the report page as
+// link + QR so they can hand it to the control crew on race day.
+
+exports.onControlWritten = onDocumentWritten('competitions/{cid}/controls/{ctrlId}', async (event) => {
+  const { cid, ctrlId } = event.params;
+  const before = event.data && event.data.before.exists ? event.data.before.data() : null;
+  const after = event.data && event.data.after.exists ? event.data.after.data() : null;
+  if (!after) return; // control deleted
+
+  const norm = (arr) => (arr || []).map(e => String(e || '').trim().toLowerCase()).filter(Boolean);
+  const prev = new Set(norm(before && before.ansvarigaEmails));
+  const added = [...new Set(norm(after.ansvarigaEmails))].filter(e => !prev.has(e));
+  if (!added.length) return;
+
+  const comp = await getComp(cid);
+  if (!comp || comp.demo || comp.closed) return;
+
+  const ctrlLabel = `kontroll ${after.nummer ?? '?'} · ${after.name || 'utan namn'}`;
+  const ctrlUrl = `${APP_URL}/app/c/${cid}/controls/${ctrlId}`;
+  const reportUrl = `${APP_URL}/k/${cid}/${ctrlId}`;
+  const qrBase64 = (await QRCode.toBuffer(reportUrl, { width: 240, margin: 1 })).toString('base64');
+  const replyTo = managementEmails(comp)[0] || undefined;
+
+  const nameOf = (email) => {
+    const hit = (after.ansvariga || []).find(a =>
+      String(a && a.email || '').trim().toLowerCase() === email);
+    return (hit && hit.name || '').trim();
+  };
+
+  await Promise.all(added.map(email => {
+    const body = `
+      <p>Hej ${esc(nameOf(email) || '')}!</p>
+      <p>Du har utsetts till <strong>kontrollansvarig</strong> för
+      <strong>${esc(ctrlLabel)}</strong> på ${esc(compLabel(comp))}.</p>
+      <p>Som kontrollansvarig kan du se hela tävlingen i ESKIL och redigera din
+      kontroll — uppgifter, poäng och instruktioner — samt öppna och stänga
+      poängrapporteringen på tävlingsdagen.</p>
+      <p>Logga in med just den här e-postadressen (<strong>${esc(email)}</strong>) —
+      adressen är din behörighet. Ingen registrering behövs: du får en
+      engångslänk via mail när du loggar in.</p>
+      ${button(ctrlUrl, 'Öppna din kontroll i ESKIL')}
+      <p style="margin-top:26px;"><strong>Rapportsidan för tävlingsdagen</strong><br>
+      Poängen rapporteras från kontrollens rapportsida — den kräver ingen
+      inloggning och funkar i mobilen. Skanna QR-koden eller öppna länken,
+      och dela den bara med kontrollens funktionärer (adressen är hemlig):</p>
+      <p style="margin:14px 0;"><img src="cid:report-qr" width="120" height="120" alt="QR till rapportsidan" style="display:block;border:1px solid #d2dde8;border-radius:8px;"></p>
+      <p style="font-size:12px;color:#8a8a8a;word-break:break-all;">${esc(reportUrl)}</p>
+    `;
+    return queueMail({
+      to: [email],
+      ...(replyTo ? { replyTo } : {}),
+      message: {
+        subject: `Du är kontrollansvarig — ${ctrlLabel} (${compLabel(comp)})`,
+        html: layout(comp, body, replyTo ? 'Svar på mailet går till tävlingsledningen.' : undefined),
+        text: `Du har utsetts till kontrollansvarig för ${ctrlLabel} på ${compLabel(comp)}. `
+          + `Logga in med ${email} på ${APP_URL} (engångslänk via mail). `
+          + `Din kontroll: ${ctrlUrl} · Rapportsidan (hemlig, för tävlingsdagen): ${reportUrl}`,
+        attachments: [{
+          filename: 'rapportsida-qr.png',
+          content: qrBase64,
+          encoding: 'base64',
+          cid: 'report-qr'
+        }]
+      }
+    });
+  }));
+  logger.info(`Kontrollansvarig mail queued for ${added.join(', ')} (${cid}/${ctrlId})`);
 });
