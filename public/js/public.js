@@ -4,7 +4,8 @@
 // Tabs: overview (default), patrols, scoreboard.
 
 import { db, doc, onSnapshot, collection } from './firebase.js';
-import { getCompetition, listPatrols, listControls } from './store.js';
+import { getCompetition, listPatrols, listControls, getTrack } from './store.js';
+import { courseLegs, drawCourseOnMap, addCourseChip } from './course.js';
 import {
   AVDELNINGAR, escapeHtml, formatDate, publicManagement, patrolStartTime,
   startFinishPoints, parkingPoint, rankPatrols, rankKarer, RANKING_RULES_TEXT,
@@ -61,6 +62,7 @@ function setTab(cid, tab) {
 let comp = null;
 let patrols = [];
 let controls = [];
+let track = null;    // drawn course from the Spår editor (fetched once)
 let scoresByControl = {}; // ctrlId -> score[]
 const subscribedScoreCtrls = new Set();
 let unsubs = [];
@@ -81,10 +83,11 @@ async function boot() {
   const { cid } = parsed;
 
   try {
-    [comp, patrols, controls] = await Promise.all([
+    [comp, patrols, controls, track] = await Promise.all([
       getCompetition(cid),
       listPatrols(cid),
-      listControls(cid)
+      listControls(cid),
+      getTrack(cid).catch(() => null)
     ]);
   } catch (e) {
     return renderNotFound('Kunde inte ladda tävlingen: ' + e.message);
@@ -145,20 +148,13 @@ async function renderLeafletMap(withPos, sfPoints = [], park = null) {
       maxZoom: 19, attribution: '© OpenStreetMap'
     }).addTo(map);
 
-    // Dashed route: start → controls in nummer order → finish (same point if mode='same')
+    // Course line: start → controls in nummer order → finish. When a track
+    // has been drawn in the Spår editor it is always the one shown — drawn
+    // legs follow the actual path (solid), undrawn legs stay dashed fågelväg.
     const ordered = [...withPos].sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0));
-    const startPt = sfPoints.find(p => p.kind === 'start' || p.kind === 'startfinish');
-    const finishPt = sfPoints.find(p => p.kind === 'finish') || startPt;
-    const linePoints = [
-      ...(startPt ? [[startPt.lat, startPt.lng]] : []),
-      ...ordered.map(c => [c.lat, c.lng]),
-      ...(finishPt ? [[finishPt.lat, finishPt.lng]] : [])
-    ];
-    if (linePoints.length >= 2) {
-      L.polyline(linePoints, {
-        color: '#003660', weight: 3, opacity: 0.7, dashArray: '6 8'
-      }).addTo(map);
-    }
+    const { legs, hasDrawn } = courseLegs(comp, ordered, track);
+    drawCourseOnMap(L, map, legs);
+    if (hasDrawn) addCourseChip(L, map, legs, track && track.speedKmh);
 
     // Control markers — label = only the number
     for (const c of ordered) {

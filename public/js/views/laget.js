@@ -11,8 +11,9 @@
 import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import {
   getCompetition, listPatrols, listStations, createStation, watchPassages,
-  watchControls, watchScoresForControl
+  watchControls, watchScoresForControl, getTrack
 } from '../store.js';
+import { courseLegs, drawCourseOnMap } from '../course.js';
 import {
   escapeHtml, toast, copyToClipboard, formatTime, patrolStartTime, avdShort,
   isCompAdminUser
@@ -55,11 +56,13 @@ export async function renderLaget(app, user, cid) {
   let passages = {};   // patrolId -> { startAt, finishAt }
   let scoresByCtrl = {}; // ctrlId -> [{patrolId, reportedAt}]
   let station = null;
+  let track = null;
 
   try {
-    [patrols, station] = await Promise.all([
+    [patrols, station, track] = await Promise.all([
       listPatrols(cid),
-      listStations(cid).then(s => s[0] || null).catch(() => null)
+      listStations(cid).then(s => s[0] || null).catch(() => null),
+      getTrack(cid).catch(() => null)
     ]);
   } catch (e) {
     wrap.innerHTML = `<div class="empty"><h3>Kunde inte ladda</h3><p>${escapeHtml(e.message)}</p></div>`;
@@ -372,6 +375,12 @@ export async function renderLaget(app, user, cid) {
       if (!host.isConnected) return;
       mapInstance = L.map(host, { zoomControl: true, scrollWheelZoom: false });
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OSM' }).addTo(mapInstance);
+      // Drawn course (Spår editor) as background orientation — added before
+      // the markers so the heat dots always paint on top.
+      if (track) {
+        const { legs, hasDrawn } = courseLegs(comp, withPos, track);
+        if (hasDrawn) drawCourseOnMap(L, mapInstance, legs, { color: '#6b87a5' });
+      }
       for (const c of withPos) {
         const m = L.circleMarker([c.lat, c.lng], {
           radius: 15, color: '#ffffff', weight: 3, fillColor: HEAT.green.fill, fillOpacity: 0.95

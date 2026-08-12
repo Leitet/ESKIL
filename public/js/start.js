@@ -6,7 +6,8 @@
 //   - Filter chips + control list with anonymity enforced
 
 import { db, doc, onSnapshot, collection } from './firebase.js';
-import { getCompetition, getPatrol, listControls, listPatrols } from './store.js';
+import { getCompetition, getPatrol, listControls, listPatrols, getTrack } from './store.js';
+import { courseLegs, drawCourseOnMap, addCourseChip } from './course.js';
 import {
   escapeHtml, publicManagement, patrolStartTime, patrolStartDateTime,
   startFinishPoints, parkingPoint, startTimeSettings,
@@ -62,6 +63,7 @@ let patrols = [];          // all patrols in the competition — needed for
                            // accurate start-time interval in range mode
                            // and for the countdown window.
 let controls = [];
+let track = null;    // drawn course from the Spår editor (fetched once)
 let scoresForPatrol = {};  // controlId -> score doc
 let filter = 'alla';       // 'alla' | 'kvar' | 'klara'
 
@@ -71,11 +73,12 @@ async function main() {
   const { cid, patrolId } = parsed;
 
   try {
-    [comp, patrol, controls, patrols] = await Promise.all([
+    [comp, patrol, controls, patrols, track] = await Promise.all([
       getCompetition(cid),
       getPatrol(cid, patrolId),
       listControls(cid),
-      listPatrols(cid)
+      listPatrols(cid),
+      getTrack(cid).catch(() => null)
     ]);
   } catch (e) {
     return renderError('Kunde inte ladda startkortet: ' + e.message);
@@ -344,8 +347,6 @@ async function renderOverviewMap(withPos) {
 
     const ordered = [...withPos].sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0));
     const sfPoints = startFinishPoints(comp);
-    const startPt = sfPoints.find(p => p.kind === 'start' || p.kind === 'startfinish');
-    const finishPt = sfPoints.find(p => p.kind === 'finish') || startPt; // loop back if same
 
     overviewMap = L.map(currentHost, { zoomControl: true, scrollWheelZoom: false })
       .setView([ordered[0].lat, ordered[0].lng], 14);
@@ -353,20 +354,11 @@ async function renderOverviewMap(withPos) {
       maxZoom: 19, attribution: '© OSM'
     }).addTo(overviewMap);
 
-    // Dashed route: start → controls in order → finish
-    const linePoints = [
-      ...(startPt ? [[startPt.lat, startPt.lng]] : []),
-      ...ordered.map(c => [c.lat, c.lng]),
-      ...(finishPt ? [[finishPt.lat, finishPt.lng]] : [])
-    ];
-    if (linePoints.length >= 2) {
-      L.polyline(linePoints, {
-        color: '#003660',
-        weight: 3,
-        opacity: 0.75,
-        dashArray: '6 8'
-      }).addTo(overviewMap);
-    }
+    // Course line: a drawn track (Spår editor) is always the one shown —
+    // drawn legs solid along the actual path, undrawn legs dashed fågelväg.
+    const { legs, hasDrawn } = courseLegs(comp, ordered, track);
+    drawCourseOnMap(L, overviewMap, legs);
+    if (hasDrawn) addCourseChip(L, overviewMap, legs, track && track.speedKmh);
 
     // Control markers — labels show only the number. Done controls are
     // greyed out so the scout can see at a glance which ones are left.

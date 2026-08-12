@@ -9,32 +9,15 @@
 
 import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import { getCompetition, listControls, getTrack, saveTrack } from '../store.js';
-import { escapeHtml, toast, isCompAdminUser, startFinishPoints } from '../utils.js';
+import { escapeHtml, toast, isCompAdminUser } from '../utils.js';
+import { courseLegs, legPath, legLatLngs, legDistance, fmtDist, fmtMin, DEFAULT_SPEED_KMH } from '../course.js';
 import { ensureLeaflet } from '../leaflet.js';
 import { icon } from '../icons.js';
 import { compActionsHtml } from './competition.js';
 
 const CONTROL_MINUTES = 5;     // scheduled stop per control (fixed by design)
 const SPEEDS = [3, 4, 5];      // selectable walking pace, km/h
-const DEFAULT_SPEED = 4;
-
-function haversine(a, b) {
-  const R = 6371000, rad = Math.PI / 180;
-  const dLat = (b.lat - a.lat) * rad, dLng = (b.lng - a.lng) * rad;
-  const s = Math.sin(dLat / 2) ** 2
-    + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(s));
-}
-
-function fmtDist(m) {
-  return m < 950 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1).replace('.', ',')} km`;
-}
-
-function fmtMin(min) {
-  const m = Math.round(min);
-  if (m < 60) return `${m} min`;
-  return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} min`;
-}
+const DEFAULT_SPEED = DEFAULT_SPEED_KMH;
 
 export async function renderTrack(app, user, cid) {
   const wrap = document.createElement('div');
@@ -58,28 +41,9 @@ export async function renderTrack(app, user, cid) {
 
   const canEdit = isCompAdminUser(comp, user) && (!comp.demo || user.role === 'super-admin');
 
-  // --- Course sequence ---------------------------------------------------------
-  const placed = controls
-    .filter(c => Number.isFinite(c.lat) && Number.isFinite(c.lng))
-    .sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0));
+  // --- Course sequence (shared derivation — see course.js) ----------------------
   const unplaced = controls.filter(c => !Number.isFinite(c.lat) || !Number.isFinite(c.lng));
-
-  const sf = startFinishPoints(comp);
-  const nodes = [];
-  if (sf.length) nodes.push({ key: '__start', label: 'S', title: sf[0].title, lat: sf[0].lat, lng: sf[0].lng, kind: 'start' });
-  placed.forEach(c => nodes.push({ key: c.id, label: String(c.nummer ?? '?'), title: `Kontroll ${c.nummer ?? '?'} · ${c.name || ''}`, lat: c.lat, lng: c.lng, kind: 'control' }));
-  if (sf.length === 2) nodes.push({ key: '__mal', label: 'M', title: sf[1].title, lat: sf[1].lat, lng: sf[1].lng, kind: 'finish' });
-  else if (sf.length === 1 && placed.length) nodes.push({ key: '__mal', label: 'M', title: 'Mål', lat: sf[0].lat, lng: sf[0].lng, kind: 'finish' });
-
-  const storedLegs = (stored && stored.legs) || {};
-  const legs = [];
-  for (let i = 0; i < nodes.length - 1; i++) {
-    const key = `${nodes[i].key}__${nodes[i + 1].key}`;
-    legs.push({
-      key, from: nodes[i], to: nodes[i + 1],
-      wps: (storedLegs[key] || []).map(p => ({ lat: p.lat, lng: p.lng }))
-    });
-  }
+  const { nodes, legs } = courseLegs(comp, controls, stored);
 
   let speedKmh = SPEEDS.includes(stored && stored.speedKmh) ? stored.speedKmh : DEFAULT_SPEED;
   let activeIdx = 0;
@@ -131,13 +95,7 @@ export async function renderTrack(app, user, cid) {
   if (nodes.length < 2) return;
 
   // --- Stats -----------------------------------------------------------------
-  const legPath = (leg) => [leg.from, ...leg.wps, leg.to];
-  const legDist = (leg) => {
-    const p = legPath(leg);
-    let d = 0;
-    for (let i = 0; i < p.length - 1; i++) d += haversine(p[i], p[i + 1]);
-    return d;
-  };
+  const legDist = legDistance;
   const walkMin = (m) => (m / 1000) / speedKmh * 60;
 
   // --- Map ---------------------------------------------------------------------

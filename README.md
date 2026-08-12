@@ -54,6 +54,9 @@ att köra gratis på Spark-planen.
   gångtid per ben samt total spårlängd och beräknad vandringstid med valbart
   promenadtempo (3/4/5 km/h), exklusive och inklusive kontrolltid
   (5 min/kontroll). Ben utan ritade punkter räknas som fågelväg (streckad).
+  Finns ett ritat spår används det alltid på alla kartor: offentliga sidan,
+  startkortets översiktskarta (med chip "Spår X km · ca Y min gång") och
+  Läget-kartan (dämpad bakgrundslinje). Delade hjälpare i `js/course.js`.
 
 ## Teknik
 
@@ -207,6 +210,7 @@ public/
     public.js           # Publik tävlingssida (t.html) logik
     anmalan.js          # Anmälningssida (a.html) logik
     station.js          # Start/Mål-stationen (m.html) logik
+    course.js           # Delad spårlogik (bensekvens, distans/tid, kartritning)
     utils.js            # Hjälpare (inkl. prisberäkning + Swish-QR-payload)
     views/              # En fil per vy (login, home, competition, patrols, ...)
 
