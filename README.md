@@ -93,6 +93,13 @@ att köra gratis på Spark-planen.
   5 min före första patrullens starttid på tävlingsdatumet (kräver datum +
   starttider); kartans bildtext visar när.
 
+- **Officiell resultatexport** (Poängtabell-fliken, admin) — "Resultat
+  (PDF)": officiella resultat i ESKIL-design (overall med topp-3-markering,
+  per avdelning, per kår, utslagsfrågor med facit och svar) plus
+  tävlingsarkiv/post mortem (tävlingen i siffror, kontrollstatistik med
+  snittpoäng, tävlingsfakta, ledning, placeringsregler). "CSV": semikolon +
+  BOM för svensk Excel, en rad per patrull med per-kontroll-kolumner för
+  arkiv/förbund. Delad kod i `js/results-export.js`.
 - **Betalningspåminnelse** (Anmälan-fliken) — kassören skickar manuell
   påminnelse per obetald anmälan eller "Påminn alla obetalda": mail med
   obetalda belopp + referenser och länk till anmälningssidans

@@ -1,6 +1,7 @@
 import { layout, setTopbarCompetition } from '../app.js';
-import { getCompetition, listPatrols, listControls, listAllScores, updateControl, updateCompetition } from '../store.js';
-import { allowedAvdelningar, escapeHtml, rankPatrols, rankKarer, RANKING_RULES_TEXT, utslagRows, isNumSet, toast, isCompAdminUser } from '../utils.js';
+import { getCompetition, listPatrols, listControls, listAllScores, updateControl, updateCompetition, getTrack, listRegistrations } from '../store.js';
+import { downloadResultsPdf, downloadResultsCsv, attachTrackStats } from '../results-export.js';
+import { allowedAvdelningar, escapeHtml, rankPatrols, rankKarer, RANKING_RULES_TEXT, utslagRows, isNumSet, toast, withBusy, isCompAdminUser } from '../utils.js';
 import { icon } from '../icons.js';
 import { compActionsHtml } from './competition.js';
 
@@ -24,6 +25,8 @@ export async function renderScoreboard(app, user, cid) {
       </div>
       <div class="btn-row">
         ${compActionsHtml(cid, comp, user)}
+        ${isAdmin ? `<button class="btn btn-secondary btn-sm" id="dl-pdf">${icon('download', { size: 14 })} Resultat (PDF)</button>
+        <button class="btn btn-ghost btn-sm" id="dl-csv">${icon('download', { size: 14 })} CSV</button>` : ''}
         ${canTogglePublic ? `<button class="btn btn-secondary btn-sm" id="toggle-public-scores"></button>` : ''}
         <button class="btn btn-ghost btn-sm" id="refresh">Uppdatera</button>
       </div>
@@ -144,6 +147,20 @@ export async function renderScoreboard(app, user, cid) {
       toast(`Stängde ${closed.length} kontroll${closed.length === 1 ? '' : 'er'} automatiskt`, 'success');
     }
   }
+
+  wrap.querySelector('#dl-pdf')?.addEventListener('click', (e) => withBusy(e.currentTarget, 'Skapar PDF…', async () => {
+    try {
+      const [track, regs] = await Promise.all([
+        getTrack(cid).catch(() => null),
+        listRegistrations(cid).catch(() => null)
+      ]);
+      await downloadResultsPdf(attachTrackStats(comp, controls, track), patrols, controls, scores, regs);
+    } catch (err) { console.error(err); toast('Kunde inte skapa PDF: ' + err.message, 'error'); }
+  }));
+  wrap.querySelector('#dl-csv')?.addEventListener('click', () => {
+    try { downloadResultsCsv(comp, patrols, controls, scores); }
+    catch (err) { console.error(err); toast('Fel: ' + err.message, 'error'); }
+  });
 
   wrap.querySelector('#refresh').addEventListener('click', () => {
     content.innerHTML = `<div class="muted">Uppdaterar…</div>`;

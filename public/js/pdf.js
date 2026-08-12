@@ -17,7 +17,7 @@ function loadScript(src) {
   });
 }
 
-async function ensureLibs() {
+export async function ensureLibs() {
   if (!jsPDFReady) jsPDFReady = loadScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js');
   if (!qrReady)    qrReady    = loadScript('https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js');
   await Promise.all([jsPDFReady, qrReady]);
@@ -136,9 +136,9 @@ async function staticMapDataUrl(lat, lng, { zoom = 16, widthTiles = 3, heightTil
   }
 }
 
-const BLUE   = '#003660';
-const ORANGE = '#E95F13';
-const YELLOW = '#E2E000';
+export const BLUE   = '#003660';
+export const ORANGE = '#E95F13';
+export const YELLOW = '#E2E000';
 
 // Slim banner for page 2 (instructions) — no control title.
 function drawBannerSlim(pdf, W, comp) {
