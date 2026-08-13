@@ -7,22 +7,25 @@
 //
 // Strategy:
 //   • navigations to /k, /s, /m  → network-first, cache fallback (per shell)
-//   • same-origin static assets (/js, /assets, *.html) and the CDN libs
-//     (gstatic Firebase, jsdelivr, unpkg, OSM/Esri tiles are NOT cached)
-//     → stale-while-revalidate
-//   • everything else (Firestore, auth, functions, tiles) → untouched
+//   • same-origin static assets (/js, /assets, *.html) → NETWORK-FIRST with
+//     forced revalidation, cache fallback when offline/slow. The previous
+//     stale-while-revalidate served the OLD module set on the first load
+//     after every deploy — with several deploys the same day a phone could
+//     run a MIXED module graph where an import was missing, and the page
+//     died silently on the static "Laddar…" screen.
+//   • everything else (Firestore, auth, functions, tiles, CDN) → untouched
 //
 // Bump VERSION whenever cached-asset behavior must be reset.
 
-const VERSION = 'eskil-sw-v3';
+const VERSION = 'eskil-sw-v4';
 const RUNTIME = `${VERSION}-runtime`;
 
 const FIELD_SHELLS = { '/k/': '/k.html', '/s/': '/s.html', '/m/': '/m.html' };
 
 const PRECACHE_URLS = [
   '/k.html', '/s.html', '/m.html',
-  '/assets/tokens.css', '/assets/report.css', '/assets/station.css',
-  '/js/mode-boot.js', '/js/sw-register.js'
+  '/assets/tokens.css', '/assets/report.css', '/assets/start.css', '/assets/station.css',
+  '/js/mode-boot.js', '/js/sw-register.js', '/js/field-watchdog.js'
 ];
 
 // Cross-origin CDN scripts are deliberately NOT cached: caching them opaquely
@@ -55,16 +58,25 @@ function shellFor(pathname) {
   return null;
 }
 
-async function staleWhileRevalidate(request) {
+// Network-first with a deadline: fresh assets whenever the network answers
+// (cache: 'no-cache' bypasses the 1h HTTP cache and revalidates via ETag —
+// a 304 is cheap), the cached copy when offline or slower than the deadline.
+// Every fetched response refreshes the cache for the next offline open.
+const NETWORK_DEADLINE_MS = 4000;
+
+async function networkFirst(request) {
   const cache = await caches.open(RUNTIME);
-  const cached = await cache.match(request);
-  const refresh = fetch(request)
+  const fromNetwork = fetch(request, { cache: 'no-cache' })
     .then(resp => {
       if (resp && resp.ok) cache.put(request, resp.clone());
       return resp;
-    })
-    .catch(() => null);
-  return cached || refresh.then(r => r || Response.error());
+    });
+  const deadline = new Promise(resolve => setTimeout(() => resolve(null), NETWORK_DEADLINE_MS));
+  const winner = await Promise.race([fromNetwork, deadline.then(async () => (await cache.match(request)) || fromNetwork)])
+    .catch(async () => (await cache.match(request)) || null);
+  if (winner) return winner;
+  const cached = await cache.match(request);
+  return cached || fromNetwork.catch(() => Response.error());
 }
 
 async function navigateFieldPage(request, shell) {
@@ -104,6 +116,6 @@ self.addEventListener('fetch', (event) => {
     || url.pathname.endsWith('.html')
     || url.pathname === '/firebase-config.json';
   if (isStatic) {
-    event.respondWith(staleWhileRevalidate(req));
+    event.respondWith(networkFirst(req));
   }
 });
