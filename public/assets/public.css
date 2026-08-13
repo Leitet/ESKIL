@@ -416,6 +416,24 @@ a.pub-brand:hover { opacity: 0.85; }
   #pub-map { height: 480px; }
 }
 
+/* Info popup on the special map points (S/M, S, M, P) */
+.map-popup { font-family: var(--font-sans); min-width: 170px; max-width: 240px; }
+.map-popup-title {
+  font-family: var(--font-display);
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--avent-orange);
+}
+.map-popup-title.is-park { color: var(--scout-blue); }
+.map-popup-name { font-weight: 700; font-size: 15px; color: var(--fg1); margin-top: 2px; }
+.map-popup-note { font-size: 13px; color: var(--fg2); margin: 6px 0 0; white-space: pre-wrap; }
+/* .leaflet-container a sets its own link color — out-specify it. */
+.leaflet-popup-content .map-popup-dir {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-top: 8px; font-size: 13px; font-weight: 600;
+  color: var(--scout-blue);
+}
+
 /* Notes for special points (parking, start, finish) shown under the map */
 .map-notes {
   display: grid;

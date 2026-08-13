@@ -211,6 +211,20 @@ window.addEventListener('popstate', () => render());
 
 let pubMap = null; // live Leaflet instance — reused across re-renders
 
+// Popup for the special map points (S/M, S, M, P): title, place name, the
+// admin's note and a directions link — what a parent standing in the wrong
+// field actually needs.
+function pointPopupHtml(p) {
+  const dir = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${p.lat},${p.lng}`)}`;
+  return `
+    <div class="map-popup">
+      <div class="map-popup-title ${p.kind === 'parking' ? 'is-park' : ''}">${escapeHtml(p.title || '')}</div>
+      ${p.name ? `<div class="map-popup-name">${escapeHtml(p.name)}</div>` : ''}
+      ${(p.note || '').trim() ? `<p class="map-popup-note">${escapeHtml(p.note)}</p>` : ''}
+      <a class="map-popup-dir" href="${dir}" target="_blank" rel="noopener">Vägbeskrivning ${icon('external', { size: 12 })}</a>
+    </div>`;
+}
+
 async function renderLeafletMap(withPos, sfPoints = [], park = null) {
   const host = document.getElementById('pub-map');
   if (!host || (!withPos.length && !sfPoints.length && !park)) return;
@@ -269,16 +283,17 @@ async function renderLeafletMap(withPos, sfPoints = [], park = null) {
       }
     }
 
-    // Start/finish markers — distinctive yellow
+    // Start/finish markers — distinctive yellow; click opens the info popup
     for (const p of sfPoints) {
       L.circleMarker([p.lat, p.lng], {
         radius: 16, color: '#003660', weight: 3, fillColor: '#E2E000', fillOpacity: 1
       })
         .bindTooltip(p.label, { permanent: true, direction: 'center', className: 'map-label map-label-sf' })
+        .bindPopup(pointPopupHtml(p), { offset: [0, -8] })
         .addTo(map);
     }
 
-    // Parking marker — blue pill with square-parking icon
+    // Parking marker — blue pill with square-parking icon; click opens info
     if (park) {
       L.circleMarker([park.lat, park.lng], {
         radius: 16, color: '#ffffff', weight: 3, fillColor: '#003660', fillOpacity: 1
@@ -286,6 +301,7 @@ async function renderLeafletMap(withPos, sfPoints = [], park = null) {
         .bindTooltip(icon('square-parking', { size: 18, stroke: 2.5 }), {
           permanent: true, direction: 'center', className: 'map-label map-label-park'
         })
+        .bindPopup(pointPopupHtml(park), { offset: [0, -8] })
         .addTo(map);
     }
 
