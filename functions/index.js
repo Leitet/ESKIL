@@ -126,6 +126,39 @@ async function queueMail(doc) {
   await db.collection(MAIL_COLLECTION).add(doc);
 }
 
+// --- Outbound-mail rate limiting ----------------------------------------------
+// Firestore rules deny all client access to `caps/**` (no match) so only these
+// admin-SDK functions touch them. These daily caps bound the blast radius of
+// the anonymous/self-service mail vectors (registration confirmations, PM
+// fan-out, login links) against spam/relay abuse and Brevo quota exhaustion.
+// NOTE: the real fix is Firebase App Check on the Firestore write path — see
+// README. Bump the caps if a large legitimate day needs more headroom.
+const MAIL_DAILY_CAP = 800;         // transactional mails/day (confirmations, PM, …)
+const LOGIN_DAILY_CAP = 150;        // login links/day (separate lane so spam can't starve logins)
+const UTSKICK_RECIPIENT_CAP = 500;  // max recipients per single PM fan-out
+
+// Atomically reserve `n` sends against today's cap for a lane. Returns true if
+// the whole batch fits (and reserves it), false if it would exceed. Fails
+// OPEN on a transient infra error so a hiccup never blocks legitimate mail.
+async function reserveMail(lane, n) {
+  const cap = lane === 'login' ? LOGIN_DAILY_CAP : MAIL_DAILY_CAP;
+  const ref = db.doc(`caps/${lane}`);
+  const today = new Date().toISOString().slice(0, 10);
+  try {
+    return await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const d = snap.exists ? snap.data() : {};
+      const count = d.day === today ? (d.count || 0) : 0;
+      if (count + n > cap) return false;
+      tx.set(ref, { day: today, count: count + n });
+      return true;
+    });
+  } catch (e) {
+    logger.warn('reserveMail transaction failed, allowing send', e);
+    return true;
+  }
+}
+
 // --- Triggers ------------------------------------------------------------------
 
 // --- Magic-link login mail ----------------------------------------------------
@@ -161,6 +194,13 @@ exports.requestLoginLink = onCall(async (req) => {
     }
     tx.set(throttleRef, { lastSentAt: now, day: today, count: count + 1 });
   });
+
+  // Global backstop: bound total login links/day so an attacker cycling many
+  // different addresses can't drain Brevo's quota (the per-email throttle only
+  // limits a single address).
+  if (!(await reserveMail('login', 1))) {
+    throw new HttpsError('resource-exhausted', 'Tjänsten är tillfälligt överbelastad — försök igen om en stund.');
+  }
 
   let link = await admin.auth().generateSignInWithEmailLink(email, {
     url: LOGIN_CONTINUE_URL,
@@ -199,6 +239,13 @@ exports.onRegistrationCreated = onDocumentCreated('competitions/{cid}/registrati
   const comp = await getComp(cid);
   if (!comp || comp.demo) return;
 
+  // Anonymous registration create is an open door — bound the confirmation
+  // mail so it can't be scripted into a branded spam relay / quota-drain.
+  if (!(await reserveMail('mail', 1))) {
+    logger.warn(`Daily mail cap reached — skipping confirmation for ${cid}/${regId}`);
+    return;
+  }
+
   const unpaid = (reg.payments || []).filter(p => !isPaidRef(reg, p));
   const url = manageUrl(cid, regId);
   const replyTo = managementEmails(comp)[0] || undefined;
@@ -236,6 +283,7 @@ exports.onRegistrationUpdated = onDocumentUpdated('competitions/{cid}/registrati
   const before = event.data && event.data.before.data();
   const after = event.data && event.data.after.data();
   if (!before || !after) return;
+  if (after.imported) return; // backup-restored/archived reg — never mail its (old) contact
 
   const comp = await getComp(cid);
   if (!comp || comp.demo) return;
@@ -456,9 +504,22 @@ exports.onUtskickCreated = onDocumentCreated('competitions/{cid}/utskick/{utskic
   if (!comp || comp.demo) return;
 
   const regsSnap = await db.collection(`competitions/${cid}/registrations`).get();
-  const regs = regsSnap.docs
+  let regs = regsSnap.docs
     .map(d => ({ id: d.id, ...d.data() }))
     .filter(r => !r.cancelled && r.contact && (r.contact.email || '').trim());
+
+  // Bound a single fan-out, and reserve the batch against the daily cap, so a
+  // PM can never be scripted into a mass mail relay / quota-drain.
+  if (regs.length > UTSKICK_RECIPIENT_CAP) {
+    logger.warn(`Utskick ${utskickId} has ${regs.length} recipients — capping at ${UTSKICK_RECIPIENT_CAP} (${cid})`);
+    regs = regs.slice(0, UTSKICK_RECIPIENT_CAP);
+  }
+  if (!regs.length) return;
+  if (!(await reserveMail('mail', regs.length))) {
+    logger.warn(`Daily mail cap reached — skipping utskick ${utskickId} fan-out (${cid})`);
+    await event.data.ref.update({ sentAt: FieldValue.serverTimestamp(), recipients: 0, capped: true });
+    return;
+  }
 
   const replyTo = managementEmails(comp)[0] || undefined;
   const bodyHtml = esc(utskick.body).replaceAll('\n', '<br>');
