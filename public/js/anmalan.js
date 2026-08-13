@@ -16,7 +16,7 @@ import {
 import {
   allowedAvdelningar, escapeHtml, formatDate, toast, withBusy, confirmDialog,
   registrationSettings, registrationState, computeRegistrationPrice,
-  makePaymentReference, swishQrString, registrationUrl, copyToClipboard
+  makePaymentReference, swishQrString, registrationUrl, copyToClipboard, isPaymentPaid
 } from './utils.js';
 import { ensureQRCode } from './qr.js';
 import { downloadReceiptPdf } from './pdf.js';
@@ -653,7 +653,7 @@ function renderManage() {
   const st = registrationState(comp);
   const open = st === 'open';
   const nScouts = (reg.patrols || []).reduce((s, p) => s + (Number(p.antal) || 0), 0);
-  const paid = (reg.payments || []).filter(p => p.paid).reduce((s, p) => s + p.amount, 0);
+  const paid = (reg.payments || []).filter(p => isPaymentPaid(reg, p)).reduce((s, p) => s + p.amount, 0);
   const total = paymentsSum(reg);
 
   if (reg.cancelled) {
@@ -715,7 +715,7 @@ function renderManage() {
     ${(reg.payments || []).length ? `
       <div class="anm-card">
         <h2>Betalningar</h2>
-        ${reg.payments.some(p => !p.paid) ? `
+        ${reg.payments.some(p => !isPaymentPaid(reg, p)) ? `
           <p class="muted t-sm" style="margin-top:-8px;">
             Betalningar bekräftas <strong>manuellt</strong> av tävlingsledningen när de synts på kontot —
             det kan därför dröja någon dag innan statusen ändras här, även om ni redan har betalat.
@@ -725,7 +725,7 @@ function renderManage() {
         ${reg.payments.map(p => `
           <div class="anm-payment-row">
             <span class="ref">${escapeHtml(p.reference)}</span>
-            ${p.paid
+            ${isPaymentPaid(reg, p)
               ? `<span class="anm-badge paid">Betald</span><button type="button" class="btn btn-ghost btn-sm" data-receipt="${escapeHtml(p.id)}">${icon('download', { size: 14 })} Kvitto</button>`
               : `<span class="anm-badge pending">Väntar</span><button type="button" class="btn btn-ghost btn-sm" data-showpay="${escapeHtml(p.id)}">Betala</button>`}
             <span class="amt">${p.amount} kr</span>

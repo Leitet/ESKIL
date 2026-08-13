@@ -76,6 +76,12 @@ function nScouts(reg) {
   return (reg.patrols || []).reduce((s, p) => s + (Number(p.antal) || 0), 0);
 }
 
+// Authoritative paid status — the admin-only paidRefs array (mirror of
+// utils.isPaymentPaid). The legacy per-payment paid flag is not trusted.
+function isPaidRef(reg, payment) {
+  return !!payment && (reg.paidRefs || []).includes(payment.reference);
+}
+
 function manageUrl(cid, regId) {
   return `${APP_URL}/a/${cid}/${regId}`;
 }
@@ -193,7 +199,7 @@ exports.onRegistrationCreated = onDocumentCreated('competitions/{cid}/registrati
   const comp = await getComp(cid);
   if (!comp || comp.demo) return;
 
-  const unpaid = (reg.payments || []).filter(p => !p.paid);
+  const unpaid = (reg.payments || []).filter(p => !isPaidRef(reg, p));
   const url = manageUrl(cid, regId);
   const replyTo = managementEmails(comp)[0] || undefined;
 
@@ -236,9 +242,12 @@ exports.onRegistrationUpdated = onDocumentUpdated('competitions/{cid}/registrati
 
   const jobs = [];
 
-  // 1) Payments that flipped to paid → receipt with PDF attached.
-  const wasPaid = new Map((before.payments || []).map(p => [p.id, !!p.paid]));
-  const newlyPaid = (after.payments || []).filter(p => p.paid && !wasPaid.get(p.id));
+  // 1) Payments newly ticked off in the admin-only paidRefs → receipt with
+  // PDF attached. Driven by paidRefs (not the client-writable paid flag) so
+  // a manage-link holder cannot self-issue an official receipt.
+  const beforeRefs = new Set(before.paidRefs || []);
+  const newlyPaid = (after.payments || [])
+    .filter(p => isPaidRef(after, p) && !beforeRefs.has(p.reference));
   for (const payment of newlyPaid) {
     if (!after.contact || !after.contact.email) continue;
     const replyTo = managementEmails(comp)[0] || undefined;
@@ -270,7 +279,7 @@ exports.onRegistrationUpdated = onDocumentUpdated('competitions/{cid}/registrati
   // by the admin UI) → mail the contact the unpaid references with the manage
   // link, and stamp reminderSentAt back so the UI shows when.
   if (after.reminderRequestedAt && after.reminderRequestedAt !== before.reminderRequestedAt) {
-    const unpaid = (after.payments || []).filter(p => !p.paid);
+    const unpaid = (after.payments || []).filter(p => !isPaidRef(after, p));
     if (!after.cancelled && unpaid.length && after.contact && after.contact.email) {
       const replyTo = managementEmails(comp)[0] || undefined;
       const url = manageUrl(cid, regId);
@@ -332,7 +341,7 @@ exports.onRegistrationUpdated = onDocumentUpdated('competitions/{cid}/registrati
   if (!before.cancelled && after.cancelled) {
     const to = managementEmails(comp);
     if (to.length) {
-      const paid = (after.payments || []).filter(p => p.paid).reduce((s, p) => s + (Number(p.amount) || 0), 0);
+      const paid = (after.payments || []).filter(p => isPaidRef(after, p)).reduce((s, p) => s + (Number(p.amount) || 0), 0);
       const body = `
         <p><strong>${esc(after.kar || '')}</strong> har avanmält sig från ${esc(compLabel(comp))}
         (${(after.patrols || []).length} patruller, ${nScouts(after)} scouter).</p>

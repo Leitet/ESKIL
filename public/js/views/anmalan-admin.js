@@ -11,7 +11,7 @@ import { downloadReceiptPdf } from '../pdf.js';
 import {
   escapeHtml, formatDate, toast, withBusy, confirmDialog, wireOverlayClose,
   registrationSettings, registrationState, registrationUrl, copyToClipboard,
-  isCompAdminUser
+  isPaymentPaid, isCompAdminUser
 } from '../utils.js';
 import { icon } from '../icons.js';
 import { compActionsHtml } from './competition.js';
@@ -202,14 +202,28 @@ export async function renderAnmalanAdmin(app, user, cid) {
     try {
       [regs, patrols] = await Promise.all([listRegistrations(cid), listPatrols(cid)]);
       regs.sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+      if (isAdmin && !comp.demo) await migrateLegacyPaid();
       render();
     } catch (e) {
       content.innerHTML = `<div class="empty"><h3>Kunde inte ladda</h3><p>${escapeHtml(e.message)}</p></div>`;
     }
   }
 
+  // One-time migration: registrations from before paidRefs stored paid on
+  // each payment object. Upgrade any that still lack paidRefs but have legacy
+  // paid:true payments, so the admin-only authoritative source is in place.
+  async function migrateLegacyPaid() {
+    const legacy = regs.filter(r => r.paidRefs === undefined && (r.payments || []).some(p => p.paid));
+    if (!legacy.length) return;
+    for (const r of legacy) {
+      const paidRefs = (r.payments || []).filter(p => p.paid).map(p => p.reference).filter(Boolean);
+      try { await updateRegistration(cid, r.id, { paidRefs }); r.paidRefs = paidRefs; }
+      catch (e) { console.warn('[ESKIL] paidRefs-migrering misslyckades', r.id, e); }
+    }
+  }
+
   function paySum(r, onlyPaid = false) {
-    return (r.payments || []).filter(p => !onlyPaid || p.paid).reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    return (r.payments || []).filter(p => !onlyPaid || isPaymentPaid(r, p)).reduce((s, p) => s + (Number(p.amount) || 0), 0);
   }
 
   function render() {
@@ -321,7 +335,7 @@ export async function renderAnmalanAdmin(app, user, cid) {
               <div class="t-sm" style="display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid var(--border);">
                 <span class="mono" style="font-weight:700;">${escapeHtml(p.reference)}</span>
                 <span class="mono">${p.amount} kr</span>
-                ${p.paid
+                ${isPaymentPaid(r, p)
                   ? `<span class="badge badge-green">Betald${p.paidAt ? ' ' + escapeHtml(String(p.paidAt).slice(0, 10)) : ''}</span>
                      <button class="btn btn-ghost btn-sm" data-receipt="${escapeHtml(r.id)}:${escapeHtml(p.id)}" style="margin-left:auto;">${icon('download', { size: 14 })} Kvitto</button>
                      ${isAdmin ? `<button class="btn btn-ghost btn-sm" data-unpay="${escapeHtml(r.id)}:${escapeHtml(p.id)}">Ångra</button>` : ''}`
@@ -379,13 +393,17 @@ export async function renderAnmalanAdmin(app, user, cid) {
   async function setPaid(regId, payId, paidValue) {
     const r = regs.find(x => x.id === regId);
     if (!r) return null;
-    const payments = (r.payments || []).map(p =>
-      p.id === payId ? { ...p, paid: paidValue, paidAt: paidValue ? new Date().toISOString() : null } : p
-    );
-    await updateRegistration(cid, regId, { payments });
+    const pay = (r.payments || []).find(p => p.id === payId);
+    if (!pay || !pay.reference) return null;
+    // Payment status is the admin-only paidRefs array (references the kassör
+    // has ticked off) — anonymous manage-link holders cannot forge it.
+    const refs = new Set(r.paidRefs || []);
+    if (paidValue) refs.add(pay.reference); else refs.delete(pay.reference);
+    const paidRefs = [...refs];
+    await updateRegistration(cid, regId, { paidRefs });
     let result = null;
     if (paidValue) {
-      const fullyPaid = payments.length > 0 && payments.every(p => p.paid);
+      const fullyPaid = (r.payments || []).length > 0 && (r.payments || []).every(p => paidRefs.includes(p.reference));
       const imported = (fullyPaid && !r.cancelled) ? await importPatrolsFromReg(r) : 0;
       result = { imported };
     }
@@ -435,7 +453,7 @@ export async function renderAnmalanAdmin(app, user, cid) {
         if (p) { hit = { r, p }; break; }
       }
       if (!hit) { toast('Ingen betalning hittades med referensen ' + ref, 'error'); return; }
-      if (hit.p.paid) { toast('Den betalningen är redan markerad som betald'); return; }
+      if (isPaymentPaid(hit.r, hit.p)) { toast('Den betalningen är redan markerad som betald'); return; }
       try {
         const res = await setPaid(hit.r.id, hit.p.id, true);
         toast(paidToast(`${hit.r.kar}: ${hit.p.amount} kr markerad som betald`, res, hit.r.contact?.email), 'success');
@@ -467,7 +485,7 @@ export async function renderAnmalanAdmin(app, user, cid) {
     content.querySelectorAll('[data-remind]').forEach(b => b.addEventListener('click', () => withBusy(b, 'Skickar…', async () => {
       const r = regs.find(x => x.id === b.dataset.remind);
       if (!r) return;
-      const unpaid = (r.payments || []).filter(p => !p.paid);
+      const unpaid = (r.payments || []).filter(p => !isPaymentPaid(r, p));
       if (!(await confirmDialog(
         `Skicka betalningspåminnelse till ${r.contact?.email || ''}? Gäller ${unpaid.map(p => `${p.amount} kr (${p.reference})`).join(' + ')}.`,
         { okLabel: 'Skicka påminnelse', danger: false }

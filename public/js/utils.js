@@ -543,6 +543,14 @@ export const REG_PRICING_MODELS = [
 // Normalized registration settings with defaults. `mode` is how kårer anmäler
 // sig (kårvis = one registration per kår covering all patrols; patrullvis =
 // each patrol registers and pays on its own).
+// Authoritative payment status. `paidRefs` on the registration is an
+// admin-only list of references the kassör has ticked off — anonymous manage-
+// link holders cannot write it (Firestore rules), so it cannot be forged. The
+// legacy per-payment `paid` flag is NOT trusted for the paid decision.
+export function isPaymentPaid(reg, payment) {
+  return !!payment && (reg?.paidRefs || []).includes(payment.reference);
+}
+
 export function registrationSettings(comp) {
   const r = comp?.registration || {};
   return {

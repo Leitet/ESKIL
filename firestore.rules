@@ -211,8 +211,21 @@ service cloud.firestore {
       match /registrations/{regId} {
         allow get: if true;
         allow list: if isCompMember(cid);
-        allow create: if isCompAdmin(cid) || (registrationEnabled(cid) && !compIsDemo(cid) && !compClosed(cid));
-        allow update: if isCompAdmin(cid) || (registrationEnabled(cid) && !compIsDemo(cid) && !compClosed(cid));
+        // Anonymous manage-link holders may only touch participant fields.
+        // Payment status lives in the admin-only `paidRefs` array (see
+        // isPaymentPaid), and the admin stamps reminder*/imported — none of
+        // which a non-admin can create or change. hasOnly on create, and
+        // affectedKeys on update so admin-added fields don't lock out the
+        // registrant's own later edits.
+        allow create: if isCompAdmin(cid) || (
+             registrationEnabled(cid) && !compIsDemo(cid) && !compClosed(cid)
+          && request.resource.data.keys().hasOnly(['kar','contact','patrols','answers','mode','totalAmount','payments','cancelled','forhinder','createdAt','updatedAt'])
+        );
+        allow update: if isCompAdmin(cid) || (
+             registrationEnabled(cid) && !compIsDemo(cid) && !compClosed(cid)
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['kar','contact','patrols','answers','mode','totalAmount','payments','cancelled','forhinder','updatedAt'])
+        );
         allow delete: if isCompAdmin(cid);
       }
 
