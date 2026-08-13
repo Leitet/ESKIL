@@ -668,6 +668,23 @@ html[data-mode="night"] .r-sync.is-ok      { background: #1a2a10; color: #a7e08a
 }
 html[data-mode="night"] .patrol-btn .p-pending { background: #3a1010; color: #ffb56b; }
 
+/* Rapporterad utan utslagsgissning — det enda oåterkalleliga misstaget. */
+.patrol-btn .p-missing-guess {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fad4e2;
+  color: #a6004a;
+  margin-left: 6px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+html[data-mode="night"] .patrol-btn .p-missing-guess { background: #4a0a20; color: #ff7ab0; }
+
 /* Info card (about control) */
 .info-card {
   background: var(--r-card);

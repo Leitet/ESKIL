@@ -183,8 +183,13 @@ export async function renderScoreboard(app, user, cid) {
           <div class="t-over" style="color:var(--avent-orange);">Utslagsfråga — kontroll ${c.nummer ?? '?'} · ${escapeHtml(c.name || '')}</div>
           ${c.utslagFraga ? `<p class="t-serif" style="font-size:17px;margin:8px 0 4px;">"${escapeHtml(c.utslagFraga)}"</p>` : ''}
           ${hasFacit
-            ? `<p style="margin:4px 0 var(--sp-3);">Rätt svar: <strong style="font-size:18px;color:var(--scout-blue);">${Number(c.utslagSvar)}</strong></p>`
-            : `<p class="muted t-sm" style="margin:4px 0 var(--sp-3);">Rätt svar är inte angivet ännu — utslaget påverkar inte placeringarna. Fyll i facit på kontrollen när det är dags.</p>`}
+            ? `<p style="margin:4px 0 var(--sp-2);">Rätt svar: <strong style="font-size:18px;color:var(--scout-blue);">${Number(c.utslagSvar)}</strong></p>`
+            : `<p class="muted t-sm" style="margin:4px 0 var(--sp-2);">Rätt svar är inte angivet ännu — utslaget påverkar inte placeringarna.</p>`}
+          ${isAdmin ? `
+            <div class="row" style="gap:8px;margin:0 0 var(--sp-3);">
+              <input class="input" type="number" step="any" data-facit-input="${escapeHtml(c.id)}" value="${hasFacit ? Number(c.utslagSvar) : ''}" placeholder="Rätt svar" style="max-width:130px;">
+              <button class="btn btn-secondary btn-sm" data-facit-save="${escapeHtml(c.id)}">${hasFacit ? 'Ändra facit' : 'Sätt facit'}</button>
+            </div>` : ''}
           <div class="table-wrap"><table class="t">
             <thead><tr><th class="num">#</th><th>Patrull</th><th class="num">Svar</th>${hasFacit ? '<th class="num">Från facit</th>' : ''}</tr></thead>
             <tbody>
@@ -201,6 +206,26 @@ export async function renderScoreboard(app, user, cid) {
         </div>
       `;
     }).join('');
+
+    // Inline-facit: sätt/ändra rätt svar direkt här i stället för att öppna
+    // kontrollens stora redigeringsmodal mitt i slutspurten.
+    host.querySelectorAll('[data-facit-save]').forEach(btn => btn.addEventListener('click', (e) => {
+      const b = e.currentTarget;
+      const id = b.dataset.facitSave;
+      const inp = host.querySelector(`[data-facit-input="${CSS.escape(id)}"]`);
+      const raw = (inp?.value ?? '').trim();
+      if (raw === '' || !Number.isFinite(Number(raw))) { toast('Ange ett numeriskt svar.', 'error'); return; }
+      withBusy(b, 'Sparar…', async () => {
+        try {
+          await updateControl(cid, id, { utslagSvar: Number(raw) });
+          const local = controls.find(c => c.id === id);
+          if (local) local.utslagSvar = Number(raw);
+          renderUtslagSection();
+          render();
+          toast('Facit sparat — placeringarna är uppdaterade', 'success');
+        } catch (err) { toast('Fel: ' + err.message, 'error'); }
+      });
+    }));
   }
 
   // Justeringslogg — every score that has been overwritten or adjusted, with

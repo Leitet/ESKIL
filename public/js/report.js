@@ -446,10 +446,11 @@ async function main() {
         ${rows.map(p => {
           const s = scoreByPatrol[p.id];
           const pending = isPending(cid, ctrlId, p.id);
+          const missingGissning = s && control.utslag && s.utslagGissning == null;
           return `<button type="button" class="patrol-btn ${s ? 'reported' : ''}" data-id="${p.id}">
             <div class="p-num">#${p.number ?? '—'}</div>
             <div class="p-name">${escapeHtml(p.name || '—')}</div>
-            <div class="p-meta">${escapeHtml(p.kar || '')}${pending ? ' <span class="p-pending">Väntar på synk</span>' : ''}</div>
+            <div class="p-meta">${escapeHtml(p.kar || '')}${pending ? ' <span class="p-pending">Väntar på synk</span>' : ''}${missingGissning ? ' <span class="p-missing-guess">Utslagssvar saknas!</span>' : ''}</div>
             ${s ? `<span class="p-score">${s.poang}${s.extraPoang ? '+' + s.extraPoang : ''}</span>` : ''}
           </button>`;
         }).join('')}
@@ -592,6 +593,23 @@ async function main() {
       const noteVal = overlay.querySelector('#note').value.trim().slice(0, 500);
       const gissningRaw = isUtslag ? overlay.querySelector('#gissning-input').value.trim() : '';
       const gissning = gissningRaw !== '' && Number.isFinite(Number(gissningRaw)) ? Number(gissningRaw) : null;
+      // Gissningsvakt: en glömd utslagsgissning är oåterkallelig när
+      // patrullen gått vidare. Första trycket utan svar armerar en varning;
+      // andra trycket sparar medvetet utan svar.
+      if (isUtslag && gissning == null && saveBtn.dataset.guessArmed !== '1') {
+        saveBtn.dataset.guessArmed = '1';
+        saveBtn.textContent = 'Spara UTAN utslagssvar';
+        const gi = overlay.querySelector('#gissning-input');
+        gi.style.borderColor = 'var(--r-danger, #DA005E)';
+        gi.focus();
+        rtoast('Ingen utslagsgissning ifylld — vid lika poäng förlorar patrullen utslaget. Fyll i svaret, eller tryck igen för att spara utan.', 'err');
+        gi.addEventListener('input', () => {
+          saveBtn.dataset.guessArmed = '';
+          saveBtn.textContent = existing ? 'Uppdatera poäng' : 'Spara poäng';
+          gi.style.borderColor = '';
+        }, { once: true });
+        return;
+      }
       const reporter = reporterId();
       // The adjustment/revision trail (`history`) is admin-authored only and
       // immutable to anonymous writes (Firestore rules enforce it). A plain
