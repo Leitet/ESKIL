@@ -12,13 +12,13 @@ import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import {
   getCompetition, listPatrols, listStations, createStation, watchPassages,
   watchControls, watchScoresForControl, getTrack, getControlMeta,
-  updateCompetition, updateControl
+  updateCompetition, updateControl, setPatrolUtgatt
 } from '../store.js';
 import { deleteField } from '../firebase.js';
 import { courseLegs, drawCourseOnMap } from '../course.js';
 import {
   escapeHtml, toast, copyToClipboard, formatTime, patrolStartTime, patrolStartDateTime, avdShort,
-  isCompAdminUser, withBusy
+  isCompAdminUser, withBusy, confirmDialog, promptDialog
 } from '../utils.js';
 import { ensureLeaflet } from '../leaflet.js';
 import { renderQrToImg } from '../pdf.js';
@@ -373,17 +373,20 @@ export async function renderLaget(app, user, cid) {
       const position = reports.length ? reports[reports.length - 1].nummer : 0;
       const lastReport = reports.length ? reports.reduce((m, r) => r.t > m ? r.t : m, reports[0].t) : null;
       const lastSeen = [startAt, finishAt, lastReport].filter(Boolean).sort((a, b) => b - a)[0] || null;
+      // DNF: en utgått patrull är per definition inte ute i skogen — den
+      // räknas bort ur köer, tystnadsvarningar och sen-till-start-larm.
+      const utgatt = p.utgatt || null;
       const started = !!startAt || reports.length > 0;
-      const active = started && !finishAt;
+      const active = !utgatt && started && !finishAt;
       const silentMin = active ? minSince(lastSeen, now) : null;
       // Sen till start: planerad tid passerad (3 min marginal) utan livstecken.
-      const plannedAt = !started ? patrolStartDateTime(comp, p, now, patrols.length) : null;
+      const plannedAt = !started && !utgatt ? patrolStartDateTime(comp, p, now, patrols.length) : null;
       const lateStartMin = plannedAt ? Math.floor((now - plannedAt) / 60000) : 0;
-      const lateStart = !started && lateStartMin >= 3;
+      const lateStart = !utgatt && !started && lateStartMin >= 3;
       return {
         patrol: p, startAt, finishAt, reports, position, lastReport, lastSeen,
-        started, active, silentMin, lateStart, lateStartMin,
-        warn: (active && silentMin != null && silentMin >= WARN_SILENT_MIN) || (!started && lateStartMin >= 3)
+        started, active, silentMin, lateStart, lateStartMin, utgatt,
+        warn: !utgatt && ((active && silentMin != null && silentMin >= WARN_SILENT_MIN) || (!started && lateStartMin >= 3))
       };
     });
 
@@ -501,15 +504,19 @@ export async function renderLaget(app, user, cid) {
           ${rows.map(pp => {
             const p = pp.patrol;
             const planned = patrolStartTime(comp, p, patrols.length, now);
-            const status = pp.finishAt ? `<span class="badge badge-green">I mål ${formatTime(pp.finishAt)}</span>`
+            const status = pp.utgatt ? `<span class="badge badge-gray" title="${escapeHtml(pp.utgatt.note || '')}">Utgått${pp.utgatt.at ? ' ' + formatTime(pp.utgatt.at) : ''}</span>`
+              : pp.finishAt ? `<span class="badge badge-green">I mål ${formatTime(pp.finishAt)}</span>`
               : pp.lateStart ? `<span class="badge badge-orange">Sen till start · ${pp.lateStartMin} min</span>`
               : pp.warn ? `<span class="badge badge-pink">Tyst i ${pp.silentMin} min</span>`
               : pp.active ? '<span class="badge badge-blue">Ute</span>'
               : '<span class="badge badge-gray">Ej startad</span>';
-            return `<tr style="${pp.warn ? 'background:#fdf0f6;' : ''}">
+            const dnfBtn = !isAdmin ? '' : (pp.utgatt
+              ? ` <button class="btn btn-ghost btn-sm" data-undo-utgatt="${escapeHtml(p.id)}" title="Ta tillbaka patrullen i tävlingen">Ångra</button>`
+              : (!pp.finishAt ? ` <button class="btn btn-ghost btn-sm" data-set-utgatt="${escapeHtml(p.id)}" title="Markera patrullen som utgått (DNF)">Utgått…</button>` : ''));
+            return `<tr style="${pp.warn ? 'background:#fdf0f6;' : ''}${pp.utgatt ? 'opacity:.6;' : ''}">
               <td class="num">${p.number ?? ''}</td>
               <td><strong>${escapeHtml(p.name || '')}</strong> <span class="muted t-sm"><span class="dot ${avdShort(p.avdelning)}"></span>${escapeHtml(p.avdelning || '')}</span></td>
-              <td>${status}</td>
+              <td>${status}${dnfBtn}</td>
               <td class="t-sm">${pp.startAt ? formatTime(pp.startAt) : (planned ? `<span class="muted">plan ${escapeHtml(planned)}</span>` : '—')}</td>
               <td class="num">${pp.reports.length}/${controls.length || '—'}</td>
               <td class="t-sm">${pp.lastSeen
@@ -520,6 +527,35 @@ export async function renderLaget(app, user, cid) {
         </tbody>
       </table></div>
     ` : '<div class="empty"><h3>Inga patruller</h3></div>';
+
+    // DNF: markera/ångra utgått. Noten är kort och saklig (patrulldokumentet
+    // är publikt läsbart) och gallras automatiskt när tävlingen avslutas.
+    wrap.querySelectorAll('[data-set-utgatt]').forEach(btn => btn.addEventListener('click', async () => {
+      const p = patrols.find(x => x.id === btn.dataset.setUtgatt);
+      if (!p) return;
+      const note = await promptDialog(
+        `Markera ${p.name || 'patrullen'} som utgått (DNF)? Patrullen räknas bort ur köer och varningar men behåller sina poäng. Anteckning (valfri, syns bara för ledningen här):`,
+        { okLabel: 'Markera utgått', placeholder: 'T.ex. "avbröt vid kontroll 4, hämtade"', danger: true }
+      );
+      if (note === null) return;
+      try {
+        await setPatrolUtgatt(cid, p.id, { note });
+        p.utgatt = { at: new Date(), note }; // patrols hämtas inte live — spegla lokalt
+        toast(`${p.name} markerad som utgått`);
+        renderStats();
+      } catch (e) { toast('Fel: ' + e.message, 'error'); }
+    }));
+    wrap.querySelectorAll('[data-undo-utgatt]').forEach(btn => btn.addEventListener('click', async () => {
+      const p = patrols.find(x => x.id === btn.dataset.undoUtgatt);
+      if (!p) return;
+      if (!(await confirmDialog(`Ta tillbaka ${p.name || 'patrullen'} i tävlingen?`, { okLabel: 'Ångra utgått', danger: false }))) return;
+      try {
+        await setPatrolUtgatt(cid, p.id, null);
+        delete p.utgatt; // patrols hämtas inte live — spegla lokalt
+        toast(`${p.name} är åter i tävlingen`, 'success');
+        renderStats();
+      } catch (e) { toast('Fel: ' + e.message, 'error'); }
+    }));
 
     updateMapMarkers(ctrlStats);
   }

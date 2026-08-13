@@ -346,6 +346,17 @@ export async function closeCompetition(cid) {
     });
     await batch.commit();
   }
+  // Utgått-noteringar kan innehålla känsligt (skäl, skador) — gallra noten
+  // vid avslut men behåll själva utgått-statusen som tävlingshistorik.
+  const patrolsSnap = await getDocs(collection(db, 'competitions', cid, 'patrols'));
+  for (let i = 0; i < patrolsSnap.docs.length; i += 400) {
+    const batch = writeBatch(db);
+    patrolsSnap.docs.slice(i, i + 400).forEach(d => {
+      const u = d.data().utgatt;
+      if (u && u.note) batch.update(d.ref, { utgatt: { ...u, note: '' } });
+    });
+    await batch.commit();
+  }
   // GDPR-gallring av anmälningarna: kontaktuppgifter, fritextsvar (t.ex.
   // allergier) och förhinder-meddelanden raderas — kår, patrullnamn och
   // betalningsstatus (belopp/referenser, ingen persondata) behålls som
@@ -447,6 +458,15 @@ export async function updatePatrol(cid, pid, data) {
 
 export async function deletePatrol(cid, pid) {
   await deleteDoc(doc(db, 'competitions', cid, 'patrols', pid));
+}
+
+// DNF: markera en patrull som utgått (eller ångra med null). Patrulldokumentet
+// är publikt läsbart, så noten hålls kort och saklig — den gallras vid avslut.
+export async function setPatrolUtgatt(cid, pid, utgatt) {
+  await updateDoc(doc(db, 'competitions', cid, 'patrols', pid),
+    utgatt
+      ? { utgatt: { at: Timestamp.fromDate(new Date()), note: utgatt.note || '' } }
+      : { utgatt: deleteField() });
 }
 
 // Write `startOrder: idx` on each patrol in one batched commit.

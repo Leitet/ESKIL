@@ -407,18 +407,20 @@ async function main() {
     const counts = {};
     patrols.forEach(p => { counts[p.avdelning] = (counts[p.avdelning] || 0) + 1; });
     const reported = new Set(scores.map(s => s.patrolId));
+    // Utgångna patruller (DNF) kommer aldrig — de räknas inte som "kvar".
     const remaining = {};
     patrols.forEach(p => {
-      if (!reported.has(p.id)) remaining[p.avdelning] = (remaining[p.avdelning] || 0) + 1;
+      if (!reported.has(p.id) && !p.utgatt) remaining[p.avdelning] = (remaining[p.avdelning] || 0) + 1;
     });
-    const totalRemaining = patrols.filter(p => !reported.has(p.id)).length;
-    const totalDone = patrols.length - totalRemaining;
+    const expected = patrols.filter(p => !p.utgatt);
+    const totalRemaining = expected.filter(p => !reported.has(p.id)).length;
+    const totalDone = patrols.length - patrols.filter(p => !reported.has(p.id)).length;
     const present = AVDELNINGAR.filter(a => counts[a.key]);
     // Klart-läge: sista patrullen rapporterad — svara på dagens sista fråga
     // ("kan vi gå hem?") och varna om osynkade rapporter innan mobilen åker
     // ner i fickan utan täckning.
     const pendingCount = listQueue(cid, ctrlId).length;
-    const allDone = patrols.length > 0 && totalRemaining === 0;
+    const allDone = expected.length > 0 && totalRemaining === 0;
     avd.innerHTML = `
       ${allDone ? `
         <div class="r-done-banner${pendingCount ? ' has-pending' : ''}">
@@ -460,7 +462,11 @@ async function main() {
     let rows = patrols;
     if (state.avd) rows = rows.filter(p => p.avdelning === state.avd);
     // Non-reported patrols first (start-order within group), reported last.
+    // Utgångna (DNF) allra sist — de kommer inte, men går att rapportera om
+    // de hann göra kontrollen innan de bröt.
     rows = [...rows].sort((a, b) => {
+      const aOut = a.utgatt ? 1 : 0, bOut = b.utgatt ? 1 : 0;
+      if (aOut !== bOut) return aOut - bOut;
       const aDone = !!scoreByPatrol[a.id];
       const bDone = !!scoreByPatrol[b.id];
       if (aDone !== bDone) return aDone ? 1 : -1;
@@ -484,7 +490,7 @@ async function main() {
           return `<button type="button" class="patrol-btn ${s ? 'reported' : ''}" data-id="${p.id}">
             <div class="p-num">#${p.number ?? '—'}</div>
             <div class="p-name">${escapeHtml(p.name || '—')}</div>
-            <div class="p-meta">${escapeHtml(p.kar || '')}${pending ? ' <span class="p-pending">Väntar på synk</span>' : ''}${missingGissning ? ' <span class="p-missing-guess">Utslagssvar saknas!</span>' : ''}</div>
+            <div class="p-meta">${escapeHtml(p.kar || '')}${p.utgatt ? ' <span class="p-utgatt">Utgått</span>' : ''}${pending ? ' <span class="p-pending">Väntar på synk</span>' : ''}${missingGissning ? ' <span class="p-missing-guess">Utslagssvar saknas!</span>' : ''}</div>
             ${s ? `<span class="p-score">${s.poang}${s.extraPoang ? '+' + s.extraPoang : ''}</span>` : ''}
           </button>`;
         }).join('')}

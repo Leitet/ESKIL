@@ -206,6 +206,33 @@ export function confirmDialog(message, { okLabel = 'Ta bort', danger = true } = 
   });
 }
 
+// Like confirmDialog but with a text input. Resolves the entered string on
+// OK (possibly ''), or null on cancel — callers must check for null.
+export function promptDialog(message, { okLabel = 'Spara', placeholder = '', value = '', danger = false } = {}) {
+  return new Promise(resolve => {
+    const overlay = el('div', { class: 'modal-overlay' });
+    const modal = el('div', { class: 'modal' });
+    modal.innerHTML = `
+      <div class="modal-head"><h3>Bekräfta</h3></div>
+      <div class="modal-body">
+        <p style="margin-top:0;">${escapeHtml(message)}</p>
+        <input class="input" data-input placeholder="${escapeHtml(placeholder)}" value="${escapeHtml(value)}">
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-cancel>Avbryt</button>
+        <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" data-ok>${escapeHtml(okLabel)}</button>
+      </div>`;
+    overlay.appendChild(modal);
+    const input = modal.querySelector('[data-input]');
+    wireOverlayClose(overlay, () => { overlay.remove(); resolve(null); });
+    modal.querySelector('[data-cancel]').onclick = () => { overlay.remove(); resolve(null); };
+    modal.querySelector('[data-ok]').onclick = () => { const v = input.value.trim(); overlay.remove(); resolve(v); };
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') modal.querySelector('[data-ok]').click(); });
+    document.body.appendChild(overlay);
+    setTimeout(() => input.focus(), 30);
+  });
+}
+
 export function formatDate(ts) {
   if (!ts) return '—';
   const d = typeof ts.toDate === 'function' ? ts.toDate() : new Date(ts);

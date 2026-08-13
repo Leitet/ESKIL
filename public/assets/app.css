@@ -650,6 +650,20 @@ table.t tr.sf-row.park-row td {
 .cer-cat-title { font-size: clamp(38px, 6vw, 72px); font-weight: 300; margin: 18px 0; display: flex; align-items: center; justify-content: center; gap: 16px; }
 .cer-sub { color: #d2dde8; font-size: clamp(16px, 2vw, 24px); }
 .cer-hint { color: #7d99b5; font-size: 14px; margin-top: 40px; }
+.cer-dnf {
+  display: inline-block;
+  vertical-align: middle;
+  background: rgba(255, 255, 255, .14);
+  border: 1px solid rgba(255, 255, 255, .35);
+  color: #b9cbdd;
+  border-radius: 8px;
+  padding: 2px 10px;
+  font-size: .35em;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  margin-left: 10px;
+}
 .cer-warn {
   display: inline-block;
   margin-top: 22px;

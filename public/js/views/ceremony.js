@@ -104,7 +104,7 @@ export async function renderCeremony(app, user, cid) {
             // Slutspurtsvarning: pallen kan ändras så länge rapporter saknas.
             const byCtrl = {};
             for (const s of scores) (byCtrl[s.controlId] ||= new Set()).add(s.patrolId);
-            const missing = controls.reduce((sum, c) => sum + patrols.filter(p => !(byCtrl[c.id]?.has(p.id))).length, 0);
+            const missing = controls.reduce((sum, c) => sum + patrols.filter(p => !p.utgatt && !(byCtrl[c.id]?.has(p.id))).length, 0);
             return missing > 0 ? `<p class="cer-warn">OBS: ${missing} rapport${missing === 1 ? '' : 'er'} saknas ännu — pallen kan ändras. Se "Saknade rapporter" i poängtabellen.</p>` : '';
           })()}
           <p class="cer-hint">Mellanslag/klick = nästa · Esc = tillbaka hit · ✕ = till poängtabellen</p>
@@ -144,7 +144,7 @@ export async function renderCeremony(app, user, cid) {
               <div class="cer-winner">
                 <div class="cer-medal">${step.rank}</div>
                 <div>
-                  <div class="cer-name">${escapeHtml(r.name || '')}</div>
+                  <div class="cer-name">${escapeHtml(r.name || '')}${r.utgatt ? ' <span class="cer-dnf">Utgått</span>' : ''}</div>
                   <div class="cer-meta">${escapeHtml(r.kar || '')} · ${r.grand} poäng</div>
                 </div>
               </div>
@@ -162,7 +162,7 @@ export async function renderCeremony(app, user, cid) {
             ${step.podium.map(r => `
               <div class="cer-podium-row rank-${r.rank <= 3 ? r.rank : 'x'}">
                 <span class="cer-medal small">${r.rank}</span>
-                <span class="cer-name-sm">${escapeHtml(r.name || '')}</span>
+                <span class="cer-name-sm">${escapeHtml(r.name || '')}${r.utgatt ? ' <span class="cer-dnf">Utgått</span>' : ''}</span>
                 <span class="cer-meta">${escapeHtml(r.kar || '')}</span>
                 <span class="cer-points">${r.grand} p</span>
               </div>

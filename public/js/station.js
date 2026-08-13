@@ -108,7 +108,7 @@ async function main() {
 // Beräknad målgång (ms-epok) för en patrull som är ute: faktisk starttid +
 // hela banans ETA. null när ETA saknas eller patrullen inte är ute.
 function etaFinishMs(p) {
-  if (finishMin == null) return null;
+  if (finishMin == null || p.utgatt) return null;
   const pass = passages[p.id] || {};
   if (!pass.startAt || pass.finishAt) return null;
   const d = typeof pass.startAt.toDate === 'function' ? pass.startAt.toDate() : new Date(pass.startAt);
@@ -116,6 +116,7 @@ function etaFinishMs(p) {
 }
 
 function statusOf(p) {
+  if (p.utgatt) return 'utgatt';
   const pass = passages[p.id] || {};
   if (pass.finishAt) return 'finished';
   if (pass.startAt) return 'out';
@@ -124,6 +125,7 @@ function statusOf(p) {
 
 // Sen till start: planerad tid passerad ≥3 min utan utcheckning.
 function lateToStartMin(p) {
+  if (p.utgatt) return 0; // DNF — kommer inte, ska inte larma
   const pass = passages[p.id] || {};
   if (pass.startAt) return 0;
   const plannedAt = patrolStartDateTime(comp, p, virtualNow(), patrols.length);
@@ -134,7 +136,7 @@ function lateToStartMin(p) {
 
 function render() {
   const sorted = [...patrols].sort((a, b) => (a.startOrder ?? a.number ?? 0) - (b.startOrder ?? b.number ?? 0));
-  const counts = { waiting: 0, out: 0, finished: 0 };
+  const counts = { waiting: 0, out: 0, finished: 0, utgatt: 0 };
   sorted.forEach(p => { counts[statusOf(p)]++; });
   const lateCount = sorted.filter(p => lateToStartMin(p) > 0).length;
 
@@ -142,7 +144,7 @@ function render() {
   // sedan ej startade, sist redan incheckade. Startfliken behåller startordning.
   let display = sorted;
   if (mode === 'mal' && finishMin != null) {
-    const rank = { out: 0, waiting: 1, finished: 2 };
+    const rank = { out: 0, waiting: 1, finished: 2, utgatt: 3 };
     display = [...sorted].sort((a, b) => {
       const ra = rank[statusOf(a)], rb = rank[statusOf(b)];
       if (ra !== rb) return ra - rb;
@@ -209,7 +211,9 @@ function patrolBtn(p) {
     : '';
   const pendingNote = checked && pass._pending
     ? ` <span class="st-pending">· väntar på nät</span>` : '';
-  const sub = checked
+  const sub = p.utgatt
+    ? `<span class="st-utgatt-note">Utgått${pass.startAt && !checked ? ' · startade ' + fmtClock(pass.startAt) : ''}</span>${checked ? ` · ${mode === 'start' ? 'startade' : 'i mål'} ${fmtClock(pass[field])}` : ''}`
+    : checked
     ? `<span class="st-checked-at">${mode === 'start' ? 'Startade' : 'I mål'} ${fmtClock(pass[field])}</span>${pendingNote}`
     : (mode === 'start'
         ? (lateMin > 0
@@ -217,7 +221,7 @@ function patrolBtn(p) {
             : (planned ? `<span class="st-patrol-time">start ${escapeHtml(planned)}</span>` : 'Ej startad'))
         : (pass.startAt ? `Ute · startade ${fmtClock(pass.startAt)}${etaNote}` : 'Har inte startat'));
   return `
-    <button type="button" class="patrol-btn ${checked ? 'reported' : ''} ${lateMin > 0 || overdueMin >= 10 ? 'st-late' : ''}" data-patrol="${escapeHtml(p.id)}">
+    <button type="button" class="patrol-btn ${checked ? 'reported' : ''} ${lateMin > 0 || overdueMin >= 10 ? 'st-late' : ''} ${p.utgatt ? 'st-utgatt' : ''}" data-patrol="${escapeHtml(p.id)}">
       <span style="font-size:12px;color:var(--r-fg-muted);">#${p.number ?? '—'} · <span class="dot ${avdShort(p.avdelning)}"></span>${escapeHtml(p.avdelning || '')}</span>
       <strong style="display:block;">${escapeHtml(p.name || '')}</strong>
       <span style="font-size:13px;">${sub}</span>

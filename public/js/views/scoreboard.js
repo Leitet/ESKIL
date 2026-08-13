@@ -180,7 +180,8 @@ export async function renderScoreboard(app, user, cid) {
       .sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0))
       .map(c => ({
         control: c,
-        patrols: patrols.filter(p => !(byCtrl[c.id]?.has(p.id)))
+        // Utgångna (DNF) väntas inte in — de ska inte blockera slutspurten.
+        patrols: patrols.filter(p => !p.utgatt && !(byCtrl[c.id]?.has(p.id)))
       }))
       .filter(m => m.patrols.length > 0);
     if (!missing.length) {
@@ -424,7 +425,7 @@ function renderPatrolTable(container, rows, controls, sort) {
             return `
             <tr>
               <td class="num"><strong>${place === 1 && useRank ? icon('trophy', { size: 14, class: 'mr-1' }) + ' ' : ''}${place}</strong></td>
-              <td><strong>${escapeHtml(r.name || '')}</strong> <span class="muted t-sm">#${r.number ?? ''}</span></td>
+              <td><strong>${escapeHtml(r.name || '')}</strong> <span class="muted t-sm">#${r.number ?? ''}</span>${r.utgatt ? ' <span class="badge badge-gray">Utgått</span>' : ''}</td>
               <td><span class="dot ${shortOf(r.avdelning)}"></span>${escapeHtml(r.avdelning || '')}</td>
               <td>${escapeHtml(r.kar || '')}</td>
               <td class="num">${r.count}</td>
