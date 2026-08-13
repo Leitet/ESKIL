@@ -36,6 +36,10 @@ body { background: var(--bg-muted); }
   text-decoration: none;
 }
 a.pub-brand:hover { opacity: 0.85; }
+/* Right-hand hero cluster: Administrera (signed-in admins) + live pill. */
+.pub-hero-actions {
+  display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap;
+}
 .pub-brand img { height: 32px; width: auto; }
 .pub-brand .divider {
   width: 1px; height: 22px; background: rgba(255,255,255,0.2);
@@ -406,7 +410,11 @@ a.pub-brand:hover { opacity: 0.85; }
   border-radius: var(--r-lg);
   overflow: hidden;
 }
-#pub-map { height: 340px; width: 100%; background: var(--bg-muted); }
+#pub-map { height: 680px; width: 100%; background: var(--bg-muted); }
+@media (max-width: 640px) {
+  /* Full desktop height would swallow the whole viewport on phones. */
+  #pub-map { height: 480px; }
+}
 
 /* Notes for special points (parking, start, finish) shown under the map */
 .map-notes {

@@ -3,7 +3,7 @@
 // URL pattern: /t/<competitionId>[/<tab>]
 // Tabs: overview (default), patrols, scoreboard.
 
-import { db, doc, onSnapshot, collection } from './firebase.js';
+import { db, doc, getDoc, onSnapshot, collection, auth, onAuthStateChanged } from './firebase.js';
 import { getCompetition, listPatrols, listControls, getTrack } from './store.js';
 import { courseLegs, drawCourseOnMap, addCourseChip, competitionArea, courseDistance, fmtDist } from './course.js';
 import {
@@ -66,6 +66,7 @@ let patrols = [];
 let controls = [];
 let track = null;    // drawn course from the Spår editor (fetched once)
 let scoresByControl = {}; // ctrlId -> score[]
+let adminAccess = false; // signed-in visitor may administer → "Administrera" in hero
 const subscribedScoreCtrls = new Set();
 let unsubs = [];
 
@@ -106,6 +107,15 @@ async function boot() {
   }
   if (!comp) return renderNotFound('Tävlingen hittades inte.');
   document.title = `${comp.name || 'Tävling'} — ESKIL`;
+
+  // Sessions are long-lived, so an admin who opens the public page is often
+  // already signed in — give them a shortcut into the admin app. Anonymous
+  // visitors never see it. Admin e-mail lists live in the member-only
+  // private/access subdoc (PII Fas 3c), so a denied read simply means "no".
+  onAuthStateChanged(auth, async (user) => {
+    const ok = await checkAdminAccess(user, cid);
+    if (ok !== adminAccess) { adminAccess = ok; render(); }
+  });
 
   // Live updates for competition, patrols, and every control's scores
   unsubs.push(onSnapshot(doc(db, 'competitions', cid), snap => {
@@ -353,6 +363,26 @@ function render() {
   }
 }
 
+// True when the signed-in visitor may administer this competition:
+// super-admin (own users-doc), legacy uid admin (public doc), or their e-mail
+// is in adminEmails — which lives in the member-only private/access subdoc
+// (falling back to the public doc for un-migrated competitions).
+async function checkAdminAccess(user, cid) {
+  if (!user || !comp) return false;
+  if ((comp.admins || []).includes(user.uid)) return true;
+  try {
+    const u = await getDoc(doc(db, 'users', user.uid));
+    if (u.exists() && u.data().role === 'super-admin') return true;
+  } catch { /* not readable → not super-admin */ }
+  const email = String(user.email || '').trim().toLowerCase();
+  if (!email) return false;
+  try {
+    const a = await getDoc(doc(db, 'competitions', cid, 'private', 'access'));
+    if (a.exists() && (a.data().adminEmails || []).includes(email)) return true;
+  } catch { /* denied read = not a member — expected for most visitors */ }
+  return (comp.adminEmails || []).includes(email);
+}
+
 function renderHero() {
   const openCount = controls.filter(c => c.open).length;
   const reg = registrationState(comp);
@@ -369,7 +399,10 @@ function renderHero() {
             <span class="divider"></span>
             <span class="sublabel">ESKIL</span>
           </a>
-          ${openCount > 0 ? `<div class="status-pill"><span class="dot-live"></span>Tävlingen pågår · live</div>` : ''}
+          <div class="pub-hero-actions">
+            ${adminAccess ? `<a class="btn btn-secondary btn-sm" href="/app/c/${encodeURIComponent(cid || '')}">${icon('settings', { size: 14 })} Administrera</a>` : ''}
+            ${openCount > 0 ? `<div class="status-pill"><span class="dot-live"></span>Tävlingen pågår · live</div>` : ''}
+          </div>
         </div>
         <div class="t-over" style="color:var(--rover-yellow);">${escapeHtml(comp.shortName || '')} · ${comp.year || ''}</div>
         <h1>${escapeHtml(comp.name || '')}</h1>
@@ -595,7 +628,7 @@ function renderManagement() {
   if (!active.length) return '';
   return `
     <div class="pub-section-head"><h2 class="t-h2">Tävlingsledning</h2><span class="muted">Kontakta vid frågor</span></div>
-    <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:var(--sp-4);margin-bottom:var(--sp-8);">
+    <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:var(--sp-4);margin-bottom:var(--sp-8);align-items:stretch;">
       ${active.map(r => `
         <div class="card">
           <div class="t-over" style="color:var(--scout-blue);">${escapeHtml(r.label)}</div>
