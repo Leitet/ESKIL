@@ -16,7 +16,8 @@ import {
 import {
   allowedAvdelningar, escapeHtml, formatDate, toast, withBusy, confirmDialog,
   registrationSettings, registrationState, computeRegistrationPrice,
-  makePaymentReference, swishQrString, swishAppUrl, registrationUrl, copyToClipboard, isPaymentPaid
+  makePaymentReference, swishQrString, swishAppUrl, registrationUrl, copyToClipboard, isPaymentPaid,
+  publicManagement
 } from './utils.js';
 import { ensureQRCode } from './qr.js';
 import { downloadReceiptPdf } from './pdf.js';
@@ -58,6 +59,24 @@ function newDraft() {
 function emptyPatrol() {
   return { name: '', avdelning: allowedAvdelningar(comp)[0]?.key || 'Spårare', antal: 5, answers: {} };
 }
+
+// Autospara utkast: formuläret skrivs kontinuerligt till localStorage så ett
+// tappat mobilnät eller en stängd flik inte kastar en halv anmälan. Rensas
+// när anmälan skickats in.
+function draftStorageKey() { return `eskil.anm.draft.${cid}`; }
+function saveDraftLocal() {
+  if (editing || view !== 'form') return;
+  try { localStorage.setItem(draftStorageKey(), JSON.stringify(draft)); } catch { /* privat läge */ }
+}
+function restoreDraftLocal() {
+  try {
+    const d = JSON.parse(localStorage.getItem(draftStorageKey()) || 'null');
+    if (!d || (!d.kar && !d.contact?.name && !d.contact?.email && !(d.patrols || []).some(p => p.name))) return false;
+    draft = { ...newDraft(), ...d };
+    return true;
+  } catch { return false; }
+}
+function clearDraftLocal() { try { localStorage.removeItem(draftStorageKey()); } catch { /* privat läge */ } }
 
 function draftFromReg(r) {
   return {
@@ -113,6 +132,9 @@ async function boot() {
   } else {
     draft = newDraft();
     view = 'form';
+    if (restoreDraftLocal()) {
+      setTimeout(() => toast('Ditt påbörjade utkast återställdes.'), 400);
+    }
   }
 
   render();
@@ -245,6 +267,12 @@ function renderForm() {
               <input class="input" id="f-cphone" type="tel" value="${escapeHtml(draft.contact.phone || '')}" placeholder="070-123 45 67" autocomplete="tel">
             </div>
           </div>
+          ${editing ? '' : `
+          <div>
+            <label class="field" for="f-cemail2">Upprepa e-post</label>
+            <input class="input" id="f-cemail2" type="email" required placeholder="Samma adress igen" autocomplete="off" value="${escapeHtml(draft.contact.email || '')}">
+            <div class="field-hint">Dubbelkoll — en felstavad adress betyder att ändringslänken aldrig kommer fram.</div>
+          </div>`}
         </div>
       </div>
 
@@ -349,6 +377,7 @@ function wireForm() {
     const p = price();
     document.getElementById('price-total').innerHTML = `${p.total}<small> kr</small>`;
     document.getElementById('price-rows').innerHTML = priceRowsHtml(p);
+    saveDraftLocal();
   };
   form.addEventListener('input', sync);
   form.addEventListener('change', sync);
@@ -381,6 +410,14 @@ function wireForm() {
     e.preventDefault();
     sync();
     if (!form.reportValidity()) return;
+    // E-postdubbelkoll (bara nya anmälningar): fel adress = ändringslänken
+    // når aldrig fram, och anmälan blir oåtkomlig för kårledaren.
+    const email2 = document.getElementById('f-cemail2');
+    if (email2 && email2.value.trim().toLowerCase() !== draft.contact.email.trim().toLowerCase()) {
+      toast('E-postadresserna stämmer inte överens — kontrollera stavningen.', 'error');
+      email2.focus();
+      return;
+    }
     const p = price();
 
     if (editing) {
@@ -602,6 +639,7 @@ async function persistNew(pay) {
   });
   reg = await getRegistration(cid, regId);
   history.replaceState({}, '', `/a/${cid}/${regId}`);
+  clearDraftLocal(); // anmälan inne — utkastet behövs inte längre
   // A Cloud Function reacts to the new registration document and emails the
   // confirmation (with this manage link) to the contact — nothing to do here.
 }
@@ -666,6 +704,28 @@ function wireDone() {
 }
 
 // --- Manage view ------------------------------------------------------------
+// Kårledarens "Inför tävlingsdagen"-kort: allt de behöver veta samlat på
+// anmälningssidan de redan har länken till.
+function renderInforDagen() {
+  const mgmt = publicManagement(comp);
+  const contact = mgmt.find(r => r.phone || r.email);
+  return `
+    <div class="anm-card">
+      <h2>Inför tävlingsdagen</h2>
+      <ul class="t-sm" style="margin:8px 0 0;padding-left:18px;line-height:1.8;">
+        ${comp.date ? `<li><strong>${escapeHtml(formatDate(comp.date))}</strong>${comp.location ? ` · ${escapeHtml(comp.location)}` : ''}${comp.startTimes?.enabled && comp.startTimes?.firstStart ? ` · första start ${escapeHtml(comp.startTimes.firstStart)}` : ''}</li>` : ''}
+        <li>Startlista med patrullernas starttider, karta och liveresultat finns på
+          <a href="/t/${escapeHtml(cid)}" target="_blank" rel="noopener">tävlingssidan</a> —
+          dela gärna länken med scouter och anhöriga.</li>
+        <li>Varje patrull har ett digitalt startkort (nås från startlistan) med sina kontroller,
+          poäng och vägen på kartan.</li>
+        ${comp.parking?.enabled ? `<li>Parkering finns markerad på tävlingssidans karta${comp.parking.note ? ` — ${escapeHtml(comp.parking.note)}` : ''}.</li>` : ''}
+        ${contact ? `<li>Frågor? ${escapeHtml(contact.label || 'Tävlingsledningen')}${contact.name ? ` ${escapeHtml(contact.name)}` : ''}${contact.phone ? ` · <a href="tel:${escapeHtml(contact.phone)}">${escapeHtml(contact.phone)}</a>` : ''}${contact.email ? ` · <a href="mailto:${escapeHtml(contact.email)}">${escapeHtml(contact.email)}</a>` : ''}</li>` : ''}
+      </ul>
+    </div>
+  `;
+}
+
 function renderManage() {
   const st = registrationState(comp);
   const open = st === 'open';
@@ -728,6 +788,8 @@ function renderManage() {
         <p class="t-sm muted mt-4">Anmälningsperioden är stängd — anmälan kan inte längre ändras här. Har en patrull fått förhinder? Meddela tävlingsledningen nedan.</p>
       `}
     </div>
+
+    ${renderInforDagen()}
 
     ${(reg.payments || []).length ? `
       <div class="anm-card">
