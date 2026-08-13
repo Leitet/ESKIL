@@ -175,7 +175,7 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
       openControlModal(cid, { id: ctrlId, ...control }, (id) => {
         if (!id) navigate(`/app/c/${cid}/controls`);
         else renderControlDetail(app, user, cid, ctrlId);
-      }, { manageAnsvariga: isAdmin, comp });
+      }, { manageAnsvariga: isAdmin, inviteAnsvariga: !isAdmin && canEdit, comp });
     });
     const toggleBtn = wrap.querySelector('#toggle');
     toggleBtn.addEventListener('click', () => withBusy(toggleBtn, control.open ? 'Stänger…' : 'Öppnar…', async () => {

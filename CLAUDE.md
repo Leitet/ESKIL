@@ -64,8 +64,11 @@ See `README.md` for the layout — every file there is load-bearing.
   the verified `request.auth.token.email`, always lowercase): `adminEmails[]`,
   `userEmails[]` (flat mirror of `users: [{email, name}]` — write both via
   store.setCompetitionUsers). Legacy uid `admins[]` still honored. Controls
-  carry `ansvariga: [{email, name}]` + flat `ansvarigaEmails[]`; ansvariga may
-  update their control but never the ansvariga fields themselves.
+  carry `ansvariga: [{email, name}]` + flat `ansvarigaEmails[]` (in the
+  control's private/meta subdoc); ansvariga may update their control and
+  INVITE co-ansvariga (append-only — rules require the new ansvarigaEmails
+  to be a superset via hasAll) but never remove anyone (admin-only) and
+  never touch `welcomed`.
   `ekonomiEmails[]` (mirror of `ekonomi: [{email, name}]`, in private/access
   only — write via store.setCompetitionEkonomi) marks ekonomiansvariga/
   kassörer: member-level read + may update ONLY `paidRefs` on registrations.

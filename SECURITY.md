@@ -75,6 +75,14 @@ kunde bryta.
 Verifierat med full behörighetsmatris i emulatorn (riktiga auth-tokens) och på
 prod efter varje cutover.
 
+**Kontrollansvariga kan bjuda in medansvariga** (2026-08-13): medveten
+policyändring från det tidigare totalförbudet. En kontrollansvarig får nu
+skriva ansvariga/ansvarigaEmails i SIN kontrolls private/meta, men APPEND-
+ONLY: reglerna kräver att nya `ansvarigaEmails` är en superset av den
+befintliga listan (`hasAll`) — ingen kan tas bort, kontrollen kan inte tas
+över, och `welcomed`-listan förblir klient-omutbar (välkomstmailet triggas av
+Cloud Function). Borttagning är fortsatt admin-only.
+
 **Ekonomiansvarig/kassör** (2026-08-13): ny behörighetsnivå `ekonomiEmails`
 (spegel av `ekonomi: [{email, name}]`), lagrad ENBART i
 `competitions/{cid}/private/access` — aldrig på det publika dokumentet. Ger

@@ -223,20 +223,28 @@ service cloud.firestore {
           allow delete: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
         }
 
-        // Internal/personal control meta (telefon, notering) — NOT public.
-        // Read by members OR this control's kontrollansvarig; written by
-        // admins OR the kontrollansvarig (so they can set their own phone).
+        // Internal/personal control meta (telefon, notering, ansvariga) — NOT
+        // public. Read by members OR this control's kontrollansvarig; written
+        // by admins OR the kontrollansvarig.
+        //
+        // A kontrollansvarig may edit telefon/notering AND invite co-ansvariga
+        // to their own control — but APPEND-ONLY: the new ansvarigaEmails must
+        // contain every existing entry (hasAll), so nobody can be removed and
+        // the control can never be taken over. Removal stays admin-only, and
+        // `welcomed` (the welcome-mail ledger) stays client-immutable.
         match /private/{doc} {
           allow read: if isCompMember(cid) || isCtrlAnsvarig(cid, ctrlId);
-          // Admins write anything. A kontrollansvarig may edit telefon/notering
-          // but NOT the ansvariga lists or the `welcomed` marker — that would be
-          // self-escalation (the old control-update rule forbade it too).
           allow create: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid))
             || (!compIsDemo(cid) && !compClosed(cid) && isCtrlAnsvarig(cid, ctrlId)
-                && !request.resource.data.keys().hasAny(['ansvariga', 'ansvarigaEmails', 'welcomed']));
+                && !request.resource.data.keys().hasAny(['welcomed'])
+                && (!request.resource.data.keys().hasAny(['ansvariga', 'ansvarigaEmails'])
+                    || request.resource.data.get('ansvarigaEmails', [])
+                         .hasAll(ctrlData(cid, ctrlId).get('ansvarigaEmails', []))));
           allow update: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid))
             || (!compIsDemo(cid) && !compClosed(cid) && isCtrlAnsvarig(cid, ctrlId)
-                && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['ansvariga', 'ansvarigaEmails', 'welcomed']));
+                && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['welcomed'])
+                && request.resource.data.get('ansvarigaEmails', [])
+                     .hasAll(resource.data.get('ansvarigaEmails', [])));
         }
       }
 

@@ -229,12 +229,16 @@ function th(key, label, state, opts = {}) {
   return `<th class="${cls}" data-key="${key}">${escapeHtml(label)} <span class="arrow">${arrow}</span></th>`;
 }
 
-// opts.manageAnsvariga: whether the current user may edit the kontrollansvariga
-// list (admins only — a kontrollansvarig can edit the control itself but not
-// its permissions; the security rules enforce the same).
-export function openControlModal(cid, control, onSaved, { manageAnsvariga = true, comp = null } = {}) {
+// opts.manageAnsvariga: full edit of the kontrollansvariga list (admins).
+// opts.inviteAnsvariga: append-only — a kontrollansvarig may invite
+// co-ansvariga to their own control but never remove anyone (the security
+// rules enforce the same via a hasAll superset guard).
+export function openControlModal(cid, control, onSaved, { manageAnsvariga = true, inviteAnsvariga = false, comp = null } = {}) {
   const isEdit = !!control;
   const ansvariga = (control?.ansvariga || []).map(a => ({ ...a }));
+  const showAnsvariga = manageAnsvariga || inviteAnsvariga;
+  // In invite mode the existing entries are locked rows — only additions.
+  const lockedCount = manageAnsvariga ? 0 : ansvariga.length;
   // Normalize legacy single-field instructions into the group format.
   let groups = Array.isArray(control?.instructions) && control.instructions.length
     ? control.instructions.map(g => ({ avdelningar: g.avdelningar || [], text: g.text || '' }))
@@ -335,12 +339,14 @@ export function openControlModal(cid, control, onSaved, { manageAnsvariga = true
             </label>
           </div>
 
-          ${manageAnsvariga ? `
+          ${showAnsvariga ? `
             <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
               <label class="field">Kontrollansvariga</label>
-              <div class="field-hint" style="margin-bottom:var(--sp-3);">Kan redigera och öppna/stänga den här kontrollen, och får läsåtkomst till resten av tävlingen. Rättigheterna gäller från deras första inloggning.</div>
+              <div class="field-hint" style="margin-bottom:var(--sp-3);">${manageAnsvariga
+                ? 'Kan redigera och öppna/stänga den här kontrollen, och får läsåtkomst till resten av tävlingen. Rättigheterna gäller från deras första inloggning.'
+                : 'Bjud in fler som hjälper till på kontrollen — de får ett välkomstmail med rapportlänken. Bara administratörer kan ta bort någon.'}</div>
               <div id="ansvariga-list"></div>
-              <button type="button" class="btn btn-secondary btn-sm" id="add-ansvarig">${icon('plus', { size: 14 })} Lägg till kontrollansvarig</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="add-ansvarig">${icon('plus', { size: 14 })} ${manageAnsvariga ? 'Lägg till kontrollansvarig' : 'Bjud in kontrollansvarig'}</button>
             </div>
           ` : ''}
         </form>
@@ -358,7 +364,11 @@ export function openControlModal(cid, control, onSaved, { manageAnsvariga = true
   const ansvarigaList = overlay.querySelector('#ansvariga-list');
   if (ansvarigaList) {
     const renderAnsvariga = () => {
-      ansvarigaList.innerHTML = ansvariga.length ? ansvariga.map((a, i) => `
+      ansvarigaList.innerHTML = ansvariga.length ? ansvariga.map((a, i) => i < lockedCount ? `
+        <div class="row wrap" style="gap:var(--sp-2);margin-bottom:var(--sp-2);align-items:center;">
+          <span class="t-sm" style="padding:6px 0;">${a.name ? `<strong>${escapeHtml(a.name)}</strong> · ` : ''}${escapeHtml(a.email || '')}</span>
+        </div>
+      ` : `
         <div class="row wrap" data-aidx="${i}" style="gap:var(--sp-2);margin-bottom:var(--sp-2);align-items:center;">
           <input class="input" type="email" required data-af="email" value="${escapeHtml(a.email || '')}" placeholder="e-post@exempel.se" style="max-width:240px;">
           <input class="input" data-af="name" value="${escapeHtml(a.name || '')}" placeholder="Namn" style="max-width:200px;">
@@ -541,7 +551,9 @@ export function openControlModal(cid, control, onSaved, { manageAnsvariga = true
           : null
       };
       let cleanAnsvariga = null;
-      if (manageAnsvariga) {
+      if (showAnsvariga) {
+        // Locked rows (invite mode) pass through untouched — the rules only
+        // accept a superset of the existing list from non-admins.
         cleanAnsvariga = ansvariga
           .map(a => ({ email: normEmail(a.email), name: (a.name || '').trim() }))
           .filter(a => a.email);
@@ -555,7 +567,9 @@ export function openControlModal(cid, control, onSaved, { manageAnsvariga = true
         // Kontrollansvariga get read access to the whole competition — mirror
         // them into the competition's user list (union; removal is manual
         // under Användare since they may be users in their own right).
-        if (cleanAnsvariga?.length) {
+        // Admin-only: private/access writes are denied for kontrollansvariga —
+        // an invited co-ansvarig gets competition access via ansvarigaEmails.
+        if (manageAnsvariga && cleanAnsvariga?.length) {
           try {
             const comp = await getCompetition(cid);
             const users = (comp.users || []).filter(u => u && typeof u === 'object');
