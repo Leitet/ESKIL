@@ -53,6 +53,7 @@ export async function renderStartScreen(app, user, cid) {
         <div class="ss-top-left">
           <div class="ss-eyebrow">${escapeHtml(comp.shortName || comp.name)} · STARTSKÄRM</div>
           <div class="ss-subline">${escapeHtml(comp.location || '')}</div>
+          <div id="ss-test-badge" hidden style="margin-top:6px;display:inline-block;background:#E2E000;color:#003660;font-weight:800;font-size:12px;letter-spacing:.08em;padding:3px 10px;border-radius:999px;">TESTLÄGE — exempelpatruller tills riktiga finns</div>
         </div>
         <div class="ss-clock"><span id="ss-clock">—</span></div>
         <div class="ss-top-right">
@@ -89,20 +90,43 @@ export async function renderStartScreen(app, user, cid) {
 
   // Live: competition (starttime settings can change) + patrols (order/add/remove)
   let patrols = [];
+  // Test mode: no patrols yet → show example patrols on a schedule anchored
+  // ~2 min from now, so the whole flow (countdown → GÅ → rotation) can be
+  // previewed live before any patrols exist. Flips to real data the moment
+  // real patrols arrive. The QR ids resolve to the /s/<cid>/test startkort.
+  let testMode = false;
+  let testAnchor = null; // 'HH:MM' first test start, fixed when armed
+  const TEST_PATROLS = [
+    { id: 'test',   number: 1, name: 'Testpatrullen',    avdelning: 'Spårare',    kar: 'Lindsdals Scoutkår', antal: 6, startOrder: 0 },
+    { id: 'test-2', number: 2, name: 'Provpatrullen',    avdelning: 'Upptäckare', kar: 'Lindsdals Scoutkår', antal: 5, startOrder: 1 },
+    { id: 'test-3', number: 3, name: 'Exempelpatrullen', avdelning: 'Äventyrare', kar: 'Lindsdals Scoutkår', antal: 7, startOrder: 2 }
+  ];
   unsubComp = onSnapshot(doc(db, 'competitions', cid), snap => {
     if (snap.exists()) { comp = { id: cid, ...snap.data() }; tick(); }
   });
   unsubPatrols = watchPatrols(cid, rows => {
-    patrols = rows;
+    testMode = rows.length === 0;
+    if (testMode && !testAnchor) {
+      const t = new Date(Date.now() + 2 * 60 * 1000);
+      testAnchor = `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`;
+    }
+    patrols = testMode ? TEST_PATROLS : rows;
+    const badge = document.getElementById('ss-test-badge');
+    if (badge) badge.hidden = !testMode;
     tick();
   });
 
   // 1 Hz tick — clock + window re-evaluation + countdown
   const tick = () => {
     const now = new Date();
-    document.getElementById('ss-clock').textContent =
+    const clock = document.getElementById('ss-clock');
+    if (!clock) return;
+    clock.textContent =
       now.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    renderWindow(comp, patrols, now);
+    const effComp = testMode
+      ? { ...comp, startTimes: { enabled: true, mode: 'interval', firstStart: testAnchor, intervalMinutes: comp.startTimes?.intervalMinutes || 5 } }
+      : comp;
+    renderWindow(effComp, patrols, now);
   };
   tick();
   tickInterval = setInterval(tick, 1000);

@@ -85,7 +85,7 @@ async function main() {
         // /s/<cid>/test — a synthetic patrol so the startkort can be
         // previewed before any patrols exist. Everything shown is public
         // data anyway; the banner below marks it clearly as a test.
-        patrolId === 'test'
+        /^test(-\d+)?$/.test(patrolId)
           ? Promise.resolve({
               id: 'test', number: 0, name: 'Testpatrullen',
               avdelning: allowedAvdelningar(comp)[0]?.key || 'Spårare',
