@@ -53,7 +53,7 @@ export async function renderStartScreen(app, user, cid) {
         <div class="ss-top-left">
           <div class="ss-eyebrow">${escapeHtml(comp.shortName || comp.name)} · STARTSKÄRM</div>
           <div class="ss-subline">${escapeHtml(comp.location || '')}</div>
-          <div id="ss-test-badge" hidden style="margin-top:6px;display:inline-block;background:#E2E000;color:#003660;font-weight:800;font-size:12px;letter-spacing:.08em;padding:3px 10px;border-radius:999px;">TESTLÄGE — exempelpatruller tills riktiga finns</div>
+          <div id="ss-test-badge" style="margin-top:6px;display:none;background:#E2E000;color:#003660;font-weight:800;font-size:12px;letter-spacing:.08em;padding:3px 10px;border-radius:999px;">TESTLÄGE — exempelpatruller tills riktiga finns</div>
         </div>
         <div class="ss-clock"><span id="ss-clock">—</span></div>
         <div class="ss-top-right">
@@ -112,7 +112,7 @@ export async function renderStartScreen(app, user, cid) {
     }
     patrols = testMode ? TEST_PATROLS : rows;
     const badge = document.getElementById('ss-test-badge');
-    if (badge) badge.hidden = !testMode;
+    if (badge) badge.style.display = testMode ? 'inline-block' : 'none';
     tick();
   });
 
