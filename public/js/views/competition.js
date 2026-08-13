@@ -1,5 +1,5 @@
 import { layout, setTopbarCompetition } from '../app.js';
-import { getCompetition, listPatrols, listControls } from '../store.js';
+import { getCompetition, listPatrols, listControls, migrateCompetitionAccess } from '../store.js';
 import { escapeHtml, formatDate, activeManagement, isCompAdminUser } from '../utils.js';
 import { icon } from '../icons.js';
 
@@ -32,6 +32,9 @@ export async function renderCompetition(app, user, cid) {
 
   const isAdmin = isCompAdminUser(comp, user);
   setTopbarCompetition(cid, comp, user);
+  // Fas 3a: mirror this competition's permission fields into the member-only
+  // private/access subdoc (copy only — the doc keeps them until Fas 3c).
+  if (isAdmin && !comp.demo) migrateCompetitionAccess(cid).catch(() => {});
   const [patrols, controls] = await Promise.all([
     listPatrols(cid).catch(() => []),
     listControls(cid).catch(() => [])

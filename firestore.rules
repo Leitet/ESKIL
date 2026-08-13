@@ -26,15 +26,32 @@ service cloud.firestore {
       return request.auth.token.email.lower();
     }
 
+    // Permission data is being migrated from the world-readable competition
+    // doc into a member-only private/access subdoc (Fas 3). During the
+    // migration the rules read a UNION of both places, so whichever is
+    // populated grants access — a bug on the new side can't lock anyone out
+    // while the old side is still dual-written.
+    function accessExists(cid) {
+      return exists(/databases/$(database)/documents/competitions/$(cid)/private/access);
+    }
+    function accessData(cid) {
+      return get(/databases/$(database)/documents/competitions/$(cid)/private/access).data;
+    }
+
     function isCompAdmin(cid) {
       return isSignedIn() && (isSuperAdmin()
         || request.auth.uid in compData(cid).get('admins', [])
-        || authEmail() in compData(cid).get('adminEmails', []));
+        || authEmail() in compData(cid).get('adminEmails', [])
+        || (accessExists(cid) && (
+             request.auth.uid in accessData(cid).get('admins', [])
+          || authEmail() in accessData(cid).get('adminEmails', [])
+        )));
     }
 
     function isCompMember(cid) {
       return isCompAdmin(cid)
-        || (isSignedIn() && authEmail() in compData(cid).get('userEmails', []));
+        || (isSignedIn() && authEmail() in compData(cid).get('userEmails', []))
+        || (isSignedIn() && accessExists(cid) && authEmail() in accessData(cid).get('userEmails', []));
     }
 
     // A competition flagged with demo: true is read-only for everyone except
@@ -61,6 +78,21 @@ service cloud.firestore {
     // shape check so we don't spend multiple get()s per rule evaluation.
     function ctrlData(cid, ctrlId) {
       return get(/databases/$(database)/documents/competitions/$(cid)/controls/$(ctrlId)).data;
+    }
+
+    // ansvarigaEmails is being moved from the control doc into its private/meta
+    // subdoc (Fas 3). Read a union of both during the migration.
+    function ctrlMetaExists(cid, ctrlId) {
+      return exists(/databases/$(database)/documents/competitions/$(cid)/controls/$(ctrlId)/private/meta);
+    }
+    function ctrlMetaData(cid, ctrlId) {
+      return get(/databases/$(database)/documents/competitions/$(cid)/controls/$(ctrlId)/private/meta).data;
+    }
+    function isCtrlAnsvarig(cid, ctrlId) {
+      return isSignedIn() && (
+        authEmail() in ctrlData(cid, ctrlId).get('ansvarigaEmails', [])
+        || (ctrlMetaExists(cid, ctrlId) && authEmail() in ctrlMetaData(cid, ctrlId).get('ansvarigaEmails', []))
+      );
     }
 
     // Shape/bounds check for an ANONYMOUS score write, given the already
@@ -114,6 +146,14 @@ service cloud.firestore {
         || (isCompAdmin(cid) && !compIsDemo(cid));
       allow delete: if isSuperAdmin();
 
+      // Member-only permission/PII mirror (Fas 3): adminEmails, userEmails,
+      // admins, users, and (later) management. The rules read it via get()
+      // in isCompAdmin/isCompMember; members read it to see the member list.
+      match /private/{doc} {
+        allow read: if isCompMember(cid);
+        allow write: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
+      }
+
       // Patrols — readable by anyone (ID is obscure anyway, used by control page)
       match /patrols/{pid} {
         allow read: if true;
@@ -140,7 +180,8 @@ service cloud.firestore {
                isSignedIn()
             && !compIsDemo(cid)
             && !compClosed(cid)
-            && authEmail() in resource.data.get('ansvarigaEmails', [])
+            && (authEmail() in resource.data.get('ansvarigaEmails', [])
+                || (ctrlMetaExists(cid, ctrlId) && authEmail() in ctrlMetaData(cid, ctrlId).get('ansvarigaEmails', [])))
             && !request.resource.data.diff(resource.data).affectedKeys()
                  .hasAny(['ansvariga', 'ansvarigaEmails'])
           );
@@ -170,11 +211,9 @@ service cloud.firestore {
         // Read by members OR this control's kontrollansvarig; written by
         // admins OR the kontrollansvarig (so they can set their own phone).
         match /private/{doc} {
-          allow read: if isCompMember(cid)
-            || (isSignedIn() && authEmail() in ctrlData(cid, ctrlId).get('ansvarigaEmails', []));
+          allow read: if isCompMember(cid) || isCtrlAnsvarig(cid, ctrlId);
           allow write: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid))
-            || (isSignedIn() && !compIsDemo(cid) && !compClosed(cid)
-                && authEmail() in ctrlData(cid, ctrlId).get('ansvarigaEmails', []));
+            || (!compIsDemo(cid) && !compClosed(cid) && isCtrlAnsvarig(cid, ctrlId));
         }
       }
 

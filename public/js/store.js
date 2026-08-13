@@ -78,6 +78,22 @@ export async function getCompetition(cid) {
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
 }
 
+// Permission/PII fields that are being moved off the world-readable
+// competition doc into a member-only private/access subdoc (Fas 3).
+const ACCESS_FIELDS = ['adminEmails', 'userEmails', 'admins', 'users'];
+
+// Mirror permission fields into competitions/{cid}/private/access. During the
+// migration these are DUAL-written (the competition doc keeps them too) and
+// the rules read a union of both, so a bug on the new side can never lock
+// anyone out. Fas 3c removes them from the competition doc.
+async function mirrorAccess(cid, data) {
+  const fields = {};
+  for (const k of ACCESS_FIELDS) if (data[k] !== undefined) fields[k] = data[k];
+  if (Object.keys(fields).length) {
+    await setDoc(doc(db, 'competitions', cid, 'private', 'access'), fields, { merge: true });
+  }
+}
+
 export async function createCompetition(data, user) {
   const ref = await addDoc(collection(db, 'competitions'), {
     ...data,
@@ -86,11 +102,29 @@ export async function createCompetition(data, user) {
     createdBy: user.uid,
     createdAt: serverTimestamp()
   });
+  await mirrorAccess(ref.id, {
+    admins: [user.uid], users: [],
+    adminEmails: data.adminEmails || [], userEmails: data.userEmails || []
+  });
   return ref.id;
 }
 
 export async function updateCompetition(cid, data) {
   await updateDoc(doc(db, 'competitions', cid), data);
+  await mirrorAccess(cid, data);
+}
+
+// Copy the competition doc's permission fields into the member-only
+// private/access subdoc. Fas 3a: copy only (leave the doc intact). Runs
+// admin-triggered when the competition is opened.
+export async function migrateCompetitionAccess(cid) {
+  const snap = await getDoc(doc(db, 'competitions', cid));
+  if (!snap.exists()) return;
+  const c = snap.data();
+  await mirrorAccess(cid, {
+    adminEmails: c.adminEmails || [], userEmails: c.userEmails || [],
+    admins: c.admins || [], users: c.users || []
+  });
 }
 
 // Copy a competition to a new year: controls (instructions, positions,
@@ -196,6 +230,7 @@ export async function setCompetitionUsers(cid, entries) {
     users: clean,
     userEmails: clean.map(e => e.email)
   });
+  await mirrorAccess(cid, { users: clean, userEmails: clean.map(e => e.email) });
 }
 
 // Close (avsluta) a competition: wipe users and kontrollansvariga (including
@@ -365,9 +400,7 @@ export async function createControl(cid, data) {
     open: rest.open ?? false,
     createdAt: serverTimestamp()
   });
-  if (telefon || notering) {
-    await setControlMeta(cid, ref.id, { telefon: telefon || '', notering: notering || '' });
-  }
+  await writeControlMeta(cid, ref.id, { telefon, notering }, rest);
   return ref.id;
 }
 
@@ -376,12 +409,19 @@ export async function updateControl(cid, ctrlId, data) {
   if (Object.keys(rest).length) {
     await updateDoc(doc(db, 'competitions', cid, 'controls', ctrlId), rest);
   }
-  if (telefon !== undefined || notering !== undefined) {
-    await setControlMeta(cid, ctrlId, {
-      ...(telefon !== undefined ? { telefon } : {}),
-      ...(notering !== undefined ? { notering } : {})
-    });
-  }
+  await writeControlMeta(cid, ctrlId, { telefon, notering }, rest);
+}
+
+// Route the member-only control fields into the private/meta subdoc: telefon
+// and notering fully (not on the doc), plus ansvariga/ansvarigaEmails which
+// are DUAL-written (kept on the doc too during Fas 3a; removed in Fas 3c).
+async function writeControlMeta(cid, ctrlId, { telefon, notering }, rest) {
+  const meta = {};
+  if (telefon !== undefined) meta.telefon = telefon;
+  if (notering !== undefined) meta.notering = notering;
+  if (rest.ansvariga !== undefined) meta.ansvariga = rest.ansvariga;
+  if (rest.ansvarigaEmails !== undefined) meta.ansvarigaEmails = rest.ansvarigaEmails;
+  if (Object.keys(meta).length) await setControlMeta(cid, ctrlId, meta);
 }
 
 // --- Control/patrol private meta (telefon, notering) ------------------------
@@ -417,13 +457,19 @@ export async function migrateControlMeta(cid) {
   const snap = await getDocs(collection(db, 'competitions', cid, 'controls'));
   for (const d of snap.docs) {
     const c = d.data();
-    if (c.telefon === undefined && c.notering === undefined) continue;
     const meta = {};
+    // telefon/notering are fully moved (deleted from the doc — Fas 1).
     if (c.telefon !== undefined) meta.telefon = c.telefon;
     if (c.notering !== undefined) meta.notering = c.notering;
+    // ansvariga/ansvarigaEmails are COPIED (kept on the doc during Fas 3a).
+    if (c.ansvariga !== undefined) meta.ansvariga = c.ansvariga;
+    if (c.ansvarigaEmails !== undefined) meta.ansvarigaEmails = c.ansvarigaEmails;
+    if (!Object.keys(meta).length) continue;
     try {
       await setControlMeta(cid, d.id, meta);
-      await updateDoc(d.ref, { telefon: deleteField(), notering: deleteField() });
+      if (c.telefon !== undefined || c.notering !== undefined) {
+        await updateDoc(d.ref, { telefon: deleteField(), notering: deleteField() });
+      }
     } catch (e) { console.warn('[ESKIL] control-meta-migrering misslyckades', d.id, e); }
   }
 }
