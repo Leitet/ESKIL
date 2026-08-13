@@ -57,13 +57,38 @@ service cloud.firestore {
       return compData(cid).get('registration', {}).get('enabled', false) == true;
     }
 
+    // Control doc for score validation — fetched once and passed to the
+    // shape check so we don't spend multiple get()s per rule evaluation.
+    function ctrlData(cid, ctrlId) {
+      return get(/databases/$(database)/documents/competitions/$(cid)/controls/$(ctrlId)).data;
+    }
+
+    // Shape/bounds check for an ANONYMOUS score write, given the already
+    // fetched control data `c`. Enforces: control open, doc-id == patrolId,
+    // point value within the control's [min,max], extra within [0,extra],
+    // types, allowed keys, short note. Admins bypass this entirely.
+    function anonScoreShape(c, scoreId, data) {
+      return c.get('open', false) == true
+        && scoreId == data.patrolId
+        && data.patrolId is string
+        && data.poang is number
+        && data.poang >= c.get('minPoang', 0)
+        && data.poang <= c.get('maxPoang', 100000)
+        && (!('extraPoang' in data) || (data.extraPoang is number && data.extraPoang >= 0 && data.extraPoang <= c.get('extraPoang', 0)))
+        && (!('utslagGissning' in data) || data.utslagGissning is number)
+        && (!('note' in data) || (data.note is string && data.note.size() <= 500))
+        && data.keys().hasOnly(['patrolId','poang','extraPoang','note','reportedAt','reporter','utslagGissning','history']);
+    }
+
     // --- Users
     // Any signed-in user may read the (email, role) of other users so that
     // competition admins can look up invitees by email. A user may only
     // create/update their own doc, and cannot elevate their own role — only
     // the pre-approved super-admin email may self-assign "super-admin".
     match /users/{uid} {
-      allow read: if isSignedIn();
+      // Own doc + super-admin only — a regular user must not be able to
+      // enumerate every account's email/role.
+      allow read: if isSignedIn() && (request.auth.uid == uid || isSuperAdmin());
       allow create: if isSignedIn() && request.auth.uid == uid
         && (
           request.resource.data.role == 'user'
@@ -118,19 +143,19 @@ service cloud.firestore {
         // competition isn't a demo. Super-admin can always seed scores.
         match /scores/{scoreId} {
           allow read: if true;
-          // Admins may always write scores (adjustments, backup restore) —
-          // anonymous reporters only while the control is open.
+          // Admins may always write scores (adjustments, backup restore).
+          // Anonymous reporters: only while the control is open, with a
+          // validated shape/bounds, doc-id bound to patrolId, and NO
+          // ability to introduce or alter the (admin-authored) history trail.
           allow create: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid)) || (
-               get(/databases/$(database)/documents/competitions/$(cid)/controls/$(ctrlId)).data.open == true
-            && !compIsDemo(cid)
-            && request.resource.data.keys().hasOnly(['patrolId','poang','extraPoang','note','reportedAt','reporter','utslagGissning','history'])
-            && request.resource.data.poang is number
-            && request.resource.data.patrolId is string
+               !compIsDemo(cid)
+            && anonScoreShape(ctrlData(cid, ctrlId), scoreId, request.resource.data)
+            && (!('history' in request.resource.data) || request.resource.data.history.size() == 0)
           );
           allow update: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid)) || (
-               get(/databases/$(database)/documents/competitions/$(cid)/controls/$(ctrlId)).data.open == true
-            && !compIsDemo(cid)
-            && request.resource.data.keys().hasOnly(['patrolId','poang','extraPoang','note','reportedAt','reporter','utslagGissning','history'])
+               !compIsDemo(cid)
+            && anonScoreShape(ctrlData(cid, ctrlId), scoreId, request.resource.data)
+            && request.resource.data.get('history', []) == resource.data.get('history', [])
           );
           allow delete: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
         }
@@ -163,10 +188,16 @@ service cloud.firestore {
           allow create: if isCompAdmin(cid) || (
                !compIsDemo(cid) && !compClosed(cid)
             && request.resource.data.keys().hasOnly(['patrolId', 'startAt', 'finishAt'])
+            && request.resource.data.patrolId == patrolId
+            && (!('startAt' in request.resource.data) || request.resource.data.startAt is timestamp)
+            && (!('finishAt' in request.resource.data) || request.resource.data.finishAt is timestamp)
           );
           allow update: if isCompAdmin(cid) || (
                !compIsDemo(cid) && !compClosed(cid)
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['startAt', 'finishAt'])
+            && request.resource.data.patrolId == patrolId
+            && (!('startAt' in request.resource.data) || request.resource.data.startAt is timestamp)
+            && (!('finishAt' in request.resource.data) || request.resource.data.finishAt is timestamp)
           );
           allow delete: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
         }
@@ -198,12 +229,12 @@ service cloud.firestore {
         allow delete: if isCompAdmin(cid) && !compIsDemo(cid);
       }
 
-      // Invites
+      // Invites (dormant — membership is email-based via adminEmails/userEmails).
+      // Kept admin-only to avoid an arbitrary signed-in user rewriting an
+      // invite's target if the flow is ever reactivated.
       match /invites/{inviteId} {
         allow read: if true; // token-based lookup
-        allow create: if isCompAdmin(cid);
-        allow update: if isSignedIn(); // to mark used on accept
-        allow delete: if isCompAdmin(cid);
+        allow write: if isCompAdmin(cid);
       }
     }
   }

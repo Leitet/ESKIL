@@ -3,7 +3,7 @@
 // with the URL report (if the control is open).
 
 import { db, doc, onSnapshot } from './firebase.js';
-import { getCompetition, getControl, listPatrols, watchScoresForControl, upsertScore, deleteScore, scoreHistoryEntry } from './store.js';
+import { getCompetition, getControl, listPatrols, watchScoresForControl, upsertScore, deleteScore } from './store.js';
 import { AVDELNINGAR, escapeHtml, allInstructionGroups, internalManagement } from './utils.js';
 import { ensureLeaflet } from './leaflet.js';
 import { icon } from './icons.js';
@@ -576,16 +576,19 @@ async function main() {
       if (!control.open) { rtoast('Kontrollen är stängd.', 'err'); return; }
       // Final clamp — the input only clamps on blur, and a fast tap on Spara
       // could race the change event.
-      poang = Math.max(minP, Math.min(maxP, Number(poang) || 0));
-      extra = Math.max(0, Math.min(maxE, Number(extra) || 0));
-      const noteVal = overlay.querySelector('#note').value.trim();
+      poang = Math.round(Math.max(minP, Math.min(maxP, Number(poang) || 0)));
+      extra = Math.round(Math.max(0, Math.min(maxE, Number(extra) || 0)));
+      const noteVal = overlay.querySelector('#note').value.trim().slice(0, 500);
       const gissningRaw = isUtslag ? overlay.querySelector('#gissning-input').value.trim() : '';
       const gissning = gissningRaw !== '' && Number.isFinite(Number(gissningRaw)) ? Number(gissningRaw) : null;
       const reporter = reporterId();
-      // Overwriting a confirmed score? Preserve the replaced values in the
-      // history trail so protests can be resolved ("vi fick 8, det står 5").
-      const history = existing
-        ? [...(existing.history || []), scoreHistoryEntry(existing)].filter(Boolean).slice(-10)
+      // The adjustment/revision trail (`history`) is admin-authored only and
+      // immutable to anonymous writes (Firestore rules enforce it). A plain
+      // re-report therefore passes the EXISTING history through verbatim so
+      // any sekretariat-justering that was recorded survives the overwrite —
+      // it never fabricates or grows history itself.
+      const history = existing && Array.isArray(existing.history) && existing.history.length
+        ? existing.history
         : null;
       // Queue locally first so the report survives even if the tab is closed
       // mid-save. Firestore's setDoc is idempotent on our keys (patrolId) so
