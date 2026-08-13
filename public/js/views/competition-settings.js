@@ -637,6 +637,11 @@ function renderRulesTab(comp, cid, refresh, readOnly) {
                 </div>
               </div>
               <div class="field-hint mt-2" id="st-range-hint" style="display:${mode === 'range' ? 'block' : 'none'};">Intervallet räknas ut automatiskt från antalet patruller. Går tider över midnatt (t.ex. 22:00 → 02:00) hanteras det korrekt.</div>
+              <div class="mt-3" style="max-width:260px;">
+                <label class="field" for="st-maxtime">Maxtid på banan (minuter, valfritt)</label>
+                <input class="input" type="number" id="st-maxtime" min="0" placeholder="T.ex. 240" value="${comp.startTimes?.maxTimeMinutes ?? ''}">
+                <div class="field-hint">Visas som nedräkning på patrullernas startkort. Lämna tomt för ingen maxtid.</div>
+              </div>
             </div>
           `;
         })()}
@@ -675,7 +680,8 @@ function renderRulesTab(comp, cid, refresh, readOnly) {
         mode: card.querySelector('input[name="st-mode"]:checked').value,
         firstStart: card.querySelector('#st-firstStart').value || '09:00',
         intervalMinutes: Number(card.querySelector('#st-interval').value) || 5,
-        lastStart: card.querySelector('#st-lastStart').value || null
+        lastStart: card.querySelector('#st-lastStart').value || null,
+        maxTimeMinutes: Number(card.querySelector('#st-maxtime').value) || null
       },
       generalInfo: card.querySelector('#generalInfo').value.trim()
     });

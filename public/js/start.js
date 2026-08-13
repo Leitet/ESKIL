@@ -154,6 +154,20 @@ function totals() {
 }
 
 // --- Render ---
+// "Nästa kontroll"-kortet: första ej avklarade kontrollen i nummerordning —
+// ett tryck öppnar kontrollbladet med karta och vägen dit.
+function renderNextControl(t) {
+  if (!controls.length || t.done >= t.total) return '';
+  const ordered = [...controls].sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0));
+  const next = ordered.find(c => !isDone(c.id));
+  if (!next) return '';
+  return `<button type="button" class="start-next" data-next="${escapeHtml(next.id)}">
+    <span class="sn-label">Nästa kontroll</span>
+    <span class="sn-name"><span class="sn-no">${next.nummer ?? '?'}</span>${escapeHtml(displayName(next))}</span>
+    <span class="sn-go">Visa på kartan →</span>
+  </button>`;
+}
+
 // ETA-raden under KPI:erna: hur mycket bana som är kvar och när patrullen
 // beräknas vara i mål. Gångtid längs spåret (eller fågelvägen) + stationstid
 // per kvarvarande kontroll. "Var vi står" antas vara den sista avklarade
@@ -192,6 +206,11 @@ function render() {
 
   const t = totals();
 
+  // Batteri: behåll den levande kartnoden över re-renders (varje poäng-
+  // snapshot kör render()). Noden byts in i den nya strukturen efteråt och
+  // bara pinnarna ritas om — inga nya tile-hämtningar.
+  const keepMapEl = overviewMap ? document.getElementById('start-map') : null;
+
   root.innerHTML = `
     ${!navigator.onLine ? `<div class="start-offline">Offline — visar senast kända läge. Allt uppdateras automatiskt när nätet är tillbaka.</div>` : ''}
     <div class="flip-card" id="flip-card">
@@ -213,13 +232,19 @@ function render() {
               const t = patrolStartTime(comp, patrol, patrols.length);
               if (!t) return '';
               const dt = patrolStartDateTime(comp, patrol, new Date(), patrols.length);
+              // Maxtid: nedräkning mot planerad start + maxTimeMinutes.
+              const maxMin = Number(comp.startTimes?.maxTimeMinutes) || 0;
+              const deadline = maxMin > 0 && dt ? new Date(dt.getTime() + maxMin * 60000) : null;
               return `<div class="start-time-chip" id="start-time-chip" data-start="${dt?.toISOString() || ''}">
                 ${icon('clock', { size: 18 })}
                 <span>Starttid</span>
                 <span class="start-time-value">${escapeHtml(t)}</span>
                 <span class="start-time-sep">·</span>
                 <span class="start-time-countdown" id="start-time-countdown">—</span>
-              </div>`;
+              </div>
+              ${deadline ? `<div class="start-max-chip" id="start-max-chip" data-deadline="${deadline.toISOString()}" hidden>
+                ${icon('clock', { size: 15 })} <span>Maxtid</span> <span id="start-max-countdown">—</span>
+              </div>` : ''}`;
             })()}
           </div>
         </div>
@@ -252,6 +277,7 @@ function render() {
       <div class="start-kpi"><div class="kp-label">Kvar</div><div class="kp-value">${t.total - t.done}</div></div>
     </div>
     ${renderEtaLine(t)}
+    ${renderNextControl(t)}
 
     ${controls.some(c => c.lat && c.lng) ? `
       <div class="start-map-wrap">
@@ -283,6 +309,11 @@ function render() {
   // Countdown to the patrol's start time on the chip
   wireStartCountdown();
 
+  // Nästa kontroll-kortet öppnar kontrollbladet direkt.
+  root.querySelector('[data-next]')?.addEventListener('click', (e) => {
+    openControlSheet(e.currentTarget.dataset.next);
+  });
+
   // Wire control rows (regular + start/finish pseudo-rows)
   root.querySelectorAll('.start-ctrl').forEach(el => {
     el.addEventListener('click', () => {
@@ -294,8 +325,13 @@ function render() {
   // Flip card
   wireFlipCard();
 
-  // Overview map (once per render)
+  // Overview map — swap the live node back in if we kept one.
   const withPos = controls.filter(c => c.lat && c.lng);
+  const newHost = document.getElementById('start-map');
+  if (keepMapEl && newHost) {
+    newHost.replaceWith(keepMapEl);
+    requestAnimationFrame(() => { try { overviewMap?.invalidateSize(); } catch {} });
+  }
   if (withPos.length) renderOverviewMap(withPos);
 }
 
@@ -385,9 +421,33 @@ function wireFlipCard() {
 }
 
 // --- Overview map with all control pins ---
-// Re-created every render because render() wipes the DOM via innerHTML and
-// any old Leaflet instance would be pointing at a detached node.
+// The live map node is kept across re-renders (see render()); only the
+// control pins are dynamic (done-state colors) and live in their own layer.
 let overviewMap = null;
+let controlPinLayer = null;
+
+// Control markers — labels show only the number. Done controls are greyed
+// out so the scout can see at a glance which ones are left.
+function drawControlPins(L, ordered) {
+  if (controlPinLayer) { try { controlPinLayer.remove(); } catch {} }
+  controlPinLayer = L.layerGroup().addTo(overviewMap);
+  for (const c of ordered) {
+    const done = isDone(c.id);
+    L.circleMarker([c.lat, c.lng], {
+      radius: done ? 11 : 14,
+      color: done ? '#d0d0d0' : '#ffffff',
+      weight: done ? 2 : 3,
+      fillColor: done ? '#8a8a8a' : '#E95F13',
+      fillOpacity: done ? 0.55 : 0.98
+    })
+      .bindTooltip(String(c.nummer ?? '?'), {
+        permanent: true,
+        direction: 'center',
+        className: 'start-map-label' + (done ? ' start-map-label-done' : '')
+      })
+      .addTo(controlPinLayer);
+  }
+}
 async function renderOverviewMap(withPos) {
   const host = document.getElementById('start-map');
   if (!host) return;
@@ -397,13 +457,23 @@ async function renderOverviewMap(withPos) {
     const currentHost = document.getElementById('start-map');
     if (!currentHost) return;
 
+    const ordered = [...withPos].sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0));
+
+    // Batteri: när kartnoden behållits över en re-render (render() byter in
+    // den levande noden) räcker det att rita om kontrollpinnarna — tiles,
+    // spår och S/M/P är statiska. Sparar både batteri och tile-hämtningar
+    // varje gång en poäng rapporteras.
+    if (overviewMap && currentHost === overviewMap.getContainer()) {
+      drawControlPins(L, ordered);
+      return;
+    }
+
     // Dispose any previous map — especially if it's bound to a stale node.
     if (overviewMap) {
       try { overviewMap.remove(); } catch {}
       overviewMap = null;
     }
 
-    const ordered = [...withPos].sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0));
     const sfPoints = startFinishPoints(comp);
 
     overviewMap = L.map(currentHost, { zoomControl: true, scrollWheelZoom: false })
@@ -418,24 +488,7 @@ async function renderOverviewMap(withPos) {
     drawCourseOnMap(L, overviewMap, legs);
     if (hasDrawn) addCourseChip(L, overviewMap, legs, track && track.speedKmh);
 
-    // Control markers — labels show only the number. Done controls are
-    // greyed out so the scout can see at a glance which ones are left.
-    for (const c of ordered) {
-      const done = isDone(c.id);
-      L.circleMarker([c.lat, c.lng], {
-        radius: done ? 11 : 14,
-        color: done ? '#d0d0d0' : '#ffffff',
-        weight: done ? 2 : 3,
-        fillColor: done ? '#8a8a8a' : '#E95F13',
-        fillOpacity: done ? 0.55 : 0.98
-      })
-        .bindTooltip(String(c.nummer ?? '?'), {
-          permanent: true,
-          direction: 'center',
-          className: 'start-map-label' + (done ? ' start-map-label-done' : '')
-        })
-        .addTo(overviewMap);
-    }
+    drawControlPins(L, ordered);
 
     // Start/finish markers — distinct (rover-yellow). One "S/M" if same, else "S" and "M".
     for (const p of sfPoints) {
@@ -693,6 +746,12 @@ function wireStartCountdown() {
     ? Math.max(1000, effectiveIntervalSecValue(comp, patrols.length) * 1000)
     : startTimeSettings(comp).intervalMinutes * 60 * 1000);
   const intervalMin = intervalMs / 60000;
+  // Maxtid-chip: räknar ner mot planerad start + maxtid, syns först när
+  // patrullen startat (planerad tid passerad) och rödmarkeras sista kvarten.
+  const maxChip = document.getElementById('start-max-chip');
+  const maxOut = document.getElementById('start-max-countdown');
+  const maxDeadline = maxChip?.dataset.deadline ? new Date(maxChip.dataset.deadline) : null;
+
   const tick = () => {
     const now = new Date();
     const ms = startAt - now;
@@ -706,9 +765,30 @@ function wireStartCountdown() {
     } else {
       out.textContent = `om ${formatRelative(ms)}`;
     }
+    if (maxChip && maxDeadline) {
+      const started = now >= startAt;
+      maxChip.hidden = !started;
+      if (started) {
+        const left = maxDeadline - now;
+        maxOut.textContent = left > 0 ? `${formatRelative(left)} kvar` : `slut för ${formatRelative(-left)} sedan`;
+        maxChip.classList.toggle('is-late', left <= 15 * 60000);
+      }
+    }
   };
   tick();
   countdownInterval = setInterval(tick, 1000);
+
+  // Batteri: pausa sekundtickern när fliken ligger i bakgrunden.
+  if (!wireStartCountdown._visWired) {
+    wireStartCountdown._visWired = true;
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
+      } else {
+        wireStartCountdown();
+      }
+    });
+  }
 }
 
 function formatRelative(ms) {
