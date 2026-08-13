@@ -4,7 +4,7 @@ import {
   watchScoresForControl, listPatrols, listControls, getTrack,
   deleteScore, adjustScore
 } from '../store.js';
-import { courseLegs, legStub, legLatLngs } from '../course.js';
+import { courseLegs, legStub, legLatLngs, controlEtaWindow } from '../course.js';
 import { escapeHtml, toast, copyToClipboard, reportUrl, confirmDialog, formatTime, allInstructionGroups, withBusy, wireOverlayClose, isCompAdminUser, canEditControl } from '../utils.js';
 import { icon } from '../icons.js';
 import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
@@ -214,7 +214,11 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
   const pdfBtn = wrap.querySelector('#pdf');
   pdfBtn.addEventListener('click', () => withBusy(pdfBtn, 'Skapar PDF…', async () => {
     try {
-      await downloadControlPdf({ id: cid, ...comp }, { ...control, id: ctrlId }, { legIn, legOut });
+      // "Patruller väntas" med i PDF:en så kontrollanterna vet när det drar
+      // igång — samma estimat som visas på rapportsidan.
+      let etaWindow = null;
+      try { etaWindow = controlEtaWindow(comp, allControls, track, patrols, ctrlId); } catch { /* bonus */ }
+      await downloadControlPdf({ id: cid, ...comp }, { ...control, id: ctrlId }, { legIn, legOut, etaWindow });
     } catch (e) {
       console.error(e);
       toast('Kunde inte skapa PDF: ' + e.message, 'error');

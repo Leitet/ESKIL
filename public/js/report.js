@@ -3,8 +3,9 @@
 // with the URL report (if the control is open).
 
 import { db, doc, onSnapshot } from './firebase.js';
-import { getCompetition, getControl, listPatrols, watchScoresForControl, upsertScore, deleteScore } from './store.js';
+import { getCompetition, getControl, listPatrols, watchScoresForControl, upsertScore, deleteScore, listControls, getTrack } from './store.js';
 import { AVDELNINGAR, escapeHtml, allInstructionGroups, internalManagement } from './utils.js';
+import { controlEtaWindow } from './course.js';
 import { ensureLeaflet } from './leaflet.js';
 import { icon } from './icons.js';
 import { haptic, bindHaptic, bindTap, lockScroll, unlockScroll } from './haptic.js';
@@ -296,6 +297,25 @@ async function main() {
     openSheetFor: null // patrol being reported
   };
 
+  // --- ETA: "Patruller väntas ca X–Y" ---
+  // Gångtid längs spåret (eller fågelvägen) + stationstid per kontroll före
+  // denna, adderat på första/sista patrullens starttid. Bäst-effort i
+  // bakgrunden — kräver starttider + placerade kontroller.
+  let etaText = '';
+  (async () => {
+    try {
+      if (comp?.demo) return;
+      const [allControls, track] = await Promise.all([
+        listControls(cid),
+        getTrack(cid).catch(() => null)
+      ]);
+      const w = controlEtaWindow(comp, allControls, track, patrols, ctrlId);
+      if (!w) return;
+      etaText = w.lo === w.hi ? `Patruller väntas hit ca ${w.lo}` : `Patruller väntas hit ca ${w.lo}–${w.hi}`;
+      renderHead();
+    } catch { /* estimatet är en bonus — aldrig ett fel */ }
+  })();
+
   // --- Render head (title etc) ---
   function renderHead() {
     const closedBanner = comp?.demo
@@ -322,6 +342,7 @@ async function main() {
                 ${hasBackContent ? `<button type="button" class="flip-btn" id="flip-open" aria-expanded="false" aria-label="Visa instruktioner och karta">${icon('info', { size: 22 })}</button>` : ''}
               </div>
               <div class="r-sub">Rapportera poäng. Max ${control.maxPoang ?? 0} · Min ${control.minPoang ?? 0}${control.extraPoang ? ' · Extra max ' + control.extraPoang : ''}</div>
+              ${etaText ? `<div class="r-eta">${icon('clock', { size: 13 })} ${escapeHtml(etaText)}</div>` : ''}
             </div>
           </div>
           <div class="flip-face flip-back" aria-hidden="true">

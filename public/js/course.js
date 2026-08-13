@@ -8,7 +8,7 @@
 // doc (competitions/<cid>/track/main) only stores waypoints per leg keyed
 // "<fromKey>__<toKey>" plus the chosen walking pace.
 
-import { startFinishPoints } from './utils.js';
+import { startFinishPoints, patrolStartDateTime } from './utils.js';
 
 export const DEFAULT_SPEED_KMH = 4;
 
@@ -73,6 +73,52 @@ export function legStub(leg, end, meters = 140) {
     }
   }
   return out.length > 1 ? out : null;
+}
+
+export const DEFAULT_DWELL_MIN = 15;
+
+// ETA engine — walking pace along the course plus a fixed "stationstid" per
+// besökt kontroll. byKey[nodeKey] answers "minutes after start until arrival
+// here"; finishMin is the whole course including the last control's dwell.
+// Works without a drawn track too (fågelväg between placed controls), so
+// estimates exist as soon as positions are set. These are estimates — every
+// view phrases them with "ca".
+export function courseEta(comp, controls, track) {
+  const { nodes, legs, hasDrawn } = courseLegs(comp, controls, track);
+  const speedKmh = Number(track?.speedKmh) || DEFAULT_SPEED_KMH;
+  const dwellMin = Number(comp?.etaDwellMinutes) || DEFAULT_DWELL_MIN;
+  const byKey = {};
+  let dist = 0, before = 0;
+  nodes.forEach((n, i) => {
+    if (i > 0) {
+      dist += legDistance(legs[i - 1]);
+      if (nodes[i - 1].kind === 'control') before += 1;
+    }
+    const walkMin = (dist / 1000) / speedKmh * 60;
+    byKey[n.key] = { node: n, dist, walkMin, controlsBefore: before, etaMin: walkMin + before * dwellMin };
+  });
+  const last = nodes[nodes.length - 1];
+  const atLast = last ? byKey[last.key] : null;
+  // A course that ends at a control (no mål configured) still spends the
+  // dwell there before the day is over.
+  const finishMin = atLast ? atLast.etaMin + (last.kind === 'control' ? dwellMin : 0) : null;
+  return { nodes, legs, hasDrawn, speedKmh, dwellMin, byKey, totalDist: dist, finishMin };
+}
+
+// "Patruller väntas ca X–Y" för en kontroll: första resp. sista patrullens
+// starttid + ETA fram till kontrollen. null när starttider inte är påslagna,
+// kontrollen saknar position eller inga patruller har startordning.
+export function controlEtaWindow(comp, controls, track, patrols, ctrlId, now = new Date()) {
+  if (!comp?.startTimes?.enabled) return null;
+  const entry = courseEta(comp, controls, track).byKey[ctrlId];
+  if (!entry || !(entry.dist > 0)) return null;
+  const times = (patrols || [])
+    .map(p => patrolStartDateTime(comp, p, now, patrols.length))
+    .filter(Boolean).map(d => d.getTime());
+  if (!times.length) return null;
+  const fmt = (t) => new Date(t + entry.etaMin * 60000)
+    .toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
+  return { lo: fmt(Math.min(...times)), hi: fmt(Math.max(...times)) };
 }
 
 export function legDistance(leg) {

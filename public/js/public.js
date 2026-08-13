@@ -5,7 +5,7 @@
 
 import { db, doc, getDoc, onSnapshot, collection, auth, onAuthStateChanged } from './firebase.js';
 import { getCompetition, getCompetitionBySlug, listPatrols, listControls, getTrack } from './store.js';
-import { courseLegs, drawCourseOnMap, addCourseChip, competitionArea, courseDistance, fmtDist } from './course.js';
+import { courseLegs, drawCourseOnMap, addCourseChip, competitionArea, courseDistance, fmtDist, courseEta } from './course.js';
 import {
   AVDELNINGAR, escapeHtml, formatDate, publicManagement, patrolStartTime,
   patrolStartDateTime, startTimeSettings, allowedAvdelningar,
@@ -168,7 +168,7 @@ async function boot() {
       const dt = new Date(el.dataset.dt);
       const row = el.closest('.start-row');
       if (dt - now <= -60000) {
-        el.textContent = 'startade';
+        el.textContent = el.dataset.fin ? `i mål ca ${el.dataset.fin}` : 'startade';
         row?.classList.add('is-past');
         row?.classList.remove('is-now');
       } else {
@@ -571,6 +571,19 @@ function renderStartList() {
   const now = new Date();
   const rows = startRows(now);
   if (!rows.length) return '';
+
+  // Beräknad målgång för anhöriga: planerad start + banans ETA (gångtid +
+  // stationstid). Visas bara när banan är publik, och alltid med "ca".
+  let finMin = null;
+  try {
+    if (controlsPublic()) {
+      const eta = courseEta(comp, controls, track);
+      if (eta.finishMin != null && eta.totalDist > 0) finMin = eta.finishMin;
+    }
+  } catch { /* estimatet är en bonus */ }
+  const finClock = (dt) => finMin == null ? '' :
+    new Date(dt.getTime() + finMin * 60000).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
+
   return `
     <div class="pub-section-head">
       <h2 class="t-h2">Startlista</h2>
@@ -579,7 +592,8 @@ function renderStartList() {
     <div class="starts-list" id="starts-list">
       ${rows.map(({ p, dt }) => {
         const past = dt - now <= -60000;
-        const cd = past ? 'startade' : countdownText(dt, now);
+        const fin = finClock(dt);
+        const cd = past ? (fin ? `i mål ca ${fin}` : 'startade') : countdownText(dt, now);
         return `
           <a class="start-row ${past ? 'is-past' : ''} ${cd === 'GÅR NU' ? 'is-now' : ''}" href="/s/${escapeHtml(cid || '')}/${escapeHtml(p.id)}" target="_blank" rel="noopener">
             <span class="st-time">${dt.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })}</span>
@@ -587,7 +601,7 @@ function renderStartList() {
               <span class="nm">#${p.number ?? '—'} ${escapeHtml(p.name || '')}</span>
               <span class="sub"><span class="dot ${avdSlug(p.avdelning)}"></span>${escapeHtml(p.avdelning || '')}${p.kar ? ' · ' + escapeHtml(p.kar) : ''}</span>
             </span>
-            <span class="st-count" data-dt="${dt.toISOString()}">${escapeHtml(cd)}</span>
+            <span class="st-count" data-dt="${dt.toISOString()}"${fin ? ` data-fin="${escapeHtml(fin)}"` : ''}>${escapeHtml(cd)}</span>
             <span class="st-link">Startkort →</span>
           </a>
         `;

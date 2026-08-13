@@ -112,6 +112,18 @@ button, a, input, textarea, select, label { touch-action: manipulation; }
   color: var(--r-fg-muted);
   font-size: 15px;
 }
+.r-eta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--r-chip-bg);
+  color: var(--r-chip-fg);
+  font-size: 13px;
+  font-weight: 600;
+}
 .r-ctrl-no {
   display: inline-block;
   font-family: 'SF Mono', ui-monospace, monospace;

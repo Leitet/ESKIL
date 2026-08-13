@@ -77,6 +77,20 @@ html[data-mode="night"] .start-time-chip.go {
   50%      { box-shadow: 0 0 0 8px rgba(65,166,42,0); }
 }
 
+/* ETA line under the KPIs — how much course remains + expected finish */
+.start-eta {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: -8px 0 20px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--r-chip-bg);
+  color: var(--r-chip-fg);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
 /* Summary pills row */
 .start-kpis {
   display: grid;

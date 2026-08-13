@@ -294,7 +294,7 @@ function drawBannerWithTitle(pdf, W, comp, control) {
   pdf.text(parts.join('   ·   ') || '—', textX, 60);
 }
 
-export async function generateControlPdf(comp, control, { legIn = null, legOut = null } = {}) {
+export async function generateControlPdf(comp, control, { legIn = null, legOut = null, etaWindow = null } = {}) {
   await ensureLibs();
   const url = reportUrl(comp.id, control.id);
   // Course stubs on the map: gray dashed = patrols arrive from there, orange
@@ -394,6 +394,21 @@ export async function generateControlPdf(comp, control, { legIn = null, legOut =
     pdf.setFontSize(10);
     pdf.setTextColor('#282727');
     pdf.text(`${control.lat.toFixed(5)}, ${control.lng.toFixed(5)}`, textX, ty);
+    ty += 9;
+  }
+
+  // ETA-fönstret: när första resp. sista patrullen väntas hit, beräknat på
+  // starttider + gångtid längs spåret + stationstid per tidigare kontroll.
+  if (etaWindow) {
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(9);
+    pdf.setTextColor('#8a8a8a');
+    pdf.text('PATRULLER VÄNTAS', textX, ty);
+    ty += 5;
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(10);
+    pdf.setTextColor('#282727');
+    pdf.text(etaWindow.lo === etaWindow.hi ? `ca ${etaWindow.lo}` : `ca ${etaWindow.lo}–${etaWindow.hi}`, textX, ty);
   }
 
   // Second row: QR on the left, instructions text on the right (same 2-col

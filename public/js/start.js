@@ -7,7 +7,7 @@
 
 import { db, doc, onSnapshot, collection } from './firebase.js';
 import { getCompetition, getCompetitionBySlug, getPatrol, listControls, listPatrols, getTrack } from './store.js';
-import { courseLegs, drawCourseOnMap, addCourseChip, legLatLngs } from './course.js';
+import { courseLegs, drawCourseOnMap, addCourseChip, legLatLngs, courseEta, fmtDist, fmtMin } from './course.js';
 import {
   escapeHtml, publicManagement, patrolStartTime, patrolStartDateTime,
   startFinishPoints, parkingPoint, startTimeSettings,
@@ -150,6 +150,35 @@ function totals() {
 }
 
 // --- Render ---
+// ETA-raden under KPI:erna: hur mycket bana som är kvar och när patrullen
+// beräknas vara i mål. Gångtid längs spåret (eller fågelvägen) + stationstid
+// per kvarvarande kontroll. "Var vi står" antas vara den sista avklarade
+// kontrollen i nummerordning — samma antagande som Läget gör.
+function renderEtaLine(t) {
+  try {
+    if (!t.total) return '';
+    const eta = courseEta(comp, controls, track);
+    if (!(eta.totalDist > 0)) return '';
+    if (t.done >= t.total) return `<div class="start-eta">Alla kontroller klara — gå i mål! 🏁</div>`;
+
+    let fromKey = eta.nodes[0]?.key;
+    for (const n of eta.nodes) if (n.kind === 'control' && isDone(n.key)) fromKey = n.key;
+    const from = eta.byKey[fromKey];
+    const to = eta.byKey[eta.nodes[eta.nodes.length - 1]?.key];
+    if (!from || !to) return '';
+    const kvar = t.total - t.done;
+    const distLeft = Math.max(0, to.dist - from.dist);
+    const minLeft = (distLeft / 1000) / eta.speedKmh * 60 + kvar * eta.dwellMin;
+
+    if (t.done === 0) {
+      return `<div class="start-eta">${icon('clock', { size: 14 })} Hela banan: ${fmtDist(eta.totalDist)} · ca ${fmtMin(eta.finishMin)} inkl. kontroller</div>`;
+    }
+    const malKl = new Date(Date.now() + minLeft * 60000)
+      .toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
+    return `<div class="start-eta">${icon('clock', { size: 14 })} Kvar: ${kvar} kontroll${kvar === 1 ? '' : 'er'} · ${fmtDist(distLeft)} · ~${fmtMin(minLeft)} — i mål ca ${malKl}</div>`;
+  } catch { return ''; }
+}
+
 function render() {
   if (!comp || !patrol) return;
 
@@ -217,6 +246,7 @@ function render() {
       <div class="start-kpi"><div class="kp-label">Klara</div><div class="kp-value">${t.done} / ${t.total}</div></div>
       <div class="start-kpi"><div class="kp-label">Kvar</div><div class="kp-value">${t.total - t.done}</div></div>
     </div>
+    ${renderEtaLine(t)}
 
     ${controls.some(c => c.lat && c.lng) ? `
       <div class="start-map-wrap">
