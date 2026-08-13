@@ -743,6 +743,15 @@ export function swishQrString(number, amount, message) {
   return `C${digits};${amt};${message};0`;
 }
 
+// Deep link that opens the Swish app with number, amount and reference
+// prefilled — the mobile counterpart to the QR (which suits a second screen).
+// Same fields as swishQrString, but as the official app.swish.nu URL.
+export function swishAppUrl(number, amount, message) {
+  const digits = String(number || '').replace(/[^0-9]/g, '');
+  const amt = Number.isInteger(amount) ? String(amount) : Number(amount).toFixed(2);
+  return `https://app.swish.nu/1/p/sw/?sw=${encodeURIComponent(digits)}&amt=${encodeURIComponent(amt)}&cur=SEK&msg=${encodeURIComponent(message || '')}&src=qr`;
+}
+
 export function registrationUrl(competitionId, regId = null) {
   return `${location.origin}/a/${competitionId}${regId ? '/' + regId : ''}`;
 }

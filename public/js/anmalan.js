@@ -16,7 +16,7 @@ import {
 import {
   allowedAvdelningar, escapeHtml, formatDate, toast, withBusy, confirmDialog,
   registrationSettings, registrationState, computeRegistrationPrice,
-  makePaymentReference, swishQrString, registrationUrl, copyToClipboard, isPaymentPaid
+  makePaymentReference, swishQrString, swishAppUrl, registrationUrl, copyToClipboard, isPaymentPaid
 } from './utils.js';
 import { ensureQRCode } from './qr.js';
 import { downloadReceiptPdf } from './pdf.js';
@@ -461,9 +461,13 @@ function renderMethods(pay) {
           <div class="anm-method-head">${escapeHtml(m.label || 'Swish')}<span class="tag">Swish</span></div>
           <div class="anm-method-body">
             <div>Swisha till <span class="mono-big">${escapeHtml(m.number || '')}</span></div>
+            <a class="btn btn-primary mt-3" style="display:inline-flex;align-items:center;gap:8px;"
+               href="${escapeHtml(swishAppUrl(m.number, pay.amount, pay.reference))}"
+               target="_blank" rel="noopener">Öppna i Swish — ${pay.amount} kr</a>
+            <div class="hint" style="margin-top:6px;">Öppnar Swish-appen med belopp och referens ifyllda (på den här enheten).</div>
             <div class="anm-qr">
               <div class="qr-box" id="swish-qr-${i}" data-number="${escapeHtml(m.number || '')}"></div>
-              <div class="hint">Skanna med Swish-appen. Belopp och meddelande (referensen) är låsta i koden.</div>
+              <div class="hint">…eller skanna QR-koden med Swish-appen från en annan enhet. Belopp och referens är låsta i koden.</div>
             </div>
           </div>
         </div>
