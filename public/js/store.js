@@ -244,6 +244,12 @@ export async function copyCompetition(cid, { name, shortName, year, date }, user
 
   const newCid = await createCompetition(data, user);
 
+  // Överlämningsdokumentet följer med — det är skrivet för nästa års ledning.
+  try {
+    const ho = await getHandover(cid);
+    if (ho?.text) await setDoc(doc(db, 'competitions', newCid, 'private', 'handover'), ho);
+  } catch { /* saknas eller ej läsbart — hoppa över */ }
+
   // Controls — new ids (fresh secret reporter URLs), everything closed,
   // person-bound fields cleared, tiebreaker facit reset.
   const controls = await listControls(cid);
@@ -460,6 +466,22 @@ export async function updatePatrol(cid, pid, data) {
 
 export async function deletePatrol(cid, pid) {
   await deleteDoc(doc(db, 'competitions', cid, 'patrols', pid));
+}
+
+// Överlämningsdokument — ledningens fria anteckningar om hur tävlingen körs
+// ("så gör vi, fällor, kontakter"). Ligger i private/handover: läsbart för
+// medlemmar, skrivbart för admins (täcks av private/{doc}-regeln). Följer
+// med vid årgångskopiering.
+export async function getHandover(cid) {
+  const snap = await getDoc(doc(db, 'competitions', cid, 'private', 'handover'));
+  return snap.exists() ? snap.data() : null;
+}
+export async function setHandover(cid, text, user) {
+  await setDoc(doc(db, 'competitions', cid, 'private', 'handover'), {
+    text: String(text || ''),
+    updatedAt: new Date().toISOString(),
+    updatedBy: user?.email || ''
+  });
 }
 
 // DNF: markera en patrull som utgått (eller ångra med null). Patrulldokumentet

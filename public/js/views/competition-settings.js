@@ -463,6 +463,41 @@ function renderBasicTab(comp, cid, refresh, readOnly, isSuperAdmin, user) {
     host.appendChild(copyCard);
   }
 
+  // Överlämning — ledningens fria anteckningar till nästa års ledning.
+  // Ligger i private/handover (medlemmar läser, admins skriver) och följer
+  // med automatiskt när tävlingen kopieras till en ny årgång.
+  if (!user?.demoViewer) {
+    const hoCard = document.createElement('section');
+    hoCard.className = 'card mt-6';
+    hoCard.innerHTML = `
+      <h3 class="t-h3" style="margin-top:0;">Överlämning till nästa år</h3>
+      <p class="muted">Skriv ner det som inte syns i systemet: hur ni brukar lägga banan, vilka
+      markägare som ska ringas, fällor att undvika, vem som har materiel. Dokumentet är internt
+      (syns bara för tävlingsledningen) och följer med när tävlingen kopieras till nästa årgång.</p>
+      <textarea class="textarea mt-3" id="ho-text" rows="7" placeholder="T.ex. Boka Tinnerö-stugan i januari. Markägare Nils: 070-… Kontroll 4 behöver eldningstillstånd…" disabled>Laddar…</textarea>
+      <div class="row mt-3" style="align-items:center;gap:var(--sp-3);">
+        ${readOnly ? '' : `<button class="btn btn-secondary btn-sm" id="ho-save">Spara överlämning</button>`}
+        <span class="muted t-sm" id="ho-meta"></span>
+      </div>
+    `;
+    host.appendChild(hoCard);
+    const hoText = hoCard.querySelector('#ho-text');
+    const hoMeta = hoCard.querySelector('#ho-meta');
+    import('../store.js').then(({ getHandover, setHandover }) => {
+      getHandover(cid).then(ho => {
+        hoText.value = ho?.text || '';
+        hoText.disabled = !!readOnly;
+        if (ho?.updatedAt) hoMeta.textContent = `Senast ändrad ${new Date(ho.updatedAt).toLocaleString('sv-SE', { dateStyle: 'medium', timeStyle: 'short' })}${ho.updatedBy ? ' av ' + ho.updatedBy : ''}`;
+      }).catch(() => { hoText.value = ''; hoText.disabled = !!readOnly; });
+      hoCard.querySelector('#ho-save')?.addEventListener('click', (e) => withBusy(e.currentTarget, 'Sparar…', async () => {
+        try {
+          await setHandover(cid, hoText.value, user);
+          toast('Överlämningen sparad', 'success');
+        } catch (err) { toast('Fel: ' + err.message, 'error'); }
+      }));
+    });
+  }
+
   // Backup & export — full JSON dump (restorable), ZIP with structured data,
   // and restore-from-file. Available to everyone signed in (reads are public
   // for demo; import creates a fresh competition owned by the importer).
