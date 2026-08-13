@@ -10,7 +10,7 @@ import { layout, setTopbarCompetition } from '../app.js';
 import {
   getCompetition, updateCompetition, deleteCompetition, copyCompetition,
   setCompetitionUsers, setCompetitionEkonomi, listControls,
-  closeCompetition, reopenCompetition
+  closeCompetition, reopenCompetition, isSlugTaken
 } from '../store.js';
 import {
   db, doc, getDoc, getDocs, collection, query, where
@@ -19,7 +19,8 @@ import {
   escapeHtml, toast, withBusy, confirmDialog, wireOverlayClose,
   registrationSettings, REG_PRICING_MODELS, registrationUrl, copyToClipboard,
   AVDELNINGAR, allowedAvdelningar,
-  isCompAdminUser, normEmail, ekonomiFromManagement
+  isCompAdminUser, normEmail, ekonomiFromManagement,
+  normSlug, isValidSlug, suggestSlug
 } from '../utils.js';
 import { createManagementForm } from '../managementform.js';
 import { icon } from '../icons.js';
@@ -210,6 +211,44 @@ function renderBasicTab(comp, cid, refresh, readOnly, isSuperAdmin, user) {
     ${readOnly ? '<p class="muted t-sm">Skrivskyddad demotävling — bara superadministratör kan ändra.</p>' : saveRow('Spara grunduppgifter')}
   `);
   host.appendChild(card);
+
+  // Kortadress (slug) — fixed once set: short public URL + payment prefix.
+  const slugCard = section('Kortadress', comp.slug ? `
+    <p class="muted t-sm" style="margin-top:0;">Tävlingens fasta kortadress — används i publika länkar och som prefix i betalningsreferenserna (<strong>${escapeHtml(comp.slug.toUpperCase())}-XXXX</strong>).</p>
+    <div class="row">
+      <code style="background:var(--bg-muted);padding:8px 12px;border-radius:var(--r-sm);font-size:14px;">${escapeHtml(location.origin)}/t/${escapeHtml(comp.slug)}</code>
+      <button type="button" class="btn btn-secondary btn-sm" id="copy-slug-url">${icon('copy', { size: 14 })} Kopiera</button>
+    </div>
+    <p class="field-hint">Kortadressen är fast och kan inte ändras. Anmälan nås också på /a/${escapeHtml(comp.slug)}.</p>
+  ` : `
+    <p class="muted t-sm" style="margin-top:0;">Ge tävlingen en fast kortadress: tävlingssidan nås på <strong>eskilscout.se/t/&lt;kortadress&gt;</strong> och nya betalningsreferenser använder den som prefix. Den kan bara sättas en gång.</p>
+    <div class="row wrap" ${readOnly ? 'inert' : ''}>
+      <input class="input mono" id="slug-input" placeholder="ah26" maxlength="24" style="max-width:200px;text-transform:lowercase;">
+      <button type="button" class="btn btn-primary btn-sm" id="set-slug">Lås fast kortadressen</button>
+    </div>
+  `);
+  host.appendChild(slugCard);
+
+  slugCard.querySelector('#copy-slug-url')?.addEventListener('click', () => {
+    copyToClipboard(`${location.origin}/t/${comp.slug}`);
+    toast('Kortadress kopierad', 'success');
+  });
+  const setSlugBtn = slugCard.querySelector('#set-slug');
+  if (setSlugBtn) {
+    const slugInput = slugCard.querySelector('#slug-input');
+    slugInput.value = suggestSlug(comp.shortName, comp.year);
+    setSlugBtn.addEventListener('click', () => withBusy(setSlugBtn, 'Kontrollerar…', async () => {
+      const slug = normSlug(slugInput.value);
+      if (!isValidSlug(slug)) { toast('Kortadressen måste vara 2–24 tecken: a–z, 0–9 och bindestreck.', 'error'); return; }
+      if (await isSlugTaken(slug, cid)) { toast(`Kortadressen "${slug}" används redan av en annan tävling.`, 'error'); return; }
+      if (!(await confirmDialog(`Lås fast kortadressen "${slug}"? Den kan inte ändras efteråt.`, { okLabel: 'Lås fast', danger: false }))) return;
+      try {
+        await updateCompetition(cid, { slug });
+        await refresh();
+        toast(`Kortadress satt — tävlingen nås nu på /t/${slug}`, 'success');
+      } catch (e) { toast('Fel: ' + e.message, 'error'); }
+    }));
+  }
 
   // Live-restyle the avdelnings-chips as they're toggled.
   card.querySelectorAll('[data-avd-part]').forEach(cb => cb.addEventListener('change', () => {
@@ -688,7 +727,7 @@ function renderAnmalanTab(comp, cid, refresh, readOnly) {
         <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
           <label class="field">Publik anmälningslänk</label>
           <div class="row" style="gap:var(--sp-2);align-items:center;flex-wrap:wrap;">
-            <code style="background:var(--bg-muted);padding:6px 10px;border-radius:var(--r-sm);font-size:13px;">${escapeHtml(registrationUrl(cid))}</code>
+            <code style="background:var(--bg-muted);padding:6px 10px;border-radius:var(--r-sm);font-size:13px;">${escapeHtml(registrationUrl(comp.slug || cid))}</code>
             <button type="button" class="btn btn-ghost btn-sm" id="copy-reg-link">${icon('copy', { size: 14 })} Kopiera</button>
             <a class="btn btn-ghost btn-sm" href="/a/${cid}" target="_blank" rel="noopener">${icon('external', { size: 14 })} Öppna</a>
           </div>
@@ -839,7 +878,7 @@ function renderAnmalanTab(comp, cid, refresh, readOnly) {
   renderFields();
 
   card.querySelector('#copy-reg-link').addEventListener('click', () => {
-    copyToClipboard(registrationUrl(cid));
+    copyToClipboard(registrationUrl(comp.slug || cid));
     toast('Länk kopierad', 'success');
   });
 

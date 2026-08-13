@@ -151,7 +151,7 @@ export function setTopbarCompetition(cid, comp, user) {
   const isAdmin = isCompAdminUser(comp, user);
   slot.innerHTML = `
     <a class="topbar-comp-name" href="/app/c/${encodeURIComponent(cid)}" data-link title="${escapeHtml(comp.name || '')}">${escapeHtml(compLabel(comp))}</a>
-    <a class="btn btn-secondary btn-sm" href="/t/${cid}" target="_blank" rel="noopener">Offentlig sida ${icon('external', { size: 14 })}</a>
+    <a class="btn btn-secondary btn-sm" href="/t/${encodeURIComponent(comp.slug || cid)}" target="_blank" rel="noopener">Offentlig sida ${icon('external', { size: 14 })}</a>
     ${comp.startTimes?.enabled && isAdmin ? `<a class="btn btn-secondary btn-sm" href="/app/c/${cid}/startscreen" target="_blank" rel="noopener">Startskärm ${icon('external', { size: 14 })}</a>` : ''}
   `;
 }

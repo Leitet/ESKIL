@@ -11,7 +11,7 @@
 // document is created, via the Trigger Email extension.
 
 import {
-  getCompetition, getRegistration, createRegistration, updateRegistration
+  getCompetition, getCompetitionBySlug, getRegistration, createRegistration, updateRegistration
 } from './store.js';
 import {
   allowedAvdelningar, escapeHtml, formatDate, toast, withBusy, confirmDialog,
@@ -88,7 +88,12 @@ async function boot() {
   cid = parsed.cid;
 
   try {
+    // /a/<id> or the fixed slug /a/ah26 — resolve to the real id.
     comp = await getCompetition(cid);
+    if (!comp) {
+      comp = await getCompetitionBySlug(cid);
+      if (comp) cid = comp.id;
+    }
   } catch (e) {
     return renderFatal('Kunde inte ladda tävlingen: ' + e.message);
   }

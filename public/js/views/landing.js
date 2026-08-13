@@ -43,7 +43,7 @@ export async function renderLanding(app, user) {
       <div class="landing-grid">
         ${openReg.map(c => compCard(c, {
           badge: '<span class="badge badge-green">Anmälan öppen</span>',
-          cta: `<a class="btn btn-primary btn-sm" href="/a/${c.id}">Anmäl er ${icon('arrow-right', { size: 14 })}</a>`
+          cta: `<a class="btn btn-primary btn-sm" href="/a/${c.slug || c.id}">Anmäl er ${icon('arrow-right', { size: 14 })}</a>`
         })).join('')}
       </div>
     ` : ''}
@@ -67,7 +67,7 @@ export async function renderLanding(app, user) {
       <div class="landing-grid">
         ${finished.map(c => compCard(c, {
           badge: '<span class="badge badge-gray">Avslutad</span>',
-          cta: `<a class="btn btn-secondary btn-sm" href="/t/${c.id}/scoreboard">Se resultat ${icon('trophy', { size: 14 })}</a>`
+          cta: `<a class="btn btn-secondary btn-sm" href="/t/${c.slug || c.id}/scoreboard">Se resultat ${icon('trophy', { size: 14 })}</a>`
         })).join('')}
       </div>
     ` : ''}
@@ -156,7 +156,7 @@ function compCard(c, { badge = '', cta = '', blurb = '' } = {}) {
       ${blurb ? `<p class="t-sm mt-2" style="color:var(--fg2);margin-bottom:0;">${escapeHtml(blurb)}</p>` : ''}
       <div class="btn-row mt-4" style="gap:var(--sp-2);">
         ${cta}
-        <a class="btn btn-ghost btn-sm" href="/t/${c.id}">Tävlingssida ${icon('arrow-right', { size: 14 })}</a>
+        <a class="btn btn-ghost btn-sm" href="/t/${c.slug || c.id}">Tävlingssida ${icon('arrow-right', { size: 14 })}</a>
       </div>
     </div>
   `;

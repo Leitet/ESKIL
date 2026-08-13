@@ -336,6 +336,8 @@ firebase.json           # Hosting + Firestore + Functions-config
 users/{uid}                      { email, role: "super-admin" | "user" }
 competitions/{cid}               { name, shortName, year, date, location,
                                    organizer, description, closed,
+                                   slug,  // fast kortadress: /t/<slug>, /a/<slug>
+                                          // + prefix i betalningsreferenser
                                    admins: [uid], adminEmails: [email],
                                    users: [{email, name}], userEmails: [email],
                                    createdBy, createdAt }

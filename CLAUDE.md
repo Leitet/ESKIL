@@ -48,6 +48,14 @@ See `README.md` for the layout — every file there is load-bearing.
   `/k.html`.
 - `public/m.html` — start/finish station (`/m/<cid>/<stationId>`), anonymous
   like the reporter page; the station id is the secret.
+- **Slug (kortadress):** `competition.slug` is a FIXED human short-id set at
+  creation (e.g. `ah26`), lockable once for pre-slug competitions via
+  settings → Grund. `/t/<slug>`, `/a/<slug>` and `/s/<slug>/<patrolId>`
+  resolve it (store.getCompetitionBySlug); payment references use it as
+  prefix (utils.refPrefix). Uniqueness is checked client-side at creation
+  (store.isSlugTaken — also against existing doc ids, which shadow slugs).
+  Never change a slug after creation — printed QR codes and references
+  depend on it.
 
 ## Firestore rules model
 

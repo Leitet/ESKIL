@@ -104,6 +104,27 @@ export async function listCompetitionsForUser(user) {
   });
 }
 
+// Resolve a competition by its fixed slug (kortadress) — /t/ah26. Returns
+// the same merged shape as getCompetition, or null. Publicly readable.
+export async function getCompetitionBySlug(slug) {
+  const s = String(slug || '').trim().toLowerCase();
+  if (!s) return null;
+  const snap = await getDocs(query(collection(db, 'competitions'), where('slug', '==', s)));
+  if (snap.empty) return null;
+  return getCompetition(snap.docs[0].id);
+}
+
+// A slug is free when no competition uses it AND no competition document has
+// it as its id (an id-colliding slug would be unreachable — /t tries ids first).
+export async function isSlugTaken(slug, excludeCid = null) {
+  const s = String(slug || '').trim().toLowerCase();
+  if (!s) return false;
+  const bySlug = await getCompetitionBySlug(s);
+  if (bySlug && bySlug.id !== excludeCid) return true;
+  const asId = await getDoc(doc(db, 'competitions', s)).catch(() => null);
+  return !!(asId && asId.exists() && asId.id !== excludeCid);
+}
+
 export async function getCompetition(cid) {
   const snap = await getDoc(doc(db, 'competitions', cid));
   if (!snap.exists()) return null;

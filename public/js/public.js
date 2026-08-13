@@ -4,7 +4,7 @@
 // Tabs: overview (default), patrols, scoreboard.
 
 import { db, doc, getDoc, onSnapshot, collection, auth, onAuthStateChanged } from './firebase.js';
-import { getCompetition, listPatrols, listControls, getTrack } from './store.js';
+import { getCompetition, getCompetitionBySlug, listPatrols, listControls, getTrack } from './store.js';
 import { courseLegs, drawCourseOnMap, addCourseChip, competitionArea, courseDistance, fmtDist } from './course.js';
 import {
   AVDELNINGAR, escapeHtml, formatDate, publicManagement, patrolStartTime,
@@ -67,6 +67,7 @@ let controls = [];
 let track = null;    // drawn course from the Spår editor (fetched once)
 let scoresByControl = {}; // ctrlId -> score[]
 let adminAccess = false; // signed-in visitor may administer → "Administrera" in hero
+let realCid = null;      // resolved competition id (the URL may carry the slug)
 const subscribedScoreCtrls = new Set();
 let unsubs = [];
 
@@ -93,19 +94,28 @@ function controlsPublic() {
 async function boot() {
   const parsed = parsePath();
   if (!parsed) return renderNotFound('Ogiltig länk.');
-  const { cid } = parsed;
-
+  // The URL segment is a competition id OR its fixed slug (/t/ah26) — the
+  // address bar keeps whichever the visitor used; Firestore paths use the
+  // resolved id.
+  let cid = parsed.cid;
   try {
-    [comp, patrols, controls, track] = await Promise.all([
-      getCompetition(cid),
-      listPatrols(cid),
-      listControls(cid),
-      getTrack(cid).catch(() => null)
-    ]);
+    comp = await getCompetition(cid);
+    if (!comp) {
+      comp = await getCompetitionBySlug(cid);
+      if (comp) cid = comp.id;
+    }
+    if (comp) {
+      [patrols, controls, track] = await Promise.all([
+        listPatrols(cid),
+        listControls(cid),
+        getTrack(cid).catch(() => null)
+      ]);
+    }
   } catch (e) {
     return renderNotFound('Kunde inte ladda tävlingen: ' + e.message);
   }
   if (!comp) return renderNotFound('Tävlingen hittades inte.');
+  realCid = cid;
   document.title = `${comp.name || 'Tävling'} — ESKIL`;
 
   // Sessions are long-lived, so an admin who opens the public page is often
@@ -406,7 +416,7 @@ function renderHero() {
             <span class="sublabel">ESKIL</span>
           </a>
           <div class="pub-hero-actions">
-            ${adminAccess ? `<a class="btn btn-secondary btn-sm" href="/app/c/${encodeURIComponent(cid || '')}">${icon('settings', { size: 14 })} Administrera</a>` : ''}
+            ${adminAccess ? `<a class="btn btn-secondary btn-sm" href="/app/c/${encodeURIComponent(realCid || cid || '')}">${icon('settings', { size: 14 })} Administrera</a>` : ''}
             ${openCount > 0 ? `<div class="status-pill"><span class="dot-live"></span>Tävlingen pågår · live</div>` : ''}
           </div>
         </div>

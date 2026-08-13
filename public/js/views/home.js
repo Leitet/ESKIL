@@ -1,6 +1,9 @@
 import { layout } from '../app.js';
-import { listCompetitionsForUser, createCompetition } from '../store.js';
-import { escapeHtml, formatDate, toast, withBusy, isCompAdminUser, ekonomiFromManagement } from '../utils.js';
+import { listCompetitionsForUser, createCompetition, isSlugTaken } from '../store.js';
+import {
+  escapeHtml, formatDate, toast, withBusy, isCompAdminUser, ekonomiFromManagement,
+  normSlug, isValidSlug, suggestSlug
+} from '../utils.js';
 import { createManagementForm } from '../managementform.js';
 import { icon } from '../icons.js';
 
@@ -114,6 +117,11 @@ function openCreateModal(user) {
             <label class="field" for="name">Fullständigt namn</label>
             <input class="input" id="name" required placeholder="Älghornsjakten 2026">
             <div class="field-hint">Visas i listor och på PDF-utskrifter.</div>
+          </div>
+          <div>
+            <label class="field" for="slug">Kortadress &amp; betalningsprefix</label>
+            <input class="input mono" id="slug" required placeholder="ah26" maxlength="24" style="max-width:200px;text-transform:lowercase;">
+            <div class="field-hint" id="slug-hint">Tävlingssidan nås på <strong>eskilscout.se/t/<span id="slug-preview">…</span></strong> och betalningsreferenserna blir <strong><span id="slug-ref-preview">…</span>-XXXX</strong>. Sätts nu och kan inte ändras senare.</div>
           </div>
           <div>
             <label class="field" for="location">Plats</label>
@@ -266,6 +274,24 @@ function openCreateModal(user) {
   yearEl.addEventListener('input', syncName);
   syncName();
 
+  // Slug: suggested from shortName + year until the user edits it themselves.
+  const slugEl = overlay.querySelector('#slug');
+  const slugPreview = overlay.querySelector('#slug-preview');
+  const slugRefPreview = overlay.querySelector('#slug-ref-preview');
+  let slugDirty = false;
+  const showSlug = () => {
+    const s = normSlug(slugEl.value);
+    slugPreview.textContent = s || '…';
+    slugRefPreview.textContent = (s || '…').toUpperCase();
+  };
+  slugEl.addEventListener('input', () => { slugDirty = true; showSlug(); });
+  const syncSlug = () => {
+    if (!slugDirty) { slugEl.value = suggestSlug(shortEl.value, yearEl.value); showSlug(); }
+  };
+  shortEl.addEventListener('input', syncSlug);
+  yearEl.addEventListener('input', syncSlug);
+  syncSlug();
+
   // Toggle starttime fields + mode selector
   const stEnabled = overlay.querySelector('#st-enabled');
   const stFields = overlay.querySelector('#st-fields');
@@ -304,9 +330,19 @@ function openCreateModal(user) {
     const f = overlay.querySelector('#f');
     if (!f.reportValidity()) return;
     await withBusy(saveBtn, 'Skapar…', async () => {
+      const slug = normSlug(overlay.querySelector('#slug').value);
+      if (!isValidSlug(slug)) {
+        toast('Kortadressen måste vara 2–24 tecken: a–z, 0–9 och bindestreck.', 'error');
+        return;
+      }
+      if (await isSlugTaken(slug)) {
+        toast(`Kortadressen "${slug}" används redan av en annan tävling.`, 'error');
+        return;
+      }
       const management = mgmt.read();
       const ekonomi = ekonomiFromManagement(management);
       const data = {
+        slug,
         name: nameEl.value.trim(),
         shortName: shortEl.value.trim(),
         year: Number(yearEl.value) || new Date().getFullYear(),

@@ -84,7 +84,7 @@ export async function renderAnmalanAdmin(app, user, cid) {
   `;
 
   wrap.querySelector('#copy-link').addEventListener('click', () => {
-    copyToClipboard(registrationUrl(cid));
+    copyToClipboard(registrationUrl(comp.slug || cid));
     toast('Anmälningslänk kopierad', 'success');
   });
 

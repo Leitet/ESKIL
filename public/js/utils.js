@@ -658,21 +658,53 @@ export function computeRegistrationPrice(pricing, patrols) {
 // handwriting and being read aloud. Year is dropped from the prefix when its
 // digits aren't safe (e.g. 2030/2031); uniqueness lives in the random part.
 const REF_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
-export function makePaymentReference(comp) {
-  const safe = (s) => [...String(s).toUpperCase()].filter(ch => REF_ALPHABET.includes(ch)).join('');
+const refSafe = (s) => [...String(s).toUpperCase()].filter(ch => REF_ALPHABET.includes(ch)).join('');
+
+// The reference prefix ("AH26"): the competition's fixed slug when set (so
+// payment references and the short URL /t/<slug> are the same identifier),
+// otherwise derived from shortName initials + 2-digit year.
+export function refPrefix(comp) {
+  const fromSlug = refSafe(comp?.slug || '');
+  if (fromSlug.length >= 2) return fromSlug.slice(0, 8);
   const src = (comp?.shortName || comp?.name || 'ES')
     .replace(/[åä]/gi, 'a').replace(/[ö]/gi, 'o')
     .replace(/[0-9]/g, '');
-  const fromWords = safe(src.split(/\s+/).map(w => w[0] || '').join(''));
+  const fromWords = refSafe(src.split(/\s+/).map(w => w[0] || '').join(''));
   // Prefer word initials; if they don't yield 2 safe letters, take the first
   // safe letters of the name instead (e.g. "Lindsdalsjakten" → "ND").
-  const initials = (fromWords.length >= 2 ? fromWords : safe(src.replace(/\s+/g, ''))).slice(0, 2) || 'ES';
-  const yyRaw = safe(String(comp?.year || '').slice(-2));
+  const initials = (fromWords.length >= 2 ? fromWords : refSafe(src.replace(/\s+/g, ''))).slice(0, 2) || 'ES';
+  const yyRaw = refSafe(String(comp?.year || '').slice(-2));
   const yy = yyRaw.length === 2 ? yyRaw : '';
+  return `${initials}${yy}`;
+}
+
+export function makePaymentReference(comp) {
   const rnd = new Uint32Array(4);
   crypto.getRandomValues(rnd);
   const code = [...rnd].map(v => REF_ALPHABET[v % REF_ALPHABET.length]).join('');
-  return `${initials}${yy}-${code}`;
+  return `${refPrefix(comp)}-${code}`;
+}
+
+// --- Competition slug (kortadress) ------------------------------------------
+// Fixed human identifier set at creation: /t/<slug> and /a/<slug> resolve to
+// the competition, and payment references use it as prefix. Lowercase a-z0-9
+// (åäö folded), 2–24 chars, hyphen allowed inside.
+export const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,22}[a-z0-9])?$/;
+
+export function normSlug(s) {
+  return String(s || '').trim().toLowerCase()
+    .replace(/[åä]/g, 'a').replace(/ö/g, 'o')
+    .replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+}
+
+export function isValidSlug(s) {
+  return SLUG_RE.test(s) && s.length >= 2;
+}
+
+// Suggestion for a new competition: same identity as the payment-reference
+// prefix — "Älghornsjakten" + 2026 → "ah26".
+export function suggestSlug(shortName, year) {
+  return normSlug(refPrefix({ shortName, year }));
 }
 
 // Swish prefilled-QR payload. Format: C<number>;<amount>;<message>;<mask>

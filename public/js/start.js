@@ -6,7 +6,7 @@
 //   - Filter chips + control list with anonymity enforced
 
 import { db, doc, onSnapshot, collection } from './firebase.js';
-import { getCompetition, getPatrol, listControls, listPatrols, getTrack } from './store.js';
+import { getCompetition, getCompetitionBySlug, getPatrol, listControls, listPatrols, getTrack } from './store.js';
 import { courseLegs, drawCourseOnMap, addCourseChip } from './course.js';
 import {
   escapeHtml, publicManagement, patrolStartTime, patrolStartDateTime,
@@ -70,16 +70,24 @@ let filter = 'alla';       // 'alla' | 'kvar' | 'klara'
 async function main() {
   const parsed = parsePath();
   if (!parsed) return renderError('Ogiltig länk.');
-  const { cid, patrolId } = parsed;
+  let { cid } = parsed;
+  const { patrolId } = parsed;
 
   try {
-    [comp, patrol, controls, patrols, track] = await Promise.all([
-      getCompetition(cid),
-      getPatrol(cid, patrolId),
-      listControls(cid),
-      listPatrols(cid),
-      getTrack(cid).catch(() => null)
-    ]);
+    // /s/<id>/... or the competition's fixed slug (/s/ah26/...) — resolve.
+    comp = await getCompetition(cid);
+    if (!comp) {
+      comp = await getCompetitionBySlug(cid);
+      if (comp) cid = comp.id;
+    }
+    if (comp) {
+      [patrol, controls, patrols, track] = await Promise.all([
+        getPatrol(cid, patrolId),
+        listControls(cid),
+        listPatrols(cid),
+        getTrack(cid).catch(() => null)
+      ]);
+    }
   } catch (e) {
     return renderError('Kunde inte ladda startkortet: ' + e.message);
   }
