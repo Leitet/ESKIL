@@ -197,8 +197,11 @@ export async function renderControls(app, user, cid) {
     if (unsub) { unsub(); unsub = null; }
     if (sortableInstance) { sortableInstance.destroy(); sortableInstance = null; }
   });
-  // telefon lives in each control's member-only private/meta subdoc — merge it
-  // in for the table (cached so we don't refetch on every live snapshot).
+  // telefon/notering/ansvariga live in each control's member-only private/meta
+  // subdoc — merge them in for the table AND the edit modal (cached so we
+  // don't refetch on every live snapshot). ansvariga MUST be merged here:
+  // the edit modal starts from control.ansvariga and saves the list back, so
+  // a row without the merge opened → saved would wipe the kontrollansvariga.
   const metaById = {};
   async function mergeMeta(rows) {
     const missing = rows.filter(r => !(r.id in metaById));
@@ -206,7 +209,13 @@ export async function renderControls(app, user, cid) {
       const metas = await Promise.all(missing.map(r => getControlMeta(cid, r.id).catch(() => ({}))));
       missing.forEach((r, i) => { metaById[r.id] = metas[i] || {}; });
     }
-    rows.forEach(r => { r.telefon = metaById[r.id]?.telefon || ''; r.notering = metaById[r.id]?.notering || ''; });
+    rows.forEach(r => {
+      const m = metaById[r.id] || {};
+      r.telefon = m.telefon || '';
+      r.notering = m.notering || '';
+      if (m.ansvariga !== undefined) r.ansvariga = m.ansvariga;
+      if (m.ansvarigaEmails !== undefined) r.ansvarigaEmails = m.ansvarigaEmails;
+    });
   }
   // Migrate any legacy telefon/notering off the world-readable control docs
   // before subscribing, so the first render reads them from the private subdoc.

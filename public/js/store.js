@@ -187,15 +187,23 @@ export async function updateCompetition(cid, data) {
 
 // Mirror the competition doc's permission fields into private/access, then
 // REMOVE the PII copies (adminEmails/userEmails/users) from the public doc
-// (Fas 3c). `admins` (uids) stays. Idempotent, admin-triggered on open.
+// (Fas 3c). `admins` (uids) stays. Admin-triggered on open.
+//
+// MUST be a no-op once the doc is migrated: it runs on every overview visit,
+// and the old version mirrored `c.userEmails || []` — after the first run the
+// doc fields are deleted, so every later visit overwrote the access doc with
+// EMPTY lists and silently wiped all invited admins and users (data loss).
 export async function migrateCompetitionAccess(cid) {
   const snap = await getDoc(doc(db, 'competitions', cid));
   if (!snap.exists()) return;
   const c = snap.data();
-  await mirrorAccess(cid, {
-    adminEmails: c.adminEmails || [], userEmails: c.userEmails || [],
-    admins: c.admins || [], users: c.users || []
-  });
+  // Nothing left to migrate → never touch the access doc.
+  if (!PII_ACCESS_FIELDS.some(k => c[k] !== undefined)) return;
+  // Mirror ONLY fields that actually exist on the doc — a missing field must
+  // never become an empty list that overwrites real data in the access doc.
+  const fields = {};
+  for (const k of ACCESS_FIELDS) if (c[k] !== undefined) fields[k] = c[k];
+  await mirrorAccess(cid, fields);
   const clear = {};
   for (const k of PII_ACCESS_FIELDS) if (c[k] !== undefined) clear[k] = deleteField();
   if (Object.keys(clear).length) await updateDoc(snap.ref, clear);

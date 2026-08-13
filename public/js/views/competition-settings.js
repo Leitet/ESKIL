@@ -9,7 +9,7 @@
 import { layout, setTopbarCompetition } from '../app.js';
 import {
   getCompetition, updateCompetition, deleteCompetition, copyCompetition,
-  setCompetitionUsers, setCompetitionEkonomi, listControls,
+  setCompetitionUsers, setCompetitionEkonomi, listControls, attachControlMeta,
   closeCompetition, reopenCompetition, isSlugTaken
 } from '../store.js';
 import {
@@ -1201,7 +1201,9 @@ function renderMembersTab(comp, cid, user, refresh) {
     const [legacyAdminEmails, legacyUserEmails, controls] = await Promise.all([
       lookupEmailsForUids(comp.admins || []),
       lookupEmailsForUids(legacyUserUids),
-      listControls(cid).catch(() => [])
+      // ansvariga live in each control's private/meta since Fas 3c — the raw
+      // docs no longer carry them, so merge the meta or the overview is empty.
+      listControls(cid).then(cs => attachControlMeta(cid, cs)).catch(() => [])
     ]);
 
     // Kontrollansvariga överblick: email -> { name, controls: [nr] }
