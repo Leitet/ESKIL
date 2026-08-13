@@ -5,6 +5,7 @@
 // jsPDF and qrcodejs are loaded lazily from CDN on first use.
 
 import { reportUrl, startUrl, allInstructionGroups, publicManagement } from './utils.js';
+import { legStub } from './course.js';
 
 let jsPDFReady = null;
 let qrReady = null;
@@ -35,12 +36,22 @@ async function qrDataUrl(text, size = 600) {
   document.body.appendChild(tmp);
   // eslint-disable-next-line no-undef
   new QRCode(tmp, { text, width: size, height: size, correctLevel: QRCode.CorrectLevel.M });
-  await new Promise(r => setTimeout(r, 50));
-  const img = tmp.querySelector('img');
-  const canvas = tmp.querySelector('canvas');
-  const url = img ? img.src : canvas?.toDataURL('image/png');
-  tmp.remove();
-  return url;
+  // qrcodejs draws its <canvas> synchronously but populates the <img> src
+  // asynchronously — reading img.src after a fixed 50 ms lost the race on
+  // slower devices and handed jsPDF an empty/corrupt PNG. Read the canvas
+  // first; poll briefly only as fallback.
+  try {
+    for (let i = 0; i < 40; i++) {
+      const canvas = tmp.querySelector('canvas');
+      if (canvas && canvas.width) return canvas.toDataURL('image/png');
+      const img = tmp.querySelector('img');
+      if (img && img.src && img.src.startsWith('data:image')) return img.src;
+      await new Promise(r => setTimeout(r, 25));
+    }
+    throw new Error('QR-koden kunde inte genereras.');
+  } finally {
+    tmp.remove();
+  }
 }
 
 // Lat/Lon -> tile coordinates (float) at zoom level
@@ -65,7 +76,7 @@ function loadImage(src, crossOrigin = 'anonymous') {
 // Build a static map PNG centered on (lat, lng) using OSM tiles.
 // Returns a dataURL or null on failure (e.g. offline, CORS).
 // `widthTiles` × `heightTiles` at 256px each = final image size.
-async function staticMapDataUrl(lat, lng, { zoom = 16, widthTiles = 3, heightTiles = 3 } = {}) {
+async function staticMapDataUrl(lat, lng, { zoom = 16, widthTiles = 3, heightTiles = 3, paths = [] } = {}) {
   const TILE = 256;
   const { x, y } = lonLatToTileFloat(lat, lng, zoom);
   const canvas = document.createElement('canvas');
@@ -111,6 +122,57 @@ async function staticMapDataUrl(lat, lng, { zoom = 16, widthTiles = 3, heightTil
   // land at canvas center. We just need to draw the marker at canvas center.
   const cx = canvas.width / 2;
   const cy = canvas.height / 2;
+
+  // Course stubs (way in / way out) — drawn under the marker. Each path is
+  // { points: [{lat,lng}], color, arrow?, label? } in course order.
+  const toPx = (p) => {
+    const t = lonLatToTileFloat(p.lat, p.lng, zoom);
+    return { px: cx + (t.x - x) * TILE, py: cy + (t.y - y) * TILE };
+  };
+  for (const path of paths) {
+    if (!path || !Array.isArray(path.points) || path.points.length < 2) continue;
+    ctx.beginPath();
+    ctx.setLineDash([12, 9]);
+    ctx.lineWidth = 6;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = path.color;
+    path.points.forEach((p, i) => {
+      const { px, py } = toPx(p);
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    const end = toPx(path.points[path.points.length - 1]);
+    if (path.arrow) {
+      const prev = toPx(path.points[path.points.length - 2] || path.points[0]);
+      const ang = Math.atan2(end.py - prev.py, end.px - prev.px);
+      ctx.save();
+      ctx.translate(end.px, end.py);
+      ctx.rotate(ang);
+      ctx.beginPath();
+      ctx.moveTo(-10, -9); ctx.lineTo(15, 0); ctx.lineTo(-10, 9);
+      ctx.closePath();
+      ctx.fillStyle = path.color;
+      ctx.fill();
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#ffffff';
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (path.label) {
+      ctx.font = '700 16px Helvetica, Arial, sans-serif';
+      ctx.textAlign = 'center';
+      const ly = end.py + (path.arrow ? 30 : -14);
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = 'rgba(255,255,255,.95)';
+      ctx.strokeText(path.label, end.px, ly);
+      ctx.fillStyle = path.color;
+      ctx.fillText(path.label, end.px, ly);
+      ctx.textAlign = 'start';
+    }
+  }
 
   // Marker (orange dot + blue ring)
   ctx.beginPath();
@@ -232,12 +294,23 @@ function drawBannerWithTitle(pdf, W, comp, control) {
   pdf.text(parts.join('   ·   ') || '—', textX, 60);
 }
 
-export async function generateControlPdf(comp, control) {
+export async function generateControlPdf(comp, control, { legIn = null, legOut = null } = {}) {
   await ensureLibs();
   const url = reportUrl(comp.id, control.id);
+  // Course stubs on the map: gray dashed = patrols arrive from there, orange
+  // dashed with arrow = send them onward that way.
+  const stubPaths = [];
+  if (legIn) {
+    const s = legStub(legIn, 'to', 160);
+    if (s) stubPaths.push({ points: s, color: '#8a8a8a', label: `från ${legIn.from.label}` });
+  }
+  if (legOut) {
+    const s = legStub(legOut, 'from', 160);
+    if (s) stubPaths.push({ points: s, color: '#E95F13', arrow: true, label: `till ${legOut.to.label}` });
+  }
   const [qr, mapImg] = await Promise.all([
     qrDataUrl(url, 700),
-    (control.lat && control.lng) ? staticMapDataUrl(control.lat, control.lng) : Promise.resolve(null)
+    (control.lat && control.lng) ? staticMapDataUrl(control.lat, control.lng, { paths: stubPaths }) : Promise.resolve(null)
   ]);
 
   // eslint-disable-next-line no-undef
@@ -344,6 +417,14 @@ export async function generateControlPdf(comp, control) {
   pdf.setTextColor('#282727');
   const qrLines = pdf.splitTextToSize('Skanna QR-koden för att rapportera poäng.', textW);
   pdf.text(qrLines, textX, qy);
+  qy += qrLines.length * 6 + 6;
+
+  // Secrecy warning — whoever holds the link can report scores.
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(11);
+  pdf.setTextColor('#DA005E');
+  const warnLines = pdf.splitTextToSize('Håll QR-koden och länken dold för scouterna! Länken är hemlig — alla som har den kan rapportera poäng.', textW);
+  pdf.text(warnLines, textX, qy);
 
   // Footer
   pdf.setTextColor('#a7bccf');
@@ -429,8 +510,8 @@ export async function generateControlPdf(comp, control) {
   return pdf;
 }
 
-export async function downloadControlPdf(comp, control) {
-  const pdf = await generateControlPdf(comp, control);
+export async function downloadControlPdf(comp, control, courseCtx = {}) {
+  const pdf = await generateControlPdf(comp, control, courseCtx);
   const safe = (control.name || 'kontroll').replace(/[^\w\-åäöÅÄÖ]+/g, '_');
   pdf.save(`kontroll-${control.nummer ?? ''}-${safe}.pdf`);
 }

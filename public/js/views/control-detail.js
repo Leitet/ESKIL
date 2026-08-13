@@ -1,8 +1,10 @@
 import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import {
   getCompetition, getControl, updateControl, attachControlMeta,
-  watchScoresForControl, listPatrols, deleteScore, adjustScore
+  watchScoresForControl, listPatrols, listControls, getTrack,
+  deleteScore, adjustScore
 } from '../store.js';
+import { courseLegs, legStub, legLatLngs } from '../course.js';
 import { escapeHtml, toast, copyToClipboard, reportUrl, confirmDialog, formatTime, allInstructionGroups, withBusy, wireOverlayClose, isCompAdminUser, canEditControl } from '../utils.js';
 import { icon } from '../icons.js';
 import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
@@ -20,10 +22,12 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
   wrap.innerHTML = `<div class="muted">Laddar…</div>`;
   layout(wrap);
 
-  const [comp, control, patrols] = await Promise.all([
+  const [comp, control, patrols, allControls, track] = await Promise.all([
     getCompetition(cid),
     getControl(cid, ctrlId),
-    listPatrols(cid).catch(() => [])
+    listPatrols(cid).catch(() => []),
+    listControls(cid).catch(() => []),
+    getTrack(cid).catch(() => null)
   ]);
   // The user may have navigated away while we were loading — don't render a
   // stale view over the new page or start subscriptions nothing will clean up.
@@ -135,6 +139,14 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
     .then(img => { qrHost.innerHTML = ''; qrHost.appendChild(img); })
     .catch(() => { qrHost.innerHTML = '<span class="muted t-sm">QR-koden kunde inte laddas — ladda om sidan.</span>'; });
 
+  // Course context for the placering map AND the PDF: the legs in/out of
+  // this control — the kontrollant must see where patrols arrive from and
+  // where to send them next.
+  const { nodes: courseNodes, legs: courseLegList } = courseLegs(comp, allControls, track);
+  const nodeIdx = courseNodes.findIndex(n => n.key === ctrlId);
+  const legIn  = nodeIdx > 0 ? courseLegList[nodeIdx - 1] : null;
+  const legOut = nodeIdx >= 0 && nodeIdx < courseLegList.length ? courseLegList[nodeIdx] : null;
+
   // Placering map — square, pinned on the control coordinates.
   const mapHost = wrap.querySelector('#placering-map');
   if (mapHost && control.lat && control.lng) {
@@ -147,6 +159,44 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19, attribution: '© OSM'
       }).addTo(map);
+
+      // Short dashed stubs of the course: gray = patrols arrive from there,
+      // orange with arrow = send them onward that way.
+      const drawStub = (leg, end, color, label, withArrow) => {
+        const stub = legStub(leg, end, 150);
+        if (!stub) return;
+        L.polyline(stub.map(p => [p.lat, p.lng]), {
+          color, weight: 4, opacity: 0.9, dashArray: '7 7', interactive: false
+        }).addTo(map);
+        const last = stub[stub.length - 1];
+        const prev = stub[stub.length - 2] || stub[0];
+        if (withArrow) {
+          const p1 = map.project([prev.lat, prev.lng], 16);
+          const p2 = map.project([last.lat, last.lng], 16);
+          const deg = Math.atan2(p2.y - p1.y, p2.x - p1.x) * 180 / Math.PI;
+          L.marker([last.lat, last.lng], {
+            interactive: false,
+            icon: L.divIcon({
+              className: '',
+              html: `<svg width="20" height="20" viewBox="-10 -10 20 20" style="transform:rotate(${deg}deg);display:block;"><path d="M-7 -6 L8 0 L-7 6 Z" fill="${color}" stroke="#ffffff" stroke-width="2"/></svg>`,
+              iconSize: [20, 20], iconAnchor: [10, 10]
+            })
+          }).addTo(map);
+        }
+        if (label) {
+          L.marker([last.lat, last.lng], {
+            interactive: false,
+            icon: L.divIcon({
+              className: '',
+              html: `<span style="display:inline-block;transform:translate(-50%,${withArrow ? '12px' : '-50%'});background:rgba(255,255,255,.92);border:1.5px solid ${color};color:${color};font:700 10px/1.4 Helvetica,Arial,sans-serif;padding:1px 6px;border-radius:9px;white-space:nowrap;">${escapeHtml(label)}</span>`,
+              iconSize: [0, 0]
+            })
+          }).addTo(map);
+        }
+      };
+      if (legIn)  drawStub(legIn,  'to',   '#8a8a8a', `från ${legIn.from.label}`, false);
+      if (legOut) drawStub(legOut, 'from', '#E95F13', `till ${legOut.to.label}`,  true);
+
       L.circleMarker([control.lat, control.lng], {
         radius: 12, color: '#ffffff', weight: 3,
         fillColor: '#E95F13', fillOpacity: 0.98
@@ -164,7 +214,7 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
   const pdfBtn = wrap.querySelector('#pdf');
   pdfBtn.addEventListener('click', () => withBusy(pdfBtn, 'Skapar PDF…', async () => {
     try {
-      await downloadControlPdf({ id: cid, ...comp }, { ...control, id: ctrlId });
+      await downloadControlPdf({ id: cid, ...comp }, { ...control, id: ctrlId }, { legIn, legOut });
     } catch (e) {
       console.error(e);
       toast('Kunde inte skapa PDF: ' + e.message, 'error');

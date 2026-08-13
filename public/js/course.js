@@ -50,6 +50,31 @@ export function courseLegs(comp, controls, track) {
 export const legPath = (leg) => [leg.from, ...leg.wps, leg.to];
 export const legLatLngs = (leg) => legPath(leg).map(p => [p.lat, p.lng]);
 
+// A short piece of a leg measured from one of its ends, following any drawn
+// waypoints. end: 'to' walks backwards from leg.to (the way IN to a control),
+// 'from' walks forwards from leg.from (the way OUT). The returned points
+// always START at the control end and extend outward along the course.
+export function legStub(leg, end, meters = 140) {
+  const path = legPath(leg).map(p => ({ lat: p.lat, lng: p.lng }));
+  const pts = end === 'to' ? [...path].reverse() : path;
+  const out = [pts[0]];
+  let acc = 0;
+  for (let i = 1; i < pts.length && acc < meters; i++) {
+    const d = haversine(pts[i - 1], pts[i]);
+    if (!d) continue;
+    if (acc + d <= meters) { out.push(pts[i]); acc += d; }
+    else {
+      const t = (meters - acc) / d;
+      out.push({
+        lat: pts[i - 1].lat + (pts[i].lat - pts[i - 1].lat) * t,
+        lng: pts[i - 1].lng + (pts[i].lng - pts[i - 1].lng) * t
+      });
+      acc = meters;
+    }
+  }
+  return out.length > 1 ? out : null;
+}
+
 export function legDistance(leg) {
   const p = legPath(leg);
   let d = 0;
