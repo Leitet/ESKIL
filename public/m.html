@@ -2,6 +2,7 @@
 <html lang="sv">
 <head>
 <meta charset="utf-8">
+<meta name="robots" content="noindex,nofollow">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Start/Mål — ESKIL</title>
 <meta name="theme-color" content="#003660">
@@ -27,11 +28,6 @@
 <div class="toast-wrap" id="toasts"></div>
 
 <script type="module" src="/js/station.js"></script>
-  <script>
-    // Offline-hårdning: service workern gör sidan öppningsbar helt utan nät.
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(() => {});
-    }
-  </script>
+  <script src="/js/sw-register.js"></script>
 </body>
 </html>

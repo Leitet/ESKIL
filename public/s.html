@@ -18,14 +18,7 @@
 <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js" crossorigin>
 <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js" crossorigin>
 
-<script>
-  (function() {
-    try {
-      const m = localStorage.getItem('eskil:mode');
-      if (m === 'night') document.documentElement.setAttribute('data-mode', 'night');
-    } catch {}
-  })();
-</script>
+<script src="/js/mode-boot.js"></script>
 </head>
 <body>
 
@@ -39,11 +32,6 @@
 </main>
 
 <script type="module" src="/js/start.js"></script>
-  <script>
-    // Offline-hårdning: service workern gör sidan öppningsbar helt utan nät.
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(() => {});
-    }
-  </script>
+  <script src="/js/sw-register.js"></script>
 </body>
 </html>

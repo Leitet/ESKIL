@@ -14,14 +14,15 @@
 //
 // Bump VERSION whenever cached-asset behavior must be reset.
 
-const VERSION = 'eskil-sw-v1';
+const VERSION = 'eskil-sw-v2';
 const RUNTIME = `${VERSION}-runtime`;
 
 const FIELD_SHELLS = { '/k/': '/k.html', '/s/': '/s.html', '/m/': '/m.html' };
 
 const PRECACHE_URLS = [
   '/k.html', '/s.html', '/m.html',
-  '/assets/tokens.css', '/assets/report.css', '/assets/station.css'
+  '/assets/tokens.css', '/assets/report.css', '/assets/station.css',
+  '/js/mode-boot.js', '/js/sw-register.js'
 ];
 
 const CDN_HOSTS = ['www.gstatic.com', 'cdn.jsdelivr.net', 'unpkg.com'];

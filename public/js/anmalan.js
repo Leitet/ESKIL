@@ -624,7 +624,7 @@ function renderDone() {
       <p class="muted">${escapeHtml(reg.kar)} — ${reg.patrols.length} patrull${reg.patrols.length === 1 ? '' : 'er'}, ${reg.patrols.reduce((s, p) => s + (p.antal || 0), 0)} scouter.</p>
       <p class="t-sm" style="margin-top:var(--sp-4);"><strong>Spara den här länken</strong> — med den kan ni se och ändra er anmälan:</p>
       <div class="anm-link-box">
-        <input readonly value="${escapeHtml(url)}" onclick="this.select()">
+        <input class="js-selectall" readonly value="${escapeHtml(url)}">
         <button type="button" class="btn btn-secondary btn-sm" id="copy-link">${icon('copy', { size: 14 })} Kopiera</button>
       </div>
       <p class="t-sm" style="color:var(--spaer-green);font-weight:600;">${icon('mail', { size: 14 })} Ett bekräftelsemail med länken skickas till ${escapeHtml(reg.contact.email)}.
@@ -637,6 +637,7 @@ function renderDone() {
 }
 
 function wireDone() {
+  document.querySelector('.js-selectall')?.addEventListener('click', (e) => e.target.select());
   document.getElementById('copy-link').addEventListener('click', () => {
     copyToClipboard(registrationUrl(cid, reg.id));
     toast('Länk kopierad', 'success');

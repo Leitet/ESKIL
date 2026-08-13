@@ -143,13 +143,14 @@ export async function renderLaget(app, user, cid) {
               <strong>Start/Mål-stationen</strong>
               <p class="muted t-sm" style="margin:4px 0 8px;">Ge länken (eller QR-koden) till funktionärerna vid start och mål — de checkar ut patruller vid start och in vid målgång. Länken är hemlig.</p>
               <div class="row wrap" style="gap:var(--sp-2);">
-                <input class="input mono t-sm" readonly value="${escapeHtml(url)}" style="max-width:340px;" onclick="this.select()">
+                <input class="input mono t-sm js-selectall" readonly value="${escapeHtml(url)}" style="max-width:340px;">
                 <button class="btn btn-secondary btn-sm" id="copy-station">${icon('copy', { size: 14 })} Kopiera</button>
                 <a class="btn btn-ghost btn-sm" href="${escapeHtml(url)}" target="_blank" rel="noopener">${icon('external', { size: 14 })} Öppna</a>
               </div>
             </div>
           </div>
         </div>`;
+      stationCard.querySelector('.js-selectall')?.addEventListener('click', (e) => e.target.select());
       stationCard.querySelector('#copy-station').addEventListener('click', () => {
         copyToClipboard(url);
         toast('Stationslänk kopierad', 'success');
