@@ -1,5 +1,5 @@
 import { layout, setTopbarCompetition } from '../app.js';
-import { getCompetition, listPatrols, listControls, listAllScores, updateControl, updateCompetition, getTrack, listRegistrations } from '../store.js';
+import { getCompetition, listPatrols, listControls, listAllScores, updateControl, updateCompetition, getTrack, listRegistrations, attachControlMeta } from '../store.js';
 import { downloadResultsPdf, downloadResultsCsv, attachTrackStats } from '../results-export.js';
 import { allowedAvdelningar, escapeHtml, rankPatrols, rankKarer, RANKING_RULES_TEXT, utslagRows, isNumSet, toast, withBusy, isCompAdminUser } from '../utils.js';
 import { icon } from '../icons.js';
@@ -62,6 +62,7 @@ export async function renderScoreboard(app, user, cid) {
     </details>
 
     <div id="content"></div>
+    <div id="missing-section"></div>
     <div id="utslag-section"></div>
     <div id="adjust-log"></div>
   `;
@@ -99,10 +100,12 @@ export async function renderScoreboard(app, user, cid) {
     try {
       [patrols, controls, scores] = await Promise.all([
         listPatrols(cid),
-        listControls(cid),
+        // Meta (telefon) för Saknade rapporter-panelens ring-länkar.
+        listControls(cid).then(cs => attachControlMeta(cid, cs).catch(() => cs)),
         listAllScores(cid)
       ]);
       render();
+      renderMissingSection();
       renderUtslagSection();
       renderAdjustLog();
       maybeAutoCloseReadyControls();
@@ -163,6 +166,51 @@ export async function renderScoreboard(app, user, cid) {
   });
   wrap.querySelector('#view').addEventListener('change', render);
   wrap.querySelector('#sort').addEventListener('change', render);
+
+  // Saknade rapporter — slutspurtens restlista: per kontroll, vilka patruller
+  // som saknar poäng, med ring-länk till kontrollen. Visas först när
+  // tävlingen är igång (minst en rapport finns) så panelen inte är brus på
+  // morgonen. Prisutdelningen kan inte hållas tryggt förrän listan är tom.
+  function renderMissingSection() {
+    const host = wrap.querySelector('#missing-section');
+    if (!patrols.length || !scores.length) { host.innerHTML = ''; return; }
+    const byCtrl = {};
+    for (const s of scores) (byCtrl[s.controlId] ||= new Set()).add(s.patrolId);
+    const missing = [...controls]
+      .sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0))
+      .map(c => ({
+        control: c,
+        patrols: patrols.filter(p => !(byCtrl[c.id]?.has(p.id)))
+      }))
+      .filter(m => m.patrols.length > 0);
+    if (!missing.length) {
+      host.innerHTML = `
+        <div class="card mt-6" style="border-left:3px solid var(--spaer-green, #41A62A);">
+          <strong style="color:#2d7a1c;">Alla rapporter är inne</strong>
+          <p class="muted t-sm" style="margin:4px 0 0;">Varje patrull har poäng på varje kontroll — tabellen är komplett och prisutdelningen kan köras tryggt.</p>
+        </div>`;
+      return;
+    }
+    const totalMissing = missing.reduce((s, m) => s + m.patrols.length, 0);
+    host.innerHTML = `
+      <div class="card mt-6" style="border-left:3px solid var(--avent-orange);">
+        <div class="t-over" style="color:var(--avent-orange);">Saknade rapporter — ${totalMissing} kvar</div>
+        <p class="muted t-sm" style="margin:6px 0 var(--sp-3);">Poängtabellen är inte komplett förrän listan är tom. Ring kontrollen om patrullen borde ha passerat.</p>
+        <div class="table-wrap"><table class="t">
+          <thead><tr><th class="num">Nr</th><th>Kontroll</th><th>Telefon</th><th class="num">Saknas</th><th>Patruller utan poäng</th></tr></thead>
+          <tbody>
+            ${missing.map(m => `
+              <tr>
+                <td class="num">${m.control.nummer ?? ''}</td>
+                <td><a class="row-link" href="/app/c/${cid}/controls/${m.control.id}" data-link>${escapeHtml(m.control.name || '—')}</a></td>
+                <td>${m.control.telefon ? `<a class="mono t-sm" href="tel:${escapeHtml(m.control.telefon)}" style="color:var(--scout-blue);text-decoration:none;white-space:nowrap;">${escapeHtml(m.control.telefon)}</a>` : '<span class="muted">—</span>'}</td>
+                <td class="num" style="font-weight:700;color:var(--avent-orange);">${m.patrols.length}</td>
+                <td class="t-sm">${m.patrols.map(p => `#${p.number ?? '?'} ${escapeHtml(p.name || '')}`).join(', ')}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table></div>
+      </div>`;
+  }
 
   // Tiebreaker panel: facit + every guess per utslagskontroll, closest first.
   // Shown to admins even before the facit is set (with a reminder) — the

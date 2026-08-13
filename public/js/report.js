@@ -393,7 +393,20 @@ async function main() {
     const totalRemaining = patrols.filter(p => !reported.has(p.id)).length;
     const totalDone = patrols.length - totalRemaining;
     const present = AVDELNINGAR.filter(a => counts[a.key]);
+    // Klart-läge: sista patrullen rapporterad — svara på dagens sista fråga
+    // ("kan vi gå hem?") och varna om osynkade rapporter innan mobilen åker
+    // ner i fickan utan täckning.
+    const pendingCount = listQueue(cid, ctrlId).length;
+    const allDone = patrols.length > 0 && totalRemaining === 0;
     avd.innerHTML = `
+      ${allDone ? `
+        <div class="r-done-banner${pendingCount ? ' has-pending' : ''}">
+          <strong>${pendingCount ? 'Nästan klart!' : 'Ni är klara — tack för i dag! 🎉'}</strong>
+          ${pendingCount
+            ? `<span>${pendingCount} rapport${pendingCount === 1 ? '' : 'er'} är INTE synkad${pendingCount === 1 ? '' : 'e'} ännu — håll sidan öppen där det finns täckning tills allt skickats.</span>`
+            : '<span>Alla patruller har fått poäng och allt är synkat. Stäng kontrollen med sekretariatet innan ni packar ihop.</span>'}
+        </div>
+      ` : ''}
       <div class="r-label" style="display:flex;justify-content:space-between;align-items:center;">
         <span>Avdelning</span>
         <span style="color:var(--r-fg);letter-spacing:normal;text-transform:none;font-weight:600;">${totalDone} av ${patrols.length} klara</span>

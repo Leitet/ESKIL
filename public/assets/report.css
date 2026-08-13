@@ -685,6 +685,26 @@ html[data-mode="night"] .patrol-btn .p-pending { background: #3a1010; color: #ff
 }
 html[data-mode="night"] .patrol-btn .p-missing-guess { background: #4a0a20; color: #ff7ab0; }
 
+/* Klart-läge — alla patruller rapporterade. */
+.r-done-banner {
+  background: #e3f4dd;
+  border: 1.5px solid #6cbf57;
+  color: #1e5c12;
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  font-size: 15px;
+  line-height: 1.45;
+}
+.r-done-banner strong { display: block; font-size: 17px; margin-bottom: 2px; }
+.r-done-banner.has-pending {
+  background: #fad4e2;
+  border-color: #DA005E;
+  color: #7c0a3c;
+}
+html[data-mode="night"] .r-done-banner { background: #10240c; border-color: #2d7a1c; color: #8cc97d; }
+html[data-mode="night"] .r-done-banner.has-pending { background: #4a0a20; border-color: #c8102e; color: #ff7ab0; }
+
 /* Info card (about control) */
 .info-card {
   background: var(--r-card);

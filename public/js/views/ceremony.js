@@ -100,6 +100,13 @@ export async function renderCeremony(app, user, cid) {
             `).join('')}
           </div>
           ${categories.length === 0 ? '<p class="cer-sub">Inga poäng rapporterade ännu.</p>' : ''}
+          ${(() => {
+            // Slutspurtsvarning: pallen kan ändras så länge rapporter saknas.
+            const byCtrl = {};
+            for (const s of scores) (byCtrl[s.controlId] ||= new Set()).add(s.patrolId);
+            const missing = controls.reduce((sum, c) => sum + patrols.filter(p => !(byCtrl[c.id]?.has(p.id))).length, 0);
+            return missing > 0 ? `<p class="cer-warn">OBS: ${missing} rapport${missing === 1 ? '' : 'er'} saknas ännu — pallen kan ändras. Se "Saknade rapporter" i poängtabellen.</p>` : '';
+          })()}
           <p class="cer-hint">Mellanslag/klick = nästa · Esc = tillbaka hit · ✕ = till poängtabellen</p>
         </div>
       `;
