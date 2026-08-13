@@ -62,6 +62,13 @@
 }
 .st-pending { color: var(--avent-orange); font-weight: 700; font-size: 12px; }
 
+/* Sökfältet över patrullknapparna */
+.st-search {
+  width: 100%;
+  margin-bottom: 12px;
+  font-size: 16px; /* iOS zoomar in på mindre — undvik */
+}
+
 /* Utgått (DNF) — kommer inte, ska inte larma eller räknas in. */
 .patrol-btn.st-utgatt { opacity: .55; }
 .st-utgatt-note { color: var(--fg3); font-weight: 700; }

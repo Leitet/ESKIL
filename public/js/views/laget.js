@@ -283,6 +283,10 @@ export async function renderLaget(app, user, cid) {
                 <button class="btn btn-secondary btn-sm" id="copy-station">${icon('copy', { size: 14 })} Kopiera</button>
                 <a class="btn btn-ghost btn-sm" href="${escapeHtml(url)}" target="_blank" rel="noopener">${icon('external', { size: 14 })} Öppna</a>
               </div>
+              <div class="row wrap mt-2" style="gap:var(--sp-2);">
+                <button class="btn btn-ghost btn-sm" id="copy-station-start" title="Länk som öppnar direkt på startfliken — till startfunktionären">${icon('copy', { size: 14 })} Startfliken</button>
+                <button class="btn btn-ghost btn-sm" id="copy-station-mal" title="Länk som öppnar direkt på målfliken — till målfunktionären">${icon('copy', { size: 14 })} Målfliken</button>
+              </div>
             </div>
           </div>
         </div>`;
@@ -290,6 +294,14 @@ export async function renderLaget(app, user, cid) {
       stationCard.querySelector('#copy-station').addEventListener('click', () => {
         copyToClipboard(url);
         toast('Stationslänk kopierad', 'success');
+      });
+      stationCard.querySelector('#copy-station-start')?.addEventListener('click', () => {
+        copyToClipboard(`${url}?flik=start`);
+        toast('Länk till startfliken kopierad', 'success');
+      });
+      stationCard.querySelector('#copy-station-mal')?.addEventListener('click', () => {
+        copyToClipboard(`${url}?flik=mal`);
+        toast('Länk till målfliken kopierad', 'success');
       });
       const qrHost = stationCard.querySelector('#station-qr');
       renderQrToImg(url, 96).then(img => { qrHost.innerHTML = ''; qrHost.appendChild(img); }).catch(() => {});

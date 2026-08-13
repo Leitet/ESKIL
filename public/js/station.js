@@ -26,6 +26,22 @@ let passages = {};      // patrolId -> passage doc
 let mode = 'start';     // 'start' | 'mal'
 let cid = null, stationId = null;
 let finishMin = null;   // hela banans ETA i minuter (gångtid + stationstid)
+let searchText = '';    // fritextfilter över patrullknapparna
+
+// Flik via URL (?flik=mal — målfunktionärens direktlänk) eller senaste valet
+// på den här enheten (sessionStorage), annars start.
+function initialMode() {
+  const q = new URLSearchParams(location.search).get('flik');
+  if (q === 'mal' || q === 'start') return q;
+  try {
+    const saved = sessionStorage.getItem(`eskil.station.flik.${stationId}`);
+    if (saved === 'mal' || saved === 'start') return saved;
+  } catch { /* privat läge */ }
+  return 'start';
+}
+function rememberMode() {
+  try { sessionStorage.setItem(`eskil.station.flik.${stationId}`, mode); } catch { /* privat läge */ }
+}
 
 function fmtClock(ts) {
   if (!ts) return '';
@@ -53,6 +69,7 @@ async function main() {
   const parsed = parsePath();
   if (!parsed) return renderError('Ogiltig länk.');
   ({ cid, stationId } = parsed);
+  mode = initialMode();
 
   let station;
   try {
@@ -177,9 +194,13 @@ function render() {
       <button type="button" data-mode="mal" class="${mode === 'mal' ? 'active' : ''}">Mål</button>
     </div>
 
+    <input class="input st-search" id="st-search" type="search" placeholder="Sök patrull (namn, nummer, kår)…"
+      value="${escapeHtml(searchText)}" autocomplete="off">
+
     <div class="patrol-grid">
-      ${display.map(p => patrolBtn(p)).join('')}
+      ${display.filter(matchesSearch).map(p => patrolBtn(p)).join('')}
     </div>
+    ${searchText && !display.some(matchesSearch) ? `<div class="r-empty">Ingen patrull matchar "${escapeHtml(searchText)}".</div>` : ''}
 
     <p class="r-sub" style="text-align:center;opacity:.55;margin-top:32px;font-size:13px;">
       ESKIL · tryck på en patrull för att ${mode === 'start' ? 'checka ut den' : 'checka in den'} — tryck igen för att ångra<br>
@@ -188,11 +209,30 @@ function render() {
   `;
 
   root.querySelectorAll('[data-mode]').forEach(b => {
-    b.addEventListener('click', () => { mode = b.dataset.mode; render(); });
+    b.addEventListener('click', () => { mode = b.dataset.mode; rememberMode(); render(); });
   });
   root.querySelectorAll('[data-patrol]').forEach(btn => {
     bindTap(btn, () => onTap(btn.dataset.patrol));
   });
+
+  // Sökfältet filtrerar knapparna live utan att tappa fokus/markör.
+  const search = root.querySelector('#st-search');
+  search.addEventListener('input', () => {
+    const pos = search.selectionStart;
+    searchText = search.value;
+    render();
+    const again = root.querySelector('#st-search');
+    again.focus();
+    try { again.setSelectionRange(pos, pos); } catch { /* type=search i vissa lägen */ }
+  });
+}
+
+// Fritextmatch mot namn, nummer och kår (gemener, delsträng räcker).
+function matchesSearch(p) {
+  const q = searchText.trim().toLowerCase();
+  if (!q) return true;
+  return [p.name, p.kar, '#' + (p.number ?? ''), String(p.number ?? '')]
+    .some(v => String(v || '').toLowerCase().includes(q));
 }
 
 function patrolBtn(p) {
