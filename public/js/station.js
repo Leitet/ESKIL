@@ -7,7 +7,7 @@
 
 import { db, doc, onSnapshot } from './firebase.js';
 import { getCompetition, getStation, listPatrols, watchPassages, setPassage } from './store.js';
-import { escapeHtml, toast, confirmDialog, patrolStartTime, avdShort } from './utils.js';
+import { escapeHtml, toast, confirmDialog, patrolStartTime, patrolStartDateTime, avdShort } from './utils.js';
 import { bindTap } from './haptic.js';
 import { updateBroadcast } from './broadcast.js';
 
@@ -83,6 +83,8 @@ async function main() {
   });
 
   render();
+  // "Sen till start" är tidsbaserat — uppdatera markeringarna var 30:e sekund.
+  setInterval(render, 30000);
 }
 
 function statusOf(p) {
@@ -92,10 +94,21 @@ function statusOf(p) {
   return 'waiting';
 }
 
+// Sen till start: planerad tid passerad ≥3 min utan utcheckning.
+function lateToStartMin(p) {
+  const pass = passages[p.id] || {};
+  if (pass.startAt) return 0;
+  const plannedAt = patrolStartDateTime(comp, p, virtualNow(), patrols.length);
+  if (!plannedAt) return 0;
+  const min = Math.floor((virtualNow() - plannedAt) / 60000);
+  return min >= 3 ? min : 0;
+}
+
 function render() {
   const sorted = [...patrols].sort((a, b) => (a.startOrder ?? a.number ?? 0) - (b.startOrder ?? b.number ?? 0));
   const counts = { waiting: 0, out: 0, finished: 0 };
   sorted.forEach(p => { counts[statusOf(p)]++; });
+  const lateCount = sorted.filter(p => lateToStartMin(p) > 0).length;
 
   root.innerHTML = `
     <div class="st-head">
@@ -107,6 +120,7 @@ function render() {
 
     <div class="st-kpis">
       <div class="st-kpi"><div class="v">${counts.waiting}</div><div class="l">Ej startade</div></div>
+      <div class="st-kpi ${lateCount ? 'late' : ''}"><div class="v">${lateCount}</div><div class="l">Sena till start</div></div>
       <div class="st-kpi ${counts.out ? 'warn' : ''}"><div class="v">${counts.out}</div><div class="l">Ute i skogen</div></div>
       <div class="st-kpi"><div class="v">${counts.finished}</div><div class="l">I mål</div></div>
     </div>
@@ -139,13 +153,16 @@ function patrolBtn(p) {
   const field = mode === 'start' ? 'startAt' : 'finishAt';
   const checked = !!pass[field];
   const planned = mode === 'start' ? patrolStartTime(comp, p, patrols.length, virtualNow()) : null;
+  const lateMin = mode === 'start' ? lateToStartMin(p) : 0;
   const sub = checked
     ? `<span class="st-checked-at">${mode === 'start' ? 'Startade' : 'I mål'} ${fmtClock(pass[field])}</span>`
     : (mode === 'start'
-        ? (planned ? `<span class="st-patrol-time">start ${escapeHtml(planned)}</span>` : 'Ej startad')
+        ? (lateMin > 0
+            ? `<span class="st-late-note">skulle startat ${escapeHtml(planned || '')} · ${lateMin} min sen</span>`
+            : (planned ? `<span class="st-patrol-time">start ${escapeHtml(planned)}</span>` : 'Ej startad'))
         : (pass.startAt ? `Ute · startade ${fmtClock(pass.startAt)}` : 'Har inte startat'));
   return `
-    <button type="button" class="patrol-btn ${checked ? 'reported' : ''}" data-patrol="${escapeHtml(p.id)}">
+    <button type="button" class="patrol-btn ${checked ? 'reported' : ''} ${lateMin > 0 ? 'st-late' : ''}" data-patrol="${escapeHtml(p.id)}">
       <span style="font-size:12px;color:var(--r-fg-muted);">#${p.number ?? '—'} · <span class="dot ${avdShort(p.avdelning)}"></span>${escapeHtml(p.avdelning || '')}</span>
       <strong style="display:block;">${escapeHtml(p.name || '')}</strong>
       <span style="font-size:13px;">${sub}</span>

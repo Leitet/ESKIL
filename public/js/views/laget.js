@@ -17,7 +17,7 @@ import {
 import { deleteField } from '../firebase.js';
 import { courseLegs, drawCourseOnMap } from '../course.js';
 import {
-  escapeHtml, toast, copyToClipboard, formatTime, patrolStartTime, avdShort,
+  escapeHtml, toast, copyToClipboard, formatTime, patrolStartTime, patrolStartDateTime, avdShort,
   isCompAdminUser, withBusy
 } from '../utils.js';
 import { ensureLeaflet } from '../leaflet.js';
@@ -376,10 +376,14 @@ export async function renderLaget(app, user, cid) {
       const started = !!startAt || reports.length > 0;
       const active = started && !finishAt;
       const silentMin = active ? minSince(lastSeen, now) : null;
+      // Sen till start: planerad tid passerad (3 min marginal) utan livstecken.
+      const plannedAt = !started ? patrolStartDateTime(comp, p, now, patrols.length) : null;
+      const lateStartMin = plannedAt ? Math.floor((now - plannedAt) / 60000) : 0;
+      const lateStart = !started && lateStartMin >= 3;
       return {
         patrol: p, startAt, finishAt, reports, position, lastReport, lastSeen,
-        started, active, silentMin,
-        warn: active && silentMin != null && silentMin >= WARN_SILENT_MIN
+        started, active, silentMin, lateStart, lateStartMin,
+        warn: (active && silentMin != null && silentMin >= WARN_SILENT_MIN) || (!started && lateStartMin >= 3)
       };
     });
 
@@ -498,6 +502,7 @@ export async function renderLaget(app, user, cid) {
             const p = pp.patrol;
             const planned = patrolStartTime(comp, p, patrols.length, now);
             const status = pp.finishAt ? `<span class="badge badge-green">I mål ${formatTime(pp.finishAt)}</span>`
+              : pp.lateStart ? `<span class="badge badge-orange">Sen till start · ${pp.lateStartMin} min</span>`
               : pp.warn ? `<span class="badge badge-pink">Tyst i ${pp.silentMin} min</span>`
               : pp.active ? '<span class="badge badge-blue">Ute</span>'
               : '<span class="badge badge-gray">Ej startad</span>';
