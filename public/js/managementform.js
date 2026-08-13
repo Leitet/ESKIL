@@ -20,17 +20,10 @@ export function createManagementForm(comp, { seedDefaults = false } = {}) {
 
   const roleCard = (r, idx) => `
     <div class="card mgmt-card" data-idx="${idx}" style="padding:var(--sp-4);margin-bottom:var(--sp-3);background:var(--bg-muted);box-shadow:none;">
-      <div class="grid" style="grid-template-columns: 1fr 200px auto;gap:var(--sp-3);align-items:end;">
+      <div class="grid" style="grid-template-columns: 1fr auto;gap:var(--sp-3);align-items:end;">
         <div>
           <label class="field">Rollnamn</label>
           <input class="input" data-field="${idx}:label" value="${escapeHtml(r.label || '')}" placeholder="Ex. Tävlingsledare, Banläggare…" required>
-        </div>
-        <div>
-          <label class="field">Visas</label>
-          <select class="select" data-field="${idx}:visibility">
-            <option value="public"   ${r.visibility === 'public'   ? 'selected' : ''}>Publikt (startkort + offentlig sida)</option>
-            <option value="internal" ${r.visibility === 'internal' ? 'selected' : ''}>Internt (bara på kontrollkort)</option>
-          </select>
         </div>
         <div>
           <button type="button" class="btn btn-ghost btn-sm" data-remove="${idx}" style="color:var(--utm-pink);" aria-label="Ta bort roll">
@@ -38,6 +31,12 @@ export function createManagementForm(comp, { seedDefaults = false } = {}) {
           </button>
         </div>
       </div>
+      <label class="mt-3" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;">
+        <input type="checkbox" data-pub="${idx}" ${r.visibility !== 'internal' ? 'checked' : ''} style="margin:0;">
+        <span><strong>Publik</strong> — visas på offentliga sidan och startkorten.
+          <span class="muted" style="font-weight:400;">Avmarkerad: bara på kontrollkorten (för funktionärer).</span>
+        </span>
+      </label>
 
       <div class="grid grid-2 mt-3">
         <div>
@@ -104,6 +103,13 @@ export function createManagementForm(comp, { seedDefaults = false } = {}) {
           const cb = host.querySelector(`[data-invite="${idx}"]`);
           if (cb) cb.disabled = !normEmail(inp.value);
         }
+      });
+    });
+
+    host.querySelectorAll('[data-pub]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const idx = Number(cb.dataset.pub);
+        if (items[idx]) items[idx].visibility = cb.checked ? 'public' : 'internal';
       });
     });
 
