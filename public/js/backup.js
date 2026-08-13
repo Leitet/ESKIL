@@ -142,7 +142,9 @@ export async function importCompetitionBackup(rawDump, user) {
     if (Object.keys(meta).length) metaWrites.push(['patrol', id, meta]);
   }
   for (const c of dump.controls || []) {
-    const { id, scores, _private, telefon, notering, ...data } = c;
+    // Strip member-only fields (v2 `_private`, plus any legacy telefon/notering/
+    // ansvariga older dumps kept on the doc) — they belong in the meta subdoc.
+    const { id, scores, _private, telefon, notering, ansvariga, ansvarigaEmails, ...data } = c;
     writes.push([doc(db, 'competitions', newCid, 'controls', id), { ...data, imported: true }]);
     for (const s of scores || []) {
       const { id: sid, ...sdata } = s;
@@ -151,6 +153,8 @@ export async function importCompetitionBackup(rawDump, user) {
     const meta = { ...(_private || {}) };
     if (telefon !== undefined && meta.telefon === undefined) meta.telefon = telefon;
     if (notering !== undefined && meta.notering === undefined) meta.notering = notering;
+    if (ansvariga !== undefined && meta.ansvariga === undefined) meta.ansvariga = ansvariga;
+    if (ansvarigaEmails !== undefined && meta.ansvarigaEmails === undefined) meta.ansvarigaEmails = ansvarigaEmails;
     if (Object.keys(meta).length) metaWrites.push(['control', id, meta]);
   }
   for (const r of dump.registrations || []) {

@@ -212,8 +212,15 @@ service cloud.firestore {
         // admins OR the kontrollansvarig (so they can set their own phone).
         match /private/{doc} {
           allow read: if isCompMember(cid) || isCtrlAnsvarig(cid, ctrlId);
-          allow write: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid))
-            || (!compIsDemo(cid) && !compClosed(cid) && isCtrlAnsvarig(cid, ctrlId));
+          // Admins write anything. A kontrollansvarig may edit telefon/notering
+          // but NOT the ansvariga lists or the `welcomed` marker — that would be
+          // self-escalation (the old control-update rule forbade it too).
+          allow create: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid))
+            || (!compIsDemo(cid) && !compClosed(cid) && isCtrlAnsvarig(cid, ctrlId)
+                && !request.resource.data.keys().hasAny(['ansvariga', 'ansvarigaEmails', 'welcomed']));
+          allow update: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid))
+            || (!compIsDemo(cid) && !compClosed(cid) && isCtrlAnsvarig(cid, ctrlId)
+                && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['ansvariga', 'ansvarigaEmails', 'welcomed']));
         }
       }
 

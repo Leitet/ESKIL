@@ -1,6 +1,7 @@
 // Firestore data access layer. Keeps queries in one place.
 
 import {
+  auth,
   db, doc, getDoc, setDoc, updateDoc, deleteDoc,
   collection, addDoc, getDocs, onSnapshot, query, where, orderBy,
   serverTimestamp, deleteField, writeBatch
@@ -57,25 +58,49 @@ export async function listAllCompetitions() {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
+// PII permission fields moved off the world-readable competition doc into the
+// member-only private/access subdoc (Fas 3). `admins` (opaque uids) stays on
+// the competition doc — it isn't PII and the rules read it there.
+const PII_ACCESS_FIELDS = ['adminEmails', 'userEmails', 'users'];
+
+async function readAccess(cid) {
+  try {
+    const snap = await getDoc(doc(db, 'competitions', cid, 'private', 'access'));
+    return snap.exists() ? snap.data() : null;
+  } catch { return null; } // not a member — denied read is expected
+}
+
 export async function listCompetitionsForUser(user) {
   const snap = await getDocs(collection(db, 'competitions'));
   const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   if (user.role === 'super-admin') return all;
   const email = String(user.email || '').trim().toLowerCase();
-  // Everyone can see demo competitions; otherwise only ones they belong to —
-  // as legacy uid-admin, email-invited admin, or email-invited user
-  // (kontrollansvariga are mirrored into userEmails when assigned).
-  return all.filter(c =>
-    c.demo === true ||
-    (c.admins || []).includes(user.uid) ||
-    (c.adminEmails || []).includes(email) ||
-    (c.userEmails || []).includes(email)
-  );
+  // adminEmails/userEmails now live in the member-only access subdoc; read it
+  // per competition (denied for ones we don't belong to → filtered out).
+  // Union with the competition doc so un-migrated competitions still resolve.
+  const accesses = await Promise.all(all.map(c => c.demo ? Promise.resolve(null) : readAccess(c.id)));
+  return all.filter((c, i) => {
+    if (c.demo === true) return true;
+    const a = accesses[i] || {};
+    return (c.admins || []).includes(user.uid)
+      || (a.adminEmails || c.adminEmails || []).includes(email)
+      || (a.userEmails || c.userEmails || []).includes(email);
+  });
 }
 
 export async function getCompetition(cid) {
   const snap = await getDoc(doc(db, 'competitions', cid));
-  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+  if (!snap.exists()) return null;
+  const comp = { id: snap.id, ...snap.data() };
+  // Merge the member-only permission mirror so isCompAdminUser/isCompMemberUser
+  // keep working after the PII fields leave the public doc. Only attempted when
+  // signed in — anonymous pages (which can't read it and don't need it) skip
+  // the extra request entirely.
+  if (auth.currentUser) {
+    const a = await readAccess(cid);
+    if (a) for (const k of PII_ACCESS_FIELDS) if (a[k] !== undefined) comp[k] = a[k];
+  }
+  return comp;
 }
 
 // Permission/PII fields that are being moved off the world-readable
@@ -95,10 +120,12 @@ async function mirrorAccess(cid, data) {
 }
 
 export async function createCompetition(data, user) {
+  // Keep PII permission fields off the public doc — they go to private/access.
+  const docData = { ...data };
+  for (const k of PII_ACCESS_FIELDS) delete docData[k];
   const ref = await addDoc(collection(db, 'competitions'), {
-    ...data,
+    ...docData,
     admins: [user.uid],
-    users: [],
     createdBy: user.uid,
     createdAt: serverTimestamp()
   });
@@ -110,13 +137,19 @@ export async function createCompetition(data, user) {
 }
 
 export async function updateCompetition(cid, data) {
-  await updateDoc(doc(db, 'competitions', cid), data);
+  // PII permission fields go ONLY to the member-only access subdoc; clear them
+  // from the public competition doc (Fas 3c). `admins` (uids) stays.
+  const docData = {};
+  for (const [k, v] of Object.entries(data)) {
+    docData[k] = PII_ACCESS_FIELDS.includes(k) ? deleteField() : v;
+  }
+  await updateDoc(doc(db, 'competitions', cid), docData);
   await mirrorAccess(cid, data);
 }
 
-// Copy the competition doc's permission fields into the member-only
-// private/access subdoc. Fas 3a: copy only (leave the doc intact). Runs
-// admin-triggered when the competition is opened.
+// Mirror the competition doc's permission fields into private/access, then
+// REMOVE the PII copies (adminEmails/userEmails/users) from the public doc
+// (Fas 3c). `admins` (uids) stays. Idempotent, admin-triggered on open.
 export async function migrateCompetitionAccess(cid) {
   const snap = await getDoc(doc(db, 'competitions', cid));
   if (!snap.exists()) return;
@@ -125,6 +158,9 @@ export async function migrateCompetitionAccess(cid) {
     adminEmails: c.adminEmails || [], userEmails: c.userEmails || [],
     admins: c.admins || [], users: c.users || []
   });
+  const clear = {};
+  for (const k of PII_ACCESS_FIELDS) if (c[k] !== undefined) clear[k] = deleteField();
+  if (Object.keys(clear).length) await updateDoc(snap.ref, clear);
 }
 
 // Copy a competition to a new year: controls (instructions, positions,
@@ -226,9 +262,11 @@ export async function setCompetitionUsers(cid, entries) {
   const clean = entries
     .map(e => ({ email: String(e.email || '').trim().toLowerCase(), name: (e.name || '').trim() }))
     .filter(e => e.email);
+  // Fas 3c: users/userEmails live only in the member-only access subdoc —
+  // clear any legacy copies from the public doc.
   await updateDoc(doc(db, 'competitions', cid), {
-    users: clean,
-    userEmails: clean.map(e => e.email)
+    users: deleteField(),
+    userEmails: deleteField()
   });
   await mirrorAccess(cid, { users: clean, userEmails: clean.map(e => e.email) });
 }
@@ -244,10 +282,11 @@ export async function closeCompetition(cid) {
     const batch = writeBatch(db);
     controls.slice(i, i + 400).forEach(c => {
       batch.update(doc(db, 'competitions', cid, 'controls', c.id), {
-        open: false, ansvariga: [], ansvarigaEmails: []
+        open: false, ansvariga: deleteField(), ansvarigaEmails: deleteField()
       });
-      // telefon now lives in the private meta subdoc — wipe it there.
-      batch.set(doc(db, 'competitions', cid, 'controls', c.id, 'private', 'meta'), { telefon: '' }, { merge: true });
+      // telefon/ansvariga now live in the private meta subdoc — wipe them there.
+      batch.set(doc(db, 'competitions', cid, 'controls', c.id, 'private', 'meta'),
+        { telefon: '', ansvariga: [], ansvarigaEmails: [] }, { merge: true });
     });
     await batch.commit();
   }
@@ -278,9 +317,10 @@ export async function closeCompetition(cid) {
     : undefined;
 
   await updateDoc(doc(db, 'competitions', cid), {
-    closed: true, users: [], userEmails: [],
+    closed: true, users: deleteField(), userEmails: deleteField(),
     ...(strippedManagement ? { management: strippedManagement } : {})
   });
+  await mirrorAccess(cid, { users: [], userEmails: [] });
 }
 
 export async function reopenCompetition(cid) {
@@ -392,35 +432,38 @@ export async function getControl(cid, ctrlId) {
 }
 
 export async function createControl(cid, data) {
-  // telefon/notering are personal/internal — they live in a member-only
-  // private subdoc, not on the world-readable control doc.
-  const { telefon, notering, ...rest } = data;
+  // telefon/notering AND ansvariga/ansvarigaEmails are personal/internal —
+  // they live in a member-only private subdoc, not the world-readable doc.
+  const { telefon, notering, ansvariga, ansvarigaEmails, ...rest } = data;
   const ref = await addDoc(collection(db, 'competitions', cid, 'controls'), {
     ...rest,
     open: rest.open ?? false,
     createdAt: serverTimestamp()
   });
-  await writeControlMeta(cid, ref.id, { telefon, notering }, rest);
+  await writeControlMeta(cid, ref.id, { telefon, notering, ansvariga, ansvarigaEmails });
   return ref.id;
 }
 
 export async function updateControl(cid, ctrlId, data) {
-  const { telefon, notering, ...rest } = data;
-  if (Object.keys(rest).length) {
-    await updateDoc(doc(db, 'competitions', cid, 'controls', ctrlId), rest);
+  const { telefon, notering, ansvariga, ansvarigaEmails, ...rest } = data;
+  const docWrite = { ...rest };
+  // Clear ansvariga from the public doc if this write touched them (Fas 3c —
+  // they live in the meta subdoc now).
+  if (ansvariga !== undefined) docWrite.ansvariga = deleteField();
+  if (ansvarigaEmails !== undefined) docWrite.ansvarigaEmails = deleteField();
+  if (Object.keys(docWrite).length) {
+    await updateDoc(doc(db, 'competitions', cid, 'controls', ctrlId), docWrite);
   }
-  await writeControlMeta(cid, ctrlId, { telefon, notering }, rest);
+  await writeControlMeta(cid, ctrlId, { telefon, notering, ansvariga, ansvarigaEmails });
 }
 
-// Route the member-only control fields into the private/meta subdoc: telefon
-// and notering fully (not on the doc), plus ansvariga/ansvarigaEmails which
-// are DUAL-written (kept on the doc too during Fas 3a; removed in Fas 3c).
-async function writeControlMeta(cid, ctrlId, { telefon, notering }, rest) {
+// Route the member-only control fields into the private/meta subdoc.
+async function writeControlMeta(cid, ctrlId, { telefon, notering, ansvariga, ansvarigaEmails }) {
   const meta = {};
   if (telefon !== undefined) meta.telefon = telefon;
   if (notering !== undefined) meta.notering = notering;
-  if (rest.ansvariga !== undefined) meta.ansvariga = rest.ansvariga;
-  if (rest.ansvarigaEmails !== undefined) meta.ansvarigaEmails = rest.ansvarigaEmails;
+  if (ansvariga !== undefined) meta.ansvariga = ansvariga;
+  if (ansvarigaEmails !== undefined) meta.ansvarigaEmails = ansvarigaEmails;
   if (Object.keys(meta).length) await setControlMeta(cid, ctrlId, meta);
 }
 
@@ -445,7 +488,15 @@ export async function getControlMeta(cid, ctrlId) {
 // anonymous pages, which can't read the private docs and don't need them).
 export async function attachControlMeta(cid, controls) {
   const metas = await Promise.all(controls.map(c => getControlMeta(cid, c.id).catch(() => ({}))));
-  controls.forEach((c, i) => { c.telefon = metas[i].telefon || ''; c.notering = metas[i].notering || ''; });
+  controls.forEach((c, i) => {
+    const m = metas[i] || {};
+    c.telefon = m.telefon || '';
+    c.notering = m.notering || '';
+    // ansvariga/ansvarigaEmails moved to the meta subdoc (Fas 3c) — surface
+    // them for the admin/ansvarig editor. Fall back to the doc during migration.
+    if (m.ansvariga !== undefined) c.ansvariga = m.ansvariga;
+    if (m.ansvarigaEmails !== undefined) c.ansvarigaEmails = m.ansvarigaEmails;
+  });
   return controls;
 }
 
@@ -461,15 +512,23 @@ export async function migrateControlMeta(cid) {
     // telefon/notering are fully moved (deleted from the doc — Fas 1).
     if (c.telefon !== undefined) meta.telefon = c.telefon;
     if (c.notering !== undefined) meta.notering = c.notering;
-    // ansvariga/ansvarigaEmails are COPIED (kept on the doc during Fas 3a).
+    // ansvariga/ansvarigaEmails move to the meta subdoc. Seed `welcomed` with
+    // the existing ansvariga so the meta trigger never re-mails them.
     if (c.ansvariga !== undefined) meta.ansvariga = c.ansvariga;
-    if (c.ansvarigaEmails !== undefined) meta.ansvarigaEmails = c.ansvarigaEmails;
+    if (c.ansvarigaEmails !== undefined) {
+      meta.ansvarigaEmails = c.ansvarigaEmails;
+      meta.welcomed = (c.ansvarigaEmails || []).map(e => String(e || '').trim().toLowerCase()).filter(Boolean);
+    }
     if (!Object.keys(meta).length) continue;
     try {
       await setControlMeta(cid, d.id, meta);
-      if (c.telefon !== undefined || c.notering !== undefined) {
-        await updateDoc(d.ref, { telefon: deleteField(), notering: deleteField() });
+      // Fas 3c: remove telefon/notering AND ansvariga/ansvarigaEmails from the
+      // public control doc once copied into the meta subdoc.
+      const clear = {};
+      for (const k of ['telefon', 'notering', 'ansvariga', 'ansvarigaEmails']) {
+        if (c[k] !== undefined) clear[k] = deleteField();
       }
+      if (Object.keys(clear).length) await updateDoc(d.ref, clear);
     } catch (e) { console.warn('[ESKIL] control-meta-migrering misslyckades', d.id, e); }
   }
 }

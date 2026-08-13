@@ -421,22 +421,32 @@ exports.onRegistrationUpdated = onDocumentUpdated('competitions/{cid}/registrati
 // permission), a link to the control in the admin, and the report page as
 // link + QR so they can hand it to the control crew on race day.
 
-exports.onControlWritten = onDocumentWritten('competitions/{cid}/controls/{ctrlId}', async (event) => {
+// kontrollansvariga (ansvarigaEmails/ansvariga) live in the control's
+// member-only private/meta subdoc (Fas 3c), so the welcome-mail trigger fires
+// on that doc. The control doc is fetched for the label + imported guard.
+exports.onControlMetaWritten = onDocumentWritten('competitions/{cid}/controls/{ctrlId}/private/meta', async (event) => {
   const { cid, ctrlId } = event.params;
   const before = event.data && event.data.before.exists ? event.data.before.data() : null;
   const after = event.data && event.data.after.exists ? event.data.after.data() : null;
-  if (!after) return; // control deleted
-  if (!before && after.imported) return; // backup restore — no welcome mail
+  if (!after) return; // meta deleted
 
   const norm = (arr) => (arr || []).map(e => String(e || '').trim().toLowerCase()).filter(Boolean);
-  const prev = new Set(norm(before && before.ansvarigaEmails));
-  const added = [...new Set(norm(after.ansvarigaEmails))].filter(e => !prev.has(e));
+  // `welcomed` records who has already had a welcome mail — the migration
+  // seeds it with the existing ansvariga so a data move never re-welcomes
+  // them. Only genuinely new, never-welcomed emails get a mail.
+  const welcomed = new Set(norm(after.welcomed));
+  const added = [...new Set(norm(after.ansvarigaEmails))].filter(e => !welcomed.has(e));
   if (!added.length) return;
+
+  const ctrlSnap = await db.doc(`competitions/${cid}/controls/${ctrlId}`).get();
+  const ctrl = ctrlSnap.exists ? ctrlSnap.data() : null;
+  if (!ctrl) return;
+  if (!before && ctrl.imported) return; // backup restore — no welcome mail
 
   const comp = await getComp(cid);
   if (!comp || comp.demo || comp.closed) return;
 
-  const ctrlLabel = `kontroll ${after.nummer ?? '?'} · ${after.name || 'utan namn'}`;
+  const ctrlLabel = `kontroll ${ctrl.nummer ?? '?'} · ${ctrl.name || 'utan namn'}`;
   const ctrlUrl = `${APP_URL}/app/c/${cid}/controls/${ctrlId}`;
   const reportUrl = `${APP_URL}/k/${cid}/${ctrlId}`;
   const qrBase64 = (await QRCode.toBuffer(reportUrl, { width: 240, margin: 1 })).toString('base64');
@@ -485,6 +495,9 @@ exports.onControlWritten = onDocumentWritten('competitions/{cid}/controls/{ctrlI
       }
     });
   }));
+  // Mark them welcomed so a later meta write (or migration) never re-mails.
+  await event.data.after.ref.set(
+    { welcomed: [...welcomed, ...added] }, { merge: true });
   logger.info(`Kontrollansvarig mail queued for ${added.join(', ')} (${cid}/${ctrlId})`);
 });
 
