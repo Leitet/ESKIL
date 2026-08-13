@@ -17,6 +17,7 @@ import {
 } from '../utils.js';
 import { renderQrToImg } from '../pdf.js';
 import { icon } from '../icons.js';
+import { updateBroadcast } from '../broadcast.js';
 
 const FUTURE_OFFSET_FRAC = 0.8;   // card appears this far before the scheduled time
 const PAST_OFFSET_FRAC   = 0.2;   // card lingers this far after
@@ -101,9 +102,11 @@ export async function renderStartScreen(app, user, cid) {
     { id: 'test-2', number: 2, name: 'Provpatrullen',    avdelning: 'Upptäckare', kar: 'Lindsdals Scoutkår', antal: 5, startOrder: 1 },
     { id: 'test-3', number: 3, name: 'Exempelpatrullen', avdelning: 'Äventyrare', kar: 'Lindsdals Scoutkår', antal: 7, startOrder: 2 }
   ];
+  const bctx = { audience: 'patruller' }; // startskärmen är patrullernas yta
   unsubComp = onSnapshot(doc(db, 'competitions', cid), snap => {
-    if (snap.exists()) { comp = { id: cid, ...snap.data() }; tick(); }
+    if (snap.exists()) { comp = { id: cid, ...snap.data() }; updateBroadcast(comp, bctx); tick(); }
   });
+  updateBroadcast(comp, bctx);
   unsubPatrols = watchPatrols(cid, rows => {
     testMode = rows.length === 0;
     if (testMode && !testAnchor) {
@@ -138,6 +141,7 @@ function stopWatches() {
   if (unsubComp)    { unsubComp();    unsubComp = null; }
   currentPatrolId = null;
   currentQrId = null;
+  updateBroadcast(null); // ta ner ev. driftmeddelande-banner vid SPA-navigering
 }
 // Export so the router can call it when navigating away.
 export function teardownStartScreen() { stopWatches(); }

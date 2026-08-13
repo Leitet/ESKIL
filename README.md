@@ -338,6 +338,9 @@ competitions/{cid}               { name, shortName, year, date, location,
                                    organizer, description, closed,
                                    slug,  // fast kortadress: /t/<slug>, /a/<slug>
                                           // + prefix i betalningsreferenser
+                                   broadcast: { text, level: info|varning|kritisk,
+                                                at, target: { kontroller: true|[id]|false,
+                                                              patruller: true|[id]|false } },
                                    admins: [uid], adminEmails: [email],
                                    users: [{email, name}], userEmails: [email],
                                    createdBy, createdAt }

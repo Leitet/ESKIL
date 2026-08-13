@@ -17,6 +17,7 @@ import {
 import { ensureLeaflet } from './leaflet.js';
 import { icon } from './icons.js';
 import { bindHaptic, bindTap, lockScroll, unlockScroll } from './haptic.js';
+import { updateBroadcast } from './broadcast.js';
 
 const root = document.getElementById('root');
 const modeBtn = document.getElementById('mode-toggle');
@@ -105,9 +106,11 @@ async function main() {
   document.title = `${patrol.name || 'Startkort'} · ${comp.shortName || comp.name || ''} — ESKIL`;
 
   // Live updates: competition, controls, scores for this patrol across all controls
+  const bctx = { audience: 'patrull', id: patrolId };
   onSnapshot(doc(db, 'competitions', cid), s => {
-    if (s.exists()) { comp = { id: cid, ...s.data() }; render(); }
+    if (s.exists()) { comp = { id: cid, ...s.data() }; updateBroadcast(comp, bctx); render(); }
   });
+  updateBroadcast(comp, bctx);
   onSnapshot(collection(db, 'competitions', cid, 'controls'), snap => {
     controls = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     // For each control, subscribe to THIS patrol's score (keyed by patrolId).

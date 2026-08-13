@@ -5,9 +5,11 @@
 // patrol, with server timestamps. This feeds the "Läget" dashboard so the
 // secretariat always knows who is still out in the woods.
 
+import { db, doc, onSnapshot } from './firebase.js';
 import { getCompetition, getStation, listPatrols, watchPassages, setPassage } from './store.js';
 import { escapeHtml, toast, confirmDialog, patrolStartTime, avdShort } from './utils.js';
 import { bindTap } from './haptic.js';
+import { updateBroadcast } from './broadcast.js';
 
 const root = document.getElementById('root');
 
@@ -64,6 +66,15 @@ async function main() {
   if (!station) return renderError('Stationen hittades inte. Kontrollera länken.');
 
   document.title = `Start/Mål · ${comp.shortName || comp.name || 'ESKIL'}`;
+
+  // Driftmeddelanden från ledningen — stationen följer funktionärskanalen.
+  const bctx = { audience: 'kontroller' };
+  onSnapshot(doc(db, 'competitions', cid), snap => {
+    if (!snap.exists()) return;
+    comp = { id: cid, ...snap.data() };
+    updateBroadcast(comp, bctx);
+  });
+  updateBroadcast(comp, bctx);
 
   watchPassages(cid, stationId, rows => {
     passages = {};

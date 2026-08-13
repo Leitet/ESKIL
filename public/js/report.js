@@ -8,6 +8,7 @@ import { AVDELNINGAR, escapeHtml, allInstructionGroups, internalManagement } fro
 import { ensureLeaflet } from './leaflet.js';
 import { icon } from './icons.js';
 import { haptic, bindHaptic, bindTap, lockScroll, unlockScroll } from './haptic.js';
+import { updateBroadcast } from './broadcast.js';
 import { enqueue, removeFromQueue, listQueue, isPending, flushQueue, withTimeout, isPermanentError } from './offline-queue.js';
 
 const root = document.getElementById('root');
@@ -260,6 +261,15 @@ async function main() {
     return;
   }
   document.title = `${control.nummer ?? ''}. ${control.name || 'Kontroll'} · ${comp?.shortName || ''} — ESKIL`;
+
+  // --- Live competition doc — driftmeddelanden (broadcast) från ledningen ---
+  const bctx = { audience: 'kontroll', id: ctrlId };
+  onSnapshot(doc(db, 'competitions', cid), snap => {
+    if (!snap.exists()) return;
+    comp = { id: cid, ...snap.data() };
+    updateBroadcast(comp, bctx);
+  });
+  updateBroadcast(comp, bctx);
 
   // --- Live control doc (to react to open/closed changes) ---
   onSnapshot(doc(db, 'competitions', cid, 'controls', ctrlId), snap => {
