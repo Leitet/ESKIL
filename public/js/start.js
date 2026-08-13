@@ -12,7 +12,7 @@ import {
   escapeHtml, publicManagement, patrolStartTime, patrolStartDateTime,
   startFinishPoints, parkingPoint, startTimeSettings,
   effectiveIntervalSec as effectiveIntervalSecValue,
-  wireOverlayClose
+  wireOverlayClose, allowedAvdelningar
 } from './utils.js';
 import { ensureLeaflet } from './leaflet.js';
 import { icon } from './icons.js';
@@ -82,7 +82,16 @@ async function main() {
     }
     if (comp) {
       [patrol, controls, patrols, track] = await Promise.all([
-        getPatrol(cid, patrolId),
+        // /s/<cid>/test — a synthetic patrol so the startkort can be
+        // previewed before any patrols exist. Everything shown is public
+        // data anyway; the banner below marks it clearly as a test.
+        patrolId === 'test'
+          ? Promise.resolve({
+              id: 'test', number: 0, name: 'Testpatrullen',
+              avdelning: allowedAvdelningar(comp)[0]?.key || 'Spårare',
+              antal: 6, kar: 'Lindsdals Scoutkår', startOrder: 0, __test: true
+            })
+          : getPatrol(cid, patrolId),
         listControls(cid),
         listPatrols(cid),
         getTrack(cid).catch(() => null)
@@ -152,6 +161,7 @@ function render() {
       <div class="flip-card-inner">
         <div class="flip-face flip-front">
           <div class="start-head">
+            ${patrol.__test ? `<div style="background:#fde5d4;color:#b84a0a;border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:13px;font-weight:700;">TESTLÄGE — så här ser patrullernas startkort ut. Riktiga startkort får patrullens namn och poäng.</div>` : ''}
             <div class="start-eyebrow">${escapeHtml(comp.shortName || 'Tävling')} ${comp.year ? '· ' + comp.year : ''} · STARTKORT</div>
             <div class="flip-title-row">
               <h1 class="start-title">

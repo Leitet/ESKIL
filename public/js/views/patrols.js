@@ -64,6 +64,7 @@ export async function renderPatrols(app, user, cid) {
         ${st.enabled ? `<p class="muted" id="st-header">Starttid från ${escapeHtml(st.firstStart)} · ${st.intervalMinutes} min intervall</p>` : ''}
       </div>
       <div class="btn-row">
+        <a class="btn btn-ghost btn-sm" href="/s/${encodeURIComponent(comp.slug || cid)}/test" target="_blank" rel="noopener">${icon('external', { size: 14 })} Testa startkort</a>
         ${isAdmin ? '<button class="btn btn-primary" id="new">+ Ny patrull</button>' : ''}
       </div>
     </div>
