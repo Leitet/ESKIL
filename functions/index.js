@@ -31,11 +31,11 @@ setGlobalOptions({ region: 'europe-west1', maxInstances: 10 });
 
 const APP_URL = 'https://eskilscout.se';
 const MAIL_COLLECTION = 'mail';
-// Where the magic-link lands after sign-in. The action link itself is hosted
-// on the Firebase auth domain; once the eskilscout.se certificate is live the
-// host can be swapped by setting LOGIN_LINK_HOST = 'eskilscout.se'.
-const LOGIN_CONTINUE_URL = 'https://eskil-scout.web.app/app';
-const LOGIN_LINK_HOST = null;
+// Where the magic-link lands after sign-in. The action link is rewritten to
+// eskilscout.se (its cert went live 2026-08-13) — Firebase Hosting serves the
+// /__/auth/* handlers on the custom domain, so the whole flow stays on-brand.
+const LOGIN_CONTINUE_URL = 'https://eskilscout.se/app';
+const LOGIN_LINK_HOST = 'eskilscout.se';
 
 // --- Helpers -----------------------------------------------------------------
 
