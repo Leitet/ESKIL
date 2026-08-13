@@ -228,7 +228,9 @@ export async function copyCompetition(cid, { name, shortName, year, date }, user
     closed: false,
     demo: false,
     adminEmails: [],
-    userEmails: []
+    userEmails: [],
+    // Årgångskedjan: publika sidan länkar till föregående års tävling.
+    copiedFrom: cid
   };
   if (Array.isArray(src.avdelningar) && src.avdelningar.length) data.avdelningar = src.avdelningar;
   for (const k of ['startTimes', 'startFinish', 'parking', 'management',

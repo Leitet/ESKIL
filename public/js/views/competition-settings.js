@@ -1301,6 +1301,11 @@ function renderMembersTab(comp, cid, user, refresh) {
     }
 
     body.innerHTML = `
+      ${(comp.admins || []).length + (comp.adminEmails || []).length <= 1 ? `
+        <div class="mt-4" style="border:1px solid var(--border);border-left:3px solid var(--avent-orange);border-radius:10px;padding:10px 14px;">
+          <strong style="color:var(--avent-orange);">Du är ensam administratör</strong>
+          <p class="muted t-sm" style="margin:4px 0 0;">Tappar du åtkomsten på tävlingsdagen (mobil i sjön, dött batteri) kan ingen annan administrera tävlingen. Lägg till minst en reservadmin nedan.</p>
+        </div>` : ''}
       <div class="mt-4">
         <h4 class="t-over">Administratörer (${(comp.admins || []).length + (comp.adminEmails || []).length})</h4>
         <ul class="muted t-sm" style="padding-left:16px;margin:6px 0 10px;">

@@ -11,7 +11,8 @@ import {
   patrolStartDateTime, startTimeSettings, allowedAvdelningar,
   registrationSettings, registrationState,
   startFinishPoints, parkingPoint, rankPatrols, rankKarer, RANKING_RULES_TEXT,
-  wireOverlayClose, controlsAutoReleased, controlsReleaseTime, utslagRows, isNumSet
+  wireOverlayClose, controlsAutoReleased, controlsReleaseTime, utslagRows, isNumSet,
+  copyToClipboard, toast
 } from './utils.js';
 import { ensureLeaflet } from './leaflet.js';
 import { icon } from './icons.js';
@@ -379,6 +380,18 @@ function render() {
     });
   });
 
+  // Dela sidan — native share på mobil, kopiera länken annars.
+  root.querySelector('#pub-share')?.addEventListener('click', async (e) => {
+    e.preventDefault();
+    const url = `${location.origin}/t/${cid}`;
+    if (navigator.share) {
+      try { await navigator.share({ title: comp?.name || 'ESKIL', url }); } catch { /* avbrutet */ }
+    } else {
+      await copyToClipboard(url);
+      toast('Länk kopierad', 'success');
+    }
+  });
+
   // Stjärnorna sitter inuti länkar/rader — stoppa klicket från att följa med.
   root.querySelectorAll('[data-fav]').forEach(b => {
     b.addEventListener('click', e => {
@@ -442,6 +455,27 @@ async function checkAdminAccess(user, cid) {
   return (comp.adminEmails || []).includes(email) || (comp.userEmails || []).includes(email);
 }
 
+// Kalenderfil (.ics) för tävlingsdagen — heldagshändelse, ren data-URL.
+function calendarIcsUrl() {
+  const d = String(comp.date || '').replaceAll('-', '');
+  if (!d) return '#';
+  const next = new Date(comp.date); next.setDate(next.getDate() + 1);
+  const dtEnd = next.toISOString().slice(0, 10).replaceAll('-', '');
+  const esc = (s) => String(s || '').replace(/([,;\\])/g, '\\$1').replace(/\n/g, '\\n');
+  const ics = [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//ESKIL//SV',
+    'BEGIN:VEVENT',
+    `UID:eskil-${comp.id || parsePath()?.cid || ''}@eskilscout.se`,
+    `DTSTART;VALUE=DATE:${d}`,
+    `DTEND;VALUE=DATE:${dtEnd}`,
+    `SUMMARY:${esc(comp.name)}`,
+    comp.location ? `LOCATION:${esc(comp.location)}` : '',
+    `DESCRIPTION:${esc('Startlista och resultat: ' + location.origin + '/t/' + (parsePath()?.cid || ''))}`,
+    'END:VEVENT', 'END:VCALENDAR'
+  ].filter(Boolean).join('\r\n');
+  return 'data:text/calendar;charset=utf-8,' + encodeURIComponent(ics);
+}
+
 function renderHero() {
   const openCount = controls.filter(c => c.open).length;
   const reg = registrationState(comp);
@@ -470,6 +504,11 @@ function renderHero() {
           ${comp.date ? `<span><b>${escapeHtml(formatDate(comp.date))}</b> · datum</span>` : ''}
           ${comp.location ? `<span><b>${escapeHtml(comp.location)}</b> · plats</span>` : ''}
           ${comp.organizer ? `<span><b>${escapeHtml(comp.organizer)}</b> · arrangör</span>` : ''}
+        </div>
+        <div class="pub-hero-links">
+          ${comp.date ? `<a href="${calendarIcsUrl()}" download="${escapeHtml((comp.shortName || 'tavling').toLowerCase())}-${comp.year || ''}.ics">${icon('clock', { size: 13 })} Lägg i kalendern</a>` : ''}
+          <a href="#" id="pub-share">${icon('external', { size: 13 })} Dela sidan</a>
+          ${comp.copiedFrom ? `<a href="/t/${escapeHtml(comp.copiedFrom)}" target="_blank" rel="noopener">Föregående årgång →</a>` : ''}
         </div>
         ${reg === 'open' ? `
           <a class="hero-cta" href="/a/${escapeHtml(cid || '')}">Anmäl er nu${regSettings.closesAt ? ` — öppet t.o.m. ${escapeHtml(formatDate(regSettings.closesAt))}` : ''} →</a>
