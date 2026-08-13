@@ -4,7 +4,7 @@ import {
   auth,
   db, doc, getDoc, setDoc, updateDoc, deleteDoc,
   collection, addDoc, getDocs, onSnapshot, query, where, orderBy,
-  serverTimestamp, deleteField, writeBatch
+  serverTimestamp, deleteField, writeBatch, Timestamp
 } from './firebase.js';
 
 // --- System config (super-admin) --------------------------------------------
@@ -776,9 +776,12 @@ export async function getStation(cid, stationId) {
 }
 
 export function watchPassages(cid, stationId, cb) {
+  // includeMetadataChanges + _pending: stationssidan markerar incheckningar
+  // som ligger i den lokala kön ("väntar på nät") tills servern bekräftat.
   return onSnapshot(
     collection(db, 'competitions', cid, 'stations', stationId, 'passages'),
-    snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    { includeMetadataChanges: true },
+    snap => cb(snap.docs.map(d => ({ id: d.id, _pending: d.metadata.hasPendingWrites, ...d.data() })))
   );
 }
 
@@ -786,7 +789,10 @@ export function watchPassages(cid, stationId, cb) {
 export async function setPassage(cid, stationId, patrolId, field, value) {
   const ref = doc(db, 'competitions', cid, 'stations', stationId, 'passages', patrolId);
   if (value) {
-    await setDoc(ref, { patrolId, [field]: serverTimestamp() }, { merge: true });
+    // Klienttid, inte serverTimestamp: en utcheckning som synkas först när
+    // nätet kommer tillbaka ska bära ögonblicket då knappen trycktes — inte
+    // synkögonblicket. Stationens klocka är gott nog som facit.
+    await setDoc(ref, { patrolId, [field]: Timestamp.fromDate(new Date()) }, { merge: true });
   } else {
     await updateDoc(ref, { [field]: deleteField() });
   }

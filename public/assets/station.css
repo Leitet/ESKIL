@@ -48,6 +48,20 @@
 .patrol-btn.st-late { border-color: var(--avent-orange); background: #fdf1e8; }
 .st-late-note { color: #b84a0a; font-weight: 700; }
 
+/* Offline: skrivningar köas lokalt och synkas när nätet kommer tillbaka. */
+.st-offline {
+  background: var(--white);
+  border: 1.5px dashed var(--avent-orange);
+  border-radius: var(--r-md);
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--avent-orange);
+  text-align: center;
+}
+.st-pending { color: var(--avent-orange); font-weight: 700; font-size: 12px; }
+
 .st-tabs {
   display: grid;
   grid-template-columns: 1fr 1fr;

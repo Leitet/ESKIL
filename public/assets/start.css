@@ -77,6 +77,19 @@ html[data-mode="night"] .start-time-chip.go {
   50%      { box-shadow: 0 0 0 8px rgba(65,166,42,0); }
 }
 
+/* Offline banner — persistent cache still shows the last known state */
+.start-offline {
+  background: var(--r-chip-bg);
+  color: var(--r-chip-fg);
+  border: 1.5px dashed var(--r-border);
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+}
+
 /* ETA line under the KPIs — how much course remains + expected finish */
 .start-eta {
   display: inline-flex;

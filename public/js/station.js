@@ -87,6 +87,9 @@ async function main() {
   render();
   // "Sen till start" är tidsbaserat — uppdatera markeringarna var 30:e sekund.
   setInterval(render, 30000);
+  // Offline-bannern följer nätstatusen direkt.
+  window.addEventListener('online', render);
+  window.addEventListener('offline', render);
 
   // ETA-motorn i bakgrunden: banans gångtid + stationstid ger "mål ca HH:MM"
   // per patrull ute i skogen. Kräver placerade kontroller — annars visas inget.
@@ -158,6 +161,7 @@ function render() {
     </div>
 
     ${comp.demo ? `<div class="st-demo-note">Demospår — utforska gärna, men in-/utcheckning är avstängd.</div>` : ''}
+    ${!navigator.onLine ? `<div class="st-offline">${escapeHtml('Offline — in-/utcheckningar sparas i telefonen och synkas automatiskt när nätet är tillbaka.')}</div>` : ''}
 
     <div class="st-kpis">
       <div class="st-kpi"><div class="v">${counts.waiting}</div><div class="l">Ej startade</div></div>
@@ -203,8 +207,10 @@ function patrolBtn(p) {
         ? `<span class="st-late-note"> · mål ca ${fmtClock(etaMs)} · ${overdueMin} min över</span>`
         : ` · mål ca ${fmtClock(etaMs)}`)
     : '';
+  const pendingNote = checked && pass._pending
+    ? ` <span class="st-pending">· väntar på nät</span>` : '';
   const sub = checked
-    ? `<span class="st-checked-at">${mode === 'start' ? 'Startade' : 'I mål'} ${fmtClock(pass[field])}</span>`
+    ? `<span class="st-checked-at">${mode === 'start' ? 'Startade' : 'I mål'} ${fmtClock(pass[field])}</span>${pendingNote}`
     : (mode === 'start'
         ? (lateMin > 0
             ? `<span class="st-late-note">skulle startat ${escapeHtml(planned || '')} · ${lateMin} min sen</span>`
@@ -225,31 +231,31 @@ async function onTap(patrolId) {
   if (!p) return;
   const field = mode === 'start' ? 'startAt' : 'finishAt';
   const pass = passages[patrolId] || {};
-  try {
-    if (pass[field]) {
-      // Undo — deliberate second confirmation so a stray double-tap can't
-      // silently erase a timestamp.
+  // Fire-and-forget: skrivningen hamnar i Firestores lokala kö direkt och
+  // synkas när nätet finns — stationen ska aldrig stå och vänta på täckning
+  // med en scout framför sig. Fel (t.ex. rules-avslag) ytas via catch;
+  // kö-läget syns som "väntar på nät" på knappen tills servern bekräftat.
+  const fail = (e) => { console.error(e); toast('Kunde inte spara: ' + e.message, 'error'); };
+  if (pass[field]) {
+    // Undo — deliberate second confirmation so a stray double-tap can't
+    // silently erase a timestamp.
+    const ok = await confirmDialog(
+      `Ångra ${mode === 'start' ? 'utcheckningen' : 'incheckningen'} för ${p.name} (${fmtClock(pass[field])})?`,
+      { okLabel: 'Ångra', danger: true }
+    );
+    if (!ok) return;
+    setPassage(cid, stationId, patrolId, field, false).catch(fail);
+    toast(`${p.name} — ${mode === 'start' ? 'utcheckning' : 'incheckning'} ångrad`);
+  } else {
+    if (mode === 'mal' && !pass.startAt) {
       const ok = await confirmDialog(
-        `Ångra ${mode === 'start' ? 'utcheckningen' : 'incheckningen'} för ${p.name} (${fmtClock(pass[field])})?`,
-        { okLabel: 'Ångra', danger: true }
+        `${p.name} är inte utcheckad från start. Checka in i mål ändå?`,
+        { okLabel: 'Checka in', danger: false }
       );
       if (!ok) return;
-      await setPassage(cid, stationId, patrolId, field, false);
-      toast(`${p.name} — ${mode === 'start' ? 'utcheckning' : 'incheckning'} ångrad`);
-    } else {
-      if (mode === 'mal' && !pass.startAt) {
-        const ok = await confirmDialog(
-          `${p.name} är inte utcheckad från start. Checka in i mål ändå?`,
-          { okLabel: 'Checka in', danger: false }
-        );
-        if (!ok) return;
-      }
-      await setPassage(cid, stationId, patrolId, field, true);
-      toast(`${p.name} ${mode === 'start' ? 'utcheckad' : 'i mål'}`, 'success');
     }
-  } catch (e) {
-    console.error(e);
-    toast('Kunde inte spara: ' + e.message, 'error');
+    setPassage(cid, stationId, patrolId, field, true).catch(fail);
+    toast(`${p.name} ${mode === 'start' ? 'utcheckad' : 'i mål'}`, 'success');
   }
 }
 

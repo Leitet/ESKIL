@@ -105,6 +105,10 @@ async function main() {
   if (!patrol) return renderError('Patrullen hittades inte.');
   document.title = `${patrol.name || 'Startkort'} · ${comp.shortName || comp.name || ''} — ESKIL`;
 
+  // Offline-bannern följer nätstatusen direkt.
+  window.addEventListener('online', render);
+  window.addEventListener('offline', render);
+
   // Live updates: competition, controls, scores for this patrol across all controls
   const bctx = { audience: 'patrull', id: patrolId };
   onSnapshot(doc(db, 'competitions', cid), s => {
@@ -189,6 +193,7 @@ function render() {
   const t = totals();
 
   root.innerHTML = `
+    ${!navigator.onLine ? `<div class="start-offline">Offline — visar senast kända läge. Allt uppdateras automatiskt när nätet är tillbaka.</div>` : ''}
     <div class="flip-card" id="flip-card">
       <div class="flip-card-inner">
         <div class="flip-face flip-front">

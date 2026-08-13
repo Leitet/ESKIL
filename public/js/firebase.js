@@ -13,7 +13,7 @@ import {
   persistentLocalCache, persistentMultipleTabManager,
   doc, getDoc, setDoc, updateDoc, deleteDoc,
   collection, addDoc, getDocs, onSnapshot, query, where, orderBy,
-  serverTimestamp, deleteField, writeBatch
+  serverTimestamp, deleteField, writeBatch, Timestamp
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
 import {
   getFunctions, httpsCallable, connectFunctionsEmulator
@@ -118,5 +118,5 @@ export {
   onAuthStateChanged, signOut,
   doc, getDoc, setDoc, updateDoc, deleteDoc,
   collection, addDoc, getDocs, onSnapshot, query, where, orderBy,
-  serverTimestamp, deleteField, writeBatch
+  serverTimestamp, deleteField, writeBatch, Timestamp
 };
