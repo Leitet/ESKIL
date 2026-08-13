@@ -32,20 +32,22 @@ tre: **åtgärdat & driftsatt**, **manuella konsolsteg som återstår** och
   personuppgifter i `management` (namn/telefon/e-post), utöver de tidigare
   fälten.
 
-## Manuella konsolsteg som återstår (kräver Firebase/GCP-konsolen)
+## Konsolsteg — ÅTGÄRDADE (App Check, budget)
 
-Dessa kan inte göras från koden och är den **egentliga** fixen för de
-oautentiserade skriv-/kvot-vektorerna (kodnivå-taken ovan är bara en broms):
+De var den **egentliga** fixen för de oautentiserade skriv-/kvot-vektorerna
+(kodnivå-taken är nu en andra försvarslinje bakom dem):
 
-1. **Firebase App Check** (reCAPTCHA Enterprise/v3): aktivera och *enforce*
-   på **Firestore** och **Cloud Functions**. Detta stoppar skriptade
-   anonyma skrivningar (anmälnings-spam, poäng-DoS) och skyddar callable
-   `requestLoginLink`. OBS: testa noga i staging först — felkonfigurerad
-   App Check blockerar de anonyma fältsidorna (/k, /s, /m, /a).
-2. **Brevo:** sätt ett larm på onormal mailvolym (kompletterar dagskvoterna
-   i functions).
-3. **GCP Budget & Alerts** på projektet + överväg en spend-cap, som skydd
-   mot kostnads-DoS via obegränsade anonyma läsningar.
+1. **Firebase App Check** (reCAPTCHA v3) — ✅ AKTIVERAD OCH FRAMTVINGAD på
+   **Firestore** och **Cloud Functions** (2026-08-13). Webbappen "ESKIL webb"
+   registrerad; klienten initierar App Check i `firebase.js` (prod-only,
+   guardad på appId) och CSP:n släpper in `www.google.com`. Verifierat i prod
+   efter framtvingande: publik sida, /k, /s, /m, /a och inloggningen
+   (`requestLoginLink` loggar `app: VALID`) fungerar; overifierad trafik
+   (bottar/direkta REST-anrop) blockeras. Site key är publik; secret key i
+   Firebase-konsolen. Vid problem: App Check → APIs → un-enforce.
+2. **GCP Budget & Alerts** — ✅ satt (2026-08-13), larm mot kostnads-DoS.
+3. **Brevo:** dagsvolym övervakas i dashboarden; functions-dagskvoterna
+   (`reserveMail`) är det primära skyddet.
 
 ## PII till medlemsskyddade subdokument — ÅTGÄRDAT (Fas 1–3)
 
