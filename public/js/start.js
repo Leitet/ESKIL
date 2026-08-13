@@ -7,7 +7,7 @@
 
 import { db, doc, onSnapshot, collection } from './firebase.js';
 import { getCompetition, getCompetitionBySlug, getPatrol, listControls, listPatrols, getTrack } from './store.js';
-import { courseLegs, drawCourseOnMap, addCourseChip } from './course.js';
+import { courseLegs, drawCourseOnMap, addCourseChip, legLatLngs } from './course.js';
 import {
   escapeHtml, publicManagement, patrolStartTime, patrolStartDateTime,
   startFinishPoints, parkingPoint, startTimeSettings,
@@ -497,11 +497,66 @@ function openControlSheet(ctrlId) {
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19, attribution: '© OSM'
       }).addTo(map);
+
+      // --- The way here: course context around this control -----------------
+      // The whole course in muted gray, the leg INTO this control lit up in
+      // accent orange, visited controls grayed with their number, upcoming
+      // ones as "?", S/M for orientation. The view frames the lit leg so the
+      // patrol sees exactly where to walk from the previous point.
+      const { nodes, legs } = courseLegs(comp, controls, track);
+      const targetIdx = nodes.findIndex(n => n.key === c.id);
+      const legIn = targetIdx > 0 ? legs[targetIdx - 1] : null;
+
+      for (const leg of legs) {
+        const lit = leg === legIn;
+        L.polyline(legLatLngs(leg), {
+          color: lit ? '#E95F13' : '#8a8a8a',
+          weight: lit ? 5 : 2.5,
+          opacity: lit ? 0.95 : 0.45,
+          ...(leg.drawn ? {} : { dashArray: lit ? '10 10' : '5 8' }),
+          interactive: false
+        }).addTo(map);
+      }
+
+      for (const n of nodes) {
+        if (n.key === c.id) continue;
+        if (n.kind === 'control') {
+          const nd = isDone(n.key);
+          L.circleMarker([n.lat, n.lng], {
+            radius: 9,
+            color: nd ? '#d0d0d0' : '#ffffff', weight: 2,
+            fillColor: nd ? '#8a8a8a' : '#003660',
+            fillOpacity: nd ? 0.55 : 0.85
+          })
+            .bindTooltip(nd ? n.label : '?', {
+              permanent: true, direction: 'center',
+              className: 'start-map-label' + (nd ? ' start-map-label-done' : '')
+            })
+            .addTo(map);
+        } else {
+          // Start/Mål — small yellow anchors for orientation.
+          L.circleMarker([n.lat, n.lng], {
+            radius: 12, color: '#003660', weight: 2.5,
+            fillColor: '#E2E000', fillOpacity: 1
+          })
+            .bindTooltip(n.label, { permanent: true, direction: 'center', className: 'start-map-label start-map-label-sf' })
+            .addTo(map);
+        }
+      }
+
       L.circleMarker([c.lat, c.lng], {
         radius: 14, color: '#ffffff', weight: 3,
         fillColor: done ? '#8a8a8a' : '#E95F13',
         fillOpacity: done ? 0.6 : 0.98
-      }).addTo(map);
+      })
+        .bindTooltip(String(c.nummer ?? '?'), {
+          permanent: true, direction: 'center',
+          className: 'start-map-label' + (done ? ' start-map-label-done' : '')
+        })
+        .addTo(map);
+
+      // Frame the lit leg (previous point → this control) when there is one.
+      if (legIn) map.fitBounds(L.latLngBounds(legLatLngs(legIn)).pad(0.3));
 
       // --- "Follow me" control ---
       let userMarker = null, userLine = null, watchId = null;
