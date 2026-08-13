@@ -232,8 +232,17 @@ export async function closeCompetition(cid) {
     });
     await batch.commit();
   }
+  // Strip the tävlingsledning's personal contact details (name/phone/email)
+  // from `management` too — the role structure stays, the PII goes. Only
+  // admins remain reachable (via adminEmails).
+  const comp = await getCompetition(cid).catch(() => null);
+  const strippedManagement = Array.isArray(comp?.management)
+    ? comp.management.map(r => ({ id: r.id, label: r.label || '', visibility: r.visibility || 'public', name: '', phone: '', email: '' }))
+    : undefined;
+
   await updateDoc(doc(db, 'competitions', cid), {
-    closed: true, users: [], userEmails: []
+    closed: true, users: [], userEmails: [],
+    ...(strippedManagement ? { management: strippedManagement } : {})
   });
 }
 
