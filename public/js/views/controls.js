@@ -55,7 +55,11 @@ export async function renderControls(app, user, cid) {
         <h1 class="t-d2">Kontroller</h1>
       </div>
       <div class="btn-row">
-        ${isAdmin ? '<button class="btn btn-primary" id="new">+ Ny kontroll</button>' : ''}
+        ${isAdmin ? `
+          <button class="btn btn-ghost btn-sm" id="open-all">Öppna alla</button>
+          <button class="btn btn-ghost btn-sm" id="close-all">Stäng alla</button>
+          <button class="btn btn-primary" id="new">+ Ny kontroll</button>
+        ` : ''}
       </div>
     </div>
 
@@ -191,6 +195,24 @@ export async function renderControls(app, user, cid) {
     wrap.querySelector('#new').addEventListener('click', () => {
       openControlModal(cid, null, (id) => navigate(`/app/c/${cid}/controls/${id}`), { comp });
     });
+
+    // Bulk open/close — tävlingsmorgonens 15 klick blir ett. state.rows is
+    // live via watchControls, so the table updates as each write lands.
+    const bulkSetOpen = (open) => async (e) => {
+      const btn = e.currentTarget; // nulled once the handler yields — capture first
+      const targets = state.rows.filter(c => !!c.open !== open);
+      if (!targets.length) { toast(open ? 'Alla kontroller är redan öppna' : 'Alla kontroller är redan stängda'); return; }
+      const verb = open ? 'Öppna' : 'Stäng';
+      if (!(await confirmDialog(`${verb} ${targets.length} kontroller för rapportering?`, { okLabel: `${verb} alla`, danger: false }))) return;
+      await withBusy(btn, '…', async () => {
+        try {
+          for (const c of targets) await updateControl(cid, c.id, { open });
+          toast(`${targets.length} kontroller ${open ? 'öppnade' : 'stängda'}`, 'success');
+        } catch (err) { toast('Fel: ' + err.message, 'error'); }
+      });
+    };
+    wrap.querySelector('#open-all').addEventListener('click', bulkSetOpen(true));
+    wrap.querySelector('#close-all').addEventListener('click', bulkSetOpen(false));
   }
 
   registerViewCleanup(() => {

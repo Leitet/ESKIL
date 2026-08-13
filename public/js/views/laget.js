@@ -12,7 +12,7 @@ import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import {
   getCompetition, listPatrols, listStations, createStation, watchPassages,
   watchControls, watchScoresForControl, getTrack, getControlMeta,
-  updateCompetition
+  updateCompetition, updateControl
 } from '../store.js';
 import { deleteField } from '../firebase.js';
 import { courseLegs, drawCourseOnMap } from '../course.js';
@@ -455,7 +455,7 @@ export async function renderLaget(app, user, cid) {
     wrap.querySelector('#ctrl-table').innerHTML = ctrlStats.length ? `
       <div class="table-wrap"><table class="t">
         <thead><tr>
-          <th style="width:30px;"></th><th class="num">Nr</th><th>Kontroll</th><th>Telefon</th>
+          <th style="width:30px;"></th><th class="num">Nr</th><th>Kontroll</th><th>Status</th><th>Telefon</th>
           <th class="num">Klara</th><th class="num">Kö nu</th><th class="num">Mellantid</th><th>Senaste rapport</th>
         </tr></thead>
         <tbody>
@@ -464,6 +464,9 @@ export async function renderLaget(app, user, cid) {
               <td><span title="${HEAT[cs.heat].label}" style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${HEAT[cs.heat].fill};"></span></td>
               <td class="num">${cs.control.nummer ?? ''}</td>
               <td><a class="row-link" href="/app/c/${cid}/controls/${cs.control.id}" data-link>${escapeHtml(cs.control.name || '—')}</a></td>
+              <td>${cs.control.open
+                ? '<span class="badge badge-green">Öppen</span>'
+                : `<span class="badge badge-gray">Stängd</span>${isAdmin && cs.inbound > 0 ? ` <button class="btn btn-secondary btn-sm" data-open-ctrl="${escapeHtml(cs.control.id)}" title="Kontrollen har patruller på väg men tar inte emot rapporter">Öppna</button>` : ''}`}</td>
               <td>${cs.control.telefon ? `<a class="mono t-sm" href="tel:${escapeHtml(cs.control.telefon)}" style="color:var(--scout-blue);text-decoration:none;white-space:nowrap;">${escapeHtml(cs.control.telefon)}</a>` : '<span class="muted">—</span>'}</td>
               <td class="num">${cs.doneCount}/${patrols.length}</td>
               <td class="num" style="${cs.inbound >= 2 ? 'font-weight:700;color:' + HEAT[cs.heat].fill + ';' : ''}">${cs.inbound}</td>
@@ -474,6 +477,12 @@ export async function renderLaget(app, user, cid) {
         </tbody>
       </table></div>
     ` : '<div class="empty"><h3>Inga kontroller</h3></div>';
+
+    // Snabböppning av stängd kontroll med inkommande patruller.
+    wrap.querySelectorAll('[data-open-ctrl]').forEach(btn => btn.addEventListener('click', () => withBusy(btn, '…', async () => {
+      try { await updateControl(cid, btn.dataset.openCtrl, { open: true }); toast('Kontrollen öppnad', 'success'); }
+      catch (e) { toast('Fel: ' + e.message, 'error'); }
+    })));
 
     // Patrol table — warnings first, then by number.
     const rows = [...perPatrol].sort((a, b) =>
