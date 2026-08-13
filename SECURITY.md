@@ -47,47 +47,33 @@ oautentiserade skriv-/kvot-vektorerna (kodnivå-taken ovan är bara en broms):
 3. **GCP Budget & Alerts** på projektet + överväg en spend-cap, som skydd
    mot kostnads-DoS via obegränsade anonyma läsningar.
 
-## Planerad uppföljning — kräver övervakad driftsättning
+## PII till medlemsskyddade subdokument — ÅTGÄRDAT (Fas 1–3)
 
-Följande är **medvetet inte driftsatt autonomt** eftersom de rör
-autentiseringens läsväg, mail-triggers och backup/restore samtidigt, med
-fellägen (admin-utelåsning, trasig mail, dataförlust) som bör verifieras med
-en människa närvarande vid prod-cutovern. Super-admin (konfigurerad e-post)
-kan aldrig låsas ute — status kommer från `users/{uid}.role`, opåverkat av
-nedan — så blast radius vid ett fel är begränsad till enskilda
-tävlingsadministratörer tills super-admin rättar.
+Genomfört som en övervakad, staged migrering (Johan närvarande vid varje
+prod-cutover). Super-admin kan aldrig låsas ute (status från `users/{uid}.role`),
+och under migreringen läste reglerna en union av gammal + ny plats så inget
+kunde bryta.
 
-Detta är samma klass av "UI-nivå-skydd vs regel-nivå-skydd" som redan är känd
-och accepterad för `publicScores`/`publicControls`.
+- **Fas 1** — kontroll `telefon`/`notering` och patrull `notering` flyttade till
+  `controls/{id}/private/meta` respektive `patrols/{id}/private/meta`
+  (medlem/kontrollansvarig läser). Kontrolltelefonen är nu genuint regel-skyddad,
+  i linje med integritetspolicyn.
+- **Fas 2** — ledningskontakter (management) är publika-som-default med en tydlig
+  "Publik"-kryssruta per kontakt. De visas AVSIKTLIGT för besökare (/t) och
+  funktionärer (/k, sekretariatskontakt) och förblir därför läsbara — beslut
+  taget medvetet, inte en läcka.
+- **Fas 3** — `adminEmails`/`userEmails`/`users` och kontrollernas
+  `ansvariga`/`ansvarigaEmails` flyttade till `competitions/{cid}/private/access`
+  respektive kontrollens `private/meta` (medlem läser, admin skriver; `admins`
+  = uids stannar publikt, ej PII). Regel-helprarna läser de skyddade dokumenten;
+  välkomstmailets trigger flyttad till `onControlMetaWritten` med en
+  `welcomed`-lista så migreringen aldrig återmailar; backup/restore bevarar allt
+  utan att läcka. Kontrollansvariga kan inte självescalera (regel-guard).
 
-### Exponerad PII (världsläsbar i Firestore idag)
+Verifierat med full behörighetsmatris i emulatorn (riktiga auth-tokens) och på
+prod efter varje cutover.
 
-| Data | Var | Not |
-|------|-----|-----|
-| `adminEmails`, `userEmails`, `users[]` (namn) | `competitions/{cid}` | Alla tävlingars admin/användar-kontakter kan enumereras |
-| `management` interna roller (namn/tel/e-post) | `competitions/{cid}` | Publika roller är avsiktligt publika; interna borde inte vara det |
-| kontroll `telefon`, `ansvariga`, `ansvarigaEmails` | `controls/{ctrlId}` | Integritetspolicyn säger "telefon visas aldrig publikt" |
-| patrull `notering` (intern) | `patrols/{pid}` | Internt admin-fält |
-
-### Föreslagen lösning
-
-Flytta känsliga fält till medlemsskyddade subdokument:
-
-- `competitions/{cid}/private/access` — `adminEmails`, `userEmails`, `admins`,
-  full `management`. Läsning `if isCompMember`, skrivning `if isCompAdmin`.
-  Publika doc:et får en denormaliserad `publicManagement` (bara publika
-  roller) för /t-sidan och startkort.
-- `controls/{ctrlId}/private/meta` — `telefon`, `ansvariga`,
-  `ansvarigaEmails`, `notering`.
-- `patrols/{pid}/private/meta` — `notering`.
-
-Regel-helprarna `isCompAdmin`/`isCompMember`/kontrollansvarig-checken läser
-`private/access`/`private/meta` i stället (med fallback till gamla platsen
-under migreringen så inget låser sig). Berörda ställen som måste uppdateras
-samtidigt: `utils.isCompAdminUser`, `store.setCompetitionUsers` /
-`listCompetitionsForUser` / `createCompetition` / `copyCompetition`,
-`backup.js` (dump/restore/delete måste inkludera subdokumenten — annars
-dataförlust), `functions.managementEmails`, samt en engångsmigrering av
-befintliga tävlingar. Testas uttömmande i emulatorn (admin skriver,
-medlem läser, icke-medlem nekas, kontrollansvarig redigerar, super-admin,
-landningssidans medlemsfilter, inloggning) före prod-cutover.
+Kvarstår som känt & accepterat (UI-nivå): `publicScores`/`publicControls` döljer
+bara i UI:t — controls/scores är världsläsbara för de anonyma sidorna. Se
+minnet `ui-level-privacy-debt`. Registreringars fritextsvar (ev. allergier)
+skyddas av det hemliga `regId` + strikt Referrer-Policy (art. 9 — övervägs).
