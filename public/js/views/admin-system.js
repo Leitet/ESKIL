@@ -8,6 +8,7 @@ import { layout } from '../app.js';
 import { getSystemConfig, setSystemConfig } from '../store.js';
 import { escapeHtml, toast, withBusy } from '../utils.js';
 import { icon } from '../icons.js';
+import { crumbs, setDocTitle } from '../nav.js';
 import { navigate } from '../router.js';
 
 const PROJECT = 'eskil-scout';
@@ -93,10 +94,15 @@ export async function renderAdminSystem(app, user) {
   let config = {};
   try { config = await getSystemConfig(); } catch (e) { console.warn('[ESKIL] kunde inte läsa config:', e); }
 
+  setDocTitle('Systemhubb');
   wrap.innerHTML = `
     <div class="page-head">
       <div>
-        <div class="t-over">Super-admin</div>
+        ${crumbs([
+          { label: 'Tävlingar', href: '/app' },
+          { label: 'Konto', href: '/app/settings' },
+          { label: 'Systemhubb' }
+        ])}
         <h1 class="t-d2">Systemhubb</h1>
         <p class="muted">Var ESKIL administreras — dashboards, driftsättning och inställningar som inte är hårdkodade.</p>
       </div>

@@ -85,6 +85,7 @@ async function main() {
   }
   if (!comp)   return renderError('Tävlingen hittades inte.');
   if (!patrol) return renderError('Patrullen hittades inte.');
+  document.title = `${patrol.name || 'Startkort'} · ${comp.shortName || comp.name || ''} — ESKIL`;
 
   // Live updates: competition, controls, scores for this patrol across all controls
   onSnapshot(doc(db, 'competitions', cid), s => {
@@ -213,7 +214,8 @@ function render() {
     </div>
 
     <p class="r-sub" style="text-align:center;opacity:.55;margin-top:36px;font-size:13px;">
-      ESKIL · startkort · live-uppdaterat när poäng rapporteras
+      ESKIL · startkort · live-uppdaterat när poäng rapporteras<br>
+      <a href="/t/${escapeHtml(parsePath()?.cid || '')}" style="color:inherit;text-decoration:underline;">Tävlingssidan — startlista, karta &amp; resultat</a>
     </p>
   `;
 

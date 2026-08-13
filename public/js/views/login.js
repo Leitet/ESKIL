@@ -29,7 +29,10 @@ export function renderLogin(app) {
         </div>
       </div>
 
-      <p class="mt-6" style="font-size:13px;color:#a7bccf;">Sessioner sparas på enheten — du behöver bara logga in igen om du loggar ut manuellt eller rensar webbläsardata.</p>
+      <p class="mt-6" style="font-size:14px;">
+        <a href="/" data-link style="color:#d2dde8;display:inline-flex;align-items:center;gap:6px;">${icon('arrow-left', { size: 15 })} Till ESKIL:s startsida — se tävlingar och testa demon utan konto</a>
+      </p>
+      <p class="mt-3" style="font-size:13px;color:#a7bccf;">Sessioner sparas på enheten — du behöver bara logga in igen om du loggar ut manuellt eller rensar webbläsardata.</p>
       <p style="font-size:13px;color:#a7bccf;max-width:520px;">När du loggar in sparas din e-postadress (och ditt namn om tävlingsledningen angett det) för att ge dig rätt behörighet under tävlingen. När en tävling avslutas raderas namn och e-post automatiskt för alla utom administratörerna. ESKIL använder inga cookies — <a href="/integritet" style="color:#d2dde8;">läs mer om integritet &amp; GDPR</a>.</p>
     </div>
   `;

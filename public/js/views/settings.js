@@ -6,6 +6,7 @@ import { layout } from '../app.js';
 import { listCompetitionsForUser } from '../store.js';
 import { escapeHtml, isCompAdminUser } from '../utils.js';
 import { icon } from '../icons.js';
+import { crumbs, setDocTitle } from '../nav.js';
 
 export async function renderSettings(app, user) {
   const wrap = document.createElement('div');
@@ -26,10 +27,11 @@ export async function renderSettings(app, user) {
     return;
   }
 
+  setDocTitle('Konto');
   wrap.innerHTML = `
     <div class="page-head">
       <div>
-        <div class="t-over">Inställningar</div>
+        ${crumbs([{ label: 'Tävlingar', href: '/app' }, { label: 'Konto' }])}
         <h1 class="t-d2">Ditt konto</h1>
       </div>
     </div>

@@ -10,7 +10,7 @@ import {
 import { navigate } from '../router.js';
 import { initMapPicker } from '../mappicker.js';
 import { icon } from '../icons.js';
-import { compActionsHtml } from './competition.js';
+import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
 
 // Lazy-load SortableJS (also used by patrols.js).
 let sortableReady = null;
@@ -47,27 +47,19 @@ export async function renderControls(app, user, cid) {
 
   let state = { rows: [], sort: 'nummer', dir: 1 };
 
+  setDocTitle('Kontroller', compLabel(comp));
   wrap.innerHTML = `
     <div class="page-head">
       <div>
-        <div class="t-over" style="color:var(--avent-orange);">${escapeHtml(comp.shortName || '')} · ${comp.year || ''}</div>
+        ${compCrumbs(cid, comp, { label: 'Kontroller' })}
         <h1 class="t-d2">Kontroller</h1>
       </div>
       <div class="btn-row">
-        ${compActionsHtml(cid, comp, user)}
         ${isAdmin ? '<button class="btn btn-primary" id="new">+ Ny kontroll</button>' : ''}
       </div>
     </div>
 
-    <div class="tabs">
-      <a href="/app/c/${cid}" data-link>Översikt</a>
-      <a href="/app/c/${cid}/laget" data-link>Läget</a>
-      <a href="/app/c/${cid}/patrols" data-link>Patruller</a>
-      <a href="/app/c/${cid}/controls" data-link class="active">Kontroller</a>
-      <a href="/app/c/${cid}/track" data-link>Spår</a>
-      <a href="/app/c/${cid}/scoreboard" data-link>Poängtabell</a>
-      <a href="/app/c/${cid}/anmalan" data-link>Anmälan</a>
-    </div>
+    ${compTabs(cid, 'controls', comp, user)}
 
     <div id="tbl"></div>
   `;

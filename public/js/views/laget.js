@@ -21,7 +21,7 @@ import {
 import { ensureLeaflet } from '../leaflet.js';
 import { renderQrToImg } from '../pdf.js';
 import { icon } from '../icons.js';
-import { compActionsHtml } from './competition.js';
+import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
 
 const WARN_SILENT_MIN = 60;   // patrol out with no sign of life this long → warning
 const CTRL_STALE_MIN = 45;    // control silent this long WITH inbound patrols → red
@@ -70,25 +70,17 @@ export async function renderLaget(app, user, cid) {
   }
   if (!wrap.isConnected) return;
 
+  setDocTitle('Läget', compLabel(comp));
   wrap.innerHTML = `
     <div class="page-head">
       <div>
-        <div class="t-over" style="color:var(--avent-orange);">${escapeHtml(comp.shortName || '')} · ${comp.year || ''}</div>
+        ${compCrumbs(cid, comp, { label: 'Läget' })}
         <h1 class="t-d2">Läget</h1>
         <p class="muted">Tävlingsdagsvy — uppdateras live när kontrollanter rapporterar och stationen checkar in.</p>
       </div>
-      <div class="btn-row">${compActionsHtml(cid, comp, user)}</div>
     </div>
 
-    <div class="tabs">
-      <a href="/app/c/${cid}" data-link>Översikt</a>
-      <a href="/app/c/${cid}/laget" data-link class="active">Läget</a>
-      <a href="/app/c/${cid}/patrols" data-link>Patruller</a>
-      <a href="/app/c/${cid}/controls" data-link>Kontroller</a>
-      <a href="/app/c/${cid}/track" data-link>Spår</a>
-      <a href="/app/c/${cid}/scoreboard" data-link>Poängtabell</a>
-      <a href="/app/c/${cid}/anmalan" data-link>Anmälan</a>
-    </div>
+    ${compTabs(cid, 'laget', comp, user)}
 
     <div id="station-card"></div>
     <div class="kpi-row" id="kpis"></div>

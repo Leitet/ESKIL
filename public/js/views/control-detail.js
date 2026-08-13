@@ -5,6 +5,7 @@ import {
 } from '../store.js';
 import { escapeHtml, toast, copyToClipboard, reportUrl, confirmDialog, formatTime, allInstructionGroups, withBusy, wireOverlayClose, isCompAdminUser, canEditControl } from '../utils.js';
 import { icon } from '../icons.js';
+import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
 import { navigate } from '../router.js';
 import { openControlModal } from './controls.js';
 import { downloadControlPdf, renderQrToImg } from '../pdf.js';
@@ -41,19 +42,22 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
   const url = reportUrl(cid, ctrlId);
   const shortOf = (avd) => ({ 'Spårare':'sp','Upptäckare':'up','Äventyrare':'av','Utmanare':'ut','Rover':'ro','Ledare':'le' }[avd] || 'le');
 
+  const ctrlTitle = `${control.nummer ?? ''}. ${control.name || ''}`;
+  setDocTitle(ctrlTitle, compLabel(comp));
   wrap.innerHTML = `
     <div class="page-head">
       <div>
-        <div class="t-over" style="color:var(--avent-orange);">${escapeHtml(comp.shortName || '')} · Kontroll</div>
-        <h1 class="t-d2">${escapeHtml(control.nummer ?? '')}. ${escapeHtml(control.name || '')}</h1>
+        ${compCrumbs(cid, comp, { label: 'Kontroller', href: `/app/c/${cid}/controls` }, { label: ctrlTitle })}
+        <h1 class="t-d2">${escapeHtml(ctrlTitle)}</h1>
         <p class="muted">${control.open ? '<span class="badge badge-green">Öppen</span>' : '<span class="badge badge-gray">Stängd</span>'} Max ${control.maxPoang || 0} · Min ${control.minPoang || 0}${control.extraPoang ? ' · Extra ' + control.extraPoang : ''}</p>
       </div>
       <div class="btn-row">
-        <a class="btn btn-ghost" href="/app/c/${cid}/controls" data-link>${icon('arrow-left', { size: 16 })} Alla kontroller</a>
-        ${canEdit ? '<button class="btn btn-secondary" id="edit">Redigera</button>' : ''}
+        ${canEdit ? '<button class="btn btn-secondary" id="edit">Redigera kontrollen</button>' : ''}
         ${canEdit ? `<button class="btn btn-primary" id="toggle">${control.open ? 'Stäng' : 'Öppna'} för rapport</button>` : ''}
       </div>
     </div>
+
+    ${compTabs(cid, 'controls', comp, user)}
 
     <div class="grid grid-2">
       <div class="card">

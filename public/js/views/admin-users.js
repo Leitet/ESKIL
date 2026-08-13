@@ -8,6 +8,7 @@
 import { layout } from '../app.js';
 import { listAllUsers, updateUserRole, deleteUser, listCompetitionsForUser } from '../store.js';
 import { escapeHtml, formatDate, formatTime, toast, confirmDialog } from '../utils.js';
+import { crumbs, setDocTitle } from '../nav.js';
 import { navigate } from '../router.js';
 
 export async function renderAdminUsers(app, user) {
@@ -16,11 +17,18 @@ export async function renderAdminUsers(app, user) {
     return;
   }
 
+  const crumbsHtml = crumbs([
+    { label: 'Tävlingar', href: '/app' },
+    { label: 'Konto', href: '/app/settings' },
+    { label: 'Användare' }
+  ]);
+  setDocTitle('Användare');
+
   const wrap = document.createElement('div');
   wrap.innerHTML = `
     <div class="page-head">
       <div>
-        <div class="t-over">Super-admin</div>
+        ${crumbsHtml}
         <h1 class="t-d2">Användare</h1>
       </div>
     </div>
@@ -52,9 +60,10 @@ export async function renderAdminUsers(app, user) {
     wrap.innerHTML = `
       <div class="page-head">
         <div>
-          <div class="t-over">Super-admin</div>
+          ${crumbsHtml}
           <h1 class="t-d2">Användare (${users.length})</h1>
         </div>
+        <div class="btn-row"><a class="btn btn-ghost btn-sm" href="/app/admin/system" data-link>Systemhubb</a></div>
       </div>
       <div class="table-wrap">
         <table class="t">

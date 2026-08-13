@@ -304,7 +304,8 @@ public/
     anmalan.css         # Anmälningssidan (mobile-first)
     station.css         # Start/Mål-stationen
   js/
-    app.js              # SPA-bootstrap, route-tabell, topbar
+    app.js              # SPA-bootstrap, route-tabell, topbar, footer
+    nav.js              # Delad navigation: tävlingsflikar, brödsmulor, dokumenttitel
     auth.js             # Magic-link-inloggning
     firebase.js         # SDK-init
     router.js           # Enkel path-baserad router

@@ -9,6 +9,12 @@
   flex-direction: column;
 }
 
+/* The SPA root is a column so the app footer sits at the bottom even on
+   short pages. Fullscreen views (splash, startscreen, ceremony) are the only
+   child and stretch to fill. */
+#app { min-height: 100vh; display: flex; flex-direction: column; }
+#app > .page { flex: 1; }
+
 .topbar {
   position: sticky; top: 0; z-index: 30;
   background: rgba(255,255,255,0.94);
@@ -49,12 +55,50 @@
 .topbar-comp {
   margin-left: auto;
   display: flex; align-items: center; gap: var(--sp-2);
+  min-width: 0;
 }
 .topbar-comp:empty { margin-left: auto; }  /* still pushes when empty */
+/* Current competition — persistent context + one click to its start page. */
+.topbar-comp-name {
+  font-family: var(--font-display); font-weight: 700; font-size: 14px;
+  color: var(--scout-blue); text-decoration: none;
+  max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 6px 10px; border-radius: var(--r-md);
+}
+.topbar-comp-name:hover { background: var(--scout-blue-100); }
 .topbar-right {
   display: flex; align-items: center; gap: var(--sp-3);
   font-size: 14px;
 }
+
+/* Mobile topbar: drop the decorative bits, keep every action reachable. */
+@media (max-width: 900px) {
+  .brand-sub { display: none; }
+  .topbar-email { display: none; }
+}
+@media (max-width: 760px) {
+  .topbar-inner {
+    flex-wrap: wrap;
+    gap: var(--sp-2) var(--sp-3);
+    padding: 10px var(--sp-4);
+  }
+  .topbar-comp-name { max-width: 46vw; }
+  .page { padding: var(--sp-6) var(--sp-4); }
+}
+
+/* App footer — the signed-in app's route back to the public start page. */
+.app-foot {
+  border-top: 1px solid var(--border);
+  background: var(--white);
+}
+.app-foot-inner {
+  max-width: 1200px; margin: 0 auto;
+  padding: var(--sp-4) var(--sp-6);
+  display: flex; justify-content: space-between; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4);
+  font-size: 13px; color: var(--fg3);
+}
+.app-foot a { color: var(--scout-blue); text-decoration: none; }
+.app-foot a:hover { text-decoration: underline; }
 
 .page {
   max-width: 1200px;
@@ -95,6 +139,45 @@
   color: var(--scout-blue);
   border-bottom-color: var(--scout-blue);
 }
+/* Mobile: the bar scrolls; hide the scrollbar (the active tab is centered
+   into view by nav.js and a cut-off label signals more content). */
+.tabs { scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.tabs::-webkit-scrollbar { display: none; }
+/* The admin-only settings tab sits on its own at the far end. */
+.tabs a.tab-end {
+  margin-left: auto;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+
+/* Local section tabs (pills) — same idea as .tabs but for in-page sections
+   (e.g. competition settings), visually distinct from route navigation. */
+.tabs-sub {
+  display: flex; flex-wrap: wrap; gap: var(--sp-2);
+  margin-bottom: var(--sp-6);
+}
+.tabs-sub a {
+  padding: 8px 14px; border-radius: var(--r-full);
+  border: 1px solid var(--border);
+  color: var(--fg2); text-decoration: none;
+  font-family: var(--font-display); font-weight: 600; font-size: 14px;
+  white-space: nowrap;
+  transition: all var(--dur-base) var(--ease);
+}
+.tabs-sub a:hover { color: var(--scout-blue); border-color: var(--scout-blue); }
+.tabs-sub a.active { background: var(--scout-blue); color: var(--white); border-color: var(--scout-blue); }
+
+/* Breadcrumbs — the "du är här"-trail above every page heading. */
+.crumbs {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 2px 8px;
+  font-family: var(--font-display);
+  font-size: 13px; font-weight: 600;
+  min-width: 0;
+}
+.crumbs a { color: var(--scout-blue); text-decoration: none; }
+.crumbs a:hover { text-decoration: underline; }
+.crumbs span[aria-current] { color: var(--fg3); }
+.crumbs-sep { color: var(--fg3); user-select: none; }
+.page-head .crumbs { margin-bottom: var(--sp-1); }
 
 /* Cards & lists */
 .card {
@@ -554,6 +637,13 @@ table.t tr.sf-row.park-row td {
   overflow: hidden;
 }
 .cer-loading { font-size: 22px; color: #a7bccf; }
+/* Exit affordance — the ceremony must never be a dead end. */
+.cer-close {
+  position: absolute; top: 16px; right: 20px; z-index: 10;
+  color: rgba(255,255,255,.55); font-size: 24px; line-height: 1;
+  text-decoration: none; padding: 10px 14px; border-radius: var(--r-md);
+}
+.cer-close:hover { color: #fff; background: rgba(255,255,255,.12); }
 .cer-menu, .cer-stage { text-align: center; max-width: 900px; padding: 32px; }
 .cer-eyebrow { color: var(--rover-yellow); font-weight: 800; letter-spacing: .18em; font-size: clamp(12px, 1.4vw, 16px); text-transform: uppercase; }
 .cer-title { font-size: clamp(34px, 5vw, 64px); font-weight: 200; margin: 12px 0 4px; }

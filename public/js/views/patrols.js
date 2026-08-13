@@ -11,7 +11,7 @@ import {
 } from '../utils.js';
 import { renderQrToImg, downloadStartPdf } from '../pdf.js';
 import { icon } from '../icons.js';
-import { compActionsHtml } from './competition.js';
+import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
 
 let unsub = null;
 let sortableInstance = null;
@@ -55,28 +55,20 @@ export async function renderPatrols(app, user, cid) {
     q: ''
   };
 
+  setDocTitle('Patruller', compLabel(comp));
   wrap.innerHTML = `
     <div class="page-head">
       <div>
-        <div class="t-over" style="color:var(--avent-orange);">${escapeHtml(comp.shortName || '')} · ${comp.year || ''}</div>
+        ${compCrumbs(cid, comp, { label: 'Patruller' })}
         <h1 class="t-d2">Patruller</h1>
         ${st.enabled ? `<p class="muted" id="st-header">Starttid från ${escapeHtml(st.firstStart)} · ${st.intervalMinutes} min intervall</p>` : ''}
       </div>
       <div class="btn-row">
-        ${compActionsHtml(cid, comp, user)}
         ${isAdmin ? '<button class="btn btn-primary" id="new">+ Ny patrull</button>' : ''}
       </div>
     </div>
 
-    <div class="tabs">
-      <a href="/app/c/${cid}" data-link>Översikt</a>
-      <a href="/app/c/${cid}/laget" data-link>Läget</a>
-      <a href="/app/c/${cid}/patrols" data-link class="active">Patruller</a>
-      <a href="/app/c/${cid}/controls" data-link>Kontroller</a>
-      <a href="/app/c/${cid}/track" data-link>Spår</a>
-      <a href="/app/c/${cid}/scoreboard" data-link>Poängtabell</a>
-      <a href="/app/c/${cid}/anmalan" data-link>Anmälan</a>
-    </div>
+    ${compTabs(cid, 'patrols', comp, user)}
 
     <div class="scoreboard-controls">
       <input class="input" id="q" placeholder="Sök namn, kår, nummer…" style="max-width:260px;">
@@ -184,7 +176,7 @@ export async function renderPatrols(app, user, cid) {
       tbl.querySelectorAll('[data-start]').forEach(b => {
         b.addEventListener('click', () => {
           const row = state.rows.find(r => r.id === b.dataset.start);
-          openStartCardModal(cid, row);
+          openStartCardModal(cid, row, st.enabled);
         });
       });
       tbl.querySelectorAll('[data-del]').forEach(b => {
@@ -275,7 +267,7 @@ function shortOf(avd) {
   return { 'Spårare':'sp','Upptäckare':'up','Äventyrare':'av','Utmanare':'ut','Rover':'ro','Ledare':'le' }[avd] || 'le';
 }
 
-async function openStartCardModal(cid, patrol) {
+async function openStartCardModal(cid, patrol, startScreenAvailable = false) {
   if (!patrol) return;
   const url = startUrl(cid, patrol.id);
   const overlay = document.createElement('div');
@@ -297,7 +289,7 @@ async function openStartCardModal(cid, patrol) {
         <div class="btn-row mt-4">
           <button class="btn btn-primary" id="pdf">${icon('download', { size: 16 })} Ladda ner PDF</button>
           <a class="btn btn-ghost" href="${url}" target="_blank" rel="noopener">Öppna startkort</a>
-          <a class="btn btn-secondary" href="/app/c/${cid}/startscreen" target="_blank" rel="noopener">Startskärm</a>
+          ${startScreenAvailable ? `<a class="btn btn-secondary" href="/app/c/${cid}/startscreen" target="_blank" rel="noopener">Startskärm</a>` : ''}
         </div>
       </div>
       <div class="modal-foot">

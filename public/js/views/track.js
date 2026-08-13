@@ -13,7 +13,7 @@ import { escapeHtml, toast, isCompAdminUser } from '../utils.js';
 import { courseLegs, legPath, legLatLngs, legDistance, fmtDist, fmtMin, DEFAULT_SPEED_KMH } from '../course.js';
 import { ensureLeaflet } from '../leaflet.js';
 import { icon } from '../icons.js';
-import { compActionsHtml } from './competition.js';
+import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
 
 const CONTROL_MINUTES = 5;     // scheduled stop per control (fixed by design)
 const SPEEDS = [3, 4, 5];      // selectable walking pace, km/h
@@ -51,24 +51,16 @@ export async function renderTrack(app, user, cid) {
 
   // --- Layout --------------------------------------------------------------------
   const nCtrls = nodes.filter(n => n.kind === 'control').length;
+  setDocTitle('Spår', compLabel(comp));
   wrap.innerHTML = `
     <div class="page-head" style="margin-bottom:var(--sp-3);">
       <div>
-        <div class="t-over" style="color:var(--avent-orange);">${escapeHtml(comp.shortName || '')} · ${comp.year || ''}</div>
+        ${compCrumbs(cid, comp, { label: 'Spår' })}
         <h1 class="t-d2">Spår</h1>
       </div>
-      <div class="btn-row">${compActionsHtml(cid, comp, user)}</div>
     </div>
 
-    <div class="tabs">
-      <a href="/app/c/${cid}" data-link>Översikt</a>
-      <a href="/app/c/${cid}/laget" data-link>Läget</a>
-      <a href="/app/c/${cid}/patrols" data-link>Patruller</a>
-      <a href="/app/c/${cid}/controls" data-link>Kontroller</a>
-      <a href="/app/c/${cid}/track" data-link class="active">Spår</a>
-      <a href="/app/c/${cid}/scoreboard" data-link>Poängtabell</a>
-      <a href="/app/c/${cid}/anmalan" data-link>Anmälan</a>
-    </div>
+    ${compTabs(cid, 'track', comp, user)}
 
     ${unplaced.length ? `
       <div class="card mb-3" style="border-left:3px solid var(--avent-orange);padding:10px 16px;">

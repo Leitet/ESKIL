@@ -8,6 +8,7 @@ import {
 import { ensureUser, getUser, getCompetition } from './store.js';
 import { route, startRouter, dispatch, navigate, setRouteChangeHandler } from './router.js';
 import { toast, escapeHtml, isCompAdminUser } from './utils.js';
+import { compLabel } from './nav.js';
 
 import { icon } from './icons.js';
 import { renderLogin } from './views/login.js';
@@ -87,8 +88,11 @@ async function guard(render, cid = null) {
 }
 
 // Update topbar active state when route changes. Also tear down any active
-// start-screen intervals when we navigate away.
+// start-screen intervals when we navigate away, and reset the browser-tab
+// title so a view-specific title (e.g. ceremony's) never leaks to the next
+// page — views set their own via setDocTitle() once their data loads.
 setRouteChangeHandler(() => {
+  document.title = 'ESKIL — Scouttävlingssystem';
   document.querySelectorAll('.tabs a').forEach(a => {
     if (a.getAttribute('href') === location.pathname) a.classList.add('active');
     else a.classList.remove('active');
@@ -101,9 +105,12 @@ setRouteChangeHandler(() => {
 export function renderTopbar(extra) {
   const bar = document.createElement('nav');
   bar.className = 'topbar';
+  // Demo viewers have no /app home — their brand link goes to the public
+  // landing instead of bouncing them onto the login screen via guard().
+  const brandHref = currentUser?.demoViewer ? '/' : '/app';
   bar.innerHTML = `
     <div class="topbar-inner">
-      <a class="brand" href="/app" data-link>
+      <a class="brand" href="${brandHref}" data-link>
         <img class="brand-mark" src="/assets/scout-symbol.svg" alt="" aria-hidden="true">
         <span class="brand-name">ESKIL</span>
         <span class="brand-sub">Scouttävlingar</span>
@@ -116,8 +123,8 @@ export function renderTopbar(extra) {
           <button class="btn btn-secondary btn-sm" id="demo-login">Logga in</button>
         ` : `
           ${currentUser?.role === 'super-admin' ? '<span class="badge badge-blue">Super-admin</span>' : ''}
-          <span class="muted" title="${currentUser?.email ?? ''}">${currentUser?.email ?? ''}</span>
-          <a class="btn btn-ghost btn-sm" href="/app/settings" data-link>Inställningar</a>
+          <span class="muted topbar-email" title="${currentUser?.email ?? ''}">${currentUser?.email ?? ''}</span>
+          <a class="btn btn-ghost btn-sm" href="/app/settings" data-link>Konto</a>
           <button class="btn btn-ghost btn-sm" id="sign-out">Logga ut</button>
         `}
       </div>
@@ -134,14 +141,16 @@ export function renderTopbar(extra) {
   return bar;
 }
 
-// Populate the competition-specific slot in the topbar (Offentlig sida +
-// Startskärm). Views call this after their `comp` data has loaded. The slot
+// Populate the competition-specific slot in the topbar: the competition name
+// (always one click back to the competition's start page) + Offentlig sida +
+// Startskärm. Views call this after their `comp` data has loaded. The slot
 // is recreated empty on every layout() call, so stale comps never leak.
 export function setTopbarCompetition(cid, comp, user) {
   const slot = document.getElementById('topbar-comp');
   if (!slot || !comp) return;
   const isAdmin = isCompAdminUser(comp, user);
   slot.innerHTML = `
+    <a class="topbar-comp-name" href="/app/c/${encodeURIComponent(cid)}" data-link title="${escapeHtml(comp.name || '')}">${escapeHtml(compLabel(comp))}</a>
     <a class="btn btn-secondary btn-sm" href="/t/${cid}" target="_blank" rel="noopener">Offentlig sida ${icon('external', { size: 14 })}</a>
     ${comp.startTimes?.enabled && isAdmin ? `<a class="btn btn-secondary btn-sm" href="/app/c/${cid}/startscreen" target="_blank" rel="noopener">Startskärm ${icon('external', { size: 14 })}</a>` : ''}
   `;
@@ -155,6 +164,15 @@ export function layout(inner, { narrow = false } = {}) {
   page.className = 'page' + (narrow ? ' page-narrow' : '');
   page.appendChild(inner);
   app.appendChild(page);
+  // Slim footer — the signed-in app's only route to the public landing page.
+  const foot = document.createElement('footer');
+  foot.className = 'app-foot';
+  foot.innerHTML = `
+    <div class="app-foot-inner">
+      <span>ESKIL · Scouttävlingar</span>
+      <span><a href="/" data-link>ESKIL:s startsida</a> · <a href="/integritet">Integritet &amp; GDPR</a></span>
+    </div>`;
+  app.appendChild(foot);
 }
 
 // ---- Magic-link completion UI ---------------------------------------------

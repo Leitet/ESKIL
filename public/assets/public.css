@@ -33,7 +33,9 @@ body { background: var(--bg-muted); }
 }
 .pub-brand {
   display: inline-flex; align-items: center; gap: var(--sp-3);
+  text-decoration: none;
 }
+a.pub-brand:hover { opacity: 0.85; }
 .pub-brand img { height: 32px; width: auto; }
 .pub-brand .divider {
   width: 1px; height: 22px; background: rgba(255,255,255,0.2);

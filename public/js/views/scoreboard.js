@@ -3,7 +3,7 @@ import { getCompetition, listPatrols, listControls, listAllScores, updateControl
 import { downloadResultsPdf, downloadResultsCsv, attachTrackStats } from '../results-export.js';
 import { allowedAvdelningar, escapeHtml, rankPatrols, rankKarer, RANKING_RULES_TEXT, utslagRows, isNumSet, toast, withBusy, isCompAdminUser } from '../utils.js';
 import { icon } from '../icons.js';
-import { compActionsHtml } from './competition.js';
+import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
 
 export async function renderScoreboard(app, user, cid) {
   const wrap = document.createElement('div');
@@ -17,14 +17,14 @@ export async function renderScoreboard(app, user, cid) {
   const isAdmin = isCompAdminUser(comp, user);
   const canTogglePublic = isAdmin && !(comp.demo && user.role !== 'super-admin');
 
+  setDocTitle('Poängtabell', compLabel(comp));
   wrap.innerHTML = `
     <div class="page-head">
       <div>
-        <div class="t-over" style="color:var(--avent-orange);">${escapeHtml(comp.shortName || '')} · ${comp.year || ''}</div>
+        ${compCrumbs(cid, comp, { label: 'Poängtabell' })}
         <h1 class="t-d2">Poängtabell</h1>
       </div>
       <div class="btn-row">
-        ${compActionsHtml(cid, comp, user)}
         ${isAdmin ? `<a class="btn btn-secondary btn-sm" href="/app/c/${cid}/ceremony" target="_blank" rel="noopener">${icon('trophy', { size: 14 })} Prisutdelning</a>
         <button class="btn btn-secondary btn-sm" id="dl-pdf">${icon('download', { size: 14 })} Resultat (PDF)</button>
         <button class="btn btn-ghost btn-sm" id="dl-csv">${icon('download', { size: 14 })} CSV</button>` : ''}
@@ -33,15 +33,7 @@ export async function renderScoreboard(app, user, cid) {
       </div>
     </div>
 
-    <div class="tabs">
-      <a href="/app/c/${cid}" data-link>Översikt</a>
-      <a href="/app/c/${cid}/laget" data-link>Läget</a>
-      <a href="/app/c/${cid}/patrols" data-link>Patruller</a>
-      <a href="/app/c/${cid}/controls" data-link>Kontroller</a>
-      <a href="/app/c/${cid}/track" data-link>Spår</a>
-      <a href="/app/c/${cid}/scoreboard" data-link class="active">Poängtabell</a>
-      <a href="/app/c/${cid}/anmalan" data-link>Anmälan</a>
-    </div>
+    ${compTabs(cid, 'scoreboard', comp, user)}
 
     <div class="scoreboard-controls">
       <label class="t-sm muted">Visa</label>

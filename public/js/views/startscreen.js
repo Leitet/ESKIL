@@ -57,7 +57,7 @@ export async function renderStartScreen(app, user, cid) {
         <div class="ss-clock"><span id="ss-clock">—</span></div>
         <div class="ss-top-right">
           <button class="ss-btn" id="ss-fs" aria-label="Fullskärm">${icon('external', { size: 18 })}</button>
-          <a class="ss-btn" href="/app/c/${cid}" data-link title="Tillbaka">${icon('x', { size: 18 })}</a>
+          <a class="ss-btn" id="ss-close" href="/app/c/${cid}" data-link title="Stäng startskärmen" aria-label="Stäng startskärmen">${icon('x', { size: 18 })}</a>
         </div>
       </header>
 
@@ -74,6 +74,17 @@ export async function renderStartScreen(app, user, cid) {
   document.getElementById('ss-fs').addEventListener('click', () => {
     if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
     else document.exitFullscreen?.();
+  });
+
+  // The startscreen is always opened in its own tab (target=_blank) — close
+  // that tab instead of navigating it into a second parallel admin session.
+  // Falls back to the href when the tab wasn't script-opened.
+  document.getElementById('ss-close').addEventListener('click', (e) => {
+    if (window.opener) {
+      e.preventDefault();
+      e.stopPropagation();
+      window.close();
+    }
   });
 
   // Live: competition (starttime settings can change) + patrols (order/add/remove)

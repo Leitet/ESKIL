@@ -28,6 +28,13 @@ Email extension). Production domain: https://eskilscout.se.
   extend via semantic class names in `app.css` or `report.css`.
 - **Night mode** on the reporter page is a red palette. Don't swap it for a
   gray dark mode — preserving night vision is the requirement.
+- **Navigation lives in `public/js/nav.js`.** Competition tab bar
+  (`compTabs`), breadcrumbs (`crumbs`/`compCrumbs`) and browser-tab titles
+  (`setDocTitle`) are shared — never hand-roll a `.tabs` bar in a view.
+  Every page must have a route back to the competition start page and to a
+  start page (`/app` or `/`); anonymous pages may link to `/t/<cid>` (public)
+  but must never link to, or leak, secret URLs. The router fires its
+  route-change hook BEFORE the view handler (title reset depends on this).
 
 ## Directory map
 

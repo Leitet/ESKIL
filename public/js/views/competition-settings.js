@@ -22,6 +22,7 @@ import {
 } from '../utils.js';
 import { createManagementForm } from '../managementform.js';
 import { icon } from '../icons.js';
+import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
 import { navigate } from '../router.js';
 import { initMapPicker } from '../mappicker.js';
 
@@ -34,7 +35,13 @@ const TABS = [
   { key: 'members',    label: 'Användare'       }
 ];
 
-let activeTab = 'basic';
+// The active section lives in the URL hash (#basic, #members, …) so sections
+// are deep-linkable and never leak between competitions the way the old
+// module-level state did.
+const sectionFromHash = () => {
+  const h = (location.hash || '').replace('#', '');
+  return TABS.some(t => t.key === h) ? h : 'basic';
+};
 
 export async function renderCompetitionSettings(app, user, cid) {
   const wrap = document.createElement('div');
@@ -48,6 +55,7 @@ export async function renderCompetitionSettings(app, user, cid) {
   }
   if (!comp) { wrap.innerHTML = `<div class="empty"><h3>Tävlingen hittades inte</h3></div>`; return; }
   setTopbarCompetition(cid, comp, user);
+  setDocTitle('Inställningar', compLabel(comp));
 
   const isSuperAdmin = user.role === 'super-admin';
   const isAdmin = isSuperAdmin || isCompAdminUser(comp, user);
@@ -62,20 +70,21 @@ export async function renderCompetitionSettings(app, user, cid) {
     renderAll();
   };
 
+  let activeTab = sectionFromHash();
+
   const renderAll = () => {
     wrap.innerHTML = `
       <div class="page-head">
         <div>
-          <div class="t-over" style="color:var(--avent-orange);">${escapeHtml(comp.shortName || '')} · ${comp.year || ''}${comp.demo ? ' · DEMO' : ''}</div>
+          ${compCrumbs(cid, comp, { label: 'Inställningar' })}
           <h1 class="t-d2">Inställningar</h1>
           <p class="muted">${escapeHtml(comp.name)}${isDemoReadOnly ? ' · skrivskyddat (demospår)' : ''}</p>
         </div>
-        <div class="btn-row">
-          <a class="btn btn-ghost" href="/app/c/${cid}" data-link>${icon('arrow-left', { size: 16 })} Tillbaka</a>
-        </div>
       </div>
 
-      <div class="tabs">
+      ${compTabs(cid, 'settings', comp, user)}
+
+      <div class="tabs-sub">
         ${TABS.map(t => `<a href="#${t.key}" data-tab="${t.key}" class="${activeTab === t.key ? 'active' : ''}">${escapeHtml(t.label)}</a>`).join('')}
       </div>
 
@@ -86,6 +95,7 @@ export async function renderCompetitionSettings(app, user, cid) {
       a.addEventListener('click', (e) => {
         e.preventDefault();
         activeTab = a.dataset.tab;
+        history.replaceState(null, '', `#${activeTab}`);
         renderAll();
       });
     });

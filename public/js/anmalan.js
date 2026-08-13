@@ -141,7 +141,10 @@ function hero(sub = 'Anmälan') {
 }
 
 function footer() {
-  return `<div class="anm-foot">ESKIL · anmälan · ${escapeHtml(comp.organizer || comp.shortName || '')} · <a href="/integritet" style="color:inherit;">Integritet &amp; GDPR</a></div>`;
+  const cid = comp?.id || parsePath()?.cid || '';
+  return `<div class="anm-foot">ESKIL · anmälan · ${escapeHtml(comp.organizer || comp.shortName || '')}
+    · <a href="/t/${escapeHtml(cid)}" style="color:inherit;">Tävlingssidan</a>
+    · <a href="/integritet" style="color:inherit;">Integritet &amp; GDPR</a></div>`;
 }
 
 function steps(active) {
@@ -188,6 +191,7 @@ function renderShell(bodyHtml, wire = null) {
 }
 
 function renderFatal(msg) {
+  const cid = comp?.id || parsePath()?.cid || '';
   root.innerHTML = `
     <header class="anm-hero">
       <div class="anm-hero-pattern"></div>
@@ -195,6 +199,10 @@ function renderFatal(msg) {
         <img src="/assets/logo-scouterna-tagline-white.svg" alt="Scouterna" style="height:30px;">
         <h1>Hoppsan</h1>
         <div class="sub">${escapeHtml(msg)}</div>
+        <div style="margin-top:var(--sp-6);display:flex;gap:var(--sp-3);justify-content:center;flex-wrap:wrap;">
+          ${cid ? `<a class="btn btn-secondary btn-sm" href="/t/${escapeHtml(cid)}">Till tävlingssidan</a>` : ''}
+          <a class="btn btn-ghost btn-sm" href="/" style="color:#fff;">ESKIL:s startsida</a>
+        </div>
       </div>
     </header>
   `;

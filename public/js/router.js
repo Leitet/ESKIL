@@ -27,16 +27,25 @@ export function dispatch() {
     if (m) {
       const params = {};
       r.keys.forEach((k, i) => { params[k] = decodeURIComponent(m[i + 1]); });
-      r.handler(params);
+      // onChange BEFORE the handler: it resets cross-view state (document
+      // title, startscreen teardown) that the incoming view then sets fresh —
+      // views set their own title synchronously or after data load.
       onChange?.(path);
+      r.handler(params);
       return;
     }
   }
-  // No match — show a simple not-found.
+  // No match — show a simple not-found with routes back to both start pages.
   const app = document.getElementById('app');
   if (app) app.innerHTML = `
-    <div class="page"><h1 class="t-h1">404</h1>
-    <p>Sidan hittades inte. <a href="/app" data-link>Till startsidan</a></p></div>`;
+    <div class="page" style="text-align:center;padding-top:10vh;">
+      <h1 class="t-d2" style="color:var(--scout-blue);">Sidan hittades inte</h1>
+      <p class="muted">Adressen kan vara felstavad, eller så har sidan flyttats.</p>
+      <div class="btn-row" style="justify-content:center;margin-top:var(--sp-6);">
+        <a class="btn btn-primary" href="/" data-link>Till ESKIL:s startsida</a>
+        <a class="btn btn-secondary" href="/app" data-link>Dina tävlingar</a>
+      </div>
+    </div>`;
 }
 
 export function setRouteChangeHandler(cb) { onChange = cb; }

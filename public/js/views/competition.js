@@ -1,17 +1,7 @@
 import { layout, setTopbarCompetition } from '../app.js';
 import { getCompetition, listPatrols, listControls, migrateCompetitionAccess } from '../store.js';
 import { escapeHtml, formatDate, activeManagement, isCompAdminUser } from '../utils.js';
-import { icon } from '../icons.js';
-
-// "Redigera"-knappen i page-head btn-row. Offentlig sida + Startskärm bor
-// numera uppe i topbaren (via setTopbarCompetition) så de är synliga på
-// varje tävlingssida oavsett flik.
-export function compActionsHtml(cid, comp, user) {
-  const isAdmin = isCompAdminUser(comp, user);
-  return isAdmin
-    ? `<a class="btn btn-ghost btn-sm" href="/app/c/${cid}/settings" data-link>Redigera</a>`
-    : '';
-}
+import { compTabs, compCrumbs, setDocTitle } from '../nav.js';
 
 export async function renderCompetition(app, user, cid) {
   const wrap = document.createElement('div');
@@ -32,6 +22,7 @@ export async function renderCompetition(app, user, cid) {
 
   const isAdmin = isCompAdminUser(comp, user);
   setTopbarCompetition(cid, comp, user);
+  setDocTitle(comp.name);
   // Fas 3a: mirror this competition's permission fields into the member-only
   // private/access subdoc (copy only — the doc keeps them until Fas 3c).
   if (isAdmin && !comp.demo) migrateCompetitionAccess(cid).catch(() => {});
@@ -47,23 +38,14 @@ export async function renderCompetition(app, user, cid) {
   wrap.innerHTML = `
     <div class="page-head">
       <div>
-        <div class="t-over" style="color:var(--avent-orange);">${escapeHtml(comp.shortName || '')} · ${comp.year || ''}${comp.demo ? ' · DEMO' : ''}</div>
+        ${compCrumbs(cid, comp)}
         <h1 class="t-d2" style="color:var(--scout-blue);">${escapeHtml(comp.name)} ${comp.demo ? '<span class="badge badge-orange" style="font-size:14px;vertical-align:middle;">Demospår</span>' : ''}${comp.closed ? '<span class="badge badge-gray" style="font-size:14px;vertical-align:middle;">Avslutad</span>' : ''}</h1>
         <p class="muted">${comp.date ? formatDate(comp.date) : ''} ${comp.location ? '· ' + escapeHtml(comp.location) : ''}</p>
         ${comp.demo && user.role !== 'super-admin' ? '<p class="t-sm" style="color:var(--avent-orange);font-weight:600;">Demospår — du kan utforska men inte ändra.</p>' : ''}
       </div>
-      <div class="btn-row">${compActionsHtml(cid, comp, user)}</div>
     </div>
 
-    <div class="tabs">
-      <a href="/app/c/${cid}" data-link class="active">Översikt</a>
-      <a href="/app/c/${cid}/laget" data-link>Läget</a>
-      <a href="/app/c/${cid}/patrols" data-link>Patruller</a>
-      <a href="/app/c/${cid}/controls" data-link>Kontroller</a>
-      <a href="/app/c/${cid}/track" data-link>Spår</a>
-      <a href="/app/c/${cid}/scoreboard" data-link>Poängtabell</a>
-      <a href="/app/c/${cid}/anmalan" data-link>Anmälan</a>
-    </div>
+    ${compTabs(cid, 'oversikt', comp, user)}
 
     <div class="kpi-row">
       <div class="kpi"><div class="k-label">Patruller</div><div class="k-value">${patrols.length}</div></div>

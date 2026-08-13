@@ -110,7 +110,8 @@ function render() {
     </div>
 
     <p class="r-sub" style="text-align:center;opacity:.55;margin-top:32px;font-size:13px;">
-      ESKIL · tryck på en patrull för att ${mode === 'start' ? 'checka ut den' : 'checka in den'} — tryck igen för att ångra
+      ESKIL · tryck på en patrull för att ${mode === 'start' ? 'checka ut den' : 'checka in den'} — tryck igen för att ångra<br>
+      <a href="/t/${escapeHtml(cid)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">Tävlingssidan — startlista &amp; resultat</a>
     </p>
   `;
 

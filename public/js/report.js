@@ -259,6 +259,7 @@ async function main() {
     root.innerHTML = `<div class="r-empty">Kontrollen hittades inte.</div>`;
     return;
   }
+  document.title = `${control.nummer ?? ''}. ${control.name || 'Kontroll'} · ${comp?.shortName || ''} — ESKIL`;
 
   // --- Live control doc (to react to open/closed changes) ---
   onSnapshot(doc(db, 'competitions', cid, 'controls', ctrlId), snap => {
@@ -737,7 +738,8 @@ async function main() {
     <div class="r-section" id="avd"></div>
     <div class="r-section" id="plist"></div>
     <p class="r-sub" style="text-align:center;opacity:.6;margin-top:40px;">
-      ESKIL · rapporteringen uppdateras i realtid
+      ESKIL · rapporteringen uppdateras i realtid<br>
+      <a href="/t/${escapeHtml(cid)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">Tävlingssidan — startlista &amp; resultat</a>
     </p>
   `;
   const head = root.querySelector('#head');

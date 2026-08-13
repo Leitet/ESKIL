@@ -26,8 +26,10 @@ function readStartFinish(overlay) {
 
 export { readStartFinish };
 import { navigate } from '../router.js';
+import { setDocTitle } from '../nav.js';
 
 export async function renderHome(app, user) {
+  setDocTitle('Tävlingar');
   const wrap = document.createElement('div');
   wrap.innerHTML = `
     <div class="page-head">

@@ -9,12 +9,13 @@ import { escapeHtml, formatDate, registrationState } from '../utils.js';
 import { icon } from '../icons.js';
 
 export async function renderLanding(app, user) {
+  document.title = 'ESKIL — Scouttävlingssystem';
   app.innerHTML = `
     ${heroHtml(user)}
     <main class="page" id="landing-body">
       <div class="muted" style="padding:var(--sp-8) 0;">Laddar tävlingar…</div>
     </main>
-    ${footHtml()}
+    ${footHtml(user)}
   `;
 
   const body = app.querySelector('#landing-body');
@@ -168,11 +169,11 @@ function heroHtml(user) {
       <img class="pub-hero-symbol" src="/assets/scout-symbol.svg" alt="" aria-hidden="true">
       <div class="page">
         <div class="pub-hero-top">
-          <div class="pub-brand">
+          <a class="pub-brand" href="/" data-link aria-label="Till ESKIL:s startsida">
             <img src="/assets/logo-scouterna-tagline-white.svg" alt="Scouterna">
             <span class="divider"></span>
             <span class="sublabel">ESKIL</span>
-          </div>
+          </a>
           <div class="btn-row">
             ${user
               ? `<a class="btn btn-secondary btn-sm" href="/app" data-link>Dina tävlingar ${icon('arrow-right', { size: 14 })}</a>`
@@ -188,7 +189,7 @@ function heroHtml(user) {
   `;
 }
 
-function footHtml() {
+function footHtml(user) {
   return `
     <footer class="pub-foot">
       <div class="page">
@@ -196,7 +197,9 @@ function footHtml() {
           <img src="/assets/logo-scouterna-tagline-white.svg" alt="Scouterna">
           <span>· ESKIL</span>
         </div>
-        <span class="muted">Vill din kår använda ESKIL? <a href="/app" data-link style="color:#a7bccf;">Logga in</a> eller kontakta oss. · <a href="/integritet" style="color:#a7bccf;">Integritet &amp; GDPR</a></span>
+        <span class="muted">${user
+          ? '<a href="/app" data-link style="color:#a7bccf;">Till dina tävlingar</a>'
+          : 'Vill din kår använda ESKIL? <a href="/app" data-link style="color:#a7bccf;">Logga in</a> eller kontakta oss.'} · <a href="/integritet" style="color:#a7bccf;">Integritet &amp; GDPR</a></span>
       </div>
     </footer>
   `;

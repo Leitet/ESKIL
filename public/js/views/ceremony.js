@@ -8,22 +8,24 @@
 import { getCompetition, listPatrols, listControls, listAllScores } from '../store.js';
 import { AVDELNINGAR, escapeHtml, rankPatrols, avdShort } from '../utils.js';
 import { registerViewCleanup } from '../app.js';
+import { navigate } from '../router.js';
 
 const PLACE_LABELS = { 3: 'På tredje plats…', 2: 'På andra plats…', 1: 'Och segrare är…' };
 
 export async function renderCeremony(app, user, cid) {
   app.innerHTML = `<div class="ceremony"><div class="cer-loading">Laddar…</div></div>`;
 
+  const exitLink = `<a class="cer-close" href="/app/c/${cid}/scoreboard" data-link aria-label="Till poängtabellen" title="Till poängtabellen">✕</a>`;
   let comp, patrols, controls, scores;
   try {
     [comp, patrols, controls, scores] = await Promise.all([
       getCompetition(cid), listPatrols(cid), listControls(cid), listAllScores(cid)
     ]);
   } catch (e) {
-    app.innerHTML = `<div class="ceremony"><div class="cer-loading">Kunde inte ladda: ${escapeHtml(e.message)}</div></div>`;
+    app.innerHTML = `<div class="ceremony">${exitLink}<div class="cer-loading">Kunde inte ladda: ${escapeHtml(e.message)}</div></div>`;
     return;
   }
-  if (!comp) { app.innerHTML = `<div class="ceremony"><div class="cer-loading">Tävlingen hittades inte.</div></div>`; return; }
+  if (!comp) { app.innerHTML = `<div class="ceremony">${exitLink}<div class="cer-loading">Tävlingen hittades inte.</div></div>`; return; }
   document.title = `Prisutdelning · ${comp.shortName || comp.name || 'ESKIL'}`;
 
   // Totals + ranking (same math as the scoreboard).
@@ -51,6 +53,19 @@ export async function renderCeremony(app, user, cid) {
   app.innerHTML = '';
   app.appendChild(root);
 
+  // Always-visible exit — the view used to be a dead end: no link anywhere,
+  // and every click advanced the reveal. Lives outside the re-rendered stage.
+  const closeBtn = document.createElement('a');
+  closeBtn.className = 'cer-close';
+  closeBtn.href = `/app/c/${cid}/scoreboard`;
+  closeBtn.setAttribute('data-link', '');
+  closeBtn.setAttribute('aria-label', 'Avsluta prisutdelningen');
+  closeBtn.title = 'Avsluta prisutdelningen';
+  closeBtn.textContent = '✕';
+  closeBtn.addEventListener('click', (e) => e.stopPropagation());
+  const stage = document.createElement('div');
+  root.append(closeBtn, stage);
+
   let state = { view: 'menu' };
   const done = new Set(); // categories already presented
 
@@ -71,7 +86,7 @@ export async function renderCeremony(app, user, cid) {
 
   function render() {
     if (state.view === 'menu') {
-      root.innerHTML = `
+      stage.innerHTML = `
         <div class="cer-menu">
           <div class="cer-eyebrow">ESKIL · PRISUTDELNING</div>
           <h1 class="cer-title">${escapeHtml(comp.name || '')}</h1>
@@ -85,10 +100,10 @@ export async function renderCeremony(app, user, cid) {
             `).join('')}
           </div>
           ${categories.length === 0 ? '<p class="cer-sub">Inga poäng rapporterade ännu.</p>' : ''}
-          <p class="cer-hint">Mellanslag/klick = nästa · Esc = tillbaka hit</p>
+          <p class="cer-hint">Mellanslag/klick = nästa · Esc = tillbaka hit · ✕ = till poängtabellen</p>
         </div>
       `;
-      root.querySelectorAll('[data-cat]').forEach(b => b.addEventListener('click', (e) => {
+      stage.querySelectorAll('[data-cat]').forEach(b => b.addEventListener('click', (e) => {
         e.stopPropagation();
         const cat = categories.find(c => c.key === b.dataset.cat);
         state = { view: 'cat', cat, steps: buildSteps(cat), idx: 0 };
@@ -102,7 +117,7 @@ export async function renderCeremony(app, user, cid) {
     const catLabel = cat.key === '__overall' ? 'Overall' : cat.label;
 
     if (step.type === 'intro') {
-      root.innerHTML = `
+      stage.innerHTML = `
         <div class="cer-stage">
           <div class="cer-eyebrow">${escapeHtml(comp.shortName || '')} ${comp.year ? '· ' + comp.year : ''}</div>
           <h1 class="cer-cat-title"><span class="dot ${cat.short}" style="width:22px;height:22px;"></span> ${escapeHtml(catLabel)}</h1>
@@ -113,7 +128,7 @@ export async function renderCeremony(app, user, cid) {
     } else if (step.type === 'reveal') {
       const label = PLACE_LABELS[step.rank] || `Plats ${step.rank}…`;
       const shared = step.rows.length > 1;
-      root.innerHTML = `
+      stage.innerHTML = `
         <div class="cer-stage">
           <div class="cer-eyebrow">${escapeHtml(catLabel)}</div>
           <p class="cer-place-label">${shared ? `Delad ${step.rank === 1 ? 'förstaplats' : step.rank === 2 ? 'andraplats' : 'tredjeplats'}…` : escapeHtml(label)}</p>
@@ -132,7 +147,7 @@ export async function renderCeremony(app, user, cid) {
         </div>
       `;
     } else { // podium
-      root.innerHTML = `
+      stage.innerHTML = `
         <div class="cer-stage">
           <div class="cer-eyebrow">${escapeHtml(catLabel)}</div>
           <h2 class="cer-podium-title">Grattis!</h2>
@@ -169,6 +184,7 @@ export async function renderCeremony(app, user, cid) {
   const onKey = (e) => {
     if (e.key === 'Escape') {
       if (state.view === 'cat') { state = { view: 'menu' }; render(); }
+      else navigate(`/app/c/${cid}/scoreboard`);
       return;
     }
     if ([' ', 'Enter', 'ArrowRight', 'PageDown'].includes(e.key)) {

@@ -14,7 +14,7 @@ import {
   isPaymentPaid, isCompAdminUser
 } from '../utils.js';
 import { icon } from '../icons.js';
-import { compActionsHtml } from './competition.js';
+import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
 
 // Ready-made PM templates — {comp} is replaced with the competition label,
 // [HAKPARENTESER] are gaps the admin fills in before sending.
@@ -61,29 +61,21 @@ export async function renderAnmalanAdmin(app, user, cid) {
     closed: 'Stängd'
   }[state];
 
+  setDocTitle('Anmälan', compLabel(comp));
   wrap.innerHTML = `
     <div class="page-head">
       <div>
-        <div class="t-over" style="color:var(--avent-orange);">${escapeHtml(comp.shortName || '')} · ${comp.year || ''}</div>
+        ${compCrumbs(cid, comp, { label: 'Anmälan' })}
         <h1 class="t-d2">Anmälan</h1>
         <p class="muted">${escapeHtml(stateLabel)} · ${settings.mode === 'kar' ? 'kårvis anmälan' : 'patrullvis anmälan'}</p>
       </div>
       <div class="btn-row">
-        ${compActionsHtml(cid, comp, user)}
         ${isAdmin && !comp.demo ? `<button class="btn btn-primary btn-sm" id="send-pm">${icon('send', { size: 14 })} Skicka PM</button>` : ''}
         <button class="btn btn-secondary btn-sm" id="copy-link">${icon('copy', { size: 14 })} Anmälningslänk</button>
       </div>
     </div>
 
-    <div class="tabs">
-      <a href="/app/c/${cid}" data-link>Översikt</a>
-      <a href="/app/c/${cid}/laget" data-link>Läget</a>
-      <a href="/app/c/${cid}/patrols" data-link>Patruller</a>
-      <a href="/app/c/${cid}/controls" data-link>Kontroller</a>
-      <a href="/app/c/${cid}/track" data-link>Spår</a>
-      <a href="/app/c/${cid}/scoreboard" data-link>Poängtabell</a>
-      <a href="/app/c/${cid}/anmalan" data-link class="active">Anmälan</a>
-    </div>
+    ${compTabs(cid, 'anmalan', comp, user)}
 
     <div id="content"><div class="muted">Laddar anmälningar…</div></div>
   `;

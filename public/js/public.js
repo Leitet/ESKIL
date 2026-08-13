@@ -105,6 +105,7 @@ async function boot() {
     return renderNotFound('Kunde inte ladda tävlingen: ' + e.message);
   }
   if (!comp) return renderNotFound('Tävlingen hittades inte.');
+  document.title = `${comp.name || 'Tävling'} — ESKIL`;
 
   // Live updates for competition, patrols, and every control's scores
   unsubs.push(onSnapshot(doc(db, 'competitions', cid), snap => {
@@ -363,11 +364,11 @@ function renderHero() {
       <img class="pub-hero-symbol" src="/assets/scout-symbol.svg" alt="" aria-hidden="true">
       <div class="page">
         <div class="pub-hero-top">
-          <div class="pub-brand">
+          <a class="pub-brand" href="/" aria-label="Till ESKIL:s startsida">
             <img src="/assets/logo-scouterna-tagline-white.svg" alt="Scouterna">
             <span class="divider"></span>
             <span class="sublabel">ESKIL</span>
-          </div>
+          </a>
           ${openCount > 0 ? `<div class="status-pill"><span class="dot-live"></span>Tävlingen pågår · live</div>` : ''}
         </div>
         <div class="t-over" style="color:var(--rover-yellow);">${escapeHtml(comp.shortName || '')} · ${comp.year || ''}</div>
@@ -397,6 +398,7 @@ function renderFooter() {
         <span class="muted">${scoresPublic()
           ? 'Poängtabellen uppdateras direkt när kontrollanter rapporterar.'
           : 'Poängen publiceras av tävlingsledningen — tills dess visas bara genomförda kontroller.'}
+          · <a href="/" style="color:#a7bccf;">Fler tävlingar på ESKIL</a>
           · <a href="/integritet" style="color:#a7bccf;">Integritet &amp; GDPR</a></span>
       </div>
     </footer>
@@ -1067,11 +1069,14 @@ function renderNotFound(msg) {
     <header class="pub-hero">
       <div class="pub-hero-pattern"></div>
       <div class="page">
-        <div class="pub-brand">
+        <a class="pub-brand" href="/" aria-label="Till ESKIL:s startsida">
           <img src="/assets/logo-scouterna-tagline-white.svg" alt="Scouterna">
-        </div>
+        </a>
         <h1>Tävlingen hittades inte</h1>
         <p class="lede">${escapeHtml(msg)}</p>
+        <p style="margin-top:var(--sp-6);">
+          <a class="btn btn-secondary" href="/">Till ESKIL:s startsida — alla tävlingar</a>
+        </p>
       </div>
     </header>
   `;
