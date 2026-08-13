@@ -9,17 +9,22 @@ import { reportUrl, startUrl, allInstructionGroups, publicManagement } from './u
 let jsPDFReady = null;
 let qrReady = null;
 
-function loadScript(src) {
+// Subresource Integrity for the pinned CDN libs — the browser refuses to run
+// the script if its bytes don't match the hash, so a compromised CDN/package
+// can't inject code that would run with the admin's Firestore permissions.
+function loadScript(src, integrity) {
   return new Promise((resolve, reject) => {
     const s = document.createElement('script');
-    s.src = src; s.onload = resolve; s.onerror = reject;
+    s.src = src;
+    if (integrity) { s.integrity = integrity; s.crossOrigin = 'anonymous'; }
+    s.onload = resolve; s.onerror = reject;
     document.head.appendChild(s);
   });
 }
 
 export async function ensureLibs() {
-  if (!jsPDFReady) jsPDFReady = loadScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js');
-  if (!qrReady)    qrReady    = loadScript('https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js');
+  if (!jsPDFReady) jsPDFReady = loadScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js', 'sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk');
+  if (!qrReady)    qrReady    = loadScript('https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js', 'sha384-3zSEDfvllQohrq0PHL1fOXJuC/jSOO34H46t6UQfobFOmxE5BpjjaIJY5F2/bMnU');
   await Promise.all([jsPDFReady, qrReady]);
 }
 

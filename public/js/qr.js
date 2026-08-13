@@ -11,6 +11,8 @@ export function ensureQRCode() {
     if (window.QRCode) return resolve(window.QRCode);
     const s = document.createElement('script');
     s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+    s.integrity = 'sha384-3zSEDfvllQohrq0PHL1fOXJuC/jSOO34H46t6UQfobFOmxE5BpjjaIJY5F2/bMnU';
+    s.crossOrigin = 'anonymous';
     s.onload = () => resolve(window.QRCode);
     s.onerror = reject;
     document.head.appendChild(s);

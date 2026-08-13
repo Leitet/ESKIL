@@ -53,7 +53,11 @@ function fileStem(comp) {
 export function downloadResultsCsv(comp, patrols, controls, scores) {
   const ranked = rankPatrols(computeTotals(patrols, scores), controls);
   const ordered = [...controls].sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0));
-  const q = (v) => `"${String(v ?? '').replaceAll('"', '""')}"`;
+  const q = (v) => {
+    let s = String(v ?? '');
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; // block CSV formula injection
+    return `"${s.replaceAll('"', '""')}"`;
+  };
   const head = [
     'Placering', 'Patrull', 'Nummer', 'Avdelning', 'Kår', 'Kontroller',
     'Maxade', 'Poäng', 'Extrapoäng', 'Totalpoäng',

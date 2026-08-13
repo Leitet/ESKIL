@@ -183,6 +183,8 @@ function ensureJsZip() {
   jszipReady = new Promise((resolve, reject) => {
     const s = document.createElement('script');
     s.src = 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js';
+    s.integrity = 'sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG';
+    s.crossOrigin = 'anonymous';
     s.onload = () => resolve(window.JSZip);
     s.onerror = reject;
     document.head.appendChild(s);
@@ -190,7 +192,13 @@ function ensureJsZip() {
   return jszipReady;
 }
 
-const csvCell = (v) => `"${String(v ?? '').replaceAll('"', '""')}"`;
+const csvCell = (v) => {
+  // Neutralise spreadsheet formula injection: a cell that starts with = + - @
+  // (or TAB/CR) is treated as a formula by Excel/LibreOffice even when quoted.
+  let s = String(v ?? '');
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  return `"${s.replaceAll('"', '""')}"`;
+};
 const csvFile = (rows) => '﻿' + rows.map(r => r.join(';')).join('\r\n');
 
 export async function downloadExportZip(cid) {

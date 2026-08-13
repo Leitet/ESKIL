@@ -23,6 +23,8 @@ function ensureSortable() {
   sortableReady = new Promise((resolve, reject) => {
     const s = document.createElement('script');
     s.src = 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js';
+    s.integrity = 'sha384-BSxuMLxX+FCbTdYec3TbXlnMGEEM2QXTFdtDaveen71o+jswm2J36+xFqp8k4VHM';
+    s.crossOrigin = 'anonymous';
     s.onload = () => resolve(window.Sortable);
     s.onerror = reject;
     document.head.appendChild(s);

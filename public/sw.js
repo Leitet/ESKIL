@@ -14,7 +14,7 @@
 //
 // Bump VERSION whenever cached-asset behavior must be reset.
 
-const VERSION = 'eskil-sw-v2';
+const VERSION = 'eskil-sw-v3';
 const RUNTIME = `${VERSION}-runtime`;
 
 const FIELD_SHELLS = { '/k/': '/k.html', '/s/': '/s.html', '/m/': '/m.html' };
@@ -25,7 +25,12 @@ const PRECACHE_URLS = [
   '/js/mode-boot.js', '/js/sw-register.js'
 ];
 
-const CDN_HOSTS = ['www.gstatic.com', 'cdn.jsdelivr.net', 'unpkg.com'];
+// Cross-origin CDN scripts are deliberately NOT cached: caching them opaquely
+// (without CORS) collides with Subresource Integrity — an opaque cached copy
+// can't be integrity-verified and the browser refuses to run it. They always
+// go to the network (with CORS), so SRI works. Offline field pages rely on
+// the cached same-origin shell + modules + Firestore's own IndexedDB cache;
+// map tiles and PDF generation need the network regardless.
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -88,15 +93,16 @@ self.addEventListener('fetch', (event) => {
     return; // other navigations (admin SPA, public pages) untouched
   }
 
-  // Never intercept Firestore/auth/functions traffic or map tiles.
+  // Only handle SAME-ORIGIN static assets. Cross-origin (CDN scripts, Firestore/
+  // auth/functions, map tiles) is left entirely to the network.
   const sameOrigin = url.origin === self.location.origin;
-  const isCdn = CDN_HOSTS.includes(url.hostname);
-  if (!sameOrigin && !isCdn) return;
-  if (sameOrigin && url.pathname.startsWith('/__/')) return; // firebase init/auth helpers
+  if (!sameOrigin) return;
+  if (url.pathname.startsWith('/__/')) return; // firebase init/auth helpers
 
-  const isStatic = sameOrigin
-    ? (url.pathname.startsWith('/js/') || url.pathname.startsWith('/assets/') || url.pathname.endsWith('.html') || url.pathname === '/firebase-config.json')
-    : true; // whitelisted CDN hosts serve immutable-ish libs
+  const isStatic = url.pathname.startsWith('/js/')
+    || url.pathname.startsWith('/assets/')
+    || url.pathname.endsWith('.html')
+    || url.pathname === '/firebase-config.json';
   if (isStatic) {
     event.respondWith(staleWhileRevalidate(req));
   }
