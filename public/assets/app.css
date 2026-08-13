@@ -601,3 +601,20 @@ table.t tr.sf-row.park-row td {
 @keyframes cer-in { from { opacity: 0; transform: translateY(14px); } }
 @keyframes cer-pop { from { opacity: 0; transform: scale(.7); } }
 @keyframes cer-pulse { 50% { opacity: .5; } }
+
+/* --- Super-admin systemhubb ------------------------------------------------- */
+.sys-info { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--sp-3); }
+.sys-info > div { display: flex; flex-direction: column; gap: 2px; }
+.sys-links { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--sp-2); }
+.sys-link {
+  display: block; text-decoration: none; color: inherit;
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  padding: var(--sp-3) var(--sp-4); background: var(--bg-muted);
+}
+.sys-link:hover { border-color: var(--scout-blue); background: var(--white); }
+.sys-link-label { font-weight: 700; color: var(--scout-blue); display: flex; align-items: center; gap: 6px; }
+.sys-map td { vertical-align: top; }
+.sys-map td:first-child { white-space: nowrap; }
+.sys-map code, .sys-info code { font-size: 12px; background: var(--bg-muted); padding: 1px 5px; border-radius: 4px; }
+.sys-config { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--sp-4); }
+.sys-config .field { display: flex; flex-direction: column; gap: 4px; font-weight: 600; font-size: 14px; }

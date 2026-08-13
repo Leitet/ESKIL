@@ -42,6 +42,14 @@ export async function renderSettings(app, user) {
     ${user.role === 'super-admin' ? `
       <h2 class="t-h2 mt-6">Super-admin</h2>
       <div class="grid" style="gap:var(--sp-3);">
+        <a class="card" style="text-decoration:none;color:inherit;display:flex;align-items:center;justify-content:space-between;gap:var(--sp-4);" href="/app/admin/system" data-link>
+          <div>
+            <div class="t-over" style="color:var(--avent-orange);">Systemhubb</div>
+            <h3 class="t-h4" style="margin:4px 0 0;color:var(--scout-blue);">Dashboards & inställningar</h3>
+            <p class="muted t-sm" style="margin:4px 0 0;">Länkar till Firebase, Google Cloud, Brevo m.m., var allt administreras, och mail-kvoter.</p>
+          </div>
+          <span class="muted t-sm">Öppna ${icon('arrow-right', { size: 14 })}</span>
+        </a>
         <a class="card" style="text-decoration:none;color:inherit;display:flex;align-items:center;justify-content:space-between;gap:var(--sp-4);" href="/app/admin/users" data-link>
           <div>
             <div class="t-over" style="color:var(--avent-orange);">Användarhantering</div>

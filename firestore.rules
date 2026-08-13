@@ -112,6 +112,13 @@ service cloud.firestore {
         && data.keys().hasOnly(['patrolId','poang','extraPoang','note','reportedAt','reporter','utslagGissning','history']);
     }
 
+    // --- System config (super-admin only). Operational settings tunable
+    // without a deploy (e.g. mail rate-limit caps). Cloud Functions read it
+    // via the admin SDK (bypassing rules).
+    match /config/{doc} {
+      allow read, write: if isSuperAdmin();
+    }
+
     // --- Users
     // Any signed-in user may read the (email, role) of other users so that
     // competition admins can look up invitees by email. A user may only

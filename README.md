@@ -121,6 +121,11 @@ att köra gratis på Spark-planen.
   kontroll-id:na), inställningar, prismodell (anmälan avstängd med rensad
   period) och tävlingsledning. Patruller, poäng, anmälningar och användare
   kopieras inte; skaparen blir ensam admin.
+- **Super-admin systemhubb** (`/app/admin/system`, via Inställningar) —
+  referenskonsol för super-admin: länkar till alla dashboards (Firebase,
+  Google Cloud, Brevo, reCAPTCHA, GitHub), en "var administreras vad"-karta,
+  systemstatus, och Firestore-backad config (`config/system`) för mail-
+  kvoterna som Cloud Functions läser — justerbara utan deploy.
 - **Prisutdelningsläge** (`/app/c/<cid>/ceremony`, knapp på Poängtabellen) —
   storbildsläge för ceremonin: välj avdelning eller Overall, avslöja pallen
   med dramatik (trea… tvåa… ETTAN i guld) styrt med mellanslag/klick/pil,

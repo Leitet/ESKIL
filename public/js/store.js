@@ -7,6 +7,20 @@ import {
   serverTimestamp, deleteField, writeBatch
 } from './firebase.js';
 
+// --- System config (super-admin) --------------------------------------------
+// A single config/system doc holding operational settings that are useful to
+// tune WITHOUT a deploy (e.g. the mail rate-limit caps the Cloud Functions
+// read). Super-admin only (Firestore rules); functions read it via admin SDK.
+
+export async function getSystemConfig() {
+  const snap = await getDoc(doc(db, 'config', 'system'));
+  return snap.exists() ? snap.data() : {};
+}
+
+export async function setSystemConfig(data) {
+  await setDoc(doc(db, 'config', 'system'), data, { merge: true });
+}
+
 // --- Users -----------------------------------------------------------------
 
 export async function ensureUser(uid, email) {

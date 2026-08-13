@@ -133,15 +133,28 @@ async function queueMail(doc) {
 // fan-out, login links) against spam/relay abuse and Brevo quota exhaustion.
 // NOTE: the real fix is Firebase App Check on the Firestore write path — see
 // README. Bump the caps if a large legitimate day needs more headroom.
+// Defaults for the mail rate-limit caps. Super-admin can override them in the
+// config/system doc (ESKIL → Super-admin → Systemhubb) without a deploy.
 const MAIL_DAILY_CAP = 800;         // transactional mails/day (confirmations, PM, …)
 const LOGIN_DAILY_CAP = 150;        // login links/day (separate lane so spam can't starve logins)
 const UTSKICK_RECIPIENT_CAP = 500;  // max recipients per single PM fan-out
+
+// Read a cap from config/system, falling back to the constant if unset/invalid.
+async function configuredCap(key, fallback) {
+  try {
+    const snap = await db.doc('config/system').get();
+    const v = snap.exists ? snap.data()[key] : undefined;
+    return (typeof v === 'number' && v > 0) ? v : fallback;
+  } catch { return fallback; }
+}
 
 // Atomically reserve `n` sends against today's cap for a lane. Returns true if
 // the whole batch fits (and reserves it), false if it would exceed. Fails
 // OPEN on a transient infra error so a hiccup never blocks legitimate mail.
 async function reserveMail(lane, n) {
-  const cap = lane === 'login' ? LOGIN_DAILY_CAP : MAIL_DAILY_CAP;
+  const cap = lane === 'login'
+    ? await configuredCap('loginDailyCap', LOGIN_DAILY_CAP)
+    : await configuredCap('mailDailyCap', MAIL_DAILY_CAP);
   const ref = db.doc(`caps/${lane}`);
   const today = new Date().toISOString().slice(0, 10);
   try {
@@ -523,9 +536,10 @@ exports.onUtskickCreated = onDocumentCreated('competitions/{cid}/utskick/{utskic
 
   // Bound a single fan-out, and reserve the batch against the daily cap, so a
   // PM can never be scripted into a mass mail relay / quota-drain.
-  if (regs.length > UTSKICK_RECIPIENT_CAP) {
-    logger.warn(`Utskick ${utskickId} has ${regs.length} recipients — capping at ${UTSKICK_RECIPIENT_CAP} (${cid})`);
-    regs = regs.slice(0, UTSKICK_RECIPIENT_CAP);
+  const recipientCap = await configuredCap('utskickRecipientCap', UTSKICK_RECIPIENT_CAP);
+  if (regs.length > recipientCap) {
+    logger.warn(`Utskick ${utskickId} has ${regs.length} recipients — capping at ${recipientCap} (${cid})`);
+    regs = regs.slice(0, recipientCap);
   }
   if (!regs.length) return;
   if (!(await reserveMail('mail', regs.length))) {
