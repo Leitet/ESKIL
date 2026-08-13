@@ -1,7 +1,7 @@
 import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import {
   getCompetition, watchPatrols, createPatrol, updatePatrol, deletePatrol,
-  updatePatrolOrders
+  updatePatrolOrders, getPatrolMeta, migratePatrolMeta
 } from '../store.js';
 import {
   allowedAvdelningar, escapeHtml, toast, confirmDialog, withBusy, startUrl,
@@ -178,7 +178,7 @@ export async function renderPatrols(app, user, cid) {
       tbl.querySelectorAll('[data-edit]').forEach(b => {
         b.addEventListener('click', () => {
           const row = state.rows.find(r => r.id === b.dataset.edit);
-          openPatrolModal(cid, comp, row);
+          openPatrolModal(cid, comp, row, null, onPatrolSaved);
         });
       });
       tbl.querySelectorAll('[data-start]').forEach(b => {
@@ -225,14 +225,29 @@ export async function renderPatrols(app, user, cid) {
   wrap.querySelector('#q').addEventListener('input', e => { state.q = e.target.value; render(); });
   wrap.querySelector('#avd').addEventListener('change', e => { state.filter = e.target.value; render(); });
   if (isAdmin) {
-    wrap.querySelector('#new').addEventListener('click', () => openPatrolModal(cid, comp, null, state.rows.length));
+    wrap.querySelector('#new').addEventListener('click', () => openPatrolModal(cid, comp, null, state.rows.length, onPatrolSaved));
   }
 
   registerViewCleanup(() => {
     if (unsub) { unsub(); unsub = null; }
     if (sortableInstance) { sortableInstance.destroy(); sortableInstance = null; }
   });
-  unsub = watchPatrols(cid, rows => {
+  // notering lives in each patrol's member-only private/meta subdoc — merge it
+  // in (cached) for the list column and the edit-modal pre-fill.
+  const metaById = {};
+  async function mergePatrolMeta(rows) {
+    const missing = rows.filter(r => !(r.id in metaById));
+    if (missing.length) {
+      const metas = await Promise.all(missing.map(r => getPatrolMeta(cid, r.id).catch(() => ({}))));
+      missing.forEach((r, i) => { metaById[r.id] = metas[i] || {}; });
+    }
+    rows.forEach(r => { r.notering = metaById[r.id]?.notering || ''; });
+  }
+  const onPatrolSaved = (id, data) => { metaById[id] = { notering: data.notering || '' }; };
+
+  if (isAdmin && !comp.demo) await migratePatrolMeta(cid).catch(() => {});
+  unsub = watchPatrols(cid, async rows => {
+    await mergePatrolMeta(rows);
     state.rows = rows;
     // Refresh the header line so the computed interval text stays in sync
     // as patruller are added/removed in range mode.
@@ -319,7 +334,7 @@ async function openStartCardModal(cid, patrol) {
   }));
 }
 
-function openPatrolModal(cid, comp, patrol, fallbackOrder = null) {
+function openPatrolModal(cid, comp, patrol, fallbackOrder = null, onSaved = null) {
   const isEdit = !!patrol;
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
@@ -386,13 +401,16 @@ function openPatrolModal(cid, comp, patrol, fallbackOrder = null) {
         notering: overlay.querySelector('#notering').value.trim()
       };
       try {
+        let savedId;
         if (isEdit) {
           await updatePatrol(cid, patrol.id, data);
+          savedId = patrol.id;
         } else {
           // Put new patrol at the end of the start queue by default.
           if (fallbackOrder != null) data.startOrder = fallbackOrder;
-          await createPatrol(cid, data);
+          savedId = await createPatrol(cid, data);
         }
+        onSaved?.(savedId, data);
         close();
         toast('Sparat', 'success');
       } catch (e) {

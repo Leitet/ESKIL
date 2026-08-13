@@ -17,11 +17,14 @@ import {
 } from './firebase.js';
 import {
   getCompetition, listPatrols, listControls, listAllScores, listRegistrations,
-  listStations, listUtskick, getTrack, createCompetition
+  listStations, listUtskick, getTrack, createCompetition,
+  getControlMeta, getPatrolMeta, setControlMeta, setPatrolMeta
 } from './store.js';
 import { rankPatrols } from './utils.js';
 
-export const BACKUP_VERSION = 1;
+// v2 adds control/patrol private meta (telefon, notering). Imports still
+// accept v1 dumps (they simply carry no meta).
+export const BACKUP_VERSION = 2;
 
 // --- Timestamp-safe (de)serialization -----------------------------------------
 
@@ -79,14 +82,23 @@ export async function dumpCompetition(cid) {
     stationsFull.push({ ...st, passages: await listPassages(cid, st.id).catch(() => []) });
   }
 
+  // Private meta (telefon, notering) lives in subdocs — fetch it so the
+  // backup is complete and a restore doesn't silently drop it.
+  const ctrlMetas = await Promise.all(controls.map(c => getControlMeta(cid, c.id).catch(() => ({}))));
+  const patrolMetas = await Promise.all(patrols.map(p => getPatrolMeta(cid, p.id).catch(() => ({}))));
+
   const { id, ...compData } = comp;
   return toPlain({
     eskilBackup: BACKUP_VERSION,
     exportedAt: new Date().toISOString(),
     sourceCid: cid,
     competition: compData,
-    patrols,
-    controls: controls.map(c => ({ ...c, scores: (scoresByCtrl[c.id] || []).map(({ controlId, ...s }) => s) })),
+    patrols: patrols.map((p, i) => ({ ...p, _private: patrolMetas[i] || {} })),
+    controls: controls.map((c, i) => ({
+      ...c,
+      _private: ctrlMetas[i] || {},
+      scores: (scoresByCtrl[c.id] || []).map(({ controlId, ...s }) => s)
+    })),
     registrations,
     stations: stationsFull,
     utskick,
@@ -109,7 +121,7 @@ async function batchSet(refs) {
 // preserved so reporter/startkort/station links and the track keep working.
 export async function importCompetitionBackup(rawDump, user) {
   const dump = revive(rawDump);
-  if (!dump || dump.eskilBackup !== BACKUP_VERSION || !dump.competition) {
+  if (!dump || !dump.eskilBackup || dump.eskilBackup > BACKUP_VERSION || !dump.competition) {
     throw new Error('Filen är inte en giltig ESKIL-backup.');
   }
 
@@ -119,17 +131,27 @@ export async function importCompetitionBackup(rawDump, user) {
   const newCid = await createCompetition(compData, user);
 
   const writes = [];
+  const metaWrites = []; // [kind, id, meta] — written to private subdocs after
   for (const p of dump.patrols || []) {
-    const { id, ...data } = p;
+    // Strip private meta (v2 `_private`, and any legacy `notering` that older
+    // dumps stored on the doc) — it must land in the subdoc, not the doc.
+    const { id, _private, notering, ...data } = p;
     writes.push([doc(db, 'competitions', newCid, 'patrols', id), data]);
+    const meta = { ...(_private || {}) };
+    if (notering !== undefined && meta.notering === undefined) meta.notering = notering;
+    if (Object.keys(meta).length) metaWrites.push(['patrol', id, meta]);
   }
   for (const c of dump.controls || []) {
-    const { id, scores, ...data } = c;
+    const { id, scores, _private, telefon, notering, ...data } = c;
     writes.push([doc(db, 'competitions', newCid, 'controls', id), { ...data, imported: true }]);
     for (const s of scores || []) {
       const { id: sid, ...sdata } = s;
       writes.push([doc(db, 'competitions', newCid, 'controls', id, 'scores', sid), sdata]);
     }
+    const meta = { ...(_private || {}) };
+    if (telefon !== undefined && meta.telefon === undefined) meta.telefon = telefon;
+    if (notering !== undefined && meta.notering === undefined) meta.notering = notering;
+    if (Object.keys(meta).length) metaWrites.push(['control', id, meta]);
   }
   for (const r of dump.registrations || []) {
     const { id, ...data } = r;
@@ -144,6 +166,12 @@ export async function importCompetitionBackup(rawDump, user) {
     }
   }
   await batchSet(writes);
+
+  // Private meta subdocs (telefon, notering) — written after the parent docs.
+  for (const [kind, id, meta] of metaWrites) {
+    if (kind === 'control') await setControlMeta(newCid, id, meta);
+    else await setPatrolMeta(newCid, id, meta);
+  }
 
   if (dump.track) {
     await setDoc(doc(db, 'competitions', newCid, 'track', 'main'), dump.track);
@@ -227,7 +255,7 @@ export async function downloadExportZip(cid) {
 
   zip.file('patruller.csv', csvFile([
     ['Nummer', 'Namn', 'Avdelning', 'Kår', 'Antal', 'Notering'],
-    ...(dump.patrols || []).map(p => [p.number ?? '', csvCell(p.name), csvCell(p.avdelning), csvCell(p.kar), p.antal ?? '', csvCell(p.notering)])
+    ...(dump.patrols || []).map(p => [p.number ?? '', csvCell(p.name), csvCell(p.avdelning), csvCell(p.kar), p.antal ?? '', csvCell(p._private?.notering)])
   ]));
 
   zip.file('kontroller.csv', csvFile([

@@ -1,6 +1,6 @@
 import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import {
-  getCompetition, getControl, updateControl,
+  getCompetition, getControl, updateControl, attachControlMeta,
   watchScoresForControl, listPatrols, deleteScore, adjustScore
 } from '../store.js';
 import { escapeHtml, toast, copyToClipboard, reportUrl, confirmDialog, formatTime, allInstructionGroups, withBusy, wireOverlayClose, isCompAdminUser, canEditControl } from '../utils.js';
@@ -31,6 +31,8 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
     wrap.innerHTML = `<div class="empty"><h3>Kontrollen hittades inte</h3></div>`;
     return;
   }
+  // telefon/notering live in a member-only subdoc — merge them in for display.
+  await attachControlMeta(cid, [control]).catch(() => {});
   setTopbarCompetition(cid, comp, user);
   const isAdmin = isCompAdminUser(comp, user);
   // Kontrollansvariga may edit and open/close THIS control (not delete it,

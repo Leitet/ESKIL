@@ -11,7 +11,7 @@
 import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import {
   getCompetition, listPatrols, listStations, createStation, watchPassages,
-  watchControls, watchScoresForControl, getTrack
+  watchControls, watchScoresForControl, getTrack, getControlMeta
 } from '../store.js';
 import { courseLegs, drawCourseOnMap } from '../course.js';
 import {
@@ -173,7 +173,20 @@ export async function renderLaget(app, user, cid) {
   };
   subscribePassages();
 
-  unsubs.push(watchControls(cid, rows => {
+  const ctrlMetaById = {};
+  async function mergeControlMeta(rows) {
+    const missing = rows.filter(r => !(r.id in ctrlMetaById));
+    if (missing.length) {
+      const metas = await Promise.all(missing.map(r => getControlMeta(cid, r.id).catch(() => ({}))));
+      missing.forEach((r, i) => { ctrlMetaById[r.id] = metas[i] || {}; });
+    }
+    rows.forEach(r => { r.telefon = ctrlMetaById[r.id]?.telefon || ''; });
+  }
+
+  unsubs.push(watchControls(cid, async rows => {
+    // telefon lives in each control's member-only private/meta — merge it in
+    // (cached) so the Läget table can quick-dial the kontrollant.
+    await mergeControlMeta(rows);
     controls = rows;
     for (const c of controls) {
       if (subscribedScores.has(c.id)) continue;

@@ -142,12 +142,12 @@ export async function copyCompetition(cid, { name, shortName, year, date }, user
         minPoang: c.minPoang ?? 0,
         extraPoang: c.extraPoang ?? 0,
         placement: c.placement || '',
-        notering: '',
-        telefon: '',
         ansvariga: [],
         ansvarigaEmails: [],
         open: false
       };
+      // telefon/notering live in the private meta subdoc and are intentionally
+      // NOT copied to next year's competition.
       if (Number.isFinite(c.lat)) { copy.lat = c.lat; copy.lng = c.lng; }
       if (Array.isArray(c.instructions)) copy.instructions = c.instructions;
       else if (c.information) copy.information = c.information;
@@ -209,8 +209,10 @@ export async function closeCompetition(cid) {
     const batch = writeBatch(db);
     controls.slice(i, i + 400).forEach(c => {
       batch.update(doc(db, 'competitions', cid, 'controls', c.id), {
-        open: false, ansvariga: [], ansvarigaEmails: [], telefon: ''
+        open: false, ansvariga: [], ansvarigaEmails: []
       });
+      // telefon now lives in the private meta subdoc — wipe it there.
+      batch.set(doc(db, 'competitions', cid, 'controls', c.id, 'private', 'meta'), { telefon: '' }, { merge: true });
     });
     await batch.commit();
   }
@@ -258,9 +260,16 @@ export async function deleteCompetition(cid) {
   for (const c of controlsSnap.docs) {
     const scores = await getDocs(collection(db, 'competitions', cid, 'controls', c.id, 'scores'));
     await deleteRefs(scores.docs.map(d => d.ref));
+    // private/meta (telefon, notering) lives in a subcollection too.
+    await deleteDoc(doc(db, 'competitions', cid, 'controls', c.id, 'private', 'meta')).catch(() => {});
   }
   await deleteRefs(controlsSnap.docs.map(d => d.ref));
-  for (const sub of ['patrols', 'registrations', 'invites']) {
+  const patrolsSnap = await getDocs(collection(db, 'competitions', cid, 'patrols'));
+  for (const p of patrolsSnap.docs) {
+    await deleteDoc(doc(db, 'competitions', cid, 'patrols', p.id, 'private', 'meta')).catch(() => {});
+  }
+  await deleteRefs(patrolsSnap.docs.map(d => d.ref));
+  for (const sub of ['registrations', 'invites']) {
     const snap = await getDocs(collection(db, 'competitions', cid, sub));
     await deleteRefs(snap.docs.map(d => d.ref));
   }
@@ -287,15 +296,22 @@ export async function getPatrol(cid, pid) {
 }
 
 export async function createPatrol(cid, data) {
+  // notering is an internal admin note — keep it off the world-readable doc.
+  const { notering, ...rest } = data;
   const ref = await addDoc(collection(db, 'competitions', cid, 'patrols'), {
-    ...data,
+    ...rest,
     createdAt: serverTimestamp()
   });
+  if (notering) await setPatrolMeta(cid, ref.id, { notering });
   return ref.id;
 }
 
 export async function updatePatrol(cid, pid, data) {
-  await updateDoc(doc(db, 'competitions', cid, 'patrols', pid), data);
+  const { notering, ...rest } = data;
+  if (Object.keys(rest).length) {
+    await updateDoc(doc(db, 'competitions', cid, 'patrols', pid), rest);
+  }
+  if (notering !== undefined) await setPatrolMeta(cid, pid, { notering });
 }
 
 export async function deletePatrol(cid, pid) {
@@ -341,16 +357,102 @@ export async function getControl(cid, ctrlId) {
 }
 
 export async function createControl(cid, data) {
+  // telefon/notering are personal/internal — they live in a member-only
+  // private subdoc, not on the world-readable control doc.
+  const { telefon, notering, ...rest } = data;
   const ref = await addDoc(collection(db, 'competitions', cid, 'controls'), {
-    ...data,
-    open: data.open ?? false,
+    ...rest,
+    open: rest.open ?? false,
     createdAt: serverTimestamp()
   });
+  if (telefon || notering) {
+    await setControlMeta(cid, ref.id, { telefon: telefon || '', notering: notering || '' });
+  }
   return ref.id;
 }
 
 export async function updateControl(cid, ctrlId, data) {
-  await updateDoc(doc(db, 'competitions', cid, 'controls', ctrlId), data);
+  const { telefon, notering, ...rest } = data;
+  if (Object.keys(rest).length) {
+    await updateDoc(doc(db, 'competitions', cid, 'controls', ctrlId), rest);
+  }
+  if (telefon !== undefined || notering !== undefined) {
+    await setControlMeta(cid, ctrlId, {
+      ...(telefon !== undefined ? { telefon } : {}),
+      ...(notering !== undefined ? { notering } : {})
+    });
+  }
+}
+
+// --- Control/patrol private meta (telefon, notering) ------------------------
+// Kept out of the world-readable control/patrol docs. Read is member-only
+// (control meta also readable by that control's kontrollansvarig); write is
+// admin (control meta also writable by the kontrollansvarig). The store hides
+// the split — views pass telefon/notering as normal fields and use
+// attachControlMeta/attachPatrolMeta to merge them back for display.
+
+export async function setControlMeta(cid, ctrlId, meta) {
+  await setDoc(doc(db, 'competitions', cid, 'controls', ctrlId, 'private', 'meta'), meta, { merge: true });
+}
+
+export async function getControlMeta(cid, ctrlId) {
+  const snap = await getDoc(doc(db, 'competitions', cid, 'controls', ctrlId, 'private', 'meta'));
+  return snap.exists() ? snap.data() : {};
+}
+
+// Fetch every control's meta in parallel and merge telefon/notering onto the
+// control objects (for admin/ansvarig list + detail views only — never the
+// anonymous pages, which can't read the private docs and don't need them).
+export async function attachControlMeta(cid, controls) {
+  const metas = await Promise.all(controls.map(c => getControlMeta(cid, c.id).catch(() => ({}))));
+  controls.forEach((c, i) => { c.telefon = metas[i].telefon || ''; c.notering = metas[i].notering || ''; });
+  return controls;
+}
+
+// One-time migration: older data stored telefon/notering directly on the
+// (world-readable) control doc. Move any such fields into the private/meta
+// subdoc and delete them from the doc. Idempotent — skips already-migrated
+// controls. Admin-triggered on the Kontroller view load.
+export async function migrateControlMeta(cid) {
+  const snap = await getDocs(collection(db, 'competitions', cid, 'controls'));
+  for (const d of snap.docs) {
+    const c = d.data();
+    if (c.telefon === undefined && c.notering === undefined) continue;
+    const meta = {};
+    if (c.telefon !== undefined) meta.telefon = c.telefon;
+    if (c.notering !== undefined) meta.notering = c.notering;
+    try {
+      await setControlMeta(cid, d.id, meta);
+      await updateDoc(d.ref, { telefon: deleteField(), notering: deleteField() });
+    } catch (e) { console.warn('[ESKIL] control-meta-migrering misslyckades', d.id, e); }
+  }
+}
+
+export async function setPatrolMeta(cid, pid, meta) {
+  await setDoc(doc(db, 'competitions', cid, 'patrols', pid, 'private', 'meta'), meta, { merge: true });
+}
+
+export async function migratePatrolMeta(cid) {
+  const snap = await getDocs(collection(db, 'competitions', cid, 'patrols'));
+  for (const d of snap.docs) {
+    const p = d.data();
+    if (p.notering === undefined) continue;
+    try {
+      await setPatrolMeta(cid, d.id, { notering: p.notering });
+      await updateDoc(d.ref, { notering: deleteField() });
+    } catch (e) { console.warn('[ESKIL] patrol-meta-migrering misslyckades', d.id, e); }
+  }
+}
+
+export async function getPatrolMeta(cid, pid) {
+  const snap = await getDoc(doc(db, 'competitions', cid, 'patrols', pid, 'private', 'meta'));
+  return snap.exists() ? snap.data() : {};
+}
+
+export async function attachPatrolMeta(cid, patrols) {
+  const metas = await Promise.all(patrols.map(p => getPatrolMeta(cid, p.id).catch(() => ({}))));
+  patrols.forEach((p, i) => { p.notering = metas[i].notering || ''; });
+  return patrols;
 }
 
 export async function deleteControl(cid, ctrlId) {

@@ -1,7 +1,7 @@
 import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import {
   getCompetition, watchControls, createControl, updateControl, deleteControl,
-  updateControlNumbers, setCompetitionUsers
+  updateControlNumbers, setCompetitionUsers, getControlMeta, migrateControlMeta
 } from '../store.js';
 import {
   AVDELNINGAR, allowedAvdelningar, escapeHtml, toast, confirmDialog, withBusy, startFinishPoints, parkingPoint,
@@ -205,7 +205,21 @@ export async function renderControls(app, user, cid) {
     if (unsub) { unsub(); unsub = null; }
     if (sortableInstance) { sortableInstance.destroy(); sortableInstance = null; }
   });
-  unsub = watchControls(cid, rows => { state.rows = rows; render(); });
+  // telefon lives in each control's member-only private/meta subdoc — merge it
+  // in for the table (cached so we don't refetch on every live snapshot).
+  const metaById = {};
+  async function mergeMeta(rows) {
+    const missing = rows.filter(r => !(r.id in metaById));
+    if (missing.length) {
+      const metas = await Promise.all(missing.map(r => getControlMeta(cid, r.id).catch(() => ({}))));
+      missing.forEach((r, i) => { metaById[r.id] = metas[i] || {}; });
+    }
+    rows.forEach(r => { r.telefon = metaById[r.id]?.telefon || ''; r.notering = metaById[r.id]?.notering || ''; });
+  }
+  // Migrate any legacy telefon/notering off the world-readable control docs
+  // before subscribing, so the first render reads them from the private subdoc.
+  if (isAdmin && !comp.demo) await migrateControlMeta(cid).catch(() => {});
+  unsub = watchControls(cid, async rows => { await mergeMeta(rows); state.rows = rows; render(); });
 }
 
 function th(key, label, state, opts = {}) {

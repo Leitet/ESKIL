@@ -118,6 +118,12 @@ service cloud.firestore {
       match /patrols/{pid} {
         allow read: if true;
         allow write: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
+
+        // Internal meta (notering) — NOT public. Members read/admins write.
+        match /private/{doc} {
+          allow read: if isCompMember(cid);
+          allow write: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
+        }
       }
 
       // Controls — read public (ID is the secret). Create/delete by admins;
@@ -158,6 +164,17 @@ service cloud.firestore {
             && request.resource.data.get('history', []) == resource.data.get('history', [])
           );
           allow delete: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
+        }
+
+        // Internal/personal control meta (telefon, notering) — NOT public.
+        // Read by members OR this control's kontrollansvarig; written by
+        // admins OR the kontrollansvarig (so they can set their own phone).
+        match /private/{doc} {
+          allow read: if isCompMember(cid)
+            || (isSignedIn() && authEmail() in ctrlData(cid, ctrlId).get('ansvarigaEmails', []));
+          allow write: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid))
+            || (isSignedIn() && !compIsDemo(cid) && !compClosed(cid)
+                && authEmail() in ctrlData(cid, ctrlId).get('ansvarigaEmails', []));
         }
       }
 
