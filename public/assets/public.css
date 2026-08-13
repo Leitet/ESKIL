@@ -760,12 +760,26 @@ a.pub-brand:hover { opacity: 0.85; }
 }
 .start-row {
   display: grid;
-  grid-template-columns: 64px 1fr auto auto;
+  grid-template-columns: 28px 64px 1fr auto auto;
   gap: var(--sp-4); align-items: center;
   padding: 10px var(--sp-5);
   border-bottom: 1px solid var(--border);
   color: inherit; text-decoration: none;
 }
+
+/* Favoritpatrull — stjärnan pinnar raden överst (bara i denna webbläsare). */
+.fav-star {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 19px;
+  line-height: 1;
+  padding: 4px;
+  color: var(--fg3);
+}
+.fav-star.is-on { color: var(--rover-yellow, #E2B100); }
+.pname .fav-star { font-size: 16px; padding: 2px 4px 2px 0; }
+.start-row.is-fav, .lb tr.is-fav td { background: #fdf7e2; }
 .start-row:last-child { border-bottom: none; }
 .start-row:hover { background: var(--bg-muted); }
 .start-row .st-time { font-family: var(--font-mono); font-weight: 700; color: var(--scout-blue); font-size: 17px; }
@@ -775,7 +789,7 @@ a.pub-brand:hover { opacity: 0.85; }
 .start-row .st-link { font-size: 13px; color: var(--scout-blue); white-space: nowrap; }
 .start-row.is-now .st-time, .start-row.is-now .st-count { color: var(--utm-pink); }
 @media (max-width: 560px) {
-  .start-row { grid-template-columns: 56px 1fr auto; }
+  .start-row { grid-template-columns: 24px 56px 1fr auto; }
   .start-row .st-link { display: none; }
 }
 

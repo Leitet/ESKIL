@@ -314,6 +314,24 @@ async function renderLeafletMap(withPos, sfPoints = [], park = null) {
 }
 
 // --- Render -----------------------------------------------------------------
+// Favoritpatrull — anhörigas stjärnmärkning. Ligger bara i webbläsarens
+// localStorage (ingen server), en lista patrull-id per tävling.
+function favKey() { return `eskil.fav.${parsePath()?.cid || ''}`; }
+function getFavs() {
+  try { return new Set(JSON.parse(localStorage.getItem(favKey()) || '[]')); } catch { return new Set(); }
+}
+function toggleFav(pid) {
+  const s = getFavs();
+  if (s.has(pid)) s.delete(pid); else s.add(pid);
+  try { localStorage.setItem(favKey(), JSON.stringify([...s])); } catch { /* privat läge */ }
+  render();
+}
+function favStar(pid, favs) {
+  return `<button type="button" class="fav-star ${favs.has(pid) ? 'is-on' : ''}" data-fav="${escapeHtml(pid)}"
+    aria-label="${favs.has(pid) ? 'Ta bort favorit' : 'Markera som favorit'}"
+    title="${favs.has(pid) ? 'Ta bort favorit' : 'Följ patrullen — hamnar överst i listorna'}">${favs.has(pid) ? '★' : '☆'}</button>`;
+}
+
 function render() {
   const parsed = parsePath(); if (!parsed) return;
   const tab = parsed.tab;
@@ -358,6 +376,15 @@ function render() {
     a.addEventListener('click', e => {
       e.preventDefault();
       setTab(cid, a.dataset.tab);
+    });
+  });
+
+  // Stjärnorna sitter inuti länkar/rader — stoppa klicket från att följa med.
+  root.querySelectorAll('[data-fav]').forEach(b => {
+    b.addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleFav(b.dataset.fav);
     });
   });
 
@@ -569,7 +596,10 @@ function countdownText(dt, now = new Date()) {
 function renderStartList() {
   const cid = parsePath()?.cid;
   const now = new Date();
-  const rows = startRows(now);
+  const favs = getFavs();
+  // Favoriter överst (i starttidsordning inom gruppen), resten efter.
+  const rows = [...startRows(now)].sort((a, b) =>
+    (favs.has(b.p.id) - favs.has(a.p.id)) || (a.dt - b.dt));
   if (!rows.length) return '';
 
   // Beräknad målgång för anhöriga: planerad start + banans ETA (gångtid +
@@ -595,7 +625,8 @@ function renderStartList() {
         const fin = finClock(dt);
         const cd = past ? (fin ? `i mål ca ${fin}` : 'startade') : countdownText(dt, now);
         return `
-          <a class="start-row ${past ? 'is-past' : ''} ${cd === 'GÅR NU' ? 'is-now' : ''}" href="/s/${escapeHtml(cid || '')}/${escapeHtml(p.id)}" target="_blank" rel="noopener">
+          <a class="start-row ${past ? 'is-past' : ''} ${cd === 'GÅR NU' ? 'is-now' : ''} ${favs.has(p.id) ? 'is-fav' : ''}" href="/s/${escapeHtml(cid || '')}/${escapeHtml(p.id)}" target="_blank" rel="noopener">
+            ${favStar(p.id, favs)}
             <span class="st-time">${dt.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })}</span>
             <span class="st-who">
               <span class="nm">#${p.number ?? '—'} ${escapeHtml(p.name || '')}</span>
@@ -835,14 +866,18 @@ function renderScoreboard(totals) {
       rows = rows.filter(r => r.avdelning === scoreView.slice(4));
     }
     rows = rankPatrols(rows, controls);
+    // Favoriter överst — placeringssiffran (rank) följer med raden, så
+    // tabellen ljuger aldrig om läget.
+    const favs = getFavs();
+    rows = [...rows].sort((a, b) => (favs.has(b.id) - favs.has(a.id)) || (a.rank - b.rank));
     body = rows.length ? `
       <div class="lb"><table>
         <thead><tr><th class="rank">#</th><th>Patrull</th><th>Kår</th><th class="num">Kontr.</th><th class="num">Max</th><th class="num">Extra</th><th class="num">Total</th></tr></thead>
         <tbody>
-          ${rows.map(r => `<tr class="${r.rank<=3?'top'+r.rank:''} is-clickable" data-patrol="${escapeHtml(r.id)}">
+          ${rows.map(r => `<tr class="${r.rank<=3?'top'+r.rank:''} is-clickable ${favs.has(r.id) ? 'is-fav' : ''}" data-patrol="${escapeHtml(r.id)}">
             <td class="rank">${r.rank === 1 ? icon('trophy', { size: 16 }) + ' ' : ''}${r.rank}</td>
             <td>
-              <span class="pname">${escapeHtml(r.name || '')}</span>
+              <span class="pname">${favStar(r.id, favs)}${escapeHtml(r.name || '')}</span>
               <div style="font-size:12px;color:var(--fg3);"><span class="dot ${avdSlug(r.avdelning)}"></span>${escapeHtml(r.avdelning || '')}</div>
             </td>
             <td><span class="pkar">${escapeHtml(r.kar || '')}</span></td>
