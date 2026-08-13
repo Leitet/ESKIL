@@ -274,6 +274,19 @@ function renderBasicTab(comp, cid, refresh, readOnly, isSuperAdmin, user) {
     await refresh();
   });
 
+  // Senaste backup stämplas på tävlingen så avsluta-dialogen kan visa om en
+  // färsk kopia finns. Bäst-effort: läsbehöriga får ladda ner utan att skriva.
+  const stampBackup = async () => {
+    const at = new Date().toISOString();
+    try { await updateCompetition(cid, { lastBackupAt: at }); comp.lastBackupAt = at; } catch { /* read-only */ }
+    return at;
+  };
+  const fmtBackup = (v) => {
+    if (!v) return 'aldrig';
+    const d = v?.toDate ? v.toDate() : new Date(v);
+    return isNaN(d) ? 'aldrig' : d.toLocaleString('sv-SE', { dateStyle: 'medium', timeStyle: 'short' });
+  };
+
   // Lifecycle: avsluta/återöppna tävlingen (competition admins)
   if (!readOnly) {
     const lifecycle = document.createElement('section');
@@ -282,8 +295,32 @@ function renderBasicTab(comp, cid, refresh, readOnly, isSuperAdmin, user) {
       lifecycle.innerHTML = `
         <h3 class="t-h3" style="margin-top:0;">Tävlingen är avslutad <span class="badge badge-gray">Avslutad</span></h3>
         <p class="muted">Alla användare och kontrollansvariga är borttagna, kontrollerna är stängda och tävlingen är skrivskyddad för alla utom administratörer. Publika sidor och resultat går fortfarande att titta på.</p>
+        <div class="mt-4" style="border:1px solid var(--border);border-left:3px solid var(--scout-blue);border-radius:10px;padding:12px 14px;">
+          <strong>Arkiv</strong>
+          <p class="muted t-sm" style="margin:4px 0 10px;">Spara en slutlig kopia för kårens arkiv — resultat, patruller och kontroller finns kvar i exporten. Senaste backup: <strong>${fmtBackup(comp.lastBackupAt)}</strong>.</p>
+          <div class="btn-row">
+            <button class="btn btn-secondary btn-sm" id="ar-zip">${icon('download', { size: 14 })} Exportera arkiv (ZIP)</button>
+            <button class="btn btn-ghost btn-sm" id="ar-json">Backup (JSON)</button>
+          </div>
+        </div>
         <button class="btn btn-secondary mt-4" id="reopen-comp">Återöppna tävlingen</button>
       `;
+      lifecycle.querySelector('#ar-zip').addEventListener('click', (e) => withBusy(e.currentTarget, 'Packar…', async () => {
+        try {
+          const { downloadExportZip } = await import('../backup.js');
+          await downloadExportZip(cid);
+          await stampBackup();
+          toast('Exporten laddas ner', 'success');
+        } catch (err) { console.error(err); toast('Fel: ' + err.message, 'error'); }
+      }));
+      lifecycle.querySelector('#ar-json').addEventListener('click', (e) => withBusy(e.currentTarget, 'Packar…', async () => {
+        try {
+          const { downloadBackup } = await import('../backup.js');
+          await downloadBackup(cid);
+          await stampBackup();
+          toast('Backupen laddas ner', 'success');
+        } catch (err) { console.error(err); toast('Fel: ' + err.message, 'error'); }
+      }));
       lifecycle.querySelector('#reopen-comp').addEventListener('click', (e) => withBusy(e.currentTarget, 'Återöppnar…', async () => {
         try {
           await reopenCompetition(cid);
@@ -301,14 +338,51 @@ function renderBasicTab(comp, cid, refresh, readOnly, isSuperAdmin, user) {
         fortfarande att titta på. Kan återöppnas, men de raderade uppgifterna återställs inte.</p>
         <button class="btn btn-secondary mt-4" id="close-comp">Avsluta tävling</button>
       `;
-      lifecycle.querySelector('#close-comp').addEventListener('click', (e) => withBusy(e.currentTarget, 'Avslutar…', async () => {
-        if (!(await confirmDialog(`Avsluta "${comp.name}"? Alla användare och kontrollansvariga raderas (administratörer ligger kvar), anmälningarnas kontaktuppgifter och fritextsvar rensas och alla kontroller stängs.`, { okLabel: 'Avsluta tävling' }))) return;
-        try {
-          await closeCompetition(cid);
-          toast('Tävlingen är avslutad', 'success');
-          await refresh();
-        } catch (err) { toast('Fel: ' + err.message, 'error'); }
-      }));
+      // Backup-nudge: avslutet gallrar kontaktuppgifter PERMANENT — en backup
+      // tagen efteråt saknar dem. Därför egen dialog med export på plats.
+      lifecycle.querySelector('#close-comp').addEventListener('click', () => {
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.innerHTML = `
+          <div class="modal" style="max-width:540px;">
+            <div class="modal-head"><h3>Avsluta "${escapeHtml(comp.name || '')}"?</h3></div>
+            <div class="modal-body">
+              <p class="muted" style="margin-top:0;">Alla användare och kontrollansvariga raderas (administratörer ligger kvar), anmälningarnas kontaktuppgifter och fritextsvar rensas och alla kontroller stängs. De raderade uppgifterna går inte att återställa.</p>
+              <div style="border:1px solid var(--border);border-left:3px solid var(--avent-orange);border-radius:10px;padding:12px 14px;">
+                <strong>Ta en sista säkerhetskopia först</strong>
+                <p class="muted t-sm" style="margin:4px 0 10px;">En backup tagen efter avslutet saknar det som gallras. Senaste backup: <strong id="cl-last">${fmtBackup(comp.lastBackupAt)}</strong>.</p>
+                <button class="btn btn-secondary btn-sm" id="cl-backup">${icon('download', { size: 14 })} Ladda ner backup + export (ZIP)</button>
+              </div>
+            </div>
+            <div class="modal-foot">
+              <button class="btn btn-ghost" id="cl-cancel">Avbryt</button>
+              <button class="btn btn-danger" id="cl-confirm">Avsluta tävling</button>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(overlay);
+        const close = () => overlay.remove();
+        wireOverlayClose(overlay, close);
+        overlay.querySelector('#cl-cancel').addEventListener('click', close);
+        overlay.querySelector('#cl-backup').addEventListener('click', (e) => withBusy(e.currentTarget, 'Packar…', async () => {
+          try {
+            const { downloadExportZip } = await import('../backup.js');
+            await downloadExportZip(cid);
+            const at = await stampBackup();
+            const el = overlay.querySelector('#cl-last');
+            if (el) el.textContent = fmtBackup(at);
+            toast('Exporten laddas ner', 'success');
+          } catch (err) { console.error(err); toast('Fel: ' + err.message, 'error'); }
+        }));
+        overlay.querySelector('#cl-confirm').addEventListener('click', (e) => withBusy(e.currentTarget, 'Avslutar…', async () => {
+          try {
+            await closeCompetition(cid);
+            close();
+            toast('Tävlingen är avslutad', 'success');
+            await refresh();
+          } catch (err) { toast('Fel: ' + err.message, 'error'); }
+        }));
+      });
     }
     host.appendChild(lifecycle);
   }
@@ -413,6 +487,7 @@ function renderBasicTab(comp, cid, refresh, readOnly, isSuperAdmin, user) {
       try {
         const { downloadBackup } = await import('../backup.js');
         await downloadBackup(cid);
+        await stampBackup();
         toast('Backupen laddas ner', 'success');
       } catch (err) { console.error(err); toast('Fel: ' + err.message, 'error'); }
     }));
@@ -420,6 +495,7 @@ function renderBasicTab(comp, cid, refresh, readOnly, isSuperAdmin, user) {
       try {
         const { downloadExportZip } = await import('../backup.js');
         await downloadExportZip(cid);
+        await stampBackup();
         toast('Exporten laddas ner', 'success');
       } catch (err) { console.error(err); toast('Fel: ' + err.message, 'error'); }
     }));
