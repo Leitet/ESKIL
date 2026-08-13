@@ -13,6 +13,8 @@
   letter-spacing: 0.12em;
   font-weight: 700;
   color: var(--r-accent);
+  /* Keep clear of the fixed Nattläge pill in the top-right corner. */
+  padding-right: 128px;
 }
 .start-title {
   font-size: 28px;

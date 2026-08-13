@@ -18,19 +18,37 @@ export function bindHaptic(el, pattern = 10) {
   el.addEventListener('pointerdown', () => haptic(pattern), { passive: true });
 }
 
-// Fire a handler on the first touchstart and preventDefault so iOS never
-// enters the double-tap-zoom heuristic (which happens even when
-// touch-action: manipulation is set on fast successive taps in the +/-
-// steppers). Falls back to click for mouse / stylus / keyboard.
+// Fast, scroll-safe tap (the FastClick pattern). The old version fired on
+// touchstart with preventDefault — instant, but a scroll gesture STARTING on
+// the button both triggered the action and blocked the scroll (dragging on a
+// +/- stepper in the score sheet bumped the score instead of scrolling).
+// Now: touchstart stays passive so scrolling works from anywhere; the handler
+// fires on touchend only when the finger hasn't moved. preventDefault on
+// touchend still suppresses the synthetic click AND iOS's double-tap-zoom
+// heuristic on fast successive taps. Falls back to click for mouse/keyboard.
+const TAP_SLOP_PX = 12;
 export function bindTap(el, handler, pattern = 10) {
   if (!el) return;
   let touchHandled = false;
+  let startX = 0, startY = 0, moved = true;
   el.addEventListener('touchstart', (e) => {
+    const t = e.touches[0];
+    startX = t.clientX; startY = t.clientY;
+    moved = false;
+  }, { passive: true });
+  el.addEventListener('touchmove', (e) => {
+    const t = e.touches[0];
+    if (Math.abs(t.clientX - startX) > TAP_SLOP_PX
+     || Math.abs(t.clientY - startY) > TAP_SLOP_PX) moved = true;
+  }, { passive: true });
+  el.addEventListener('touchend', (e) => {
+    if (moved) return; // it was a scroll/drag — never treat as a tap
     if (e.cancelable) e.preventDefault();
     touchHandled = true;
     haptic(pattern);
     handler(e);
   }, { passive: false });
+  el.addEventListener('touchcancel', () => { moved = true; }, { passive: true });
   el.addEventListener('click', (e) => {
     if (touchHandled) { touchHandled = false; return; }
     haptic(pattern);
