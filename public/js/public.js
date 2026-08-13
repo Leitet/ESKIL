@@ -363,10 +363,11 @@ function render() {
   }
 }
 
-// True when the signed-in visitor may administer this competition:
+// True when the signed-in visitor can open this competition's admin app:
 // super-admin (own users-doc), legacy uid admin (public doc), or their e-mail
-// is in adminEmails — which lives in the member-only private/access subdoc
-// (falling back to the public doc for un-migrated competitions).
+// is in adminEmails OR userEmails (read-only members see Läget/poäng too) —
+// both live in the member-only private/access subdoc (falling back to the
+// public doc for un-migrated competitions).
 async function checkAdminAccess(user, cid) {
   if (!user || !comp) return false;
   if ((comp.admins || []).includes(user.uid)) return true;
@@ -378,9 +379,12 @@ async function checkAdminAccess(user, cid) {
   if (!email) return false;
   try {
     const a = await getDoc(doc(db, 'competitions', cid, 'private', 'access'));
-    if (a.exists() && (a.data().adminEmails || []).includes(email)) return true;
+    if (a.exists()) {
+      const d = a.data();
+      if ((d.adminEmails || []).includes(email) || (d.userEmails || []).includes(email)) return true;
+    }
   } catch { /* denied read = not a member — expected for most visitors */ }
-  return (comp.adminEmails || []).includes(email);
+  return (comp.adminEmails || []).includes(email) || (comp.userEmails || []).includes(email);
 }
 
 function renderHero() {
