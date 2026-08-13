@@ -739,6 +739,53 @@ function openStartFinishSheet(kind) {
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19, attribution: '© OSM'
     }).addTo(map);
+
+    // Same course context as the control sheet — for Start the lit leg is
+    // the way OUT (to the first control), for Mål the way IN (from the last
+    // control), for a combined S/M both. Parking stays a plain marker (it
+    // isn't on the course).
+    let litBounds = null;
+    if (!isParking) {
+      const { nodes, legs } = courseLegs(comp, controls, track);
+      const litLegs = new Set();
+      const firstOut = legs.find(l => l.from.key === '__start');
+      const lastIn = legs.find(l => l.to.key === '__mal');
+      if ((kind === 'start' || p.kind === 'startfinish') && firstOut) litLegs.add(firstOut);
+      if ((kind === 'finish' || p.kind === 'startfinish') && lastIn) litLegs.add(lastIn);
+
+      for (const leg of legs) {
+        const lit = litLegs.has(leg);
+        L.polyline(legLatLngs(leg), {
+          color: lit ? '#E95F13' : '#8a8a8a',
+          weight: lit ? 5 : 2.5,
+          opacity: lit ? 0.95 : 0.45,
+          ...(leg.drawn ? {} : { dashArray: lit ? '10 10' : '5 8' }),
+          interactive: false
+        }).addTo(map);
+      }
+
+      for (const n of nodes) {
+        if (n.kind !== 'control') continue; // S/M drawn big below
+        const nd = isDone(n.key);
+        L.circleMarker([n.lat, n.lng], {
+          radius: 9,
+          color: nd ? '#d0d0d0' : '#ffffff', weight: 2,
+          fillColor: nd ? '#8a8a8a' : '#003660',
+          fillOpacity: nd ? 0.55 : 0.85
+        })
+          .bindTooltip(nd ? n.label : '?', {
+            permanent: true, direction: 'center',
+            className: 'start-map-label' + (nd ? ' start-map-label-done' : '')
+          })
+          .addTo(map);
+      }
+
+      if (litLegs.size) {
+        litBounds = L.latLngBounds([]);
+        for (const leg of litLegs) legLatLngs(leg).forEach(ll => litBounds.extend(ll));
+      }
+    }
+
     L.circleMarker([p.lat, p.lng], {
       radius: 16,
       color: isParking ? '#ffffff' : '#003660',
@@ -752,6 +799,7 @@ function openStartFinishSheet(kind) {
         className: 'start-map-label ' + (isParking ? 'start-map-label-park' : 'start-map-label-sf')
       })
       .addTo(map);
+    if (litBounds && litBounds.isValid()) map.fitBounds(litBounds.pad(0.3));
     setTimeout(() => map.invalidateSize(), 80);
   });
 }
