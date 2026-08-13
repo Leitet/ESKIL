@@ -66,9 +66,11 @@ button, a, input, textarea, select, label { touch-action: manipulation; }
   -webkit-user-select: none;
 }
 
-/* Mode toggle pill */
+/* Mode toggle pill — anchored to the top of the page (absolute, not fixed):
+   it scrolls away with the content so it never floats over the lists. Night
+   mode is toggled once at dusk; scrolling to the top for it is fine. */
 .mode-toggle {
-  position: fixed; top: 12px; right: 12px; z-index: 50;
+  position: absolute; top: 12px; right: 12px; z-index: 50;
   background: var(--r-card);
   border: 1.5px solid var(--r-border);
   color: var(--r-fg);
