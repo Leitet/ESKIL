@@ -2,6 +2,14 @@
 
 let ready = null;
 
+// Leaflet derives its default marker-image path from the script src (unpkg),
+// which the CSP img-src blocks. The three PNGs are self-hosted instead —
+// must be set before the first L.marker() is created.
+function useLocalMarkerImages(L) {
+  L.Icon.Default.imagePath = '/assets/leaflet/';
+  return L;
+}
+
 export function ensureLeaflet() {
   if (ready) return ready;
   ready = new Promise((resolve, reject) => {
@@ -14,7 +22,7 @@ export function ensureLeaflet() {
       st.textContent = '.leaflet-container { isolation: isolate; }';
       document.head.appendChild(st);
     }
-    if (window.L) return resolve(window.L);
+    if (window.L) return resolve(useLocalMarkerImages(window.L));
     if (!document.querySelector('link[data-leaflet]')) {
       const css = document.createElement('link');
       css.rel = 'stylesheet';
@@ -28,7 +36,7 @@ export function ensureLeaflet() {
     s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
     s.integrity = 'sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH';
     s.crossOrigin = 'anonymous';
-    s.onload = () => resolve(window.L);
+    s.onload = () => resolve(useLocalMarkerImages(window.L));
     s.onerror = reject;
     document.head.appendChild(s);
   });
