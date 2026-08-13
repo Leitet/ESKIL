@@ -56,6 +56,13 @@ export function createManagementForm(comp, { seedDefaults = false } = {}) {
           ${existingAdmins.has(normEmail(r.email)) ? '<span class="badge badge-green" style="margin-left:4px;">Administratör</span>' : ''}
         </span>
       </label>
+      <br>
+      <label class="mt-2" style="display:inline-flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:14px;">
+        <input type="checkbox" data-ekonomi="${idx}" ${r.ekonomi ? 'checked' : ''} style="margin:3px 0 0;">
+        <span><strong>Ekonomiansvarig / kassör</strong> — kan pricka av anmälningarnas betalningar
+          <span class="muted" style="font-weight:400;">och får läsåtkomst till hela tävlingen (kräver e-post ovan).</span>
+        </span>
+      </label>
     </div>
   `;
 
@@ -119,6 +126,13 @@ export function createManagementForm(comp, { seedDefaults = false } = {}) {
         if (items[idx]) items[idx].invite = cb.checked;
       });
     });
+
+    host.querySelectorAll('[data-ekonomi]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const idx = Number(cb.dataset.ekonomi);
+        if (items[idx]) items[idx].ekonomi = cb.checked;
+      });
+    });
   };
 
   render();
@@ -133,6 +147,7 @@ export function createManagementForm(comp, { seedDefaults = false } = {}) {
           id: r.id || randId(),
           label: (r.label || '').trim(),
           visibility: r.visibility === 'internal' ? 'internal' : 'public',
+          ekonomi: r.ekonomi === true,
           name: (r.name || '').trim(),
           phone: (r.phone || '').trim(),
           email: (r.email || '').trim()

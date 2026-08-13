@@ -75,7 +75,9 @@ export async function listAllCompetitions() {
 // PII permission fields moved off the world-readable competition doc into the
 // member-only private/access subdoc (Fas 3). `admins` (opaque uids) stays on
 // the competition doc — it isn't PII and the rules read it there.
-const PII_ACCESS_FIELDS = ['adminEmails', 'userEmails', 'users'];
+// ekonomi/ekonomiEmails (ekonomiansvarig/kassör — may tick off registration
+// payments) live ONLY in the access subdoc, never on the public doc.
+const PII_ACCESS_FIELDS = ['adminEmails', 'userEmails', 'users', 'ekonomi', 'ekonomiEmails'];
 
 async function readAccess(cid) {
   try {
@@ -119,7 +121,7 @@ export async function getCompetition(cid) {
 
 // Permission/PII fields that are being moved off the world-readable
 // competition doc into a member-only private/access subdoc (Fas 3).
-const ACCESS_FIELDS = ['adminEmails', 'userEmails', 'admins', 'users'];
+const ACCESS_FIELDS = ['adminEmails', 'userEmails', 'admins', 'users', 'ekonomi', 'ekonomiEmails'];
 
 // Mirror permission fields into competitions/{cid}/private/access. During the
 // migration these are DUAL-written (the competition doc keeps them too) and
@@ -145,7 +147,8 @@ export async function createCompetition(data, user) {
   });
   await mirrorAccess(ref.id, {
     admins: [user.uid], users: [],
-    adminEmails: data.adminEmails || [], userEmails: data.userEmails || []
+    adminEmails: data.adminEmails || [], userEmails: data.userEmails || [],
+    ekonomi: data.ekonomi || [], ekonomiEmails: data.ekonomiEmails || []
   });
   return ref.id;
 }
@@ -285,6 +288,16 @@ export async function setCompetitionUsers(cid, entries) {
   await mirrorAccess(cid, { users: clean, userEmails: clean.map(e => e.email) });
 }
 
+// Persist the ekonomiansvarig list (derived from management roles flagged
+// `ekonomi`): `ekonomi` holds {email, name} for display, flat `ekonomiEmails`
+// is what the rules check payment-write access against. Access subdoc only.
+export async function setCompetitionEkonomi(cid, entries) {
+  const clean = entries
+    .map(e => ({ email: String(e.email || '').trim().toLowerCase(), name: (e.name || '').trim() }))
+    .filter(e => e.email);
+  await mirrorAccess(cid, { ekonomi: clean, ekonomiEmails: clean.map(e => e.email) });
+}
+
 // Close (avsluta) a competition: wipe users and kontrollansvariga (including
 // their names) plus each control's on-site phone number — only admins remain.
 // Also closes every control for reporting and marks the competition
@@ -327,14 +340,14 @@ export async function closeCompetition(cid) {
   // admins remain reachable (via adminEmails).
   const comp = await getCompetition(cid).catch(() => null);
   const strippedManagement = Array.isArray(comp?.management)
-    ? comp.management.map(r => ({ id: r.id, label: r.label || '', visibility: r.visibility || 'public', name: '', phone: '', email: '' }))
+    ? comp.management.map(r => ({ id: r.id, label: r.label || '', visibility: r.visibility || 'public', ekonomi: r.ekonomi === true, name: '', phone: '', email: '' }))
     : undefined;
 
   await updateDoc(doc(db, 'competitions', cid), {
     closed: true, users: deleteField(), userEmails: deleteField(),
     ...(strippedManagement ? { management: strippedManagement } : {})
   });
-  await mirrorAccess(cid, { users: [], userEmails: [] });
+  await mirrorAccess(cid, { users: [], userEmails: [], ekonomi: [], ekonomiEmails: [] });
 }
 
 export async function reopenCompetition(cid) {

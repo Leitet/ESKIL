@@ -75,6 +75,15 @@ kunde bryta.
 Verifierat med full behörighetsmatris i emulatorn (riktiga auth-tokens) och på
 prod efter varje cutover.
 
+**Ekonomiansvarig/kassör** (2026-08-13): ny behörighetsnivå `ekonomiEmails`
+(spegel av `ekonomi: [{email, name}]`), lagrad ENBART i
+`competitions/{cid}/private/access` — aldrig på det publika dokumentet. Ger
+medlemsläsning (via `isCompMember`) plus uppdatering av EXAKT `paidRefs` på
+anmälningar (fältbegränsad med `affectedKeys().hasOnly(['paidRefs'])`, spärrad
+för demo/avslutade tävlingar). Utses via Tävlingslednings-roll med
+`ekonomi: true`-flagga; avslut av tävling gallrar listan som övriga
+medlemslistor. Ingen självescalering möjlig — bara admins skriver access-dokumentet.
+
 Kvarstår som känt & accepterat (UI-nivå): `publicScores`/`publicControls` döljer
 bara i UI:t — controls/scores är världsläsbara för de anonyma sidorna. Se
 minnet `ui-level-privacy-debt`. Registreringars fritextsvar (ev. allergier)

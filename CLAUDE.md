@@ -57,9 +57,15 @@ See `README.md` for the layout — every file there is load-bearing.
   `userEmails[]` (flat mirror of `users: [{email, name}]` — write both via
   store.setCompetitionUsers). Legacy uid `admins[]` still honored. Controls
   carry `ansvariga: [{email, name}]` + flat `ansvarigaEmails[]`; ansvariga may
-  update their control but never the ansvariga fields themselves. A `closed`
+  update their control but never the ansvariga fields themselves.
+  `ekonomiEmails[]` (mirror of `ekonomi: [{email, name}]`, in private/access
+  only — write via store.setCompetitionEkonomi) marks ekonomiansvariga/
+  kassörer: member-level read + may update ONLY `paidRefs` on registrations.
+  They are appointed via Tävlingsledning roles flagged `ekonomi: true` — the
+  management save path syncs the mirror. A `closed`
   competition is read-only for everyone but admins, and closing wipes
-  users + ansvariga + each control's `telefon` (GDPR cleanup) — admins remain.
+  users + ansvariga + ekonomi + each control's `telefon` (GDPR cleanup) —
+  admins remain.
 - `.../patrols/{pid}` — publicly readable (for the reporter page).
 - `.../controls/{ctrlId}` — publicly readable; writable by competition admins.
 - `.../controls/{ctrlId}/scores/{patrolId}` — one doc per patrol×control; the

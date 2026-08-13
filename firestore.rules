@@ -48,10 +48,19 @@ service cloud.firestore {
         )));
     }
 
+    // Ekonomiansvarig/kassör — appointed via a Tävlingsledning role flagged
+    // `ekonomi`; the flat email mirror lives ONLY in private/access. Grants
+    // member-level read plus the paidRefs-only registration update below.
+    function isEkonomi(cid) {
+      return isSignedIn() && accessExists(cid)
+        && authEmail() in accessData(cid).get('ekonomiEmails', []);
+    }
+
     function isCompMember(cid) {
       return isCompAdmin(cid)
         || (isSignedIn() && authEmail() in compData(cid).get('userEmails', []))
-        || (isSignedIn() && accessExists(cid) && authEmail() in accessData(cid).get('userEmails', []));
+        || (isSignedIn() && accessExists(cid) && authEmail() in accessData(cid).get('userEmails', []))
+        || isEkonomi(cid);
     }
 
     // A competition flagged with demo: true is read-only for everyone except
@@ -292,6 +301,11 @@ service cloud.firestore {
           && request.resource.data.keys().hasOnly(['kar','contact','patrols','answers','mode','totalAmount','payments','cancelled','forhinder','createdAt','updatedAt'])
         );
         allow update: if isCompAdmin(cid) || (
+          // Ekonomiansvarig ticks payments off: may touch ONLY the
+          // authoritative paidRefs array — no participant data, no amounts.
+             isEkonomi(cid) && !compIsDemo(cid) && !compClosed(cid)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['paidRefs'])
+        ) || (
              registrationEnabled(cid) && !compIsDemo(cid) && !compClosed(cid)
           && request.resource.data.diff(resource.data).affectedKeys()
                .hasOnly(['kar','contact','patrols','answers','mode','totalAmount','payments','cancelled','forhinder','updatedAt'])

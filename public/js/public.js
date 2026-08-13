@@ -381,7 +381,9 @@ async function checkAdminAccess(user, cid) {
     const a = await getDoc(doc(db, 'competitions', cid, 'private', 'access'));
     if (a.exists()) {
       const d = a.data();
-      if ((d.adminEmails || []).includes(email) || (d.userEmails || []).includes(email)) return true;
+      if ((d.adminEmails || []).includes(email)
+        || (d.userEmails || []).includes(email)
+        || (d.ekonomiEmails || []).includes(email)) return true;
     }
   } catch { /* denied read = not a member — expected for most visitors */ }
   return (comp.adminEmails || []).includes(email) || (comp.userEmails || []).includes(email);

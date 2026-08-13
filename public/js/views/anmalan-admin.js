@@ -11,7 +11,7 @@ import { downloadReceiptPdf } from '../pdf.js';
 import {
   escapeHtml, formatDate, toast, withBusy, confirmDialog, wireOverlayClose,
   registrationSettings, registrationState, registrationUrl, copyToClipboard,
-  isPaymentPaid, isCompAdminUser
+  isPaymentPaid, isCompAdminUser, isEkonomiUser
 } from '../utils.js';
 import { icon } from '../icons.js';
 import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
@@ -51,6 +51,9 @@ export async function renderAnmalanAdmin(app, user, cid) {
   setTopbarCompetition(cid, comp, user);
 
   const isAdmin = isCompAdminUser(comp, user);
+  // Ekonomiansvarig/kassör may tick payments off (paidRefs) but nothing else —
+  // the Firestore rules enforce the same field-level limit.
+  const canPay = isAdmin || isEkonomiUser(comp, user);
   const settings = registrationSettings(comp);
   const state = registrationState(comp);
 
@@ -235,7 +238,7 @@ export async function renderAnmalanAdmin(app, user, cid) {
         ${forhinderCount ? `<div class="kpi" style="border-color:var(--utm-pink);"><div class="k-label" style="color:var(--utm-pink);">Förhinder</div><div class="k-value">${forhinderCount}</div></div>` : ''}
       </div>
 
-      ${isAdmin ? `
+      ${canPay ? `
         <div class="card mb-4" style="padding:var(--sp-4);">
           <div class="row wrap" style="gap:var(--sp-3);align-items:flex-end;">
             <div style="flex:1;min-width:220px;max-width:320px;">
@@ -248,7 +251,7 @@ export async function renderAnmalanAdmin(app, user, cid) {
                 const t = paySum(r), p = paySum(r, true);
                 return t > 0 && p < t && (r.contact?.email || '').trim();
               });
-              return !comp.demo && unpaidRegs.length ? `
+              return isAdmin && !comp.demo && unpaidRegs.length ? `
                 <span class="spacer"></span>
                 <button class="btn btn-secondary btn-sm" id="remind-all">${icon('mail', { size: 14 })} Påminn alla obetalda (${unpaidRegs.length})</button>
               ` : '';
@@ -330,9 +333,9 @@ export async function renderAnmalanAdmin(app, user, cid) {
                 ${isPaymentPaid(r, p)
                   ? `<span class="badge badge-green">Betald${p.paidAt ? ' ' + escapeHtml(String(p.paidAt).slice(0, 10)) : ''}</span>
                      <button class="btn btn-ghost btn-sm" data-receipt="${escapeHtml(r.id)}:${escapeHtml(p.id)}" style="margin-left:auto;">${icon('download', { size: 14 })} Kvitto</button>
-                     ${isAdmin ? `<button class="btn btn-ghost btn-sm" data-unpay="${escapeHtml(r.id)}:${escapeHtml(p.id)}">Ångra</button>` : ''}`
+                     ${canPay ? `<button class="btn btn-ghost btn-sm" data-unpay="${escapeHtml(r.id)}:${escapeHtml(p.id)}">Ångra</button>` : ''}`
                   : `<span class="badge">Väntar</span>
-                     ${isAdmin ? `<button class="btn btn-secondary btn-sm" data-pay="${escapeHtml(r.id)}:${escapeHtml(p.id)}" style="margin-left:auto;">Markera betald</button>` : ''}`}
+                     ${canPay ? `<button class="btn btn-secondary btn-sm" data-pay="${escapeHtml(r.id)}:${escapeHtml(p.id)}" style="margin-left:auto;">Markera betald</button>` : ''}`}
               </div>
             `).join('') || '<span class="muted t-sm">Inga betalningar (gratis eller ej klar)</span>'}
           </div>
@@ -396,7 +399,10 @@ export async function renderAnmalanAdmin(app, user, cid) {
     let result = null;
     if (paidValue) {
       const fullyPaid = (r.payments || []).length > 0 && (r.payments || []).every(p => paidRefs.includes(p.reference));
-      const imported = (fullyPaid && !r.cancelled) ? await importPatrolsFromReg(r) : 0;
+      // Patrol writes require admin (rules) — when the kassör ticks the last
+      // payment the auto-import is skipped; an admin imports via the card's
+      // "Importera till patrullistan" button instead.
+      const imported = (fullyPaid && !r.cancelled && isAdmin) ? await importPatrolsFromReg(r) : 0;
       result = { imported };
     }
     await load();

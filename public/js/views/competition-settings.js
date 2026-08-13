@@ -9,7 +9,8 @@
 import { layout, setTopbarCompetition } from '../app.js';
 import {
   getCompetition, updateCompetition, deleteCompetition, copyCompetition,
-  setCompetitionUsers, listControls, closeCompetition, reopenCompetition
+  setCompetitionUsers, setCompetitionEkonomi, listControls,
+  closeCompetition, reopenCompetition
 } from '../store.js';
 import {
   db, doc, getDoc, getDocs, collection, query, where
@@ -18,7 +19,7 @@ import {
   escapeHtml, toast, withBusy, confirmDialog, wireOverlayClose,
   registrationSettings, REG_PRICING_MODELS, registrationUrl, copyToClipboard,
   AVDELNINGAR, allowedAvdelningar,
-  isCompAdminUser, normEmail
+  isCompAdminUser, normEmail, ekonomiFromManagement
 } from '../utils.js';
 import { createManagementForm } from '../managementform.js';
 import { icon } from '../icons.js';
@@ -1126,7 +1127,11 @@ function renderManagementTab(comp, cid, refresh, readOnly) {
     // Union — ticking "Bjud in som administratör" adds; removal happens
     // deliberately under Användare, never as a side effect here.
     const adminEmails = [...new Set([...(comp.adminEmails || []), ...mgmt.adminInvites()])];
-    await updateCompetition(cid, { management: mgmt.read(), adminEmails });
+    const management = mgmt.read();
+    await updateCompetition(cid, { management, adminEmails });
+    // The ekonomi-flagged roles ARE the ekonomiansvarig list — sync the
+    // permission mirror (private/access) from them, adds and removals alike.
+    await setCompetitionEkonomi(cid, ekonomiFromManagement(management));
     await refresh();
   });
 
@@ -1224,6 +1229,18 @@ function renderMembersTab(comp, cid, user, refresh) {
           </ul>
         ` : '<p class="muted t-sm" style="margin:6px 0 10px;">Inga kontrollansvariga utsedda.</p>'}
         <p class="field-hint">Kontrollansvariga kan redigera och öppna/stänga sin kontroll, och har läsåtkomst till resten av tävlingen. De utses på respektive kontrollsida och står automatiskt med som användare ovan.</p>
+      </div>
+
+      <div class="mt-6">
+        <h4 class="t-over">Ekonomiansvariga / kassörer (${(comp.ekonomi || []).length})</h4>
+        ${(comp.ekonomi || []).length ? `
+          <ul class="muted t-sm" style="padding-left:16px;margin:6px 0 10px;">
+            ${(comp.ekonomi || []).map(e => `<li>
+              ${e.name ? `<strong>${escapeHtml(e.name)}</strong> · ` : ''}${escapeHtml(e.email)}
+            </li>`).join('')}
+          </ul>
+        ` : '<p class="muted t-sm" style="margin:6px 0 10px;">Ingen ekonomiansvarig utsedd.</p>'}
+        <p class="field-hint">Ekonomiansvariga kan pricka av anmälningarnas betalningar och har läsåtkomst till hela tävlingen. De utses under fliken Tävlingsledning (kryssrutan "Ekonomiansvarig / kassör" på rollen).</p>
       </div>
     `;
 

@@ -1,6 +1,6 @@
 import { layout } from '../app.js';
 import { listCompetitionsForUser, createCompetition } from '../store.js';
-import { escapeHtml, formatDate, toast, withBusy, isCompAdminUser } from '../utils.js';
+import { escapeHtml, formatDate, toast, withBusy, isCompAdminUser, ekonomiFromManagement } from '../utils.js';
 import { createManagementForm } from '../managementform.js';
 import { icon } from '../icons.js';
 
@@ -304,6 +304,8 @@ function openCreateModal(user) {
     const f = overlay.querySelector('#f');
     if (!f.reportValidity()) return;
     await withBusy(saveBtn, 'Skapar…', async () => {
+      const management = mgmt.read();
+      const ekonomi = ekonomiFromManagement(management);
       const data = {
         name: nameEl.value.trim(),
         shortName: shortEl.value.trim(),
@@ -322,7 +324,9 @@ function openCreateModal(user) {
           lastStart: overlay.querySelector('#st-lastStart').value || null
         },
         startFinish: readStartFinish(overlay),
-        management: mgmt.read()
+        management,
+        ekonomi,
+        ekonomiEmails: ekonomi.map(e => e.email)
       };
       try {
         const id = await createCompetition(data, user);

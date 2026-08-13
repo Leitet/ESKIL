@@ -49,9 +49,10 @@ export function allowedAvdelningar(comp) {
 
 // Default role presets for new competitions.
 export const DEFAULT_MANAGEMENT_ROLES = [
-  { id: 'leader',        label: 'Tävlingsledare', visibility: 'public'   },
-  { id: 'registrations', label: 'Anmälningar',    visibility: 'public'   },
-  { id: 'secretariat',   label: 'Sekretariat',    visibility: 'internal' }
+  { id: 'leader',        label: 'Tävlingsledare',          visibility: 'public'   },
+  { id: 'registrations', label: 'Anmälningar',             visibility: 'public'   },
+  { id: 'economy',       label: 'Ekonomiansvarig / Kassör', visibility: 'public', ekonomi: true },
+  { id: 'secretariat',   label: 'Sekretariat',             visibility: 'internal' }
 ];
 
 function randId() {
@@ -67,6 +68,7 @@ export function normalizeManagement(comp, { seedDefaults = false } = {}) {
       id: r.id || randId(),
       label: r.label || '',
       visibility: r.visibility === 'internal' ? 'internal' : 'public',
+      ekonomi: r.ekonomi === true,
       name: r.name || '',
       phone: r.phone || '',
       email: r.email || ''
@@ -78,6 +80,7 @@ export function normalizeManagement(comp, { seedDefaults = false } = {}) {
       id: d.id,
       label: d.label,
       visibility: d.visibility,
+      ekonomi: d.ekonomi === true,
       name: raw[d.id]?.name  || '',
       phone: raw[d.id]?.phone || '',
       email: raw[d.id]?.email || ''
@@ -86,9 +89,26 @@ export function normalizeManagement(comp, { seedDefaults = false } = {}) {
   return seedDefaults
     ? DEFAULT_MANAGEMENT_ROLES.map(d => ({
         id: d.id, label: d.label, visibility: d.visibility,
+        ekonomi: d.ekonomi === true,
         name: '', phone: '', email: ''
       }))
     : [];
+}
+
+// Roles flagged as ekonomiansvarig (with an email) → the {email, name} list
+// whose flat email mirror the rules check payment-write access against.
+export function ekonomiFromManagement(management) {
+  return (management || [])
+    .filter(r => r.ekonomi === true && normEmail(r.email))
+    .map(r => ({ email: normEmail(r.email), name: (r.name || '').trim() }));
+}
+
+// Signed-in user is ekonomiansvarig for this competition. `ekonomiEmails` is
+// merged into comp from the member-only private/access subdoc by
+// store.getCompetition, so this works for any signed-in member.
+export function isEkonomiUser(comp, user) {
+  if (!user) return false;
+  return (comp?.ekonomiEmails || []).includes(normEmail(user.email));
 }
 
 // Any role with actual contact info filled in.
