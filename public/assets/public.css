@@ -781,13 +781,15 @@ a.pub-brand:hover { opacity: 0.85; }
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 19px;
   line-height: 1;
   padding: 4px;
   color: var(--fg3);
+  display: inline-flex;
+  align-items: center;
 }
 .fav-star.is-on { color: var(--rover-yellow, #E2B100); }
-.pname .fav-star { font-size: 16px; padding: 2px 4px 2px 0; }
+.fav-star.is-on svg { fill: currentColor; }
+.pname .fav-star { padding: 2px 4px 2px 0; vertical-align: -3px; }
 .start-row.is-fav, .lb tr.is-fav td { background: #fdf7e2; }
 .start-row:last-child { border-bottom: none; }
 .start-row:hover { background: var(--bg-muted); }

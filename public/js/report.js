@@ -427,7 +427,7 @@ async function main() {
     avd.innerHTML = `
       ${allDone ? `
         <div class="r-done-banner${pendingCount ? ' has-pending' : ''}">
-          <strong>${pendingCount ? 'Nästan klart!' : 'Ni är klara — tack för i dag! 🎉'}</strong>
+          <strong>${pendingCount ? 'Nästan klart!' : `Ni är klara — tack för i dag! ${icon('party-popper', { size: 16 })}`}</strong>
           ${pendingCount
             ? `<span>${pendingCount} rapport${pendingCount === 1 ? '' : 'er'} är INTE synkad${pendingCount === 1 ? '' : 'e'} ännu — håll sidan öppen där det finns täckning tills allt skickats.</span>`
             : '<span>Alla patruller har fått poäng och allt är synkat. Stäng kontrollen med sekretariatet innan ni packar ihop.</span>'}

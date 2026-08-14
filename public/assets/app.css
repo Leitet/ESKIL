@@ -642,6 +642,7 @@ table.t tr.sf-row.park-row td {
   position: absolute; top: 16px; right: 20px; z-index: 10;
   color: rgba(255,255,255,.55); font-size: 24px; line-height: 1;
   text-decoration: none; padding: 10px 14px; border-radius: var(--r-md);
+  display: inline-flex; align-items: center; justify-content: center;
 }
 .cer-close:hover { color: #fff; background: rgba(255,255,255,.12); }
 .cer-menu, .cer-stage { text-align: center; max-width: 900px; padding: 32px; }

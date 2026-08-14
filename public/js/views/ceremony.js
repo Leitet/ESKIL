@@ -9,13 +9,14 @@ import { getCompetition, listPatrols, listControls, listAllScores } from '../sto
 import { AVDELNINGAR, escapeHtml, rankPatrols, avdShort } from '../utils.js';
 import { registerViewCleanup } from '../app.js';
 import { navigate } from '../router.js';
+import { icon } from '../icons.js';
 
 const PLACE_LABELS = { 3: 'På tredje plats…', 2: 'På andra plats…', 1: 'Och segrare är…' };
 
 export async function renderCeremony(app, user, cid) {
   app.innerHTML = `<div class="ceremony"><div class="cer-loading">Laddar…</div></div>`;
 
-  const exitLink = `<a class="cer-close" href="/app/c/${cid}/scoreboard" data-link aria-label="Till poängtabellen" title="Till poängtabellen">✕</a>`;
+  const exitLink = `<a class="cer-close" href="/app/c/${cid}/scoreboard" data-link aria-label="Till poängtabellen" title="Till poängtabellen">${icon('x', { size: 22 })}</a>`;
   let comp, patrols, controls, scores;
   try {
     [comp, patrols, controls, scores] = await Promise.all([
@@ -61,7 +62,7 @@ export async function renderCeremony(app, user, cid) {
   closeBtn.setAttribute('data-link', '');
   closeBtn.setAttribute('aria-label', 'Avsluta prisutdelningen');
   closeBtn.title = 'Avsluta prisutdelningen';
-  closeBtn.textContent = '✕';
+  closeBtn.innerHTML = icon('x', { size: 22 });
   closeBtn.addEventListener('click', (e) => e.stopPropagation());
   const stage = document.createElement('div');
   root.append(closeBtn, stage);
@@ -95,7 +96,7 @@ export async function renderCeremony(app, user, cid) {
             ${categories.map(c => `
               <button class="cer-cat ${done.has(c.key) ? 'is-done' : ''}" data-cat="${escapeHtml(c.key)}">
                 <span class="dot ${c.short}"></span>${escapeHtml(c.label)}
-                ${done.has(c.key) ? '<span class="cer-check">✓</span>' : ''}
+                ${done.has(c.key) ? `<span class="cer-check">${icon('check', { size: 15 })}</span>` : ''}
               </button>
             `).join('')}
           </div>
@@ -107,7 +108,7 @@ export async function renderCeremony(app, user, cid) {
             const missing = controls.reduce((sum, c) => sum + patrols.filter(p => !p.utgatt && !(byCtrl[c.id]?.has(p.id))).length, 0);
             return missing > 0 ? `<p class="cer-warn">OBS: ${missing} rapport${missing === 1 ? '' : 'er'} saknas ännu — pallen kan ändras. Se "Saknade rapporter" i poängtabellen.</p>` : '';
           })()}
-          <p class="cer-hint">Mellanslag/klick = nästa · Esc = tillbaka hit · ✕ = till poängtabellen</p>
+          <p class="cer-hint">Mellanslag/klick = nästa · Esc = tillbaka hit · krysset = till poängtabellen</p>
         </div>
       `;
       stage.querySelectorAll('[data-cat]').forEach(b => b.addEventListener('click', (e) => {

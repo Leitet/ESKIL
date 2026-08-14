@@ -17,6 +17,7 @@ import {
 import { deleteField } from '../firebase.js';
 import { escapeHtml, toast, withBusy, confirmDialog, isCompAdminUser, formatTime } from '../utils.js';
 import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
+import { icon } from '../icons.js';
 
 const LEVELS = [['info', 'Information'], ['varning', 'Varning'], ['kritisk', 'Kritisk — larmar']];
 const PRESETS = [
@@ -65,7 +66,7 @@ export async function renderMeddelanden(app, user, cid) {
     ${compTabs(cid, 'meddelanden', comp, user)}
     <p class="muted" style="max-width:72ch;">Når fältet direkt som banner på kontrollernas rapportsidor,
     start/mål-stationen, patrullernas startkort och startskärmen. Flera meddelanden kan vara aktiva
-    samtidigt — klienterna staplar dem och samlar historiken i sin notisklocka 🔔.</p>
+    samtidigt — klienterna staplar dem och samlar historiken i sin notisklocka ${icon('bell', { size: 14 })}.</p>
     <div id="msg-composer"></div>
     <div id="msg-legacy"></div>
     <div id="msg-active"></div>
@@ -270,14 +271,14 @@ export async function renderMeddelanden(app, user, cid) {
         ${m.requireAck ? `
           <details class="mt-2" data-msg="${escapeHtml(m.id)}" ${!archived && !allAck ? 'open' : ''}>
             <summary style="cursor:pointer;font-weight:700;font-size:14px;color:${allAck ? 'var(--spaer-green, #41A62A)' : 'var(--avent-orange)'};">
-              ${allAck ? '✓ Alla har bekräftat' : `Bekräftat ${nAck} av ${expected.length}`} · mottaget ${nSeen} av ${expected.length}
+              ${allAck ? `${icon('check', { size: 14 })} Alla har bekräftat` : `Bekräftat ${nAck} av ${expected.length}`} · mottaget ${nSeen} av ${expected.length}
             </summary>
             <div class="table-wrap mt-2"><table class="t">
               <thead><tr><th>Mottagare</th><th>Status</th></tr></thead>
               <tbody>
                 ${expected.map(r => {
                   const a = findAck(r);
-                  const status = a?.ackAt ? `<span style="color:var(--spaer-green, #2d7a1c);font-weight:700;">✓ Bekräftat ${formatTime(a.ackAt)}</span>`
+                  const status = a?.ackAt ? `<span style="color:var(--spaer-green, #2d7a1c);font-weight:700;">${icon('check', { size: 13 })} Bekräftat ${formatTime(a.ackAt)}</span>`
                     : (a?.seenAt ? `Mottaget ${formatTime(a.seenAt)}` : '<span class="muted">—</span>');
                   return `<tr><td>${escapeHtml(r.label)}</td><td class="t-sm">${status}</td></tr>`;
                 }).join('')}

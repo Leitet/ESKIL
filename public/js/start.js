@@ -185,7 +185,7 @@ function renderEtaLine(t) {
     const now = new Date();
     const eta = courseEtaCalibrated(comp, controls, track, Object.values(allScoresByCtrl).flat(), patrols, now);
     if (!(eta.totalDist > 0)) return '';
-    if (t.done >= t.total) return `<div class="start-eta">Alla kontroller klara — gå i mål! 🏁</div>`;
+    if (t.done >= t.total) return `<div class="start-eta">${icon('flag', { size: 14 })} Alla kontroller klara — gå i mål!</div>`;
 
     let fromKey = eta.nodes[0]?.key;
     for (const n of eta.nodes) if (n.kind === 'control' && isDone(n.key)) fromKey = n.key;

@@ -356,7 +356,7 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
                 <td><strong>${escapeHtml(p.name || s.patrolId)}</strong></td>
                 <td>${escapeHtml(p.avdelning || '')}</td>
                 <td>${escapeHtml(p.kar || '')}</td>
-                <td class="num"><strong>${s.poang ?? 0}</strong>${s.adjustNote ? ' <span title="Justerad av sekretariatet">✎</span>' : ''}${(s.history || []).length ? ` <span class="muted t-sm" title="${(s.history || []).length} tidigare värden — se justeringsloggen på poängtabellen">↺${(s.history || []).length}</span>` : ''}</td>
+                <td class="num"><strong>${s.poang ?? 0}</strong>${s.adjustNote ? ` <span title="Justerad av sekretariatet">${icon('pencil', { size: 11 })}</span>` : ''}${(s.history || []).length ? ` <span class="muted t-sm" title="${(s.history || []).length} tidigare värden — se justeringsloggen på poängtabellen">${icon('history', { size: 11 })}${(s.history || []).length}</span>` : ''}</td>
                 <td class="num">${s.extraPoang ?? 0}</td>
                 <td class="muted t-sm">${formatTime(s.reportedAt)}</td>
                 <td class="muted t-sm">${escapeHtml((s.note || '').slice(0, 40))}</td>

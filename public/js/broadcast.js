@@ -34,6 +34,7 @@
 
 import { escapeHtml } from './utils.js';
 import { haptic } from './haptic.js';
+import { icon } from './icons.js';
 import { db, collection, onSnapshot } from './firebase.js';
 import { ackBroadcastMessage } from './store.js';
 
@@ -259,6 +260,10 @@ function ensureStyles() {
       border: none; background: none; color: inherit; font: inherit;
       font-size: 15px; cursor: pointer; opacity: .7; padding: 4px 8px;
     }
+    /* Lucide-ikoner i löptext ska sitta på baslinjen, inte sväva. */
+    .eb-msg svg, #eskil-bell-panel svg { vertical-align: -2px; }
+    #eskil-bell svg { display: block; }
+    .eb-msg .eb-hide, .eb-msg .eb-ack { display: inline-flex; align-items: center; gap: 6px; }
     html[data-mode="night"] #eskil-bell, html[data-mode="night"] #eskil-bell-panel {
       background: #1a0808; border-color: #5c1a1a; color: #ff8a80;
     }
@@ -350,10 +355,10 @@ function render() {
         ${m.at ? `<span class="eb-time">kl ${fmtTime(m.at)}</span>` : ''}
         ${needsAck
           ? (st.ackAt
-              ? `<span class="eb-acked">✓ Bekräftat ${fmtTime(st.ackAt)}</span>`
+              ? `<span class="eb-acked">${icon('check', { size: 13 })} Bekräftat ${fmtTime(st.ackAt)}</span>`
               : `<button type="button" class="eb-ack" data-ack="${escapeHtml(m.id)}">Bekräfta mottaget</button>`)
           : ''}
-        ${canHide ? `<button type="button" class="eb-hide" data-hide="${escapeHtml(m.id)}" aria-label="Dölj meddelandet (finns kvar i klockan)">✕</button>` : ''}
+        ${canHide ? `<button type="button" class="eb-hide" data-hide="${escapeHtml(m.id)}" aria-label="Dölj meddelandet (finns kvar i klockan)">${icon('x', { size: 15 })}</button>` : ''}
       </div>`;
     }).join('');
     // Skriv bara om när innehållet faktiskt ändrats — role="alert" gör att
@@ -409,7 +414,6 @@ function renderBell(act, local, identity) {
     bell.id = 'eskil-bell';
     bell.type = 'button';
     bell.setAttribute('aria-label', 'Meddelanden från tävlingsledningen');
-    bell.textContent = '🔔';
     document.body.appendChild(bell);
     bell.addEventListener('click', () => { panelOpen = !panelOpen; render(); });
   }
@@ -424,7 +428,7 @@ function renderBell(act, local, identity) {
   const bellTop = stackH + 12;
   bell.style.top = bellTop + 'px';
   const needAction = act.filter(m => m.requireAck && m.id !== 'legacy' && !local[m.id]?.ackAt).length;
-  bell.innerHTML = `🔔${needAction ? `<span class="eb-badge">${needAction}</span>` : ''}`;
+  bell.innerHTML = `${icon('bell', { size: 18 })}${needAction ? `<span class="eb-badge">${needAction}</span>` : ''}`;
 
   let panel = document.getElementById('eskil-bell-panel');
   if (!panelOpen) { panel?.remove(); return; }
@@ -443,7 +447,7 @@ function renderBell(act, local, identity) {
     .slice(0, 20);
 
   panel.innerHTML = `
-    <div class="ebp-head"><span>Meddelanden</span><button type="button" class="eb-hide" id="ebp-close" aria-label="Stäng">✕</button></div>
+    <div class="ebp-head"><span>Meddelanden</span><button type="button" class="eb-hide" id="ebp-close" aria-label="Stäng">${icon('x', { size: 16 })}</button></div>
     ${rows.length ? rows.map(([id, st]) => {
       const m = act.find(x => x.id === id);
       const level = LEVELS[st.level] ? st.level : 'info';
@@ -456,13 +460,13 @@ function renderBell(act, local, identity) {
           ${!activeIds.has(id) ? '<span>· avslutat</span>' : ''}
         </div>
         <div>${escapeHtml(st.text)}</div>
-        ${st.ackAt ? `<div class="ebp-status">✓ Bekräftat ${fmtTime(st.ackAt)}</div>` : ''}
+        ${st.ackAt ? `<div class="ebp-status">${icon('check', { size: 12 })} Bekräftat ${fmtTime(st.ackAt)}</div>` : ''}
         ${needsAck ? `<button type="button" class="ebp-ackbtn" data-ack="${escapeHtml(id)}">Bekräfta mottaget</button>` : ''}
       </div>`;
     }).join('') : '<div class="ebp-empty">Inga meddelanden ännu. Här samlas allt tävlingsledningen skickar ut.</div>'}
     ${canNotify() ? `<div class="ebp-notif">${
       Notification.permission === 'granted'
-        ? 'Notiser är aktiva på den här enheten ✓'
+        ? `Notiser är aktiva på den här enheten ${icon('check', { size: 13 })}`
         : Notification.permission === 'denied'
           ? 'Notiser är blockerade i webbläsarens inställningar.'
           : '<button type="button" id="ebp-enable-notif">Aktivera notiser på den här enheten</button><div style="opacity:.7;margin-top:6px;">Då syns nya meddelanden även när skärmen visar något annat.</div>'

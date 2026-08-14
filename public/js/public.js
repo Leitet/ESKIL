@@ -330,7 +330,7 @@ function toggleFav(pid) {
 function favStar(pid, favs) {
   return `<button type="button" class="fav-star ${favs.has(pid) ? 'is-on' : ''}" data-fav="${escapeHtml(pid)}"
     aria-label="${favs.has(pid) ? 'Ta bort favorit' : 'Markera som favorit'}"
-    title="${favs.has(pid) ? 'Ta bort favorit' : 'Följ patrullen — hamnar överst i listorna'}">${favs.has(pid) ? '★' : '☆'}</button>`;
+    title="${favs.has(pid) ? 'Ta bort favorit' : 'Följ patrullen — hamnar överst i listorna'}">${icon('star', { size: 16 })}</button>`;
 }
 
 function render() {
@@ -996,7 +996,7 @@ function renderUtslagPanel(totals) {
               <td class="rank">${r.patrol.number ?? ''}</td>
               <td><span class="pname">${escapeHtml(r.patrol.name || '')}</span> <span class="pkar">${escapeHtml(r.patrol.kar || '')}</span></td>
               <td class="num">${r.gissning != null ? r.gissning : '—'}</td>
-              <td class="num">${r.diff != null ? (r.diff === 0 ? '🎯 Rätt!' : '±' + r.diff) : '—'}</td>
+              <td class="num">${r.diff != null ? (r.diff === 0 ? `${icon('target', { size: 13 })} Rätt!` : '±' + r.diff) : '—'}</td>
             </tr>`).join('')}
           </tbody>
         </table>

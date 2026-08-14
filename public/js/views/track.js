@@ -75,7 +75,7 @@ export async function renderTrack(app, user, cid) {
     <div class="track-wrap" id="track-wrap">
       <div id="track-map" class="track-map"></div>
       <div class="track-panel" id="track-panel"></div>
-      <button class="btn btn-secondary btn-sm track-fs" id="track-fs" title="Fullskärm">⛶ Fullskärm</button>
+      <button class="btn btn-secondary btn-sm track-fs" id="track-fs" title="Fullskärm">${icon('maximize', { size: 14 })} Fullskärm</button>
     </div>
     <p class="muted t-sm" style="margin-top:8px;">
       ${canEdit
@@ -252,7 +252,7 @@ export async function renderTrack(app, user, cid) {
             <span class="track-leg-name">${escapeHtml(leg.from.label)} → ${escapeHtml(leg.to.label)}</span>
             <span class="mono t-sm">${fmtDist(dists[i])}</span>
             <span class="mono t-sm muted">${fmtMin(walkMin(dists[i]))}</span>
-            ${leg.wps.length === 0 ? '<span class="muted t-sm" title="Inga punkter ritade — fågelvägen">✏</span>' : ''}
+            ${leg.wps.length === 0 ? `<span class="muted t-sm" title="Inga punkter ritade — fågelvägen">${icon('pencil', { size: 12 })}</span>` : ''}
           </button>
         `).join('')}
       </div>
