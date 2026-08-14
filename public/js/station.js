@@ -5,12 +5,12 @@
 // patrol, with server timestamps. This feeds the "Läget" dashboard so the
 // secretariat always knows who is still out in the woods.
 
-import { db, doc, onSnapshot } from './firebase.js';
+import { db, doc, collection, onSnapshot } from './firebase.js';
 import { getCompetition, getStation, listPatrols, watchPassages, setPassage, listControls, getTrack } from './store.js';
 import { escapeHtml, toast, confirmDialog, patrolStartTime, patrolStartDateTime, avdShort } from './utils.js';
 import { bindTap } from './haptic.js';
 import { updateBroadcast } from './broadcast.js';
-import { courseEta } from './course.js';
+import { courseEtaCalibrated, patrolFinishEtaMs } from './course.js';
 
 const root = document.getElementById('root');
 
@@ -25,7 +25,10 @@ let patrols = [];
 let passages = {};      // patrolId -> passage doc
 let mode = 'start';     // 'start' | 'mal'
 let cid = null, stationId = null;
-let finishMin = null;   // hela banans ETA i minuter (gångtid + stationstid)
+let etaEngine = null;   // kalibrerad ETA-motor (byggs om ur cachade poäng)
+let etaCourse = null;   // {controls, track} — statiskt underlag för motorn
+let scoresByCtrl = {};  // ctrlId -> score[] (live via onSnapshot — bara deltas)
+let reportsByPatrol = {}; // pid -> {ctrlId: passagetid} för positionsankare
 let searchText = '';    // fritextfilter över patrullknapparna
 
 // Flik via URL (?flik=mal — målfunktionärens direktlänk) eller senaste valet
@@ -108,28 +111,62 @@ async function main() {
   window.addEventListener('online', render);
   window.addEventListener('offline', render);
 
-  // ETA-motorn i bakgrunden: banans gångtid + stationstid ger "mål ca HH:MM"
-  // per patrull ute i skogen. Kräver placerade kontroller — annars visas inget.
+  // ETA-motorn: "mål ca HH:MM" per patrull ute i skogen. Kalibrerad —
+  // verkliga mellantider ur poängdatan (inkl. köer på kontrollerna)
+  // ersätter modellantagandet så fort tre patruller passerat ett ben.
+  // Poängen följs via onSnapshot (initial läsning + bara ändringar därefter
+  // — ingen polling som dränerar läskvot och batteri); själva motorbygget
+  // är en billig lokal beräkning som görs per render.
   (async () => {
     try {
       const [controls, track] = await Promise.all([
         listControls(cid),
         getTrack(cid).catch(() => null)
       ]);
-      const eta = courseEta(comp, controls, track);
-      if (eta.finishMin != null && eta.totalDist > 0) { finishMin = eta.finishMin; render(); }
+      etaCourse = { controls, track };
+      for (const c of controls) {
+        onSnapshot(collection(db, 'competitions', cid, 'controls', c.id, 'scores'), snap => {
+          scoresByCtrl[c.id] = snap.docs.map(d => ({ id: d.id, controlId: c.id, ...d.data(), patrolId: d.data().patrolId || d.id }));
+          render();
+        });
+      }
     } catch { /* ETA är en bonus — aldrig ett fel */ }
   })();
 }
 
-// Beräknad målgång (ms-epok) för en patrull som är ute: faktisk starttid +
-// hela banans ETA. null när ETA saknas eller patrullen inte är ute.
+// Bygg om motorn ur cachade poäng + faktiska starttider (passages). Faktisk
+// start som ankare för första benets mellantid — annars dubbelräknas en
+// systematisk startförsening för patruller som ankras i sin faktiska start.
+function rebuildEtaEngine() {
+  if (!etaCourse) return;
+  try {
+    const scores = Object.values(scoresByCtrl).flat();
+    reportsByPatrol = {};
+    for (const s of scores) {
+      const t = s.clientReportedAt ?? s.reportedAt;
+      if (s.patrolId && t) (reportsByPatrol[s.patrolId] ||= {})[s.controlId] = t;
+    }
+    const startMsByPatrol = {};
+    for (const [pid, pass] of Object.entries(passages)) {
+      if (!pass.startAt) continue;
+      const d = typeof pass.startAt.toDate === 'function' ? pass.startAt.toDate() : new Date(pass.startAt);
+      startMsByPatrol[pid] = d.getTime();
+    }
+    const eta = courseEtaCalibrated(comp, etaCourse.controls, etaCourse.track, scores, patrols, virtualNow(), startMsByPatrol);
+    etaEngine = (eta.finishMin != null && eta.totalDist > 0) ? eta : null;
+  } catch { etaEngine = null; }
+}
+
+// Beräknad målgång (ms-epok) för en patrull som är ute: ankrad i senaste
+// rapporterade kontrollen (positionsmedveten) eller faktisk starttid, plus
+// kvarvarande ben ur den kalibrerade motorn. null när ETA saknas eller
+// patrullen inte är ute.
 function etaFinishMs(p) {
-  if (finishMin == null || p.utgatt) return null;
+  if (!etaEngine || p.utgatt) return null;
   const pass = passages[p.id] || {};
   if (!pass.startAt || pass.finishAt) return null;
   const d = typeof pass.startAt.toDate === 'function' ? pass.startAt.toDate() : new Date(pass.startAt);
-  return d.getTime() + finishMin * 60000;
+  return patrolFinishEtaMs(etaEngine, reportsByPatrol[p.id], d.getTime());
 }
 
 function statusOf(p) {
@@ -152,6 +189,7 @@ function lateToStartMin(p) {
 }
 
 function render() {
+  rebuildEtaEngine();
   const sorted = [...patrols].sort((a, b) => (a.startOrder ?? a.number ?? 0) - (b.startOrder ?? b.number ?? 0));
   const counts = { waiting: 0, out: 0, finished: 0, utgatt: 0 };
   sorted.forEach(p => { counts[statusOf(p)]++; });
@@ -160,7 +198,7 @@ function render() {
   // Målfliken sorterar som en ute-lista: de som väntas först ligger överst,
   // sedan ej startade, sist redan incheckade. Startfliken behåller startordning.
   let display = sorted;
-  if (mode === 'mal' && finishMin != null) {
+  if (mode === 'mal' && etaEngine) {
     const rank = { out: 0, waiting: 1, finished: 2, utgatt: 3 };
     display = [...sorted].sort((a, b) => {
       const ra = rank[statusOf(a)], rb = rank[statusOf(b)];

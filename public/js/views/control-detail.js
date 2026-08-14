@@ -215,9 +215,14 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
   pdfBtn.addEventListener('click', () => withBusy(pdfBtn, 'Skapar PDF…', async () => {
     try {
       // "Patruller väntas" med i PDF:en så kontrollanterna vet när det drar
-      // igång — samma estimat som visas på rapportsidan.
+      // igång — samma estimat som visas på rapportsidan, kalibrerat mot
+      // verkliga mellantider när rapporter finns.
       let etaWindow = null;
-      try { etaWindow = controlEtaWindow(comp, allControls, track, patrols, ctrlId); } catch { /* bonus */ }
+      try {
+        const { listAllScores } = await import('../store.js');
+        const allScores = await listAllScores(cid).catch(() => null);
+        etaWindow = controlEtaWindow(comp, allControls, track, patrols, ctrlId, new Date(), allScores);
+      } catch { /* bonus */ }
       await downloadControlPdf({ id: cid, ...comp }, { ...control, id: ctrlId }, { legIn, legOut, etaWindow });
     } catch (e) {
       console.error(e);

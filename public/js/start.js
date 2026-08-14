@@ -7,7 +7,7 @@
 
 import { db, doc, onSnapshot, collection } from './firebase.js';
 import { getCompetition, getCompetitionBySlug, getPatrol, listControls, listPatrols, getTrack } from './store.js';
-import { courseLegs, drawCourseOnMap, addCourseChip, legLatLngs, courseEta, fmtDist, fmtMin } from './course.js';
+import { courseLegs, drawCourseOnMap, addCourseChip, legLatLngs, courseEtaCalibrated, patrolFinishEtaMs, fmtDist, fmtMin } from './course.js';
 import {
   escapeHtml, publicManagement, patrolStartTime, patrolStartDateTime,
   startFinishPoints, parkingPoint, startTimeSettings,
@@ -65,7 +65,8 @@ let patrols = [];          // all patrols in the competition — needed for
                            // and for the countdown window.
 let controls = [];
 let track = null;    // drawn course from the Spår editor (fetched once)
-let scoresForPatrol = {};  // controlId -> score doc
+let scoresForPatrol = {};  // controlId -> score doc (egna patrullens)
+let allScoresByCtrl = {};  // controlId -> score[] — kalibrerar ETA-motorn
 let filter = 'alla';       // 'alla' | 'kvar' | 'klara'
 
 async function main() {
@@ -115,18 +116,23 @@ async function main() {
     if (s.exists()) { comp = { id: cid, ...s.data() }; updateBroadcast(comp, bctx); render(); }
   });
   updateBroadcast(comp, bctx);
+  const subscribedScoreCtrls = new Set();
   onSnapshot(collection(db, 'competitions', cid, 'controls'), snap => {
     controls = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    // For each control, subscribe to THIS patrol's score (keyed by patrolId).
+    // EN lyssnare per kontroll över hela scores-kollektionen (dedupad så
+    // controls-snapshots inte staplar dubbletter): driver både egna poängen
+    // på kortet och ETA-kalibreringen — initial läsning + deltas därefter,
+    // ingen polling som dränerar läskvot och batteri.
     for (const c of controls) {
-      onSnapshot(
-        doc(db, 'competitions', cid, 'controls', c.id, 'scores', patrolId),
-        scoreSnap => {
-          if (scoreSnap.exists()) scoresForPatrol[c.id] = { id: scoreSnap.id, ...scoreSnap.data() };
-          else delete scoresForPatrol[c.id];
-          render();
-        }
-      );
+      if (subscribedScoreCtrls.has(c.id)) continue;
+      subscribedScoreCtrls.add(c.id);
+      onSnapshot(collection(db, 'competitions', cid, 'controls', c.id, 'scores'), scoreSnap => {
+        const rows = scoreSnap.docs.map(d => ({ id: d.id, controlId: c.id, ...d.data(), patrolId: d.data().patrolId || d.id }));
+        allScoresByCtrl[c.id] = rows;
+        const own = rows.find(r => r.patrolId === patrolId);
+        if (own) scoresForPatrol[c.id] = own; else delete scoresForPatrol[c.id];
+        render();
+      });
     }
     render();
   });
@@ -169,13 +175,15 @@ function renderNextControl(t) {
 }
 
 // ETA-raden under KPI:erna: hur mycket bana som är kvar och när patrullen
-// beräknas vara i mål. Gångtid längs spåret (eller fågelvägen) + stationstid
-// per kvarvarande kontroll. "Var vi står" antas vara den sista avklarade
-// kontrollen i nummerordning — samma antagande som Läget gör.
+// beräknas vara i mål. Kalibrerad motor: verkliga mellantider ur poängdatan
+// (inkl. köer på kontrollerna) ersätter gångtid + stationstid så fort tre
+// patruller passerat ett ben. Målgången ankras i patrullens senaste rapport
+// — inte i klockan — så en lång paus inte "försvinner" ur estimatet.
 function renderEtaLine(t) {
   try {
     if (!t.total) return '';
-    const eta = courseEta(comp, controls, track);
+    const now = new Date();
+    const eta = courseEtaCalibrated(comp, controls, track, Object.values(allScoresByCtrl).flat(), patrols, now);
     if (!(eta.totalDist > 0)) return '';
     if (t.done >= t.total) return `<div class="start-eta">Alla kontroller klara — gå i mål! 🏁</div>`;
 
@@ -186,12 +194,22 @@ function renderEtaLine(t) {
     if (!from || !to) return '';
     const kvar = t.total - t.done;
     const distLeft = Math.max(0, to.dist - from.dist);
-    const minLeft = (distLeft / 1000) / eta.speedKmh * 60 + kvar * eta.dwellMin;
 
     if (t.done === 0) {
       return `<div class="start-eta">${icon('clock', { size: 14 })} Hela banan: ${fmtDist(eta.totalDist)} · ca ${fmtMin(eta.finishMin)} inkl. kontroller</div>`;
     }
-    const malKl = new Date(Date.now() + minLeft * 60000)
+    const reports = {};
+    for (const [ctrlId, s] of Object.entries(scoresForPatrol)) {
+      const t = s?.clientReportedAt ?? s?.reportedAt;
+      if (t) reports[ctrlId] = t;
+    }
+    const startDt = patrolStartDateTime(comp, patrol, now, patrols.length);
+    const finMs = patrolFinishEtaMs(eta, reports, startDt ? startDt.getTime() : null);
+    const minLeft = finMs != null
+      ? Math.max(0, (finMs - now.getTime()) / 60000)
+      : (distLeft / 1000) / eta.speedKmh * 60 + kvar * eta.dwellMin;
+    // Ett passerat estimat visas som "nu" — patrullen väntas vilken minut som helst.
+    const malKl = new Date(Math.max(finMs ?? (now.getTime() + minLeft * 60000), now.getTime()))
       .toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
     return `<div class="start-eta">${icon('clock', { size: 14 })} Kvar: ${kvar} kontroll${kvar === 1 ? '' : 'er'} · ${fmtDist(distLeft)} · ~${fmtMin(minLeft)} — i mål ca ${malKl}</div>`;
   } catch { return ''; }

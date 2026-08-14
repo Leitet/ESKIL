@@ -680,14 +680,16 @@ export async function listScoresForControl(cid, ctrlId) {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
-export async function listAllScores(cid) {
-  // Read all controls, then all scores under each.
-  const controls = await listControls(cid);
+export async function listAllScores(cid, preloadedControls = null) {
+  // Read all controls (unless the caller already has them), then all scores
+  // under each — in parallel, one round-trip per control instead of serial.
+  const controls = preloadedControls || await listControls(cid);
   const out = [];
-  for (const c of controls) {
-    const snap = await getDocs(
-      collection(db, 'competitions', cid, 'controls', c.id, 'scores')
-    );
+  const snaps = await Promise.all(controls.map(c =>
+    getDocs(collection(db, 'competitions', cid, 'controls', c.id, 'scores'))
+      .then(snap => ({ c, snap }))
+  ));
+  for (const { c, snap } of snaps) {
     for (const d of snap.docs) {
       out.push({ id: d.id, controlId: c.id, controlNummer: c.nummer, ...d.data() });
     }
@@ -717,7 +719,7 @@ export function scoreHistoryEntry(existing) {
   return entry;
 }
 
-export async function upsertScore(cid, ctrlId, patrolId, poang, extraPoang, note, reporter, utslagGissning = null, history = null) {
+export async function upsertScore(cid, ctrlId, patrolId, poang, extraPoang, note, reporter, utslagGissning = null, history = null, clientAt = null) {
   // One score per patrol per control. Use patrolId as the doc id to keep it unique.
   const ref = doc(db, 'competitions', cid, 'controls', ctrlId, 'scores', patrolId);
   const data = {
@@ -726,6 +728,11 @@ export async function upsertScore(cid, ctrlId, patrolId, poang, extraPoang, note
     extraPoang: Number(extraPoang) || 0,
     note: note || '',
     reportedAt: serverTimestamp(),
+    // Passagetiden = när knappen trycktes, INTE när skrivningen synkade.
+    // En rapport som legat i offlinekön i timmar ska bära tryck-ögonblicket
+    // (clientAt från kön) — annars förgiftar batchsynkar ETA-motorns
+    // mellantider och patrullernas målgångsankare.
+    clientReportedAt: Timestamp.fromDate(clientAt ? new Date(clientAt) : new Date()),
     reporter: reporter || ''
   };
   // Tiebreaker guess (utslagskontroll) — only written when actually given.
@@ -747,11 +754,15 @@ export async function adjustScore(cid, ctrlId, patrolId, existing, { poang, extr
     poang: Number(poang) || 0,
     extraPoang: Number(extraPoang) || 0,
     note: existing?.note || '',
-    reportedAt: serverTimestamp(),
+    // Behåll den URSPRUNGLIGA passagetiden — patrullen stod inte vid
+    // kontrollen när sekretariatet rättade poängen. Justeringsögonblicket
+    // finns redan i history-posten (replacedAt).
+    reportedAt: existing?.reportedAt ?? serverTimestamp(),
     reporter: 'sekretariat',
     adjustNote: adjustNote || '',
     adjustedBy: adjustedBy || ''
   };
+  if (existing?.clientReportedAt) data.clientReportedAt = existing.clientReportedAt;
   if (existing?.utslagGissning != null) data.utslagGissning = existing.utslagGissning;
   if (history.length) data.history = history;
   await setDoc(ref, data);

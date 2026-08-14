@@ -105,12 +105,158 @@ export function courseEta(comp, controls, track) {
   return { nodes, legs, hasDrawn, speedKmh, dwellMin, byKey, totalDist: dist, finishMin };
 }
 
+// --- Självkalibrerande ETA -------------------------------------------------
+// Modellantagandet (gångtid + fast stationstid) är bra på morgonen men vet
+// inget om köer. Verkligheten finns dock redan i poängdatan: tiden mellan en
+// patrulls två på varandra följande rapporter ÄR gångtid + kö + uppgift för
+// det benet. När minst ETA_MIN_SAMPLES patruller passerat ett ben ersätter
+// medianen av deras mellantider modellantagandet för just det benet — kön
+// bakas in automatiskt, och estimatet skärps ju längre dagen går. Ben utan
+// underlag behåller modellen, så motorn är alltid definierad.
+//
+// Semantik per nod i byKey:
+//   etaMin = minuter från start till ANKOMST (avfärd från förra noden + ren
+//            gångtid — kö/uppgift på noden ligger efter ankomsten)
+//   depMin = minuter från start till AVFÄRD (ankomst + kö + uppgift)
+// finishMin = målgång (avfärd från sista kontrollen + gångtid till mål).
+export const ETA_MIN_SAMPLES = 3;
+
+const tsToMs = (ts) => {
+  if (!ts) return null;
+  const d = typeof ts.toDate === 'function' ? ts.toDate() : new Date(ts);
+  const t = d.getTime();
+  return Number.isFinite(t) ? t : null;
+};
+
+// `startMsByPatrol` (valfri, {pid: ms}): FAKTISKA starttider när anroparen
+// har dem (station/Läget via passages). Utan den mäts första benet från
+// planerad start, och en systematisk startförsening skulle dubbelräknas för
+// patruller som ankras i sin faktiska start.
+export function courseEtaCalibrated(comp, controls, track, scores = [], patrols = [], now = new Date(), startMsByPatrol = null) {
+  const base = courseEta(comp, controls, track);
+  const { nodes, legs, speedKmh, dwellMin } = base;
+  // Demotävlingar: planerade starter rullar med klockan men seed-rapporterna
+  // är frusna — kalibrering mot dem ger nonsens. Kör ren modell, och flagga
+  // demoMode så patrolFinishEtaMs ignorerar de frusna rapportankarna.
+  const demoMode = !!comp?.demo;
+  if (!nodes.length) return { ...base, calibrated: false, demoMode };
+
+  // Rapporttid per patrull och kontroll (nyckel = kontroll-id = nod-nyckel).
+  // clientReportedAt (tryck-ögonblicket) före reportedAt (synkögonblicket) —
+  // offlineköade rapporter ska bära passagetiden, inte när nätet kom tillbaka.
+  const repByPatrol = new Map();
+  if (!demoMode) {
+    for (const s of scores || []) {
+      const t = tsToMs(s.clientReportedAt ?? s.reportedAt);
+      if (t == null || !s.patrolId || !s.controlId) continue;
+      if (!repByPatrol.has(s.patrolId)) repByPatrol.set(s.patrolId, new Map());
+      repByPatrol.get(s.patrolId).set(s.controlId, t);
+    }
+  }
+  // Startankare för första benets mellantid: faktisk start när den finns,
+  // annars planerad.
+  const plannedMs = new Map();
+  const total = (patrols || []).length;
+  for (const p of patrols || []) {
+    const actual = startMsByPatrol?.[p.id];
+    if (actual != null) { plannedMs.set(p.id, actual); continue; }
+    const d = patrolStartDateTime(comp, p, now, total);
+    if (d) plannedMs.set(p.id, d.getTime());
+  }
+
+  const median = (arr) => {
+    const v = [...arr].sort((a, b) => a - b);
+    return v[Math.floor(v.length / 2)];
+  };
+
+  // Observerad mellantid fram till en kontrollnod: från förra kontrollens
+  // rapport (eller start när benet börjar vid start/första nod). `capMin`
+  // är plausibilitetsvakten: deltan långt över modellens förväntan är nästan
+  // alltid dataartefakter (kvarvarande synkklumpar, klockfel) — de får inte
+  // fånga medianen.
+  const observedSeg = (node, prev, capMin) => {
+    const deltas = [];
+    for (const [pid, reps] of repByPatrol) {
+      const here = reps.get(node.key);
+      if (here == null) continue;
+      const from = prev && prev.kind === 'control' ? reps.get(prev.key) : plannedMs.get(pid);
+      if (from == null) continue;
+      const min = (here - from) / 60000;
+      if (min > 0 && min <= capMin) deltas.push(min);
+    }
+    return deltas.length >= ETA_MIN_SAMPLES
+      ? { obsMin: median(deltas), samples: deltas.length }
+      : { obsMin: null, samples: deltas.length };
+  };
+
+  const byKey = {};
+  // Första noden: ankomst 0. Är den en kontroll kostar den ändå kö + uppgift
+  // innan avfärd — kalibrerbar mot start när rapporter finns. Utan känd
+  // gångväg fram är capen generösare (6× stationstid).
+  let cum = 0;
+  {
+    const first = nodes[0];
+    let obsMin = null, samples = 0;
+    if (first.kind === 'control') {
+      ({ obsMin, samples } = observedSeg(first, null, 6 * dwellMin));
+      cum = obsMin ?? dwellMin;
+    }
+    byKey[first.key] = { ...base.byKey[first.key], etaMin: 0, depMin: cum, obsMin, samples, calibrated: obsMin != null };
+  }
+  for (let i = 1; i < nodes.length; i++) {
+    const node = nodes[i], prev = nodes[i - 1];
+    const walkMin = (legDistance(legs[i - 1]) / 1000) / speedKmh * 60;
+    const arriveMin = cum + walkMin;
+    let obsMin = null, samples = 0, segMin = walkMin;
+    if (node.kind === 'control') {
+      ({ obsMin, samples } = observedSeg(node, prev, 3 * (walkMin + dwellMin)));
+      segMin = obsMin ?? (walkMin + dwellMin);
+    }
+    cum += segMin;
+    byKey[node.key] = { ...base.byKey[node.key], etaMin: arriveMin, depMin: cum, obsMin, samples, calibrated: obsMin != null };
+  }
+
+  const last = nodes[nodes.length - 1];
+  const finishMin = last.kind === 'control' ? byKey[last.key].depMin : byKey[last.key].etaMin;
+  return {
+    ...base, byKey, finishMin, demoMode,
+    calibrated: nodes.some(n => byKey[n.key].calibrated)
+  };
+}
+
+// Beräknad målgång (ms-epok) för EN patrull, ankrad i verkligheten: senaste
+// rapporterade kontrollen är patrullens senaste kända avfärd, och kvarvarande
+// ben summeras ur den (kalibrerade) motorn. Utan rapporter: startMs + hela
+// banan. Returnerar RÅTT värde — kan ligga i det förflutna, vilket betyder
+// "borde redan vara här". Varje vy väljer själv hur det visas (förseningsflagg
+// på stationen, "väntas i mål" för anhöriga).
+export function patrolFinishEtaMs(eta, patrolReports, startMs) {
+  if (eta?.finishMin == null) return null;
+  // Demo: frusna seed-rapporter är inte giltiga ankare — utgå från starttiden.
+  const reports = eta.demoMode ? null : patrolReports;
+  let anchorKey = null, anchorMs = null;
+  for (const n of eta.nodes) {
+    if (n.kind !== 'control') continue;
+    const t = tsToMs(reports?.[n.key] ?? reports?.get?.(n.key));
+    if (t != null) { anchorKey = n.key; anchorMs = t; }
+  }
+  if (anchorKey != null) {
+    return anchorMs + Math.max(0, eta.finishMin - eta.byKey[anchorKey].depMin) * 60000;
+  }
+  if (startMs != null) return startMs + eta.finishMin * 60000;
+  return null;
+}
+
 // "Patruller väntas ca X–Y" för en kontroll: första resp. sista patrullens
 // starttid + ETA fram till kontrollen. null när starttider inte är påslagna,
 // kontrollen saknar position eller inga patruller har startordning.
-export function controlEtaWindow(comp, controls, track, patrols, ctrlId, now = new Date()) {
+// Med `scores` kalibreras ankomsten mot verkliga mellantider (inkl. köer).
+export function controlEtaWindow(comp, controls, track, patrols, ctrlId, now = new Date(), scores = null) {
   if (!comp?.startTimes?.enabled) return null;
-  const entry = courseEta(comp, controls, track).byKey[ctrlId];
+  const eta = scores
+    ? courseEtaCalibrated(comp, controls, track, scores, patrols, now)
+    : courseEta(comp, controls, track);
+  const entry = eta.byKey[ctrlId];
   if (!entry || !(entry.dist > 0)) return null;
   const times = (patrols || [])
     .map(p => patrolStartDateTime(comp, p, now, patrols.length))
@@ -118,7 +264,7 @@ export function controlEtaWindow(comp, controls, track, patrols, ctrlId, now = n
   if (!times.length) return null;
   const fmt = (t) => new Date(t + entry.etaMin * 60000)
     .toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
-  return { lo: fmt(Math.min(...times)), hi: fmt(Math.max(...times)) };
+  return { lo: fmt(Math.min(...times)), hi: fmt(Math.max(...times)), calibrated: !!entry.calibrated };
 }
 
 export function legDistance(leg) {

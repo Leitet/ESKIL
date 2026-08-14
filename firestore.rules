@@ -118,7 +118,8 @@ service cloud.firestore {
         && (!('extraPoang' in data) || (data.extraPoang is number && data.extraPoang >= 0 && data.extraPoang <= c.get('extraPoang', 0)))
         && (!('utslagGissning' in data) || data.utslagGissning is number)
         && (!('note' in data) || (data.note is string && data.note.size() <= 500))
-        && data.keys().hasOnly(['patrolId','poang','extraPoang','note','reportedAt','reporter','utslagGissning','history']);
+        && (!('clientReportedAt' in data) || data.clientReportedAt is timestamp)
+        && data.keys().hasOnly(['patrolId','poang','extraPoang','note','reportedAt','clientReportedAt','reporter','utslagGissning','history']);
     }
 
     // --- System config (super-admin only). Operational settings tunable

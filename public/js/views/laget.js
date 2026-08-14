@@ -15,7 +15,7 @@ import {
   updateCompetition, updateControl, setPatrolUtgatt
 } from '../store.js';
 import { deleteField } from '../firebase.js';
-import { courseLegs, drawCourseOnMap } from '../course.js';
+import { courseLegs, drawCourseOnMap, courseEtaCalibrated, patrolFinishEtaMs } from '../course.js';
 import {
   escapeHtml, toast, copyToClipboard, formatTime, patrolStartTime, patrolStartDateTime, avdShort,
   isCompAdminUser, withBusy, confirmDialog, promptDialog
@@ -402,6 +402,35 @@ export async function renderLaget(app, user, cid) {
       };
     });
 
+    // Kalibrerad målgång per aktiv patrull — samma motor som stationens
+    // målflik: verkliga mellantider (inkl. kö) + ankare i senaste rapporten.
+    // Rapportkartan byggs i ETT svep (inte per patrull), och faktiska
+    // starttider skickas in så startförseningar inte dubbelräknas.
+    try {
+      const allScores = [];
+      const reportsByPid = {};
+      for (const [ctrlId, list] of Object.entries(scoresByCtrl)) {
+        for (const s of list || []) {
+          const pid = s.patrolId || s.id;
+          allScores.push({ ...s, controlId: ctrlId, patrolId: pid });
+          const t = s.clientReportedAt ?? s.reportedAt;
+          if (t) (reportsByPid[pid] ||= {})[ctrlId] = t;
+        }
+      }
+      const startMsByPatrol = {};
+      for (const pp of perPatrol) {
+        if (pp.startAt) startMsByPatrol[pp.patrol.id] = pp.startAt.getTime();
+      }
+      const etaCal = courseEtaCalibrated(comp, controls, track, allScores, patrols, now, startMsByPatrol);
+      if (etaCal.finishMin != null && etaCal.totalDist > 0) {
+        for (const pp of perPatrol) {
+          pp.finishEtaMs = pp.active
+            ? patrolFinishEtaMs(etaCal, reportsByPid[pp.patrol.id], pp.startAt ? pp.startAt.getTime() : null)
+            : null;
+        }
+      }
+    } catch { /* ETA är en bonus — aldrig ett fel */ }
+
     // Per control: done count, last activity, inbound queue, leg times.
     const ctrlStats = ordered.map((c, i) => {
       const prevN = i > 0 ? (ordered[i - 1].nummer ?? 0) : 0;
@@ -510,7 +539,7 @@ export async function renderLaget(app, user, cid) {
       <div class="table-wrap"><table class="t">
         <thead><tr>
           <th class="num">#</th><th>Patrull</th><th>Status</th><th>Start</th>
-          <th class="num">Klara</th><th>Senast sedd</th>
+          <th class="num">Klara</th><th>Mål ca</th><th>Senast sedd</th>
         </tr></thead>
         <tbody>
           ${rows.map(pp => {
@@ -531,6 +560,11 @@ export async function renderLaget(app, user, cid) {
               <td>${status}${dnfBtn}</td>
               <td class="t-sm">${pp.startAt ? formatTime(pp.startAt) : (planned ? `<span class="muted">plan ${escapeHtml(planned)}</span>` : '—')}</td>
               <td class="num">${pp.reports.length}/${controls.length || '—'}</td>
+              <td class="t-sm">${pp.finishEtaMs
+                ? (pp.finishEtaMs < now.getTime() - 60000
+                    ? '<span class="badge badge-orange" title="Beräknad målgång har passerats">väntas nu</span>'
+                    : formatTime(new Date(pp.finishEtaMs)))
+                : '<span class="muted">—</span>'}</td>
               <td class="t-sm">${pp.lastSeen
                 ? `${formatTime(pp.lastSeen)} <span class="muted">(${pp.position ? 'kontroll ' + pp.position : (pp.finishAt ? 'mål' : 'start')})</span>`
                 : '<span class="muted">—</span>'}</td>

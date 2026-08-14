@@ -5,7 +5,7 @@
 
 import { db, doc, getDoc, onSnapshot, collection, auth, onAuthStateChanged } from './firebase.js';
 import { getCompetition, getCompetitionBySlug, listPatrols, listControls, getTrack } from './store.js';
-import { courseLegs, drawCourseOnMap, addCourseChip, competitionArea, courseDistance, fmtDist, courseEta } from './course.js';
+import { courseLegs, drawCourseOnMap, addCourseChip, competitionArea, courseDistance, fmtDist, courseEtaCalibrated, patrolFinishEtaMs } from './course.js';
 import {
   AVDELNINGAR, escapeHtml, formatDate, publicManagement, patrolStartTime,
   patrolStartDateTime, startTimeSettings, allowedAvdelningar,
@@ -169,7 +169,7 @@ async function boot() {
       const dt = new Date(el.dataset.dt);
       const row = el.closest('.start-row');
       if (dt - now <= -60000) {
-        el.textContent = el.dataset.fin ? `i mål ca ${el.dataset.fin}` : 'startade';
+        el.textContent = el.dataset.fin || 'startade';
         row?.classList.add('is-past');
         row?.classList.remove('is-now');
       } else {
@@ -641,17 +641,41 @@ function renderStartList() {
     (favs.has(b.p.id) - favs.has(a.p.id)) || (a.dt - b.dt));
   if (!rows.length) return '';
 
-  // Beräknad målgång för anhöriga: planerad start + banans ETA (gångtid +
-  // stationstid). Visas bara när banan är publik, och alltid med "ca".
-  let finMin = null;
+  // Beräknad målgång för anhöriga — kalibrerad: verkliga mellantider ur
+  // poängdatan (inkl. köer på kontrollerna) ersätter modellantagandet, och
+  // varje patrulls estimat ankras i dess senaste rapporterade kontroll.
+  // Visas bara när banan är publik, och alltid med "ca".
+  let eta = null;
   try {
     if (controlsPublic()) {
-      const eta = courseEta(comp, controls, track);
-      if (eta.finishMin != null && eta.totalDist > 0) finMin = eta.finishMin;
+      const scores = Object.entries(scoresByControl).flatMap(([ctrlId, list]) =>
+        (list || []).map(s => ({ ...s, controlId: ctrlId, patrolId: s.patrolId || s.id })));
+      const e = courseEtaCalibrated(comp, controls, track, scores, patrols, now);
+      if (e.finishMin != null && e.totalDist > 0) eta = e;
     }
   } catch { /* estimatet är en bonus */ }
-  const finClock = (dt) => finMin == null ? '' :
-    new Date(dt.getTime() + finMin * 60000).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
+  // Returnerar hela suffixtexten. Tillstånden måste kunna UPPLÖSAS — /t kan
+  // inte läsa målpassager, så: alla kontroller rapporterade → "i mål";
+  // estimatet nyss passerat → "väntas i mål"; passerat sedan länge (>90 min)
+  // → tomt (raden faller tillbaka till neutralt "startade") så kvällens
+  // lista inte fastnar i ett evigt "väntas". Utgångna märks direkt.
+  const finText = (p, dt) => {
+    if (p.utgatt) return 'utgått';
+    if (!eta) return '';
+    const reports = {};
+    for (const [ctrlId, list] of Object.entries(scoresByControl)) {
+      const s = (list || []).find(x => (x.patrolId || x.id) === p.id);
+      const t = s?.clientReportedAt ?? s?.reportedAt;
+      if (t) reports[ctrlId] = t;
+    }
+    if (controls.length > 0 && Object.keys(reports).length >= controls.length) return 'i mål';
+    const ms = patrolFinishEtaMs(eta, reports, dt.getTime());
+    if (ms == null) return '';
+    const late = now.getTime() - ms;
+    if (late > 90 * 60000) return '';
+    if (late > 60000) return 'väntas i mål';
+    return `i mål ca ${new Date(ms).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })}`;
+  };
 
   return `
     <div class="pub-section-head">
@@ -661,8 +685,8 @@ function renderStartList() {
     <div class="starts-list" id="starts-list">
       ${rows.map(({ p, dt }) => {
         const past = dt - now <= -60000;
-        const fin = finClock(dt);
-        const cd = past ? (fin ? `i mål ca ${fin}` : 'startade') : countdownText(dt, now);
+        const fin = finText(p, dt);
+        const cd = past ? (fin || 'startade') : countdownText(dt, now);
         return `
           <a class="start-row ${past ? 'is-past' : ''} ${cd === 'GÅR NU' ? 'is-now' : ''} ${favs.has(p.id) ? 'is-fav' : ''}" href="/s/${escapeHtml(cid || '')}/${escapeHtml(p.id)}" target="_blank" rel="noopener">
             ${favStar(p.id, favs)}

@@ -3,7 +3,7 @@
 // with the URL report (if the control is open).
 
 import { db, doc, onSnapshot } from './firebase.js';
-import { getCompetition, getControl, listPatrols, watchScoresForControl, upsertScore, deleteScore, listControls, getTrack } from './store.js';
+import { getCompetition, getControl, listPatrols, watchScoresForControl, upsertScore, deleteScore, listControls, getTrack, listAllScores } from './store.js';
 import { AVDELNINGAR, escapeHtml, allInstructionGroups, internalManagement } from './utils.js';
 import { controlEtaWindow } from './course.js';
 import { ensureLeaflet } from './leaflet.js';
@@ -305,11 +305,14 @@ async function main() {
   (async () => {
     try {
       if (comp?.demo) return;
-      const [allControls, track] = await Promise.all([
+      const [allControls, track, allScores] = await Promise.all([
         listControls(cid),
-        getTrack(cid).catch(() => null)
+        getTrack(cid).catch(() => null),
+        // Kalibrering: verkliga mellantider (inkl. köer) skärper fönstret
+        // så fort tre patruller passerat ett ben.
+        listAllScores(cid).catch(() => null)
       ]);
-      const w = controlEtaWindow(comp, allControls, track, patrols, ctrlId);
+      const w = controlEtaWindow(comp, allControls, track, patrols, ctrlId, new Date(), allScores);
       if (!w) return;
       etaText = w.lo === w.hi ? `Patruller väntas hit ca ${w.lo}` : `Patruller väntas hit ca ${w.lo}–${w.hi}`;
       renderHead();
@@ -672,7 +675,8 @@ async function main() {
       saveBtn.disabled = true; saveBtn.textContent = 'Sparar…';
       try {
         await withTimeout(
-          upsertScore(cid, ctrlId, patrol.id, poang, extra, noteVal, reporter, gissning, history),
+          // clientAt = nu: direktrapport bär tryck-ögonblicket som passagetid.
+          upsertScore(cid, ctrlId, patrol.id, poang, extra, noteVal, reporter, gissning, history, new Date()),
           navigator.onLine ? 5000 : 500
         );
         removeFromQueue(cid, ctrlId, patrol.id);
@@ -761,7 +765,9 @@ async function main() {
     let synced = [], failed = [];
     try {
       ({ synced, failed } = await flushQueue(cid, ctrlId,
-        (item) => upsertScore(cid, ctrlId, item.patrolId, item.poang, item.extraPoang, item.note, item.reporter, item.utslagGissning ?? null, item.history ?? null)
+        // queuedAt = när knappen trycktes — passagetiden följer med även när
+        // rapporten synkas timmar senare (annars förgiftas ETA-mellantiderna).
+        (item) => upsertScore(cid, ctrlId, item.patrolId, item.poang, item.extraPoang, item.note, item.reporter, item.utslagGissning ?? null, item.history ?? null, item.queuedAt ?? null)
       ));
     } finally {
       syncInFlight = false;
