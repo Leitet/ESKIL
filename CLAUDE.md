@@ -28,6 +28,15 @@ Email extension). Production domain: https://eskilscout.se.
   extend via semantic class names in `app.css` or `report.css`.
 - **Night mode** on the reporter page is a red palette. Don't swap it for a
   gray dark mode — preserving night vision is the requirement.
+- **The ETA engine lives in `public/js/course.js`.** `courseEta` (model:
+  walking time + fixed stationstid), `courseEtaCalibrated` (the median of
+  patrols' REAL leg times from score data replaces a leg's model estimate at
+  ≥3 samples — queues get baked in automatically; demo competitions always
+  run the pure model) and `patrolFinishEtaMs` (a patrol's finish estimate
+  anchored in its latest report). Every ETA surface (/k, control PDF,
+  station, startkort, /t, Läget) must go through these — never hand-roll an
+  ETA in a view. Passage time is `clientReportedAt`, NOT `reportedAt` (see
+  the scores bullet below).
 - **Navigation lives in `public/js/nav.js`.** Competition tab bar
   (`compTabs`), breadcrumbs (`crumbs`/`compCrumbs`) and browser-tab titles
   (`setDocTitle`) are shared — never hand-roll a `.tabs` bar in a view.
@@ -77,13 +86,32 @@ See `README.md` for the layout — every file there is load-bearing.
   competition is read-only for everyone but admins, and closing wipes
   users + ansvariga + ekonomi + each control's `telefon` (GDPR cleanup) —
   admins remain.
-- `.../patrols/{pid}` — publicly readable (for the reporter page).
+- `.../patrols/{pid}` — publicly readable (for the reporter page). May carry
+  `utgatt: {at, note}` (DNF, set/undone from Läget): excluded from queues,
+  alarms and rest-lists everywhere; the note (can be sensitive) is wiped by
+  closeCompetition, the flag itself remains as history.
 - `.../controls/{ctrlId}` — publicly readable; writable by competition admins.
 - `.../controls/{ctrlId}/scores/{patrolId}` — one doc per patrol×control; the
   doc id IS the patrolId so re-reporting overwrites. May carry
   `utslagGissning` (the patrol's tiebreaker guess) when the control has
   `utslag: true` + `utslagFraga`/`utslagSvar`; ranking uses it only once
   `utslagSvar` is set. Beware `Number(null) === 0` — use utils.isNumSet.
+  Score docs carry BOTH `reportedAt` (serverTimestamp = sync moment, audit)
+  and `clientReportedAt` (client time = when the button was pressed; the
+  offline queue passes its queuedAt). Anything reasoning about WHEN a patrol
+  passed (ETA engine, Läget) must prefer `clientReportedAt` — offline batch
+  syncs make `reportedAt` lie by hours. adjustScore deliberately preserves
+  the original times: a correction is not a passage.
+- Comp-doc extras added over time: `broadcast: {text, level: info|varning|
+  kritisk, at, target: {kontroller, patruller}}` — live banner on every field
+  page via `public/js/broadcast.js` (kritisk alarms with sound/vibration);
+  `copiedFrom` (årgångskedjan — /t links to the previous year);
+  `lastBackupAt` (stamped on every backup/export download);
+  `etaDwellMinutes` (ETA station time override, default 15);
+  `startTimes.maxTimeMinutes` (maxtid countdown on the startkort).
+- `.../private/handover` — överlämningsdokument for next year's ledning
+  (free text; members read/admins write via the existing private/{doc}
+  rule). copyCompetition carries it over to the new year.
 - `.../track/main` — the drawn course ("Spår" tab): waypoints per leg keyed
   `<fromKey>__<toKey>` plus `speedKmh`. The leg sequence itself is derived
   from control number order at render time, never stored. Publicly readable
@@ -117,8 +145,13 @@ first sign-in. Other users get `role: "user"`.
   `public/firebase-config.json` (gitignored).
 - Cloud Functions (`functions/`) exist ONLY for transactional mail: they react
   to registration/utskick/control documents and queue mail docs in the `mail` collection,
-  which the Trigger Email extension (Brevo SMTP) delivers. Never add a rules
-  match for `/mail/**` — clients must not be able to write mail docs. Keep all
+  which the Trigger Email extension (Brevo SMTP) delivers. Two callables exist
+  on top: `requestLoginLink` (branded magic-link login mail) and
+  `resendManageLink` (self-service re-send of a registration's manage link —
+  ALWAYS answers a neutral ok so registrations can't be enumerated; throttled
+  per address via `resendRequests/{email}` and the global `caps/` mail lanes).
+  Never add rules matches for `/mail/**`, `/caps/**`, `/loginRequests/**` or
+  `/resendRequests/**` — only the admin SDK may touch them. Keep all
   other logic client-side + rules. Functions deploy manually:
   `npx firebase-tools deploy --only functions` (not part of CI).
 - In firestore.rules, always read optional competition fields with

@@ -14,7 +14,7 @@ import {
   getCompetition, getCompetitionBySlug, getRegistration, createRegistration, updateRegistration
 } from './store.js';
 import {
-  allowedAvdelningar, escapeHtml, formatDate, toast, withBusy, confirmDialog,
+  allowedAvdelningar, escapeHtml, formatDate, toast, withBusy, confirmDialog, promptDialog,
   registrationSettings, registrationState, computeRegistrationPrice,
   makePaymentReference, swishQrString, swishAppUrl, registrationUrl, copyToClipboard, isPaymentPaid,
   publicManagement
@@ -313,6 +313,12 @@ function renderForm() {
       </div>
       <div class="anm-price-rows" id="price-rows">${priceRowsHtml(p)}</div>
     </div>
+
+    ${editing ? '' : `
+    <p class="muted t-sm" style="text-align:center;margin-top:18px;">
+      Redan anmäld men tappat ändringslänken?
+      <a href="#" id="resend-link">Få den skickad igen</a>
+    </p>`}
   `;
 }
 
@@ -404,6 +410,25 @@ function wireForm() {
     editing = false;
     view = 'manage';
     render();
+  });
+
+  // Självbetjäning: skicka om ändringslänken. Svaret är alltid neutralt —
+  // funktionen avslöjar aldrig om adressen finns i en anmälan.
+  document.getElementById('resend-link')?.addEventListener('click', async (e) => {
+    e.preventDefault();
+    const email = await promptDialog(
+      'Ange e-postadressen ni anmälde er med, så skickas ändringslänken dit igen.',
+      { okLabel: 'Skicka länken', placeholder: 'namn@exempel.se', danger: false }
+    );
+    if (email === null || !email.trim()) return;
+    try {
+      const { functions, httpsCallable } = await import('./firebase.js');
+      await httpsCallable(functions, 'resendManageLink')({ cid, email: email.trim() });
+      toast('Om adressen finns i en anmälan skickas ändringslänken dit inom någon minut.', 'success');
+    } catch (err) {
+      if (err?.code === 'functions/resource-exhausted') toast(err.message, 'error');
+      else toast('Kunde inte skicka just nu — kontakta tävlingsledningen.', 'error');
+    }
   });
 
   document.getElementById('to-pay').addEventListener('click', async (e) => {

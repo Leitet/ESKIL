@@ -243,6 +243,86 @@ exports.requestLoginLink = onCall(async (req) => {
   return { ok: true };
 });
 
+// --- Självbetjäning: skicka ändringslänken igen --------------------------------
+// Kårledare som tappat bekräftelsemailet begär om sin ändringslänk från
+// anmälningssidan. Svaret är ALLTID neutralt ok — det får aldrig gå att
+// enumerera vilka adresser som har anmälningar. Dubbelt strypt: per adress
+// (resendRequests/{email}, ingen rules-match så bara admin-SDK når den) och
+// mot den globala mail-lanen. Throttlen tas även för adresser utan träff,
+// så svarstid/kvot inte läcker om adressen finns.
+
+const RESEND_MIN_INTERVAL_MS = 60 * 1000; // 1 begäran/minut per adress
+const RESEND_MAX_PER_DAY = 5;
+
+exports.resendManageLink = onCall(async (req) => {
+  const email = String((req.data && req.data.email) || '').trim().toLowerCase();
+  const cid = String((req.data && req.data.cid) || '').trim();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || !cid || cid.length > 64 || /[/.]/.test(cid)) {
+    throw new HttpsError('invalid-argument', 'Ogiltig begäran.');
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const throttleRef = db.doc(`resendRequests/${email}`);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(throttleRef);
+    const d = snap.exists ? snap.data() : {};
+    const now = Date.now();
+    if (d.lastSentAt && now - d.lastSentAt < RESEND_MIN_INTERVAL_MS) {
+      throw new HttpsError('resource-exhausted', 'En begäran gjordes nyss — vänta en minut och försök igen.');
+    }
+    const count = d.day === today ? (d.count || 0) : 0;
+    if (count >= RESEND_MAX_PER_DAY) {
+      throw new HttpsError('resource-exhausted', 'För många försök idag — kontakta tävlingsledningen direkt.');
+    }
+    tx.set(throttleRef, { lastSentAt: now, day: today, count: count + 1 });
+  });
+
+  // Allt nedanför svarar neutralt ok oavsett utfall.
+  const comp = await getComp(cid);
+  if (!comp || comp.demo || comp.closed) return { ok: true };
+
+  const snap = await db.collection(`competitions/${cid}/registrations`)
+    .where('contact.email', '==', email).get();
+  const regs = snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(r => !r.cancelled && !r.imported);
+  if (!regs.length) {
+    logger.info(`resendManageLink: ingen träff för adressen på ${cid} (neutralt ok)`);
+    return { ok: true };
+  }
+
+  if (!(await reserveMail('mail', regs.length))) {
+    logger.warn('Daily mail cap reached — skipping resend');
+    return { ok: true };
+  }
+
+  const replyTo = managementEmails(comp)[0] || undefined;
+  for (const reg of regs) {
+    const url = manageUrl(cid, reg.id);
+    const body = `
+      <p>Hej ${esc(reg.contact?.name || '')}!</p>
+      <p>Här är ändringslänken till er anmälan för <strong>${esc(reg.kar || '')}</strong>
+      till <strong>${esc(compLabel(comp))}</strong> — någon begärde att få den skickad igen
+      från anmälningssidan.</p>
+      ${patrolListHtml(reg)}
+      ${button(url, 'Visa och ändra er anmälan')}
+      <p style="font-size:13px;color:#8a8a8a;">Begärde ni inte det här mailet kan ni tryggt ignorera det —
+      länken har inte delats med någon annan.</p>
+    `;
+    await queueMail({
+      to: [email],
+      ...(replyTo ? { replyTo } : {}),
+      message: {
+        subject: `Er ändringslänk — ${compLabel(comp)}`,
+        html: layout(comp, body, replyTo ? 'Svar på mailet går till tävlingsledningen.' : undefined),
+        text: `Ändringslänk till er anmälan (${reg.kar || ''}) för ${compLabel(comp)}: ${url}`
+      }
+    });
+  }
+  logger.info(`resendManageLink: ${regs.length} mail köade för ${cid}`);
+  return { ok: true };
+});
+
 exports.onRegistrationCreated = onDocumentCreated('competitions/{cid}/registrations/{regId}', async (event) => {
   const { cid, regId } = event.params;
   const reg = event.data && event.data.data();
