@@ -7,12 +7,13 @@
 
 import { db, doc, onSnapshot, collection } from './firebase.js';
 import { getCompetition, getCompetitionBySlug, getPatrol, listControls, listPatrols, getTrack } from './store.js';
-import { courseLegs, drawCourseOnMap, addCourseChip, legLatLngs, courseEtaCalibrated, patrolFinishEtaMs, fmtDist, fmtMin } from './course.js';
+import { courseLegs, drawCourseOnMap, addCourseChip, legLatLngs, courseEtaCalibrated, patrolFinishEtaMs, fmtDist, fmtMin, competitionArea } from './course.js';
 import {
   escapeHtml, publicManagement, patrolStartTime, patrolStartDateTime,
   startFinishPoints, parkingPoint, startTimeSettings,
   effectiveIntervalSec as effectiveIntervalSecValue,
-  wireOverlayClose, allowedAvdelningar
+  wireOverlayClose, allowedAvdelningar,
+  controlsAutoReleased, controlsReleaseTime
 } from './utils.js';
 import { ensureLeaflet } from './leaflet.js';
 import { icon } from './icons.js';
@@ -142,6 +143,25 @@ async function main() {
 
 function isAnonymous() { return comp?.anonymousControls !== false; }
 
+// Kontrollernas POSITIONER på startkortet döljs tills de är publika — scouter
+// får startkortslänken dagar i förväg och ska inte kunna rekognosera banan.
+// Samma släpplogik som publika sidan: publicControls-flaggan, eller
+// autosläppet 5 min före första start (controlsAutoReleased). Kontrollanternas
+// /k-sidor berörs inte — de behöver sina positioner för att bygga kontrollen.
+function positionsVisible() {
+  return comp?.publicControls !== false || controlsAutoReleased(comp);
+}
+
+// Text för när platserna dyker upp — visas där kartnålarna skulle varit.
+function releaseText() {
+  const t = controlsReleaseTime(comp);
+  if (t) {
+    const kl = t.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
+    return `Kontrollernas platser visas här kl ${kl} på tävlingsdagen (5 min före första start).`;
+  }
+  return 'Kontrollernas platser visas här när tävlingsledningen släpper dem.';
+}
+
 function isDone(ctrlId) { return !!scoresForPatrol[ctrlId]; }
 
 function displayName(c) {
@@ -170,7 +190,7 @@ function renderNextControl(t) {
   return `<button type="button" class="start-next" data-next="${escapeHtml(next.id)}">
     <span class="sn-label">Nästa kontroll</span>
     <span class="sn-name"><span class="sn-no">${next.nummer ?? '?'}</span>${escapeHtml(displayName(next))}</span>
-    <span class="sn-go">Visa på kartan →</span>
+    <span class="sn-go">${positionsVisible() ? 'Visa på kartan →' : 'Mer info →'}</span>
   </button>`;
 }
 
@@ -182,6 +202,11 @@ function renderNextControl(t) {
 function renderEtaLine(t) {
   try {
     if (!t.total) return '';
+    // Före positionssläppet avslöjar vi ingen bansträckning — visa i stället
+    // NÄR platserna dyker upp.
+    if (!positionsVisible()) {
+      return `<div class="start-eta">${icon('eye-off', { size: 14 })} ${escapeHtml(releaseText())}</div>`;
+    }
     const now = new Date();
     const eta = courseEtaCalibrated(comp, controls, track, Object.values(allScoresByCtrl).flat(), patrols, now);
     if (!(eta.totalDist > 0)) return '';
@@ -466,6 +491,7 @@ function drawControlPins(L, ordered) {
       .addTo(controlPinLayer);
   }
 }
+let overviewMapMode = null; // 'full' | 'hidden' — läget byter → kartan byggs om
 async function renderOverviewMap(withPos) {
   const host = document.getElementById('start-map');
   if (!host) return;
@@ -476,37 +502,54 @@ async function renderOverviewMap(withPos) {
     if (!currentHost) return;
 
     const ordered = [...withPos].sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0));
+    const mode = positionsVisible() ? 'full' : 'hidden';
 
     // Batteri: när kartnoden behållits över en re-render (render() byter in
     // den levande noden) räcker det att rita om kontrollpinnarna — tiles,
-    // spår och S/M/P är statiska. Sparar både batteri och tile-hämtningar
-    // varje gång en poäng rapporteras.
-    if (overviewMap && currentHost === overviewMap.getContainer()) {
-      drawControlPins(L, ordered);
+    // spår och S/M/P är statiska. Byter synlighetsläget (positionssläppet)
+    // byggs kartan om från grunden.
+    if (overviewMap && currentHost === overviewMap.getContainer() && mode === overviewMapMode) {
+      if (mode === 'full') drawControlPins(L, ordered);
       return;
     }
 
     // Dispose any previous map — especially if it's bound to a stale node.
     if (overviewMap) {
-      try { overviewMap.remove(); } catch {}
+      try { overviewMap.remove(); } catch { /* redan nere */ }
       overviewMap = null;
+      controlPinLayer = null;
     }
+    overviewMapMode = mode;
 
     const sfPoints = startFinishPoints(comp);
+    const park = parkingPoint(comp);
+    const anchor = (mode === 'full' ? ordered[0] : null) || sfPoints[0] || park || ordered[0];
+    if (!anchor) return;
 
     overviewMap = L.map(currentHost, { zoomControl: true, scrollWheelZoom: false })
-      .setView([ordered[0].lat, ordered[0].lng], 14);
+      .setView([anchor.lat, anchor.lng], 14);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19, attribution: '© OSM'
     }).addTo(overviewMap);
 
-    // Course line: a drawn track (Spår editor) is always the one shown —
-    // drawn legs solid along the actual path, undrawn legs dashed fågelväg.
-    const { legs, hasDrawn } = courseLegs(comp, ordered, track);
-    drawCourseOnMap(L, overviewMap, legs);
-    if (hasDrawn) addCourseChip(L, overviewMap, legs, track && track.speedKmh);
-
-    drawControlPins(L, ordered);
+    if (mode === 'full') {
+      // Course line: a drawn track (Spår editor) is always the one shown —
+      // drawn legs solid along the actual path, undrawn legs dashed fågelväg.
+      const { legs, hasDrawn } = courseLegs(comp, ordered, track);
+      drawCourseOnMap(L, overviewMap, legs);
+      if (hasDrawn) addCourseChip(L, overviewMap, legs, track && track.speedKmh);
+      drawControlPins(L, ordered);
+    } else if (ordered.length >= 3) {
+      // Hemliga positioner: skuggat "Tävlingsområde" i stället för nålar och
+      // spår — samma grepp som publika sidan före släppet.
+      const hull = competitionArea(ordered.map(c => ({ lat: c.lat, lng: c.lng })));
+      if (hull) {
+        L.polygon(hull, {
+          color: '#003660', weight: 1.5, dashArray: '6 8',
+          fillColor: '#003660', fillOpacity: 0.12, interactive: false
+        }).addTo(overviewMap).bindTooltip('Tävlingsområde', { direction: 'center' });
+      }
+    }
 
     // Start/finish markers — distinct (rover-yellow). One "S/M" if same, else "S" and "M".
     for (const p of sfPoints) {
@@ -522,7 +565,6 @@ async function renderOverviewMap(withPos) {
     }
 
     // Parking marker — blue pill with the Lucide square-parking icon
-    const park = parkingPoint(comp);
     if (park) {
       L.circleMarker([park.lat, park.lng], {
         radius: 16,
@@ -539,7 +581,11 @@ async function renderOverviewMap(withPos) {
     }
 
     // Fit bounds covering all markers incl. start/finish + parking
-    const allPts = ordered.map(c => [c.lat, c.lng]);
+    const allPts = mode === 'full' ? ordered.map(c => [c.lat, c.lng]) : [];
+    if (mode === 'hidden' && ordered.length >= 3) {
+      const hull = competitionArea(ordered.map(c => ({ lat: c.lat, lng: c.lng })));
+      if (hull) allPts.push(...hull);
+    }
     for (const p of sfPoints) allPts.push([p.lat, p.lng]);
     if (park) allPts.push([park.lat, park.lng]);
     if (allPts.length > 1) {
@@ -576,13 +622,19 @@ function openControlSheet(ctrlId) {
         <button type="button" class="sheet-close" id="close" aria-label="Stäng">${icon('x', { size: 22 })}</button>
       </div>
 
-      ${c.lat && c.lng ? `
+      ${c.lat && c.lng && positionsVisible() ? `
         <div class="detail-field" style="margin-top:6px;">
           <div class="dfl">Koordinater (vid nödsituation)</div>
           <div class="detail-coord">${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}</div>
         </div>
         <div class="flip-dist-chip" id="detail-dist" hidden></div>
         <div class="detail-map detail-map-tall" id="ctrl-detail-map"></div>
+      ` : ''}
+      ${c.lat && c.lng && !positionsVisible() ? `
+        <div class="detail-field" style="margin-top:6px;">
+          <div class="dfl">Plats & karta</div>
+          <p style="margin:0;">${escapeHtml(releaseText())}</p>
+        </div>
       ` : ''}
 
       ${anon ? `
@@ -609,7 +661,7 @@ function openControlSheet(ctrlId) {
   bindTap(overlay.querySelector('#close'), close);
   wireOverlayClose(overlay, close);
 
-  if (c.lat && c.lng) {
+  if (c.lat && c.lng && positionsVisible()) {
     ensureLeaflet().then(L => {
       const host = overlay.querySelector('#ctrl-detail-map');
       const map = L.map(host, { zoomControl: true, scrollWheelZoom: true }).setView([c.lat, c.lng], 16);
@@ -770,8 +822,17 @@ function wireStartCountdown() {
   const maxOut = document.getElementById('start-max-countdown');
   const maxDeadline = maxChip?.dataset.deadline ? new Date(maxChip.dataset.deadline) : null;
 
+  let lastPosVisible = positionsVisible();
   const tick = () => {
     const now = new Date();
+    // Positionssläppet (5 min före första start) ska slå igenom direkt utan
+    // omladdning — kartan, ETA-raden och kontrollbladen byggs om vid flippen.
+    const vis = positionsVisible();
+    if (vis !== lastPosVisible) {
+      lastPosVisible = vis;
+      render();
+      return; // render() drar igång en ny wireStartCountdown-tick
+    }
     const ms = startAt - now;
     chip.classList.remove('go', 'past');
     if (ms <= 0 && Math.abs(ms) < intervalMin * 60 * 1000) {
@@ -811,9 +872,13 @@ function wireStartCountdown() {
 
 function formatRelative(ms) {
   const total = Math.round(ms / 1000);
-  const hh = Math.floor(total / 3600);
+  // Startkortet öppnas ofta dagar före tävlingen — nedräkningen måste kunna
+  // säga "om 12 dagar", inte bara timmar.
+  const dd = Math.floor(total / 86400);
+  const hh = Math.floor((total % 86400) / 3600);
   const mm = Math.floor((total % 3600) / 60);
   const ss = total % 60;
+  if (dd > 0) return `${dd} ${dd === 1 ? 'dag' : 'dagar'}${hh > 0 ? ` ${hh} h` : ''}`;
   if (hh > 0) return `${hh}h ${mm}m`;
   if (mm > 0) return `${mm} min ${String(ss).padStart(2,'0')}s`;
   return `${ss} s`;
@@ -889,9 +954,10 @@ function openStartFinishSheet(kind) {
     // Same course context as the control sheet — for Start the lit leg is
     // the way OUT (to the first control), for Mål the way IN (from the last
     // control), for a combined S/M both. Parking stays a plain marker (it
-    // isn't on the course).
+    // isn't on the course). Före positionssläppet ritas INGEN bankontext —
+    // benen avslöjar kontrollernas platser.
     let litBounds = null;
-    if (!isParking) {
+    if (!isParking && positionsVisible()) {
       const { nodes, legs } = courseLegs(comp, controls, track);
       const litLegs = new Set();
       const firstOut = legs.find(l => l.from.key === '__start');

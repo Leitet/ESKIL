@@ -85,7 +85,9 @@ function scoresPublic() { return comp?.publicScores !== false; }
 // Per-competition setting: when publicControls is false the public map hides
 // control positions and the drawn course — a shaded "Tävlingsområde" polygon
 // is shown instead (start/mål + parkering stay visible). UI-level only, like
-// publicScores: startkort and reporter links (secret URLs) always show all.
+// publicScores. Startkorten (/s) follow the SAME gate (scouts hold their
+// links days ahead and must not scout the course); reporter links (/k) always
+// show positions — kontrollanterna need them to build their control.
 // With autoReleaseControls the course releases itself 5 min before the first
 // patrol's start on the competition date (see controlsAutoReleased).
 function controlsPublic() {

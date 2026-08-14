@@ -126,8 +126,10 @@ export async function renderStartScreen(app, user, cid) {
     if (!clock) return;
     clock.textContent =
       now.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    // Testläget rullar på dagens klocka — datumet måste bort, annars ankrar
+    // patrolStartDateTime testschemat på den riktiga tävlingsdagen.
     const effComp = testMode
-      ? { ...comp, startTimes: { enabled: true, mode: 'interval', firstStart: testAnchor, intervalMinutes: comp.startTimes?.intervalMinutes || 5 } }
+      ? { ...comp, date: null, startTimes: { enabled: true, mode: 'interval', firstStart: testAnchor, intervalMinutes: comp.startTimes?.intervalMinutes || 5 } }
       : comp;
     renderWindow(effComp, patrols, now);
   };

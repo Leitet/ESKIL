@@ -517,6 +517,20 @@ export function patrolStartDateTime(comp, patrol, today = new Date(), totalPatro
 
   const [h, m] = s.firstStart.split(':').map(Number);
   if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+
+  // Riktiga tävlingar med datum ankras på TÄVLINGSDAGEN. Startkorten öppnas
+  // dagar i förväg — nedräkningen ska gå mot rätt dag, inte mot dagens HH:MM
+  // ("om 4 timmar" fast starten är om tre veckor). Utan datum (testtävlingar)
+  // behålls dagens klocka som ankare, och demo-grenen ovan är opåverkad.
+  if (comp?.date) {
+    const [Y, Mo, D] = String(comp.date).split('-').map(Number);
+    if ([Y, Mo, D].every(Number.isFinite)) {
+      const base = new Date(Y, Mo - 1, D, h, m, 0, 0);
+      base.setSeconds(base.getSeconds() + idx * iv);
+      return base;
+    }
+  }
+
   const base = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   base.setHours(h, m, 0, 0);
   base.setSeconds(base.getSeconds() + idx * iv);
