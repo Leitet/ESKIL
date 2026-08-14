@@ -252,3 +252,14 @@ body { background: var(--bg-muted); }
 
 /* Focus states for large tap targets on mobile */
 .anm-page .input, .anm-page .select, .anm-page .textarea { font-size: 16px; } /* prevent iOS zoom */
+
+/* Hjälptext under ett fritextfälts rubrik — t.ex. ingredienslistan till
+   matfrågan. Kursiv och dämpad så rubriken behåller fokus. */
+.anm-field-desc {
+  margin: 2px 0 6px;
+  font-size: 13.5px;
+  font-style: italic;
+  color: var(--fg3);
+  white-space: pre-wrap;
+  max-width: 60ch;
+}

@@ -292,6 +292,7 @@ function renderForm() {
             ${regFields('anmalan').map(f => `
               <div>
                 <label class="field">${escapeHtml(f.label)}${f.required ? '' : ' <span style="font-weight:400;color:var(--fg3);">(valfritt)</span>'}</label>
+                ${f.description ? `<p class="anm-field-desc">${escapeHtml(f.description)}</p>` : ''}
                 <textarea class="textarea" rows="2" data-answer="${escapeHtml(f.id)}" ${f.required ? 'required' : ''}>${escapeHtml(draft.answers?.[f.id] || '')}</textarea>
               </div>
             `).join('')}
@@ -348,6 +349,7 @@ function patrolCard(pt, i, removable) {
       ${regFields('patrull').map(f => `
         <div class="mt-3">
           <label class="field">${escapeHtml(f.label)}${f.required ? '' : ' <span style="font-weight:400;color:var(--fg3);">(valfritt)</span>'}</label>
+          ${f.description ? `<p class="anm-field-desc">${escapeHtml(f.description)}</p>` : ''}
           <textarea class="textarea" rows="2" data-answer="${escapeHtml(f.id)}" ${f.required ? 'required' : ''}>${escapeHtml(pt.answers?.[f.id] || '')}</textarea>
         </div>
       `).join('')}

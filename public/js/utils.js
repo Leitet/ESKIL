@@ -637,6 +637,8 @@ export function registrationSettings(comp) {
       .map(f => ({
         id: f.id,
         label: f.label.trim(),
+        // Hjälptext under rubriken — t.ex. ingredienslista för matfrågan.
+        description: (f.description || '').trim(),
         scope: f.scope === 'patrull' ? 'patrull' : 'anmalan',
         required: f.required === true
       }))

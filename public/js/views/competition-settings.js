@@ -964,6 +964,10 @@ function renderAnmalanTab(comp, cid, refresh, readOnly) {
           </label>
           <button type="button" class="btn btn-ghost btn-sm" data-fremove="${i}" style="color:var(--utm-pink);">${icon('trash', { size: 14 })}</button>
         </div>
+        <div class="mt-2">
+          <label class="field">Beskrivning (valfri)</label>
+          <textarea class="textarea" data-ff="description" rows="2" placeholder="Hjälptext under rubriken — t.ex. ingredienser, vad svaret används till…">${escapeHtml(f.description || '')}</textarea>
+        </div>
       </div>
     `).join('') : '<p class="muted t-sm">Inga egna fält tillagda.</p>';
   };
@@ -973,6 +977,7 @@ function renderAnmalanTab(comp, cid, refresh, readOnly) {
       customFields[i] = {
         id: customFields[i].id,
         label: row.querySelector('[data-ff="label"]').value,
+        description: row.querySelector('[data-ff="description"]').value,
         scope: row.querySelector('[data-ff="scope"]').value,
         required: row.querySelector('[data-ff="required"]').checked
       };
@@ -989,7 +994,7 @@ function renderAnmalanTab(comp, cid, refresh, readOnly) {
   });
   card.querySelector('#add-field').addEventListener('click', () => {
     syncFields();
-    customFields.push({ id: crypto.randomUUID(), label: '', scope: 'anmalan', required: false });
+    customFields.push({ id: crypto.randomUUID(), label: '', description: '', scope: 'anmalan', required: false });
     renderFields();
   });
   renderFields();
