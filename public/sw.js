@@ -127,7 +127,11 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
-      const open = list.find((w) => 'focus' in w);
+      // Föredra en fältsida (/k, /s, /m) — det är där banern och klockan
+      // finns; annars första öppna ESKIL-fönstret. Notiser skickas bara till
+      // öppna sidor (ingen server-push ännu), så listan är sällan tom.
+      const field = list.find((w) => /\/(k|s|m)\//.test(w.url) && 'focus' in w);
+      const open = field || list.find((w) => 'focus' in w);
       return open ? open.focus() : self.clients.openWindow('/');
     })
   );

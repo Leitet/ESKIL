@@ -64,12 +64,20 @@ function storeKey() {
 function loadLocal() {
   try { return JSON.parse(localStorage.getItem(storeKey()) || '{}'); } catch { return {}; }
 }
-function saveLocal(state) {
-  // Cap: behåll de 30 senaste per at-tid så nyckeln inte växer för evigt.
+function saveLocal(state, keepIds = null) {
+  // Cap ~30 poster — men vräk ALDRIG state för fortfarande aktiva meddelanden
+  // (deras hidden/ack-status måste överleva), bara gammal historik.
   const ids = Object.keys(state);
-  if (ids.length > 30) {
-    ids.sort((a, b) => String(state[b].at || '').localeCompare(String(state[a].at || '')));
-    for (const id of ids.slice(30)) delete state[id];
+  let over = ids.length - 30;
+  if (over > 0) {
+    const evictable = ids
+      .filter(id => !(keepIds && keepIds.has(id)))
+      .sort((a, b) => String(state[a].at || '').localeCompare(String(state[b].at || '')));
+    for (const id of evictable) {
+      if (over <= 0) break;
+      delete state[id];
+      over--;
+    }
   }
   try { localStorage.setItem(storeKey(), JSON.stringify(state)); } catch { /* privat läge */ }
 }
@@ -146,6 +154,9 @@ function ensureStyles() {
     #eskil-broadcast {
       position: fixed; top: 0; left: 0; right: 0; z-index: 900;
       display: flex; flex-direction: column;
+      /* Många meddelanden får aldrig täcka hela mobilskärmen — stacken
+         scrollar internt och sidan förskjuts bara med stackens synliga höjd. */
+      max-height: 45vh; overflow-y: auto;
     }
     .eb-msg {
       display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
@@ -244,6 +255,10 @@ function ensureStyles() {
       border: 1.5px solid var(--r-border, #d8d8d8); background: none; color: inherit;
       border-radius: 999px; padding: 5px 14px; cursor: pointer;
     }
+    #eskil-bell-panel .eb-hide {
+      border: none; background: none; color: inherit; font: inherit;
+      font-size: 15px; cursor: pointer; opacity: .7; padding: 4px 8px;
+    }
     html[data-mode="night"] #eskil-bell, html[data-mode="night"] #eskil-bell-panel {
       background: #1a0808; border-color: #5c1a1a; color: #ff8a80;
     }
@@ -286,6 +301,7 @@ function render() {
   let dirty = false;
 
   // Stäpla lokalt "sett" + synka mottagningskvittens för requireAck.
+  const keepIds = new Set(act.map(m => m.id));
   const nowIso = new Date().toISOString();
   for (const m of act) {
     const st = local[m.id] || (local[m.id] = {});
@@ -296,28 +312,38 @@ function render() {
     }
     if (m.requireAck && identity && m.id !== 'legacy' && !st.seenSynced) {
       st.seenSynced = true; dirty = true;
+      // Offline: promisen väntar i Firestore-kön (ingen rejection). Ett
+      // AVSLAG betyder att stämpeln redan finns server-side (append-only-
+      // regeln) eller att meddelandet arkiverats — ge upp tyst, annars
+      // uppstår en evig retry-loop av nekade skrivningar.
       ackBroadcastMessage(cid, m.id, identity.kind, identity.refId, 'seen')
-        .catch(() => { st.seenSynced = false; saveLocal(local); });
+        .catch(() => { /* redan stämplad eller nekad — försök inte igen */ });
     }
   }
-  if (dirty) saveLocal(local);
+  if (dirty) saveLocal(local, keepIds);
 
   // --- Bannerstacken ---
   const visible = act.filter(m => !local[m.id]?.hidden);
   let host = document.getElementById('eskil-broadcast');
   if (!visible.length) {
     if (host) { host.remove(); document.body.style.removeProperty('padding-top'); }
+    lastStackHtml = '';
   } else {
     if (!host) {
       host = document.createElement('div');
       host.id = 'eskil-broadcast';
       host.setAttribute('role', 'alert');
       document.body.prepend(host);
+      lastStackHtml = '';
     }
-    host.innerHTML = visible.map(m => {
+    const html = visible.map(m => {
       const level = LEVELS[m.level] ? m.level : 'info';
       const st = local[m.id] || {};
       const needsAck = m.requireAck && identity && m.id !== 'legacy';
+      // ✕ (dölj lokalt) bara på sidor med klocka (identitet) — utan klocka
+      // finns ingen väg tillbaka, så startskärmen visar tills ledningen
+      // avslutar meddelandet. requireAck kräver bekräftelse före dölj.
+      const canHide = identity && (!needsAck || st.ackAt);
       return `<div class="eb-msg eb-${level}" data-msg="${escapeHtml(m.id)}">
         <span class="eb-label">${LEVELS[level].label}</span>
         <span class="eb-text">${escapeHtml(m.text)}</span>
@@ -327,22 +353,28 @@ function render() {
               ? `<span class="eb-acked">✓ Bekräftat ${fmtTime(st.ackAt)}</span>`
               : `<button type="button" class="eb-ack" data-ack="${escapeHtml(m.id)}">Bekräfta mottaget</button>`)
           : ''}
-        ${(!needsAck || st.ackAt) ? `<button type="button" class="eb-hide" data-hide="${escapeHtml(m.id)}" aria-label="Dölj meddelandet (finns kvar i klockan)">✕</button>` : ''}
+        ${canHide ? `<button type="button" class="eb-hide" data-hide="${escapeHtml(m.id)}" aria-label="Dölj meddelandet (finns kvar i klockan)">✕</button>` : ''}
       </div>`;
     }).join('');
+    // Skriv bara om när innehållet faktiskt ändrats — role="alert" gör att
+    // skärmläsare annars läser upp ALLA banners igen vid t.ex. paneltoggle.
+    if (html !== lastStackHtml) {
+      lastStackHtml = html;
+      host.innerHTML = html;
+      host.querySelectorAll('[data-ack]').forEach(b => b.addEventListener('click', () => doAck(b.dataset.ack)));
+      host.querySelectorAll('[data-hide]').forEach(b => b.addEventListener('click', () => {
+        const l = loadLocal();
+        (l[b.dataset.hide] ||= {}).hidden = true;
+        saveLocal(l, keepIds);
+        render();
+      }));
+    }
     document.body.style.paddingTop = host.offsetHeight + 'px';
-
-    host.querySelectorAll('[data-ack]').forEach(b => b.addEventListener('click', () => doAck(b.dataset.ack)));
-    host.querySelectorAll('[data-hide]').forEach(b => b.addEventListener('click', () => {
-      const l = loadLocal();
-      (l[b.dataset.hide] ||= {}).hidden = true;
-      saveLocal(l);
-      render();
-    }));
   }
 
   renderBell(act, local, identity);
 }
+let lastStackHtml = '';
 
 function doAck(msgId) {
   const identity = ackIdentity();
@@ -352,7 +384,12 @@ function doAck(msgId) {
   st.ackAt = new Date().toISOString();
   saveLocal(local);
   haptic([12, 40, 12]);
-  ackBroadcastMessage(cid, msgId, identity.kind, identity.refId, 'ack').catch(() => { /* offlinekö tar den */ });
+  // Offline: promisen förblir pending tills Firestore-kön synkat — det lokala
+  // ✓:t står sig. Ett AVSLAG betyder med append-only-reglerna att identiteten
+  // redan HAR en kvittens server-side (eller att meddelandet arkiverats) —
+  // målet är uppnått, så det lokala ✓:t får stå kvar utan retry.
+  ackBroadcastMessage(cid, msgId, identity.kind, identity.refId, 'ack')
+    .catch(() => { /* redan kvitterad eller arkiverad — inget mer att göra */ });
   // Kvitterade banners viker undan av sig själva efter en stund.
   setTimeout(() => {
     const l = loadLocal();
@@ -373,11 +410,19 @@ function renderBell(act, local, identity) {
     bell.type = 'button';
     bell.setAttribute('aria-label', 'Meddelanden från tävlingsledningen');
     bell.textContent = '🔔';
-    // Bredvid Nattläge-knappen där den finns, annars i högerkanten.
-    bell.style.right = document.querySelector('.mode-toggle') ? '64px' : '12px';
     document.body.appendChild(bell);
     bell.addEventListener('click', () => { panelOpen = !panelOpen; render(); });
   }
+  // Placering mäts varje render: till VÄNSTER om Nattläge-knappen (mätt, inte
+  // gissad bredd — de får aldrig täcka varandra), och NEDANFÖR bannerstacken
+  // så klockan alltid går att nå även när banners visas.
+  const toggle = document.querySelector('.mode-toggle');
+  bell.style.right = toggle
+    ? Math.round(window.innerWidth - toggle.getBoundingClientRect().left + 10) + 'px'
+    : '12px';
+  const stackH = document.getElementById('eskil-broadcast')?.offsetHeight || 0;
+  const bellTop = stackH + 12;
+  bell.style.top = bellTop + 'px';
   const needAction = act.filter(m => m.requireAck && m.id !== 'legacy' && !local[m.id]?.ackAt).length;
   bell.innerHTML = `🔔${needAction ? `<span class="eb-badge">${needAction}</span>` : ''}`;
 
@@ -388,6 +433,7 @@ function renderBell(act, local, identity) {
     panel.id = 'eskil-bell-panel';
     document.body.appendChild(panel);
   }
+  panel.style.top = (bellTop + 46) + 'px';
 
   // Historik: allt vi sett lokalt (textkopior) + aktiva — nyast först.
   const activeIds = new Set(act.map(m => m.id));
@@ -441,8 +487,19 @@ function ensureSubscription() {
     const act = activeMsgs();
     if (firstSnapshotDone && prevIds) {
       const fresh = act.filter(m => m.id !== 'legacy' && !prevIds.has(m.id));
-      if (fresh.some(m => m.level === 'kritisk')) alarm();
-      if (document.hidden) fresh.forEach(m => showSystemNotification(m));
+      if (fresh.length) {
+        // Nytt ELLER återaktiverat meddelande: rensa lokalt "dolt" så det
+        // faktiskt syns igen — annars kan ett återaktiverat kritiskt larm
+        // ljuda utan synlig banner.
+        const l = loadLocal();
+        let dirty = false;
+        for (const m of fresh) {
+          if (l[m.id]?.hidden) { delete l[m.id].hidden; dirty = true; }
+        }
+        if (dirty) saveLocal(l, new Set(act.map(m => m.id)));
+        if (fresh.some(m => m.level === 'kritisk')) alarm();
+        if (document.hidden) fresh.forEach(m => showSystemNotification(m));
+      }
     }
     prevIds = new Set(act.map(m => m.id));
     firstSnapshotDone = true;
@@ -459,7 +516,7 @@ export function teardownBroadcast() {
   try { unsubMsgs?.(); } catch { /* redan nere */ }
   unsubMsgs = null; subStarted = false; firstSnapshotDone = false;
   msgs = []; legacy = null; legacyLastAt = undefined; panelOpen = false;
-  cid = null; ctx = null;
+  cid = null; ctx = null; lastStackHtml = '';
   document.getElementById('eskil-broadcast')?.remove();
   document.getElementById('eskil-bell')?.remove();
   document.getElementById('eskil-bell-panel')?.remove();

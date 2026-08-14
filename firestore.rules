@@ -304,18 +304,42 @@ service cloud.firestore {
         allow read: if true;
         allow create, update, delete: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
 
+        // Anonyma kvittenser är hårt grindade:
+        //  - föräldermeddelandet måste finnas, vara aktivt och kräva
+        //    bekräftelse (get() på saknat dokument fel-terminerar = deny,
+        //    vilket också stoppar föräldralösa spam-dokument under påhittade
+        //    meddelande-id:n),
+        //  - refId måste vara ett EXISTERANDE kontroll-/patrull-/stations-
+        //    dokument (binder dokumentrymden; stations-id är dessutom
+        //    hemligt så stations-kvittenser kan inte förfalskas),
+        //  - stämplarna är append-only (en befintlig seenAt/ackAt kan aldrig
+        //    ändras eller raderas anonymt — samma princip som poäng-history)
+        //    och får inte vara daterade i framtiden.
+        // Kvarstående, medveten lucka: kontroll-/patrull-id:n är publikt
+        // läsbara (anonyma sidor kräver det), så en kvittens KAN förfalskas
+        // för en existerande mottagare — UI:t presenterar därför kvittenser
+        // som lägesbild, inte facit.
         match /acks/{ackId} {
           allow read: if isCompMember(cid);
           allow create, update: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid)) || (
                !compIsDemo(cid) && !compClosed(cid)
+            && get(/databases/$(database)/documents/competitions/$(cid)/messages/$(msgId)).data.get('requireAck', false) == true
+            && get(/databases/$(database)/documents/competitions/$(cid)/messages/$(msgId)).data.get('active', false) == true
             && ackId == request.resource.data.kind + '-' + request.resource.data.refId
             && request.resource.data.kind in ['kontroll', 'patrull', 'station']
             && request.resource.data.refId is string
             && request.resource.data.refId.size() > 0
             && request.resource.data.refId.size() <= 64
+            && (
+                 (request.resource.data.kind == 'kontroll' && exists(/databases/$(database)/documents/competitions/$(cid)/controls/$(request.resource.data.refId)))
+              || (request.resource.data.kind == 'patrull'  && exists(/databases/$(database)/documents/competitions/$(cid)/patrols/$(request.resource.data.refId)))
+              || (request.resource.data.kind == 'station'  && exists(/databases/$(database)/documents/competitions/$(cid)/stations/$(request.resource.data.refId)))
+            )
             && request.resource.data.keys().hasOnly(['kind', 'refId', 'seenAt', 'ackAt'])
-            && (!('seenAt' in request.resource.data) || request.resource.data.seenAt is timestamp)
-            && (!('ackAt' in request.resource.data) || request.resource.data.ackAt is timestamp)
+            && (!('seenAt' in request.resource.data) || (request.resource.data.seenAt is timestamp && request.resource.data.seenAt < request.time + duration.value(5, 'm')))
+            && (!('ackAt' in request.resource.data) || (request.resource.data.ackAt is timestamp && request.resource.data.ackAt < request.time + duration.value(5, 'm')))
+            && (resource == null || !('seenAt' in resource.data) || request.resource.data.get('seenAt', null) == resource.data.seenAt)
+            && (resource == null || !('ackAt' in resource.data) || request.resource.data.get('ackAt', null) == resource.data.ackAt)
           );
           allow delete: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
         }

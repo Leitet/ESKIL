@@ -121,11 +121,27 @@ export async function renderLaget(app, user, cid) {
         <div class="row wrap" style="justify-content:space-between;align-items:center;gap:var(--sp-3);">
           <div>
             <strong>Driftmeddelanden</strong>
-            <span class="muted t-sm" style="margin-left:8px;">Banner till kontroller, station, startkort och startskärm${legacyActive ? ' · <span class="badge badge-yellow">äldre meddelande aktivt</span>' : ''}</span>
+            <span class="muted t-sm" style="margin-left:8px;">Banner till kontroller, station, startkort och startskärm
+              <span id="bc-active-note">${legacyActive ? '<span class="badge badge-yellow">äldre meddelande aktivt</span>' : ''}</span>
+            </span>
           </div>
           <a class="btn btn-secondary btn-sm" href="/app/c/${cid}/meddelanden" data-link>Till Meddelanden →</a>
         </div>
       </div>`;
+    // Live-indikator: syns här när meddelanden är aktiva (kritiska markeras)
+    // så sekretariatet ser läget utan att byta flik.
+    import('../store.js').then(({ watchBroadcastMessages }) => {
+      unsubs.push(watchBroadcastMessages(cid, msgs => {
+        const el = bcCard.querySelector('#bc-active-note');
+        if (!el) return;
+        const active = msgs.filter(m => m.active !== false);
+        const kritisk = active.some(m => m.level === 'kritisk');
+        el.innerHTML = [
+          active.length ? `<span class="badge ${kritisk ? 'badge-pink' : 'badge-blue'}">${active.length} aktiva${kritisk ? ' · KRITISK' : ''}</span>` : '',
+          legacyActive ? '<span class="badge badge-yellow">äldre meddelande aktivt</span>' : ''
+        ].filter(Boolean).join(' ');
+      }));
+    }).catch(() => { /* indikatorn är en bonus */ });
   }
 
   // --- Station card ----------------------------------------------------------

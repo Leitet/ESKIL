@@ -20,9 +20,11 @@ import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
 
 const LEVELS = [['info', 'Information'], ['varning', 'Varning'], ['kritisk', 'Kritisk — larmar']];
 const PRESETS = [
-  { label: 'Paus — ta skydd', text: 'Tävlingen pausas — ta skydd och invänta besked.', level: 'kritisk', requireAck: true },
-  { label: 'Åska i området', text: 'Åska i området — var beredda att söka skydd.', level: 'varning', requireAck: false },
-  { label: 'Tävlingen återupptas', text: 'Tävlingen återupptas — lycka till!', level: 'info', requireAck: false }
+  { label: 'Paus — ta skydd', text: 'Tävlingen pausas — ta skydd och invänta besked.', level: 'kritisk', requireAck: true, clearOthers: false },
+  { label: 'Åska i området', text: 'Åska i området — var beredda att söka skydd.', level: 'varning', requireAck: false, clearOthers: false },
+  // Återupptagning ska AVLÖSA paus-larmet — annars står det kritiska kvar
+  // och stacken säger emot sig själv (regression mot enmeddelande-modellen).
+  { label: 'Tävlingen återupptas', text: 'Tävlingen återupptas — lycka till!', level: 'info', requireAck: false, clearOthers: true }
 ];
 
 const levelBadge = (lvl) => lvl === 'kritisk' ? 'badge-pink' : lvl === 'varning' ? 'badge-yellow' : 'badge-blue';
@@ -75,6 +77,7 @@ export async function renderMeddelanden(app, user, cid) {
   if (isAdmin) {
     let level = 'info';
     let requireAck = false;
+    let clearOthers = false;
     let kMode = 'alla', pMode = 'alla';
     const kIds = new Set(), pIds = new Set();
     const modeValue = (mode, ids) => mode === 'alla' ? true : mode === 'inga' ? false : [...ids];
@@ -109,6 +112,10 @@ export async function renderMeddelanden(app, user, cid) {
               <input type="checkbox" id="msg-ack" ${requireAck ? 'checked' : ''} style="margin:0;">
               Begär bekräftelse
             </label>
+            <label class="t-sm" style="display:inline-flex;gap:8px;align-items:center;font-weight:600;cursor:pointer;">
+              <input type="checkbox" id="msg-clear" ${clearOthers ? 'checked' : ''} style="margin:0;">
+              Avsluta alla andra aktiva samtidigt
+            </label>
           </div>
           <div class="row wrap mt-2" style="gap:6px;${kMode === 'vissa' ? '' : 'display:none;'}" id="msg-k-pick">
             ${[...controls].sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0)).map(c => `
@@ -134,13 +141,14 @@ export async function renderMeddelanden(app, user, cid) {
         rerenderKeeping(() => { level = b.dataset.level; })));
       composerHost.querySelectorAll('[data-preset]').forEach(b => b.addEventListener('click', () => {
         const p = PRESETS[Number(b.dataset.preset)];
-        level = p.level; requireAck = p.requireAck;
+        level = p.level; requireAck = p.requireAck; clearOthers = p.clearOthers;
         renderComposer();
         composerHost.querySelector('#msg-text').value = p.text;
       }));
       composerHost.querySelector('#msg-k').addEventListener('change', (e) => rerenderKeeping(() => { kMode = e.target.value; }));
       composerHost.querySelector('#msg-p').addEventListener('change', (e) => rerenderKeeping(() => { pMode = e.target.value; }));
       composerHost.querySelector('#msg-ack').addEventListener('change', (e) => { requireAck = e.target.checked; });
+      composerHost.querySelector('#msg-clear').addEventListener('change', (e) => { clearOthers = e.target.checked; });
       composerHost.querySelectorAll('[data-kid]').forEach(cb => cb.addEventListener('change', () => {
         cb.checked ? kIds.add(cb.dataset.kid) : kIds.delete(cb.dataset.kid);
         cb.closest('label').style.borderColor = cb.checked ? 'var(--scout-blue)' : 'var(--border)';
@@ -160,9 +168,22 @@ export async function renderMeddelanden(app, user, cid) {
         if (target.kontroller === false && target.patruller === false) { toast('Välj minst en mottagare.', 'error'); return; }
         await withBusy(e.currentTarget, 'Skickar…', async () => {
           try {
-            await createBroadcastMessage(cid, { text, level, target, requireAck });
+            const newId = await createBroadcastMessage(cid, { text, level, target, requireAck });
+            if (clearOthers) {
+              for (const m of msgs.filter(x => x.active !== false && x.id !== newId)) {
+                await setBroadcastMessageActive(cid, m.id, false).catch(() => { /* nästa */ });
+              }
+              if (comp.broadcast) {
+                await updateCompetition(cid, { broadcast: deleteField() }).catch(() => { /* legacy */ });
+                comp.broadcast = null;
+                renderLegacy();
+              }
+            }
             composerHost.querySelector('#msg-text').value = '';
-            toast('Meddelandet skickat', 'success');
+            const cleared = clearOthers;
+            clearOthers = false;
+            composerHost.querySelector('#msg-clear').checked = false;
+            toast(cleared ? 'Meddelandet skickat — övriga avslutade' : 'Meddelandet skickat', 'success');
           } catch (err) { toast('Fel: ' + err.message, 'error'); }
         });
       });
@@ -222,7 +243,11 @@ export async function renderMeddelanden(app, user, cid) {
     for (const p of [...ps].sort((a, b) => (a.number ?? 0) - (b.number ?? 0))) {
       rows.push({ kind: 'patrull', refId: p.id, label: `#${p.number ?? '?'} ${p.name || ''}` });
     }
-    if (ks.length) for (const s of stations) {
+    // Stationen visar meddelandet när kontrollkanalen är PÅ (samma villkor
+    // som klientens targetsUs — inte "minst en kontroll finns", annars blir
+    // stationens kvittens osynlig i tävlingar utan kontroller).
+    const someK = t.kontroller === true || (Array.isArray(t.kontroller) && t.kontroller.length > 0);
+    if (someK) for (const s of stations) {
       rows.push({ kind: 'station', refId: s.id, label: 'Start/Mål-stationen' });
     }
     return rows;
@@ -243,7 +268,7 @@ export async function renderMeddelanden(app, user, cid) {
           <span class="muted t-sm" style="white-space:nowrap;">kl ${m.at ? formatTime(new Date(m.at)) : ''} · till ${escapeHtml(targetLabel(m.target))}</span>
         </div>
         ${m.requireAck ? `
-          <details class="mt-2" ${!archived && !allAck ? 'open' : ''}>
+          <details class="mt-2" data-msg="${escapeHtml(m.id)}" ${!archived && !allAck ? 'open' : ''}>
             <summary style="cursor:pointer;font-weight:700;font-size:14px;color:${allAck ? 'var(--spaer-green, #41A62A)' : 'var(--avent-orange)'};">
               ${allAck ? '✓ Alla har bekräftat' : `Bekräftat ${nAck} av ${expected.length}`} · mottaget ${nSeen} av ${expected.length}
             </summary>
@@ -258,6 +283,8 @@ export async function renderMeddelanden(app, user, cid) {
                 }).join('')}
               </tbody>
             </table></div>
+            <p class="field-hint" style="margin:6px 0 0;">Kvittenser rapporteras av fältenheterna utan inloggning —
+            använd dem som lägesbild. Vid kritiska lägen: bekräfta muntligt via telefonlistan i Läget.</p>
           </details>
         ` : ''}
         ${isAdmin ? `
@@ -275,6 +302,10 @@ export async function renderMeddelanden(app, user, cid) {
   const archiveHost = wrap.querySelector('#msg-archive');
   const renderLists = () => {
     if (!wrap.isConnected) return;
+    // Kvittenser strömmar in live — bevara vilka detaljvyer användaren har
+    // öppna/stängda över omrenderingarna.
+    const prevDetails = {};
+    wrap.querySelectorAll('details[data-msg]').forEach(d => { prevDetails[d.dataset.msg] = d.open; });
     const active = msgs.filter(m => m.active !== false);
     const archived = msgs.filter(m => m.active === false);
     activeHost.innerHTML = `
@@ -282,10 +313,13 @@ export async function renderMeddelanden(app, user, cid) {
       ${active.length ? active.map(m => msgCard(m, false)).join('')
         : '<div class="empty" style="padding:var(--sp-5);"><p class="muted" style="margin:0;">Inga aktiva meddelanden — fältet ser inga banners just nu.</p></div>'}`;
     archiveHost.innerHTML = !archived.length ? '' : `
-      <details class="mt-5">
+      <details class="mt-5" data-msg="__arkiv">
         <summary style="cursor:pointer;font-weight:700;">Avslutade meddelanden (${archived.length})</summary>
         <div class="mt-3">${archived.map(m => msgCard(m, true)).join('')}</div>
       </details>`;
+    wrap.querySelectorAll('details[data-msg]').forEach(d => {
+      if (d.dataset.msg in prevDetails) d.open = prevDetails[d.dataset.msg];
+    });
 
     wrap.querySelectorAll('[data-archive]').forEach(b => b.addEventListener('click', (e) => withBusy(e.currentTarget, '…', async () => {
       try { await setBroadcastMessageActive(cid, b.dataset.archive, false); toast('Meddelandet avslutat — försvinner hos klienterna'); }
