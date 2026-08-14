@@ -102,9 +102,18 @@ See `README.md` for the layout — every file there is load-bearing.
   passed (ETA engine, Läget) must prefer `clientReportedAt` — offline batch
   syncs make `reportedAt` lie by hours. adjustScore deliberately preserves
   the original times: a correction is not a passage.
-- Comp-doc extras added over time: `broadcast: {text, level: info|varning|
-  kritisk, at, target: {kontroller, patruller}}` — live banner on every field
-  page via `public/js/broadcast.js` (kritisk alarms with sound/vibration);
+- `.../messages/{msgId}` — driftmeddelanden v2 (the Meddelanden tab):
+  `{text, level: info|varning|kritisk, at, target: {kontroller, patruller},
+  requireAck, active}`. Publicly readable (field pages are anonymous — the
+  composer warns against personal data), admin-written. Multiple messages
+  stack on clients via `public/js/broadcast.js` (which also owns the 🔔
+  bell, localStorage history and the Notification-API plumbing; kritisk
+  alarms with sound/vibration). `messages/{id}/acks/{kind-refId}` holds
+  receipts (`seenAt` auto-stamped on display, `ackAt` on the Bekräfta
+  button): anonymously writable with a hard shape guard, but readable ONLY
+  by members — ack docs contain station ids, which are secret. The legacy
+  comp-doc `broadcast` field still renders in the stack until cleared.
+- Comp-doc extras added over time: legacy `broadcast` (see above);
   `copiedFrom` (årgångskedjan — /t links to the previous year);
   `lastBackupAt` (stamped on every backup/export download);
   `etaDwellMinutes` (ETA station time override, default 15);

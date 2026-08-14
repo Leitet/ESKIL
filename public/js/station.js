@@ -89,8 +89,9 @@ async function main() {
 
   document.title = `Start/Mål · ${comp.shortName || comp.name || 'ESKIL'}`;
 
-  // Driftmeddelanden från ledningen — stationen följer funktionärskanalen.
-  const bctx = { audience: 'kontroller' };
+  // Driftmeddelanden från ledningen — stationen följer funktionärskanalen
+  // och kvitterar med stations-id:t som identitet ("Stationen" hos ledningen).
+  const bctx = { audience: 'kontroller', id: stationId };
   onSnapshot(doc(db, 'competitions', cid), snap => {
     if (!snap.exists()) return;
     comp = { id: cid, ...snap.data() };

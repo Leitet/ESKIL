@@ -109,145 +109,23 @@ export async function renderLaget(app, user, cid) {
     </div>
   `;
 
-  // --- Driftmeddelande (broadcast) -------------------------------------------
-  // Ledningens kanal ut till fältet: banner på /k, /m, /s och startskärmen.
-  // Tre nivåer (kritisk larmar med ljud+vibration) och valbara mottagare.
+  // --- Driftmeddelanden — flyttade till egen flik --------------------------
+  // Composern bor numera i Meddelanden-fliken (parallella meddelanden,
+  // bekräftelser, kvittensöversikt). Här finns bara en genväg dit + en
+  // indikator när något är aktivt.
   const bcCard = wrap.querySelector('#broadcast-card');
   if (bcCard) {
-    let bcLevel = 'info';
-    let kMode = 'alla', pMode = 'alla';
-    const kIds = new Set(), pIds = new Set();
-    const BC_LEVELS = [['info', 'Information'], ['varning', 'Varning'], ['kritisk', 'Kritisk — larmar']];
-    const BC_PRESETS = [
-      { label: 'Paus — ta skydd', text: 'Tävlingen pausas — ta skydd och invänta besked.', level: 'kritisk' },
-      { label: 'Åska i området', text: 'Åska i området — var beredda att söka skydd.', level: 'varning' },
-      { label: 'Tävlingen återupptas', text: 'Tävlingen återupptas — lycka till!', level: 'info' }
-    ];
-    const bcBadge = (lvl) => lvl === 'kritisk' ? 'badge-pink' : lvl === 'varning' ? 'badge-yellow' : 'badge-blue';
-    const grpLabel = (v, allWord, unit) => (v === true || v === undefined) ? allWord
-      : (v === false || (Array.isArray(v) && !v.length)) ? null : `${v.length} ${unit}`;
-    const targetLabel = (t) => {
-      if (!t) return 'till alla';
-      const parts = [grpLabel(t.kontroller, 'alla kontroller', 'kontroller'),
-                     grpLabel(t.patruller, 'alla patruller', 'patruller')].filter(Boolean);
-      return parts.length ? 'till ' + parts.join(' · ') : 'till ingen';
-    };
-    const modeValue = (mode, ids) => mode === 'alla' ? true : mode === 'inga' ? false : [...ids];
-
-    const renderBc = () => {
-      const b = comp.broadcast && (comp.broadcast.text || '').trim() ? comp.broadcast : null;
-      bcCard.innerHTML = `
-        <div class="card mb-4" style="padding:var(--sp-4);${b && b.level === 'kritisk' ? 'border-left:3px solid var(--utm-pink);' : ''}">
-          <div class="row wrap" style="justify-content:space-between;align-items:center;gap:var(--sp-3);">
-            <h3 class="t-h3" style="margin:0;">Driftmeddelande</h3>
-            ${b ? `<span class="badge ${bcBadge(b.level)}">${b.level === 'kritisk' ? 'KRITISK' : b.level === 'varning' ? 'VARNING' : 'INFORMATION'}</span>` : '<span class="muted t-sm">Inget aktivt meddelande</span>'}
+    const legacyActive = comp.broadcast && (comp.broadcast.text || '').trim();
+    bcCard.innerHTML = `
+      <div class="card mb-4" style="padding:var(--sp-3) var(--sp-4);">
+        <div class="row wrap" style="justify-content:space-between;align-items:center;gap:var(--sp-3);">
+          <div>
+            <strong>Driftmeddelanden</strong>
+            <span class="muted t-sm" style="margin-left:8px;">Banner till kontroller, station, startkort och startskärm${legacyActive ? ' · <span class="badge badge-yellow">äldre meddelande aktivt</span>' : ''}</span>
           </div>
-          ${b ? `
-            <div class="row wrap mt-2" style="gap:var(--sp-3);align-items:center;">
-              <span style="font-weight:600;">${escapeHtml(b.text)}</span>
-              <span class="muted t-sm">kl ${b.at ? new Date(b.at).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' }) : ''} · ${escapeHtml(targetLabel(b.target))}</span>
-              ${isAdmin ? '<button class="btn btn-secondary btn-sm" id="bc-clear">Ta bort meddelandet</button>' : ''}
-            </div>
-          ` : ''}
-          ${isAdmin ? `
-            <div class="mt-3" style="border-top:1px solid var(--border);padding-top:var(--sp-3);">
-              <div class="row wrap" style="gap:6px;">
-                ${BC_LEVELS.map(([k, l]) => `<button type="button" class="btn btn-sm ${bcLevel === k ? 'btn-primary' : 'btn-secondary'}" data-bc-level="${k}">${l}</button>`).join('')}
-              </div>
-              <textarea class="textarea mt-3" id="bc-text" placeholder="Meddelande till fältet…" style="min-height:60px;"></textarea>
-              <div class="row wrap mt-2" style="gap:6px;">
-                ${BC_PRESETS.map((p, i) => `<button type="button" class="btn btn-ghost btn-sm" data-bc-preset="${i}">${escapeHtml(p.label)}</button>`).join('')}
-              </div>
-              <div class="row wrap mt-3" style="gap:var(--sp-5);align-items:center;">
-                <label class="t-sm" style="display:inline-flex;gap:8px;align-items:center;font-weight:600;">Kontroller
-                  <select class="select" id="bc-k" style="padding:6px 30px 6px 10px;">
-                    <option value="alla" ${kMode === 'alla' ? 'selected' : ''}>Alla</option>
-                    <option value="vissa" ${kMode === 'vissa' ? 'selected' : ''}>Vissa…</option>
-                    <option value="inga" ${kMode === 'inga' ? 'selected' : ''}>Inga</option>
-                  </select>
-                </label>
-                <label class="t-sm" style="display:inline-flex;gap:8px;align-items:center;font-weight:600;">Patruller & startskärm
-                  <select class="select" id="bc-p" style="padding:6px 30px 6px 10px;">
-                    <option value="alla" ${pMode === 'alla' ? 'selected' : ''}>Alla</option>
-                    <option value="vissa" ${pMode === 'vissa' ? 'selected' : ''}>Vissa…</option>
-                    <option value="inga" ${pMode === 'inga' ? 'selected' : ''}>Inga</option>
-                  </select>
-                </label>
-              </div>
-              <div class="row wrap mt-2" style="gap:6px;${kMode === 'vissa' ? '' : 'display:none;'}" id="bc-k-pick">
-                ${[...controls].sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0)).map(c => `
-                  <label style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border:1.5px solid ${kIds.has(c.id) ? 'var(--scout-blue)' : 'var(--border)'};border-radius:999px;cursor:pointer;font-size:13px;background:${kIds.has(c.id) ? 'var(--scout-blue-100)' : 'var(--white)'};">
-                    <input type="checkbox" data-bc-kid="${escapeHtml(c.id)}" ${kIds.has(c.id) ? 'checked' : ''} style="margin:0;">${c.nummer ?? '?'}. ${escapeHtml(c.name || '')}
-                  </label>`).join('') || '<span class="muted t-sm">Inga kontroller ännu.</span>'}
-              </div>
-              <div class="row wrap mt-2" style="gap:6px;${pMode === 'vissa' ? '' : 'display:none;'}" id="bc-p-pick">
-                ${[...patrols].sort((a, b) => (a.number ?? 0) - (b.number ?? 0)).map(p => `
-                  <label style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border:1.5px solid ${pIds.has(p.id) ? 'var(--scout-blue)' : 'var(--border)'};border-radius:999px;cursor:pointer;font-size:13px;background:${pIds.has(p.id) ? 'var(--scout-blue-100)' : 'var(--white)'};">
-                    <input type="checkbox" data-bc-pid="${escapeHtml(p.id)}" ${pIds.has(p.id) ? 'checked' : ''} style="margin:0;">#${p.number ?? '?'} ${escapeHtml(p.name || '')}
-                  </label>`).join('') || '<span class="muted t-sm">Inga patruller ännu.</span>'}
-              </div>
-              <p class="field-hint" style="margin:10px 0 8px;">Visas direkt som banner på kontrollernas rapportsidor, stationen, startkorten och startskärmen. Meddelandet är publikt — skriv inga personuppgifter. Kritisk nivå larmar med ljud och vibration.</p>
-              <button class="btn btn-primary" id="bc-send">Skicka driftmeddelande</button>
-            </div>
-          ` : ''}
-        </div>`;
-
-      const keepText = () => bcCard.querySelector('#bc-text')?.value ?? '';
-      bcCard.querySelectorAll('[data-bc-level]').forEach(btn => btn.addEventListener('click', () => {
-        const txt = keepText();
-        bcLevel = btn.dataset.bcLevel;
-        renderBc();
-        bcCard.querySelector('#bc-text').value = txt;
-      }));
-      bcCard.querySelectorAll('[data-bc-preset]').forEach(btn => btn.addEventListener('click', () => {
-        const p = BC_PRESETS[Number(btn.dataset.bcPreset)];
-        bcLevel = p.level;
-        renderBc();
-        bcCard.querySelector('#bc-text').value = p.text;
-      }));
-      bcCard.querySelector('#bc-k')?.addEventListener('change', (e) => { const txt = keepText(); kMode = e.target.value; renderBc(); bcCard.querySelector('#bc-text').value = txt; });
-      bcCard.querySelector('#bc-p')?.addEventListener('change', (e) => { const txt = keepText(); pMode = e.target.value; renderBc(); bcCard.querySelector('#bc-text').value = txt; });
-      bcCard.querySelectorAll('[data-bc-kid]').forEach(cb => cb.addEventListener('change', () => {
-        cb.checked ? kIds.add(cb.dataset.bcKid) : kIds.delete(cb.dataset.bcKid);
-        cb.closest('label').style.borderColor = cb.checked ? 'var(--scout-blue)' : 'var(--border)';
-        cb.closest('label').style.background = cb.checked ? 'var(--scout-blue-100)' : 'var(--white)';
-      }));
-      bcCard.querySelectorAll('[data-bc-pid]').forEach(cb => cb.addEventListener('change', () => {
-        cb.checked ? pIds.add(cb.dataset.bcPid) : pIds.delete(cb.dataset.bcPid);
-        cb.closest('label').style.borderColor = cb.checked ? 'var(--scout-blue)' : 'var(--border)';
-        cb.closest('label').style.background = cb.checked ? 'var(--scout-blue-100)' : 'var(--white)';
-      }));
-      bcCard.querySelector('#bc-send')?.addEventListener('click', async (e) => {
-        const text = keepText().trim();
-        if (!text) { toast('Skriv ett meddelande först.', 'error'); return; }
-        if (kMode === 'vissa' && !kIds.size && pMode === 'inga') { toast('Välj minst en kontroll.', 'error'); return; }
-        if (pMode === 'vissa' && !pIds.size && kMode === 'inga') { toast('Välj minst en patrull.', 'error'); return; }
-        const target = { kontroller: modeValue(kMode, kIds), patruller: modeValue(pMode, pIds) };
-        if (target.kontroller === false && target.patruller === false) { toast('Välj minst en mottagare.', 'error'); return; }
-        const btn = e.currentTarget;
-        await withBusy(btn, 'Skickar…', async () => {
-          try {
-            const b = { text, level: bcLevel, at: new Date().toISOString(), target };
-            await updateCompetition(cid, { broadcast: b });
-            comp.broadcast = b;
-            renderBc();
-            toast('Driftmeddelande skickat', 'success');
-          } catch (err) { toast('Fel: ' + err.message, 'error'); }
-        });
-      });
-      bcCard.querySelector('#bc-clear')?.addEventListener('click', async (e) => {
-        const btn = e.currentTarget;
-        await withBusy(btn, 'Tar bort…', async () => {
-          try {
-            await updateCompetition(cid, { broadcast: deleteField() });
-            comp.broadcast = null;
-            renderBc();
-            toast('Meddelandet borttaget');
-          } catch (err) { toast('Fel: ' + err.message, 'error'); }
-        });
-      });
-    };
-    renderBc();
+          <a class="btn btn-secondary btn-sm" href="/app/c/${cid}/meddelanden" data-link>Till Meddelanden →</a>
+        </div>
+      </div>`;
   }
 
   // --- Station card ----------------------------------------------------------

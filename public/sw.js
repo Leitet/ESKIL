@@ -119,3 +119,16 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(networkFirst(req));
   }
 });
+
+// Notisklick (meddelanden från tävlingsledningen): fokusera en öppen
+// ESKIL-flik i stället för att öppna en ny — funktionären är redan inne på
+// sin rapportsida/station och ska landa där banern och klockan finns.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      const open = list.find((w) => 'focus' in w);
+      return open ? open.focus() : self.clients.openWindow('/');
+    })
+  );
+});

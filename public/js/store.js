@@ -419,6 +419,13 @@ export async function deleteCompetition(cid) {
     await deleteDoc(doc(db, 'competitions', cid, 'patrols', p.id, 'private', 'meta')).catch(() => {});
   }
   await deleteRefs(patrolsSnap.docs.map(d => d.ref));
+  // Meddelanden bär en acks-subkollektion var — töm dem först.
+  const msgsSnap = await getDocs(collection(db, 'competitions', cid, 'messages'));
+  for (const m of msgsSnap.docs) {
+    const acks = await getDocs(collection(db, 'competitions', cid, 'messages', m.id, 'acks'));
+    await deleteRefs(acks.docs.map(d => d.ref));
+  }
+  await deleteRefs(msgsSnap.docs.map(d => d.ref));
   for (const sub of ['registrations', 'invites']) {
     const snap = await getDocs(collection(db, 'competitions', cid, sub));
     await deleteRefs(snap.docs.map(d => d.ref));
@@ -466,6 +473,58 @@ export async function updatePatrol(cid, pid, data) {
 
 export async function deletePatrol(cid, pid) {
   await deleteDoc(doc(db, 'competitions', cid, 'patrols', pid));
+}
+
+// --- Meddelanden (broadcast v2) ----------------------------------------------
+// Parallella driftmeddelanden i competitions/{cid}/messages — publikt läsbara
+// (fältsidorna är anonyma), admin-skrivna. Meddelanden med requireAck samlar
+// kvittenser i messages/{id}/acks (doc-id = "<kind>-<refId>", anonymt
+// skrivbara med validerad form; läsbara endast för medlemmar eftersom
+// stations-id är hemligt).
+
+export function watchBroadcastMessages(cid, cb) {
+  return onSnapshot(collection(db, 'competitions', cid, 'messages'),
+    snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+}
+
+export async function createBroadcastMessage(cid, { text, level, target, requireAck }) {
+  const ref = doc(collection(db, 'competitions', cid, 'messages'));
+  await setDoc(ref, {
+    text: String(text || '').trim().slice(0, 500),
+    level: ['info', 'varning', 'kritisk'].includes(level) ? level : 'info',
+    target: target || { kontroller: true, patruller: true },
+    requireAck: !!requireAck,
+    active: true,
+    at: new Date().toISOString()
+  });
+  return ref.id;
+}
+
+export async function setBroadcastMessageActive(cid, msgId, active) {
+  await updateDoc(doc(db, 'competitions', cid, 'messages', msgId), { active: !!active });
+}
+
+export async function deleteBroadcastMessage(cid, msgId) {
+  // Kvittenserna först — subkollektioner följer aldrig med föräldern.
+  const acks = await getDocs(collection(db, 'competitions', cid, 'messages', msgId, 'acks'));
+  for (const d of acks.docs) await deleteDoc(d.ref);
+  await deleteDoc(doc(db, 'competitions', cid, 'messages', msgId));
+}
+
+export function watchMessageAcks(cid, msgId, cb) {
+  return onSnapshot(collection(db, 'competitions', cid, 'messages', msgId, 'acks'),
+    snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+}
+
+// Klientkvittens (anonym): phase 'seen' stämplar mottaget, 'ack' bekräftat.
+// Klienttid — kvittensen ska bära ögonblicket, inte synkögonblicket.
+export async function ackBroadcastMessage(cid, msgId, kind, refId, phase) {
+  const ref = doc(db, 'competitions', cid, 'messages', msgId, 'acks', `${kind}-${refId}`);
+  const stamp = Timestamp.fromDate(new Date());
+  await setDoc(ref, {
+    kind, refId,
+    ...(phase === 'ack' ? { ackAt: stamp } : { seenAt: stamp })
+  }, { merge: true });
 }
 
 // Överlämningsdokument — ledningens fria anteckningar om hur tävlingen körs

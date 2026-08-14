@@ -11,9 +11,10 @@ import { icon } from './icons.js';
 // Competition menu — single source of truth. `active` is a key below
 // (or 'settings' for the admin-only settings tab).
 const COMP_TABS = [
-  { key: 'oversikt',   label: 'Översikt',    path: '' },
-  { key: 'laget',      label: 'Läget',       path: '/laget' },
-  { key: 'patrols',    label: 'Patruller',   path: '/patrols' },
+  { key: 'oversikt',    label: 'Översikt',    path: '' },
+  { key: 'laget',       label: 'Läget',       path: '/laget' },
+  { key: 'meddelanden', label: 'Meddelanden', path: '/meddelanden' },
+  { key: 'patrols',     label: 'Patruller',   path: '/patrols' },
   { key: 'controls',   label: 'Kontroller',  path: '/controls' },
   { key: 'track',      label: 'Spår',        path: '/track' },
   { key: 'scoreboard', label: 'Poängtabell', path: '/scoreboard' },

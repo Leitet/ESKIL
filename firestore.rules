@@ -291,6 +291,36 @@ service cloud.firestore {
         }
       }
 
+      // Meddelanden (broadcast v2) — parallella driftmeddelanden från
+      // ledningen till fältsidorna. Publikt läsbara (fältsidorna är anonyma —
+      // composern varnar för personuppgifter), admin-skrivna. Varje meddelande
+      // kan begära bekräftelse: klienterna skriver då kvittensdokument i
+      // acks/ — anonymt (samma trustmodell som poängrapporter) men med hårt
+      // validerad form och deterministiskt doc-id (<kind>-<refId>) så
+      // omkvittering skriver över i stället för att växa. Acks får BARA läsas
+      // av medlemmar: kvittenserna innehåller stations-id (hemligt) och ska
+      // inte gå att enumerera anonymt.
+      match /messages/{msgId} {
+        allow read: if true;
+        allow create, update, delete: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
+
+        match /acks/{ackId} {
+          allow read: if isCompMember(cid);
+          allow create, update: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid)) || (
+               !compIsDemo(cid) && !compClosed(cid)
+            && ackId == request.resource.data.kind + '-' + request.resource.data.refId
+            && request.resource.data.kind in ['kontroll', 'patrull', 'station']
+            && request.resource.data.refId is string
+            && request.resource.data.refId.size() > 0
+            && request.resource.data.refId.size() <= 64
+            && request.resource.data.keys().hasOnly(['kind', 'refId', 'seenAt', 'ackAt'])
+            && (!('seenAt' in request.resource.data) || request.resource.data.seenAt is timestamp)
+            && (!('ackAt' in request.resource.data) || request.resource.data.ackAt is timestamp)
+          );
+          allow delete: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
+        }
+      }
+
       // Registrations (Anmälan) — the doc ID is the secret manage link, same
       // trust model as control reporter URLs. Anyone holding the link may read
       // and update their registration while registration is enabled; only
