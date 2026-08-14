@@ -14,7 +14,7 @@ import {
   getCompetition, getCompetitionBySlug, getRegistration, createRegistration, updateRegistration
 } from './store.js';
 import {
-  allowedAvdelningar, escapeHtml, formatDate, toast, withBusy, confirmDialog, promptDialog,
+  allowedAvdelningar, escapeHtml, formatDate, toast, withBusy, confirmDialog, wireOverlayClose,
   registrationSettings, registrationState, computeRegistrationPrice,
   makePaymentReference, swishQrString, swishAppUrl, registrationUrl, copyToClipboard, isPaymentPaid,
   publicManagement
@@ -412,23 +412,71 @@ function wireForm() {
     render();
   });
 
-  // Självbetjäning: skicka om ändringslänken. Svaret är alltid neutralt —
-  // funktionen avslöjar aldrig om adressen finns i en anmälan.
-  document.getElementById('resend-link')?.addEventListener('click', async (e) => {
+  // Självbetjäning: skicka om ändringslänken. Egen modal (inte promptDialog):
+  // anropet kan ta 5–15 s vid kallstart, så dialogen måste stanna kvar med
+  // "Skickar…" och visa bekräftelsen/felet PÅ PLATS — en toast som dyker upp
+  // långt efter att rutan stängts ser ut som att inget hände. Bekräftelsen
+  // är neutral: funktionen avslöjar aldrig om adressen finns i en anmälan.
+  document.getElementById('resend-link')?.addEventListener('click', (e) => {
     e.preventDefault();
-    const email = await promptDialog(
-      'Ange e-postadressen ni anmälde er med, så skickas ändringslänken dit igen.',
-      { okLabel: 'Skicka länken', placeholder: 'namn@exempel.se', danger: false }
-    );
-    if (email === null || !email.trim()) return;
-    try {
-      const { functions, httpsCallable } = await import('./firebase.js');
-      await httpsCallable(functions, 'resendManageLink')({ cid, email: email.trim() });
-      toast('Om adressen finns i en anmälan skickas ändringslänken dit inom någon minut.', 'success');
-    } catch (err) {
-      if (err?.code === 'functions/resource-exhausted') toast(err.message, 'error');
-      else toast('Kunde inte skicka just nu — kontakta tävlingsledningen.', 'error');
-    }
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal" style="max-width:440px;">
+        <div class="modal-head"><h3>Skicka ändringslänken igen</h3></div>
+        <div class="modal-body">
+          <p style="margin-top:0;">Ange e-postadressen ni anmälde er med, så skickas ändringslänken dit igen.</p>
+          <input class="input" id="rs-email" type="email" placeholder="namn@exempel.se" autocomplete="email">
+          <p class="t-sm" id="rs-err" style="color:var(--utm-pink);margin:8px 0 0;display:none;"></p>
+        </div>
+        <div class="modal-foot">
+          <button class="btn btn-ghost" id="rs-cancel">Avbryt</button>
+          <button class="btn btn-primary" id="rs-send">Skicka länken</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    wireOverlayClose(overlay, close);
+    overlay.querySelector('#rs-cancel').addEventListener('click', close);
+    const input = overlay.querySelector('#rs-email');
+    const err = overlay.querySelector('#rs-err');
+    const send = overlay.querySelector('#rs-send');
+    const submit = async () => {
+      const email = input.value.trim().toLowerCase();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+        err.textContent = 'Ange en giltig e-postadress.';
+        err.style.display = 'block';
+        input.focus();
+        return;
+      }
+      err.style.display = 'none';
+      send.disabled = true;
+      send.textContent = 'Skickar…';
+      try {
+        const { functions, httpsCallable } = await import('./firebase.js');
+        await httpsCallable(functions, 'resendManageLink')({ cid, email });
+        overlay.querySelector('.modal').innerHTML = `
+          <div class="modal-head"><h3>Begäran mottagen</h3></div>
+          <div class="modal-body">
+            <p style="margin-top:0;">Om <strong>${escapeHtml(email)}</strong> är kontaktadress i en anmälan
+            till tävlingen skickas ändringslänken dit inom någon minut.</p>
+            <p class="muted t-sm">Inget mail? Kolla skräpposten — eller kontakta tävlingsledningen,
+            som kan slå upp er anmälan direkt.</p>
+          </div>
+          <div class="modal-foot"><button class="btn btn-primary" id="rs-done">Stäng</button></div>`;
+        overlay.querySelector('#rs-done').addEventListener('click', close);
+      } catch (e2) {
+        send.disabled = false;
+        send.textContent = 'Skicka länken';
+        err.textContent = e2?.code === 'functions/resource-exhausted'
+          ? e2.message
+          : 'Kunde inte skicka just nu — försök igen om en stund, eller kontakta tävlingsledningen.';
+        err.style.display = 'block';
+      }
+    };
+    send.addEventListener('click', submit);
+    input.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') submit(); });
+    setTimeout(() => input.focus(), 30);
   });
 
   document.getElementById('to-pay').addEventListener('click', async (e) => {
