@@ -159,19 +159,30 @@ new request and the requester on the decision.
   away extends from the end. Don't put it back to plain nearest-segment: on a
   curved leg the nearest segment ties on the bend and points landed BEFORE
   the previous one. Regression-tested in `test/logic.test.js`.
-- `.../selfStarts/{patrolId}` — **självbekräftad start**. With `comp.selfStart`
-  the patrol presses "Bekräfta start" on its own startkort instead of being
-  checked out by a start marshal. Own collection because the startkort does
-  NOT know the station id (secret — whoever has it can check anyone in or
-  out). Anonymous **create only**, never update: a confirmed start must not be
-  movable by anyone who got hold of the link; undo is admin-only (the button
-  sits in Läget, and the station page says so). Rules also require the patrol
-  to exist and the timestamp to sit within −12 h…+2 min of `request.time`;
-  that the start can't be confirmed BEFORE the patrol's own start time is a
-  UI-level guard — rules can't compute startOrder × interval.
-  Läget and `station.js` merge these with the station's passages into one
-  picture (a marshal's check-out wins over a self-confirmation); every other
-  consumer just reads `passages`.
+- `.../selfPassages/{patrolId}` — **patrullens egna avprickningar**
+  (`startAt`/`finishAt`). With `comp.selfStart` / `comp.selfFinish` the patrol
+  presses "Bekräfta start" / "Vi är i mål" on its own startkort instead of
+  being checked in by a marshal. Own collection because the startkort does NOT
+  know the station id (secret — whoever has it can check anyone in or out).
+  Each stamp is written **once and never changed**: a time that can be
+  rewritten is no record for the secretariat; undo is admin-only (buttons in
+  Läget; the station page says so instead of failing a dialog silently).
+  Rules also require the patrol to exist and each timestamp to sit within
+  −12 h…+2 min of `request.time`; that start can't be confirmed before the
+  patrol's start time, and finish not before the last control, is UI-level —
+  rules can compute neither startOrder × interval nor read every score doc.
+- **Målgång har tre källor**, merged in Läget (`mergePassages`, called from
+  `renderStats` because the derived one depends on score data):
+  1. the start/finish station's check-in (`passages`),
+  2. the patrol's own `selfPassages.finishAt`,
+  3. `comp.autoFinish` — **derived**, not stored: all controls reported →
+     the latest `clientReportedAt`. Nothing is written; the time already
+     lives in the score data.
+  Precedence is always marshal > patrol > derived, everywhere. Läget labels
+  the last two "· själv" / "· auto" — a derived finish claims a patrol is home
+  without anyone having seen them, and that list is what the secretariat uses
+  to know who is still out. `station.js` deliberately does NOT count the
+  derived one: the station shows who physically passed.
   The startkort has three phases (`cardPhase()` in `start.js`): `info` before
   confirmation (competition info + how to reach the start, NO course — see
   `positionsVisible()`), `tavling`, and `summering` once the course is done.

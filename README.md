@@ -79,7 +79,14 @@ att köra gratis på Spark-planen.
   är släckt tills patrullens starttid passerats och tänds då grön. Först efter
   bekräftelsen öppnas kartan och kontrollerna, och maxtiden börjar räknas ned
   från den verkliga starten. Bekräftelsen syns i Läget och på stationssidan
-  som en utcheckning (märkt "själv"; bara admin kan ångra den). När banan är
+  som en utcheckning (märkt "själv"; bara admin kan ångra den). Målgången kan
+  komma från tre håll: funktionärens incheckning på stationen, patrullens egen
+  knapp "Vi är i mål" (dyker upp när alla kontroller är rapporterade,
+  inställningen "Patrullerna markerar sig i mål själva"), eller automatiskt
+  vid sista kontrollrapporten ("Registrera målgång automatiskt" — slå bara på
+  den när sista kontrollen ÄR målet). En funktionärs avprickning väger alltid
+  tyngst, sedan patrullens egen, sist den automatiska; Läget märker ut de två
+  senare med "själv" respektive "auto". När banan är
   avklarad byter kortet till en summering med positiva höjdpunkter — "Topp 3
   på 4 kontroller!", full pott, extrapoäng, tid på banan. Jämförelser mot
   andra patruller visas bara när poängen är publicerade, och en dålig

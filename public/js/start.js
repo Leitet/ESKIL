@@ -8,7 +8,7 @@
 import { db, doc, onSnapshot, collection } from './firebase.js';
 import {
   getCompetition, getCompetitionBySlug, getPatrol, listControls, listPatrols, getTrack,
-  watchSelfStarts, confirmSelfStart
+  watchSelfPassages, confirmSelfPassage
 } from './store.js';
 import { courseLegs, drawCourseOnMap, addCourseChip, legLatLngs, courseEtaCalibrated, patrolFinishEtaMs, fmtDist, fmtMin, competitionArea } from './course.js';
 import {
@@ -74,7 +74,8 @@ let scoresForPatrol = {};  // controlId -> score doc (egna patrullens)
 let allScoresByCtrl = {};  // controlId -> score[] — kalibrerar ETA-motorn
 let filter = 'alla';       // 'alla' | 'kvar' | 'klara'
 let selfStartAt = null;    // Date — patrullens egen startbekräftelse
-let confirming = false;    // knappen är tryckt, skrivningen pågår
+let selfFinishAt = null;   // Date — patrullens egen målmarkering
+let confirming = null;     // 'startAt' | 'finishAt' medan skrivningen pågår
 
 async function main() {
   const parsed = parsePath();
@@ -123,12 +124,13 @@ async function main() {
     if (s.exists()) { comp = { id: cid, ...s.data() }; updateBroadcast(comp, bctx); render(); }
   });
   updateBroadcast(comp, bctx);
-  // Egen startbekräftelse — live, så knappen slår om även om patrullen
-  // bekräftat på en annan telefon.
-  watchSelfStarts(cid, rows => {
-    const own = rows.find(r => r.id === patrolId);
-    const ts = own?.startAt;
-    selfStartAt = ts ? (typeof ts.toDate === 'function' ? ts.toDate() : new Date(ts)) : null;
+  // Egna avprickningar — live, så knapparna slår om även om patrullen
+  // tryckte på en annan telefon.
+  watchSelfPassages(cid, rows => {
+    const own = rows.find(r => r.id === patrolId) || {};
+    const toDate = (ts) => ts ? (typeof ts.toDate === 'function' ? ts.toDate() : new Date(ts)) : null;
+    selfStartAt = toDate(own.startAt);
+    selfFinishAt = toDate(own.finishAt);
     render();
   });
 
@@ -175,6 +177,8 @@ function isAnonymous() { return comp?.anonymousControls !== false; }
 function selfStartEnabled() { return comp?.selfStart === true; }
 
 function selfStarted() { return !!selfStartAt; }
+function selfFinishEnabled() { return comp?.selfFinish === true; }
+function selfFinished() { return !!selfFinishAt; }
 
 // Knappen tänds när patrullens egen starttid passerats. Saknar tävlingen
 // starttider finns ingenting att vänta på — då är den tänd direkt.
@@ -332,7 +336,7 @@ function renderInfoBody() {
   return `
     <div class="start-confirm-wrap">
       <button type="button" class="start-confirm ${kanStarta ? 'is-ready' : ''}"
-        id="confirm-start" ${kanStarta && !confirming ? '' : 'disabled'}>
+        data-confirm="startAt" ${kanStarta && !confirming ? '' : 'disabled'}>
         ${icon(kanStarta ? 'flag' : 'clock', { size: 22 })}
         <span>${confirming ? 'Bekräftar…' : 'Bekräfta start'}</span>
       </button>
@@ -389,13 +393,27 @@ function renderSummaryBody() {
     scoresByControl: allScoresByCtrl,
     showRank: visaJamforelser,
     startMs: effectiveStartMs(),
-    endMs: rapporter[0] ? rapporter[0].getTime() : null
+    endMs: selfFinishAt ? selfFinishAt.getTime() : (rapporter[0] ? rapporter[0].getTime() : null)
   });
   if (!punkter.length) return '';
 
+  // Målmarkeringen — bara när tävlingen har funktionen på och patrullen inte
+  // redan tryckt. Att alla kontroller är rapporterade vet vi redan: det är
+  // villkoret för att över huvud taget vara i det här läget.
+  const malknapp = selfFinishEnabled() && !selfFinished() ? `
+    <div class="start-confirm-wrap">
+      <button type="button" class="start-confirm is-ready" data-confirm="finishAt" ${confirming ? 'disabled' : ''}>
+        ${icon('flag', { size: 22 })}
+        <span>${confirming === 'finishAt' ? 'Markerar…' : 'Vi är i mål'}</span>
+      </button>
+      <p class="start-confirm-hint">Tryck när ni är tillbaka vid målet, så vet tävlingsledningen att ni är hemma.</p>
+    </div>` : '';
+
   return `
+    ${malknapp}
     <div class="start-summary">
-      <div class="start-summary-head">${icon('party-popper', { size: 20 })} <span>I mål!</span></div>
+      <div class="start-summary-head">${icon('party-popper', { size: 20 })} <span>I mål!</span>${
+        selfFinishAt ? `<span class="start-summary-time">${selfFinishAt.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })}</span>` : ''}</div>
       <ul class="start-summary-list">
         ${punkter.map(h => `<li>${icon(h.icon, { size: 17 })}<span>${escapeHtml(h.text)}</span></li>`).join('')}
       </ul>
@@ -542,30 +560,34 @@ function render() {
   // Flip card
   wireFlipCard();
 
-  // Bekräfta start.
-  const confirmBtn = document.getElementById('confirm-start');
-  if (confirmBtn) {
-    bindTap(confirmBtn, async () => {
-      if (confirming || !mayConfirmStart()) return;
-      // Testkortet (/s/<cid>/test) har ingen patrull i databasen — reglerna
-      // skulle neka skrivningen. Låt förhandsvisningen gå vidare ändå, den
-      // finns just för att visa hur kortet beter sig.
-      if (patrol.__test) { selfStartAt = new Date(); render(); return; }
-      confirming = true;
+  // Bekräfta start / Vi är i mål — samma knapp, olika stämpel.
+  root.querySelectorAll('[data-confirm]').forEach(btn => bindTap(btn, async () => {
+    const field = btn.dataset.confirm;
+    if (confirming) return;
+    if (field === 'startAt' && !mayConfirmStart()) return;
+    if (field === 'finishAt' && !courseFinished()) return;
+    // Testkortet (/s/<cid>/test) har ingen patrull i databasen — reglerna
+    // skulle neka skrivningen. Låt förhandsvisningen gå vidare ändå, den
+    // finns just för att visa hur kortet beter sig.
+    if (patrol.__test) {
+      if (field === 'startAt') selfStartAt = new Date(); else selfFinishAt = new Date();
       render();
-      try {
-        await confirmSelfStart(parsePath().cid, patrol.id);
-        // Snapshoten skriver selfStartAt och renderar om. Offline landar
-        // skrivningen i Firestores lokala kö och slår igenom lokalt direkt —
-        // patrullen ska kunna gå ut i skogen utan täckning.
-      } catch (e) {
-        confirming = false;
-        alert('Kunde inte bekräfta starten: ' + (e?.message || e) +
-              '\n\nGå till startfunktionären så checkar de ut er.');
-        render();
-      }
-    });
-  }
+      return;
+    }
+    confirming = field;
+    render();
+    try {
+      await confirmSelfPassage(parsePath().cid, patrol.id, field);
+      // Snapshoten skriver tillbaka tiden och renderar om. Offline landar
+      // skrivningen i Firestores lokala kö och slår igenom lokalt direkt —
+      // patrullen ska kunna gå ut i skogen utan täckning.
+    } catch (e) {
+      confirming = null;
+      alert((field === 'startAt' ? 'Kunde inte bekräfta starten: ' : 'Kunde inte markera målgången: ')
+            + (e?.message || e) + '\n\nGå till funktionären vid start/mål så prickar de av er.');
+      render();
+    }
+  }));
 
   // Overview map — swap the live node back in if we kept one.
   const withPos = controls.filter(c => c.lat && c.lng);

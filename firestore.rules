@@ -319,31 +319,56 @@ service cloud.firestore {
         allow write: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
       }
 
-      // Självbekräftad start — patrullen trycker "Bekräfta start" på sitt
-      // startkort (/s/<cid>/<patrolId>) i stället för att checkas ut av en
-      // startfunktionär. Egen collection eftersom startkortet INTE känner
-      // till stations-id:t (det är hemligt, och den som har det kan checka
-      // in/ut alla patruller). Läget och stationssidan slår ihop de här med
-      // stationens passages.
+      // Patrullens egna avprickningar — "Bekräfta start" och "Vi är i mål" på
+      // startkortet (/s/<cid>/<patrolId>), i stället för en funktionär vid
+      // start/mål. Egen collection eftersom startkortet INTE känner till
+      // stations-id:t (det är hemligt, och den som har det kan checka in/ut
+      // alla patruller). Läget och stationssidan slår ihop de här med
+      // stationens passages till en bild.
       //
-      // Skriv EN gång och bara en: en start får inte flyttas i efterhand av
-      // någon som råkat få tag i startkortslänken. Ångra är en admin-åtgärd.
-      // Tidsfönstret hindrar uppenbart påhittade tider; att starten inte får
-      // bekräftas FÖRE patrullens starttid vaktas i gränssnittet — reglerna
-      // kan inte räkna fram startordning × intervall.
-      match /selfStarts/{patrolId} {
+      // Varje stämpel sätts EN gång och kan sedan inte flyttas: startkorts-
+      // länken sprids i patrullen, och en tid som går att skriva om är inget
+      // facit för sekretariatet. Ångra är en admin-åtgärd.
+      //
+      // Tidsfönstret hindrar uppenbart påhittade tider. Att starten inte får
+      // bekräftas FÖRE patrullens starttid, och målet inte före sista
+      // kontrollen, vaktas i gränssnittet — reglerna kan varken räkna fram
+      // startordning × intervall eller läsa alla poängdokument.
+      match /selfPassages/{patrolId} {
+        function inWindow(ts) {
+          return ts is timestamp
+            && ts <= request.time + duration.value(2, 'm')
+            && ts >= request.time - duration.value(12, 'h');
+        }
+        function flagOn(flag) { return compData(cid).get(flag, false) == true; }
+        function baseOk() {
+          return !compIsDemo(cid) && !compClosed(cid)
+            && request.resource.data.keys().hasOnly(['patrolId', 'startAt', 'finishAt'])
+            && request.resource.data.patrolId == patrolId
+            && exists(/databases/$(database)/documents/competitions/$(cid)/patrols/$(patrolId));
+        }
+
         allow read: if true;
+
         allow create: if isCompAdmin(cid) || (
-             !compIsDemo(cid) && !compClosed(cid)
-          && compData(cid).get('selfStart', false) == true
-          && request.resource.data.keys().hasOnly(['patrolId', 'startAt'])
-          && request.resource.data.patrolId == patrolId
-          && exists(/databases/$(database)/documents/competitions/$(cid)/patrols/$(patrolId))
-          && request.resource.data.startAt is timestamp
-          && request.resource.data.startAt <= request.time + duration.value(2, 'm')
-          && request.resource.data.startAt >= request.time - duration.value(12, 'h')
+             baseOk()
+          && (!('startAt'  in request.resource.data) || (flagOn('selfStart')  && inWindow(request.resource.data.startAt)))
+          && (!('finishAt' in request.resource.data) || (flagOn('selfFinish') && inWindow(request.resource.data.finishAt)))
         );
-        allow update, delete: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
+
+        // Ett fält som redan har ett värde måste följa med OFÖRÄNDRAT; ett
+        // tomt fält får fyllas i om dess funktion är påslagen.
+        allow update: if isCompAdmin(cid) || (
+             baseOk()
+          && (('startAt' in resource.data)
+                ? request.resource.data.get('startAt', null) == resource.data.startAt
+                : (!('startAt' in request.resource.data) || (flagOn('selfStart') && inWindow(request.resource.data.startAt))))
+          && (('finishAt' in resource.data)
+                ? request.resource.data.get('finishAt', null) == resource.data.finishAt
+                : (!('finishAt' in request.resource.data) || (flagOn('selfFinish') && inWindow(request.resource.data.finishAt))))
+        );
+
+        allow delete: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
       }
 
       // Start/Mål-station — the station doc ID is the secret in the station

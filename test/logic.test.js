@@ -436,4 +436,13 @@ describe('Höjdpunkter på startkortet', () => {
     const t = texts({ startMs: 0, endMs: 3 * 3600e3 + 12 * 60e3 });
     assert.ok(t.some(x => x === '3 h 12 min på banan'), t.join(' | '));
   });
+
+  test('orimligt kort tid är ett datafel, inte en bragd', () => {
+    // Prickas start och mål av inom samma minut ska raden utebli — inte
+    // stå "0 min på banan" på scoutens minneskort.
+    for (const slut of [0, 30e3, 4 * 60e3]) {
+      const t = texts({ startMs: 0, endMs: slut });
+      assert.ok(!t.some(x => x.includes('på banan')), `${slut} ms gav: ${t.join(' | ')}`);
+    }
+  });
 });

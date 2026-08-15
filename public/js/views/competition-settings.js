@@ -699,6 +699,22 @@ function renderRulesTab(comp, cid, refresh, readOnly) {
             <div class="field-hint" style="margin-top:2px;">Startkortet visar bara tävlingsinformation och vägen till starten tills patrullen tryckt "Bekräfta start" — knappen tänds först när deras starttid passerats. Först då visas kartan och kontrollerna. Bekräftelsen syns i Läget precis som en utcheckning från startstationen.</div>
           </span>
         </label>
+
+        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin-top:var(--sp-3);">
+          <input type="checkbox" id="selfFinish" ${comp.selfFinish === true ? 'checked' : ''} style="margin-top:4px;">
+          <span>
+            <strong>Patrullerna markerar sig i mål själva ${help('comp.selfFinish')}</strong>
+            <div class="field-hint" style="margin-top:2px;">Knappen "Vi är i mål" dyker upp på startkortet när alla kontroller är rapporterade. Startfunktionärens incheckning fungerar som vanligt vid sidan om.</div>
+          </span>
+        </label>
+
+        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin-top:var(--sp-3);">
+          <input type="checkbox" id="autoFinish" ${comp.autoFinish === true ? 'checked' : ''} style="margin-top:4px;">
+          <span>
+            <strong>Registrera målgång automatiskt vid sista kontrollen ${help('comp.autoFinish')}</strong>
+            <div class="field-hint" style="margin-top:2px;">Patrullen räknas som i mål när alla kontroller är rapporterade, med sista rapportens tid. <strong>Slå bara på detta när sista kontrollen ÄR målet</strong> — annars visar Läget patruller som hemma medan de fortfarande går.</div>
+          </span>
+        </label>
       </div>
 
       <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
@@ -738,6 +754,8 @@ function renderRulesTab(comp, cid, refresh, readOnly) {
         maxTimeMinutes: Number(card.querySelector('#st-maxtime').value) || null
       },
       selfStart: card.querySelector('#selfStart').checked,
+      selfFinish: card.querySelector('#selfFinish').checked,
+      autoFinish: card.querySelector('#autoFinish').checked,
       generalInfo: card.querySelector('#generalInfo').value.trim()
     });
     await refresh();

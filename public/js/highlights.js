@@ -19,6 +19,8 @@ const TOP_N = 3;
 // Under så här många rapporterade patruller på en kontroll säger en
 // placering ingenting — "topp 3 av 3" är inte en bragd.
 const MIN_FIELD = 4;
+// Kortare än så är ingen bana, utan en tidsstämpel som blivit fel.
+const MIN_COURSE_MS = 10 * 60000;
 
 function scoreOf(s) {
   if (!s) return null;
@@ -143,8 +145,9 @@ export function patrolHighlights({ patrolId, controls = [], scoresByControl = {}
     out.push({ icon: 'plus', text: `${extra} extrapoäng inhämtade` });
   }
 
-  // Tid på banan.
-  if (startMs != null && endMs != null && endMs > startMs) {
+  // Tid på banan. En orimligt kort tid är ingen bragd utan ett datafel —
+  // t.ex. en patrull som prickats av på start och mål inom samma minut.
+  if (startMs != null && endMs != null && endMs - startMs >= MIN_COURSE_MS) {
     out.push({ icon: 'clock', text: `${fmtDuration(endMs - startMs)} på banan` });
   }
 

@@ -10,7 +10,7 @@
 
 import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import {
-  getCompetition, listPatrols, listStations, createStation, watchPassages, watchSelfStarts, clearSelfStart,
+  getCompetition, listPatrols, listStations, createStation, watchPassages, watchSelfPassages, clearSelfPassage,
   watchControls, watchScoresForControl, getTrack, getControlMeta,
   updateCompetition, updateControl, setPatrolUtgatt
 } from '../store.js';
@@ -56,22 +56,43 @@ export async function renderLaget(app, user, cid) {
 
   let patrols = [];
   let controls = [];
-  // Två källor till "har startat": startstationens utcheckning och
-  // patrullens egen bekräftelse på startkortet. De hålls isär i råform och
-  // slås ihop till EN bild — resten av vyn ska inte behöva veta vilken det
-  // var (utom i tabellen, där det märks ut).
+  // Start och mål kan komma från tre håll: start/mål-stationens av-
+  // prickningar, patrullens egna knappar på startkortet, och — om tävlingen
+  // slagit på det — en målgång HÄRLEDD ur sista kontrollrapporten. Råformerna
+  // hålls isär och slås ihop till EN bild; resten av vyn läser bara
+  // `passages` och behöver inte veta varifrån tiden kom.
+  //
+  // Rangordningen är densamma överallt: en funktionär som SETT patrullen
+  // väger tyngst, sedan patrullens egen knapptryckning, sist det härledda.
   let stationPassages = {};
-  let selfStarts = {};
-  let passages = {};   // patrolId -> { startAt, finishAt, selfStarted? }
+  let selfPassages = {};
+  let passages = {};   // patrolId -> { startAt, finishAt, selfStarted?, selfFinished?, autoFinished? }
 
   const mergePassages = () => {
     passages = {};
     for (const [pid, row] of Object.entries(stationPassages)) passages[pid] = { ...row };
-    for (const [pid, row] of Object.entries(selfStarts)) {
+    for (const [pid, row] of Object.entries(selfPassages)) {
       const cur = passages[pid] || (passages[pid] = {});
-      // Stationens utcheckning väger tyngre: en funktionär som prickat av
-      // patrullen har sett dem gå.
       if (!cur.startAt && row.startAt) { cur.startAt = row.startAt; cur.selfStarted = true; }
+      if (!cur.finishAt && row.finishAt) { cur.finishAt = row.finishAt; cur.selfFinished = true; }
+    }
+    if (comp.autoFinish !== true) return;
+    // Härledd målgång: alla kontroller rapporterade → sista rapportens tid.
+    // Ingen skrivning — måltiden ligger redan i poängdatan. Se hjälptexten
+    // för varför den bara ska användas när sista kontrollen ÄR målet.
+    if (!controls.length) return;
+    for (const p of patrols) {
+      const cur = passages[p.id] || (passages[p.id] = {});
+      if (cur.finishAt) continue;
+      let senast = null, antal = 0;
+      for (const c of controls) {
+        const sc = (scoresByCtrl[c.id] || []).find(x => x.patrolId === p.id);
+        if (!sc) break;                       // lucka → inte i mål
+        antal++;
+        const t = toDate(sc.clientReportedAt ?? sc.reportedAt);
+        if (t && (!senast || t > senast)) senast = t;
+      }
+      if (antal === controls.length && senast) { cur.finishAt = senast; cur.autoFinished = true; }
     }
   };
   let scoresByCtrl = {}; // ctrlId -> [{patrolId, reportedAt}]
@@ -228,17 +249,15 @@ export async function renderLaget(app, user, cid) {
     unsubs.push(watchPassages(cid, station.id, rows => {
       stationPassages = {};
       rows.forEach(p => { stationPassages[p.id] = p; });
-      mergePassages();
       renderStats();
     }));
   };
   subscribePassages();
 
   // Självbekräftade starter finns även när tävlingen saknar startstation.
-  unsubs.push(watchSelfStarts(cid, rows => {
-    selfStarts = {};
-    rows.forEach(r => { selfStarts[r.id] = r; });
-    mergePassages();
+  unsubs.push(watchSelfPassages(cid, rows => {
+    selfPassages = {};
+    rows.forEach(r => { selfPassages[r.id] = r; });
     renderStats();
   }));
 
@@ -317,7 +336,9 @@ export async function renderLaget(app, user, cid) {
       const lateStartMin = plannedAt ? Math.floor((now - plannedAt) / 60000) : 0;
       const lateStart = !utgatt && !started && lateStartMin >= 3;
       return {
-        patrol: p, startAt, finishAt, selfStarted: !!pass.selfStarted, reports, position, lastReport, lastSeen,
+        patrol: p, startAt, finishAt,
+        selfStarted: !!pass.selfStarted, selfFinished: !!pass.selfFinished, autoFinished: !!pass.autoFinished,
+        reports, position, lastReport, lastSeen,
         started, active, silentMin, lateStart, lateStartMin, utgatt,
         warn: !utgatt && ((active && silentMin != null && silentMin >= WARN_SILENT_MIN) || (!started && lateStartMin >= 3))
       };
@@ -400,6 +421,9 @@ export async function renderLaget(app, user, cid) {
   // --- Render ------------------------------------------------------------------
   function renderStats() {
     if (!wrap.isConnected) return;
+    // Sammanslagningen görs här, inte i varje prenumeration: den härledda
+    // målgången beror på poängdatan och måste räknas om när den ändras.
+    mergePassages();
     const { now, perPatrol, ctrlStats } = compute();
 
     const waiting = perPatrol.filter(p => !p.started).length;
@@ -467,21 +491,27 @@ export async function renderLaget(app, user, cid) {
             const p = pp.patrol;
             const planned = patrolStartTime(comp, p, patrols.length, now);
             const status = pp.utgatt ? `<span class="badge badge-gray" title="${escapeHtml(pp.utgatt.note || '')}">Utgått${pp.utgatt.at ? ' ' + formatTime(pp.utgatt.at) : ''}</span>`
-              : pp.finishAt ? `<span class="badge badge-green">I mål ${formatTime(pp.finishAt)}</span>`
+              : pp.finishAt ? `<span class="badge badge-green" title="${pp.autoFinished
+                    ? 'Härledd ur sista kontrollrapporten — ingen har sett patrullen i mål'
+                    : pp.selfFinished ? 'Patrullen markerade sig i mål på sitt startkort'
+                    : 'Incheckad av funktionär vid målet'}">I mål ${formatTime(pp.finishAt)}${
+                    pp.autoFinished ? ' · auto' : pp.selfFinished ? ' · själv' : ''}</span>`
               : pp.lateStart ? `<span class="badge badge-orange">Sen till start · ${pp.lateStartMin} min</span>`
               : pp.warn ? `<span class="badge badge-pink">Tyst i ${pp.silentMin} min</span>`
               : pp.active ? '<span class="badge badge-blue">Ute</span>'
               : '<span class="badge badge-gray">Ej startad</span>';
+            const undoFinish = (isAdmin && pp.selfFinished)
+              ? ` <button class="btn btn-ghost btn-sm" data-undo-self="${escapeHtml(p.id)}" data-field="finishAt" title="Ta bort patrullens egen målmarkering">Ångra mål</button>` : '';
             const dnfBtn = !isAdmin ? '' : (pp.utgatt
               ? ` <button class="btn btn-ghost btn-sm" data-undo-utgatt="${escapeHtml(p.id)}" title="Ta tillbaka patrullen i tävlingen">Ångra</button>`
               : (!pp.finishAt ? ` <button class="btn btn-ghost btn-sm" data-set-utgatt="${escapeHtml(p.id)}" title="Markera patrullen som utgått (DNF)">Utgått…</button>` : ''));
             return `<tr style="${pp.warn ? 'background:#fdf0f6;' : ''}${pp.utgatt ? 'opacity:.6;' : ''}">
               <td class="num">${p.number ?? ''}</td>
               <td><strong>${escapeHtml(p.name || '')}</strong> <span class="muted t-sm"><span class="dot ${avdShort(p.avdelning)}"></span>${escapeHtml(p.avdelning || '')}</span></td>
-              <td>${status}${dnfBtn}</td>
+              <td>${status}${undoFinish}${dnfBtn}</td>
               <td class="t-sm">${pp.startAt
                 ? formatTime(pp.startAt) + (pp.selfStarted
-                    ? ` <span class="muted" title="Patrullen bekräftade själv på sitt startkort">·&nbsp;själv</span>${isAdmin ? ` <button class="btn btn-ghost btn-sm" data-undo-selfstart="${escapeHtml(p.id)}" title="Ta bort patrullens egen startbekräftelse">Ångra</button>` : ''}`
+                    ? ` <span class="muted" title="Patrullen bekräftade själv på sitt startkort">·&nbsp;själv</span>${isAdmin ? ` <button class="btn btn-ghost btn-sm" data-undo-self="${escapeHtml(p.id)}" data-field="startAt" title="Ta bort patrullens egen startbekräftelse">Ångra</button>` : ''}`
                     : '')
                 : (planned ? `<span class="muted">plan ${escapeHtml(planned)}</span>` : '—')}</td>
               <td class="num">${pp.reports.length}/${controls.length || '—'}</td>
@@ -531,15 +561,17 @@ export async function renderLaget(app, user, cid) {
     // Startstationen kan inte ångra en självbekräftad start (den ligger i
     // patrullens egen collection, anonymt bara skrivbar en gång) — det är
     // därför den knappen finns här.
-    wrap.querySelectorAll('[data-undo-selfstart]').forEach(btn => btn.addEventListener('click', async () => {
-      const p = patrols.find(x => x.id === btn.dataset.undoSelfstart);
+    wrap.querySelectorAll('[data-undo-self]').forEach(btn => btn.addEventListener('click', async () => {
+      const p = patrols.find(x => x.id === btn.dataset.undoSelf);
       if (!p) return;
+      const field = btn.dataset.field;
+      const vad = field === 'startAt' ? 'startbekräftelse' : 'målmarkering';
       if (!(await confirmDialog(
-        `Ta bort ${p.name || 'patrullens'} egen startbekräftelse? De kan då bekräfta igen på sitt startkort.`,
+        `Ta bort ${p.name || 'patrullens'} egen ${vad}? De kan då trycka igen på sitt startkort.`,
         { okLabel: 'Ta bort', danger: true }))) return;
       try {
-        await clearSelfStart(cid, p.id);
-        toast('Startbekräftelsen borttagen');
+        await clearSelfPassage(cid, p.id, field);
+        toast(field === 'startAt' ? 'Startbekräftelsen borttagen' : 'Målmarkeringen borttagen');
       } catch (e) { toast('Fel: ' + e.message, 'error'); }
     }));
 

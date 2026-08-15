@@ -349,7 +349,8 @@ export async function copyCompetition(cid, { name, shortName, year, date }, user
   if (Array.isArray(src.avdelningar) && src.avdelningar.length) data.avdelningar = src.avdelningar;
   for (const k of ['startTimes', 'startFinish', 'parking', 'management',
                    'publicScores', 'publicControls', 'autoReleaseControls',
-                   'anonymousControls', 'autoCloseControls', 'selfStart']) {
+                   'anonymousControls', 'autoCloseControls',
+                   'selfStart', 'selfFinish', 'autoFinish']) {
     if (src[k] !== undefined) data[k] = src[k];
   }
   if (src.registration) {
@@ -1013,36 +1014,40 @@ export function watchPassages(cid, stationId, cb) {
   );
 }
 
-// --- Självbekräftad start -----------------------------------------------------
-// Patrullen trycker "Bekräfta start" på sitt startkort. Egen collection: kortet
+// --- Patrullens egna avprickningar -------------------------------------------
+// "Bekräfta start" och "Vi är i mål" på startkortet. Egen collection: kortet
 // känner inte till stations-id:t (hemligt). Läget och stationssidan slår ihop
 // dessa med stationens passages så bilden blir en och samma.
 
-export function watchSelfStarts(cid, cb) {
+export function watchSelfPassages(cid, cb) {
   return onSnapshot(
-    collection(db, 'competitions', cid, 'selfStarts'),
+    collection(db, 'competitions', cid, 'selfPassages'),
     snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() })))
   );
 }
 
-export async function listSelfStarts(cid) {
-  const snap = await getDocs(collection(db, 'competitions', cid, 'selfStarts'));
+export async function listSelfPassages(cid) {
+  const snap = await getDocs(collection(db, 'competitions', cid, 'selfPassages'));
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
-// Klienttid, inte serverTimestamp — samma skäl som stationens utcheckning:
-// en bekräftelse som synkas när nätet kommer tillbaka ska bära ögonblicket
-// då knappen trycktes. Reglerna tillåter bara CREATE, så en start som redan
-// finns kastar — det är meningen och anroparen ska svälja det.
-export async function confirmSelfStart(cid, patrolId) {
+// field: 'startAt' | 'finishAt'.
+//
+// Klienttid, inte serverTimestamp — samma skäl som stationens utcheckning: en
+// avprickning som synkas när nätet kommer tillbaka ska bära ögonblicket då
+// knappen trycktes. Reglerna låter varje stämpel sättas EN gång; ett andra
+// försök kastar, och det är meningen.
+export async function confirmSelfPassage(cid, patrolId, field) {
   await setDoc(
-    doc(db, 'competitions', cid, 'selfStarts', patrolId),
-    { patrolId, startAt: Timestamp.fromDate(new Date()) }
+    doc(db, 'competitions', cid, 'selfPassages', patrolId),
+    { patrolId, [field]: Timestamp.fromDate(new Date()) },
+    { merge: true }
   );
 }
 
-export async function clearSelfStart(cid, patrolId) {
-  await deleteDoc(doc(db, 'competitions', cid, 'selfStarts', patrolId));
+// Admin ångrar: ta bort en stämpel utan att röra den andra.
+export async function clearSelfPassage(cid, patrolId, field) {
+  await updateDoc(doc(db, 'competitions', cid, 'selfPassages', patrolId), { [field]: deleteField() });
 }
 
 // field: 'startAt' | 'finishAt'. value=true stamps now, value=false clears.

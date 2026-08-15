@@ -7,7 +7,7 @@
 
 import { db, doc, collection, onSnapshot } from './firebase.js';
 import {
-  getCompetition, getStation, listPatrols, watchPassages, watchSelfStarts, setPassage,
+  getCompetition, getStation, listPatrols, watchPassages, watchSelfPassages, setPassage,
   listControls, getTrack
 } from './store.js';
 import { escapeHtml, toast, confirmDialog, patrolStartTime, patrolStartDateTime, avdShort } from './utils.js';
@@ -25,21 +25,26 @@ function parsePath() {
 
 let comp = null;
 let patrols = [];
-// Två källor till "har startat": den här stationens utcheckningar och
-// patrullernas egna bekräftelser på startkortet (comp.selfStart). Råformerna
-// hålls isär; `passages` är sammanslagningen som resten av sidan läser.
+// Start och mål kan komma från två håll här: den här stationens avprickningar
+// och patrullernas egna knappar på startkortet (comp.selfStart/selfFinish).
+// Råformerna hålls isär; `passages` är sammanslagningen som resten av sidan
+// läser. Funktionärens avprickning väger tyngst — den bygger på att någon
+// faktiskt sett patrullen.
+//
+// Den HÄRLEDDA målgången (comp.autoFinish) räknas medvetet INTE in här:
+// stationen ska visa vem som fysiskt passerat målet, inte vem systemet gissar
+// är hemma. Läget har hela bilden.
 let stationPassages = {};
-let selfStarts = {};
-let passages = {};      // patrolId -> passage doc (+ selfStarted)
+let selfPassages = {};
+let passages = {};      // patrolId -> passage doc (+ selfStarted/selfFinished)
 
 function mergePassages() {
   passages = {};
   for (const [pid, row] of Object.entries(stationPassages)) passages[pid] = { ...row };
-  for (const [pid, row] of Object.entries(selfStarts)) {
+  for (const [pid, row] of Object.entries(selfPassages)) {
     const cur = passages[pid] || (passages[pid] = {});
-    // Funktionärens avprickning väger tyngst — den bygger på att någon
-    // faktiskt sett patrullen gå.
     if (!cur.startAt && row.startAt) { cur.startAt = row.startAt; cur.selfStarted = true; }
+    if (!cur.finishAt && row.finishAt) { cur.finishAt = row.finishAt; cur.selfFinished = true; }
   }
 }
 let mode = 'start';     // 'start' | 'mal'
@@ -124,9 +129,9 @@ async function main() {
     mergePassages();
     render();
   });
-  watchSelfStarts(cid, rows => {
-    selfStarts = {};
-    rows.forEach(r => { selfStarts[r.id] = r; });
+  watchSelfPassages(cid, rows => {
+    selfPassages = {};
+    rows.forEach(r => { selfPassages[r.id] = r; });
     mergePassages();
     render();
   });
@@ -319,7 +324,7 @@ function patrolBtn(p) {
   const sub = p.utgatt
     ? `<span class="st-utgatt-note">Utgått${pass.startAt && !checked ? ' · startade ' + fmtClock(pass.startAt) : ''}</span>${checked ? ` · ${mode === 'start' ? 'startade' : 'i mål'} ${fmtClock(pass[field])}` : ''}`
     : checked
-    ? `<span class="st-checked-at">${mode === 'start' ? 'Startade' : 'I mål'} ${fmtClock(pass[field])}</span>${mode === 'start' && pass.selfStarted ? ' <span class="st-patrol-time">· bekräftade själva</span>' : ''}${pendingNote}`
+    ? `<span class="st-checked-at">${mode === 'start' ? 'Startade' : 'I mål'} ${fmtClock(pass[field])}</span>${(mode === 'start' ? pass.selfStarted : pass.selfFinished) ? ' <span class="st-patrol-time">· markerade själva</span>' : ''}${pendingNote}`
     : (mode === 'start'
         ? (lateMin > 0
             ? `<span class="st-late-note">skulle startat ${escapeHtml(planned || '')} · ${lateMin} min sen</span>`
@@ -345,12 +350,12 @@ async function onTap(patrolId) {
   // med en scout framför sig. Fel (t.ex. rules-avslag) ytas via catch;
   // kö-läget syns som "väntar på nät" på knappen tills servern bekräftat.
   const fail = (e) => { console.error(e); toast('Kunde inte spara: ' + e.message, 'error'); };
-  // En självbekräftad start ligger i patrullens egen collection, inte i
-  // stationens passages — den kan bara ångras av en administratör (reglerna
-  // tillåter bara create anonymt). Säg det i klartext i stället för att låta
-  // en ångra-dialog misslyckas tyst.
-  if (mode === 'start' && pass.selfStarted) {
-    toast(`${p.name} bekräftade sin start själva ${fmtClock(pass.startAt)}. Behöver den ångras gör tävlingsledningen det i Läget.`);
+  // Patrullens egna avprickningar ligger i deras egen collection, inte i
+  // stationens passages — de kan bara ångras av en administratör (reglerna
+  // låter varje stämpel sättas en gång och aldrig ändras). Säg det i klartext
+  // i stället för att låta en ångra-dialog misslyckas tyst.
+  if (mode === 'start' ? pass.selfStarted : pass.selfFinished) {
+    toast(`${p.name} ${mode === 'start' ? 'bekräftade sin start' : 'markerade sig i mål'} själva ${fmtClock(pass[field])}. Behöver det ångras gör tävlingsledningen det i Läget.`);
     return;
   }
   if (pass[field]) {

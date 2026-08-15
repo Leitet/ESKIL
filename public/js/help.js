@@ -126,6 +126,31 @@ export const HELP = {
     ]
   },
 
+  'comp.selfFinish': {
+    title: 'Patrullerna markerar sig i mål själva',
+    body: [
+      'Knappen "Vi är i mål" dyker upp på startkortet först när alla kontroller är rapporterade — patrullen kan alltså inte checka in sig medan de fortfarande har kontroller kvar.',
+      'Det här är ett komplement, inte en ersättning: startfunktionären kan checka in patrullen på stationssidan precis som vanligt, och Läget visar båda i samma kolumn.'
+    ],
+    faq: [
+      { q: 'Vad händer om de trycker för tidigt?', a: 'Det går inte — knappen finns inte förrän sista kontrollen är rapporterad. Och tiden går inte att flytta i efterhand; behöver den ångras gör en administratör det i Läget.' },
+      { q: 'En patrull hoppade över en kontroll — kan de markera sig i mål?', a: 'Nej. Då får funktionären checka in dem på stationssidan, eller så markeras patrullen som utgången i Läget.' }
+    ]
+  },
+
+  'comp.autoFinish': {
+    title: 'Registrera målgång automatiskt',
+    body: [
+      'Patrullen räknas som i mål så snart alla kontroller är rapporterade. Tiden som används är sista rapportens — alltså när kontrollanten tryckte, inte när den synkades.',
+      'Ingen tid skrivs till databasen: målgången härleds ur poängen. Prickar en funktionär in patrullen, eller markerar de sig själva, väger den riktiga tiden alltid tyngre. Läget märker de härledda med "auto" så du ser skillnad på sett och antaget.'
+    ],
+    warn: 'Slå bara på detta när sista kontrollen ÄR målet. Ligger målet en promenad bort visar Läget patrullen som hemma medan de fortfarande går — och det är den listan sekretariatet använder för att veta vem som är kvar ute i skogen.',
+    faq: [
+      { q: 'Kan jag kombinera med de andra sätten?', a: 'Ja. En funktionärs incheckning och patrullens egen markering slår alltid den automatiska — den fyller bara i luckorna.' },
+      { q: 'Vad händer om en poäng rättas efteråt?', a: 'Målgången räknas om, eftersom den härleds ur poängen. Rättningar behåller dessutom ursprungstiden — en korrigering flyttar alltså inte målgången.' }
+    ]
+  },
+
   'comp.district': {
     title: 'Scoutdistrikt',
     body: [
