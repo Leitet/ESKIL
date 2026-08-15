@@ -11,7 +11,7 @@ import {
 import { navigate } from '../router.js';
 import { initMapPicker } from '../mappicker.js';
 import { icon } from '../icons.js';
-import { help } from '../help.js';
+import { help, helpOnButton } from '../help.js';
 import { openPlaceModal } from '../place-modal.js';
 import { compPlaces } from '../places.js';
 import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
@@ -59,10 +59,12 @@ export async function renderControls(app, user, cid) {
         <h1 class="t-d2">Kontroller</h1>
       </div>
       <div class="btn-row">
-        <button class="btn btn-ghost btn-sm" id="field-pack" title="Alla kontrollers kompletta PDF:er i en fil — placering, instruktioner, nödinfo och reservprotokoll. Varje kontroll börjar på en ny framsida.">Fältpaket — alla kontroller (PDF)</button>${help('comp.faltpaket')}
+        ${helpOnButton(
+          `<button class="btn btn-secondary btn-sm" id="field-pack" title="Alla kontrollers kompletta PDF:er i en fil — placering, instruktioner, nödinfo och reservprotokoll. Varje kontroll börjar på en ny framsida.">${icon('file-text', { size: 14 })} Fältpaket (PDF)</button>`,
+          'comp.faltpaket')}
         ${isAdmin ? `
-          <button class="btn btn-ghost btn-sm" id="open-all">Öppna alla</button>
-          <button class="btn btn-ghost btn-sm" id="close-all">Stäng alla</button>
+          <button class="btn btn-secondary btn-sm" id="open-all">Öppna alla</button>
+          <button class="btn btn-secondary btn-sm" id="close-all">Stäng alla</button>
           <button class="btn btn-primary" id="new">+ Ny kontroll</button>
         ` : ''}
       </div>
