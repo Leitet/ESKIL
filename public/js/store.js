@@ -86,6 +86,26 @@ async function readAccess(cid) {
   } catch { return null; } // not a member — denied read is expected
 }
 
+// Alla tävlingar med sina access-dokument inlästa (adminEmails/userEmails/
+// ekonomiEmails ligger i private/access sedan Fas 3c och är RADERADE från det
+// publika dokumentet). Super-admin får läsa alla; för andra faller de
+// otillgängliga tillbaka på tävlingsdokumentets legacy-fält.
+export async function listCompetitionsWithAccess() {
+  const snap = await getDocs(collection(db, 'competitions'));
+  const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const accesses = await Promise.all(all.map(c => readAccess(c.id)));
+  return all.map((c, i) => {
+    const a = accesses[i] || {};
+    return {
+      ...c,
+      adminEmails: a.adminEmails || c.adminEmails || [],
+      userEmails: a.userEmails || c.userEmails || [],
+      ekonomiEmails: a.ekonomiEmails || c.ekonomiEmails || [],
+      admins: a.admins || c.admins || []
+    };
+  });
+}
+
 export async function listCompetitionsForUser(user) {
   const snap = await getDocs(collection(db, 'competitions'));
   const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));

@@ -156,8 +156,13 @@ service cloud.firestore {
       allow read: if true; // public read of competition meta is OK (names only)
       // Only super-admin can create demo competitions — regular users creating
       // one accidentally shouldn't be possible.
+      // MUST read `demo` with .get(): createCompetition sätter inte fältet, och
+      // en direktläsning av en saknad property är ett evaluation ERROR. Rules'
+      // `||` är feltolerant bara när den andra operanden är true — super-admin
+      // slapp därför igenom (error || true) medan varje vanlig användare fick
+      // "insufficient permissions" när de skapade sin första tävling.
       allow create: if isSignedIn()
-        && (request.resource.data.demo != true || isSuperAdmin());
+        && (request.resource.data.get('demo', false) != true || isSuperAdmin());
       // Writes on a demo competition are locked to super-admin.
       allow update: if isSuperAdmin()
         || (isCompAdmin(cid) && !compIsDemo(cid));

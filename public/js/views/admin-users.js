@@ -6,7 +6,7 @@
 // predate that change show "—" until the user next signs in.
 
 import { layout } from '../app.js';
-import { listAllUsers, updateUserRole, deleteUser, listCompetitionsForUser } from '../store.js';
+import { listAllUsers, updateUserRole, deleteUser, listCompetitionsWithAccess } from '../store.js';
 import { escapeHtml, formatDate, formatTime, toast, confirmDialog } from '../utils.js';
 import { crumbs, setDocTitle } from '../nav.js';
 import { navigate } from '../router.js';
@@ -40,7 +40,9 @@ export async function renderAdminUsers(app, user) {
   try {
     [users, comps] = await Promise.all([
       listAllUsers(),
-      listCompetitionsForUser(user) // super-admin sees all
+      // Med access-dokumenten inlästa: rollerna per tävling ligger i
+      // private/access sedan Fas 3c, inte på det publika dokumentet.
+      listCompetitionsWithAccess()
     ]);
   } catch (e) {
     console.error(e);
@@ -65,13 +67,20 @@ export async function renderAdminUsers(app, user) {
         </div>
         <div class="btn-row"><a class="btn btn-ghost btn-sm" href="/app/admin/system" data-link>Systemhubb</a></div>
       </div>
+      <div class="card mb-4" style="padding:var(--sp-3) var(--sp-4);border-left:3px solid var(--scout-blue);">
+        <p class="t-sm" style="margin:0;"><strong>Två skilda saker:</strong> <em>Kontorollen</em> (user / super-admin)
+        styr bara åtkomst till ESKIL:s systemsidor — den säger ingenting om tävlingar.
+        <em>Roller per tävling</em> (admin, ekonomi, läser) sätts på respektive tävling under
+        Inställningar → Användare och gäller bara där. Listan nedan visar konton som har loggat in
+        minst en gång; inbjudna som ännu inte loggat in listas separat längst ned.</p>
+      </div>
       <div class="table-wrap">
         <table class="t">
           <thead>
             <tr>
               <th>E-post</th>
-              <th>Roll</th>
-              <th>Tävlingar</th>
+              <th>Kontoroll</th>
+              <th>Roller per tävling</th>
               <th>Senast inloggad</th>
               <th>Skapad</th>
               <th class="actions"></th>
@@ -86,6 +95,7 @@ export async function renderAdminUsers(app, user) {
         "Senast inloggad" registreras vid varje inloggning. Äldre konton som
         inte loggat in efter uppdateringen visar "—" tills de kommer tillbaka.
       </p>
+      ${pendingHtml()}
     `;
 
     wrap.querySelectorAll('[data-role-change]').forEach(sel => {
@@ -133,20 +143,53 @@ export async function renderAdminUsers(app, user) {
     });
   }
 
+  // Inbjudna som ännu inte loggat in: e-postadresser som står som admin/
+  // ekonomi/läsare på någon tävling men saknar konto (users/{uid} skapas
+  // först vid första inloggningen). Det här är svaret på "jag bjöd in dem,
+  // varför syns de inte i listan?".
+  function pendingHtml() {
+    const known = new Set(users.map(u => String(u.email || '').toLowerCase()).filter(Boolean));
+    const pending = new Map(); // email -> [{ comp, role }]
+    for (const c of comps) {
+      for (const [list, role] of [[c.adminEmails, 'admin'], [c.ekonomiEmails, 'ekonomi'], [c.userEmails, 'las']]) {
+        for (const raw of list || []) {
+          const e = String(raw || '').trim().toLowerCase();
+          if (!e || known.has(e)) continue;
+          const rows = pending.get(e) || [];
+          if (!rows.some(r => r.c.id === c.id)) rows.push({ c, role });
+          pending.set(e, rows);
+        }
+      }
+    }
+    if (!pending.size) return '';
+    return `
+      <h2 class="t-h3" style="margin:var(--sp-6) 0 var(--sp-2);">Inbjudna som inte loggat in ännu (${pending.size})</h2>
+      <p class="muted t-sm" style="margin-top:0;">Rättigheterna gäller redan — de aktiveras automatiskt vid personens
+      första inloggning med exakt den här adressen. Något konto skapas alltså inte i förväg.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>E-post</th><th>Inbjuden till</th></tr></thead>
+          <tbody>
+            ${[...pending.entries()].sort((a, b) => a[0].localeCompare(b[0], 'sv')).map(([email, rows]) => `
+              <tr>
+                <td>${escapeHtml(email)}</td>
+                <td><div class="row wrap" style="gap:4px;">${rows.map(({ c, role }) =>
+                  `<a class="badge ${ROLE_BADGE[role]}" href="/app/c/${escapeHtml(c.id)}/settings" data-link title="${escapeHtml(c.name)} — ${ROLE_LABEL[role]}" style="text-decoration:none;">${escapeHtml(c.shortName || c.name)} · ${ROLE_LABEL[role]}</a>`
+                ).join(' ')}</div></td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
   function rowHtml(u) {
     const uEmail = String(u.email || '').toLowerCase();
-    const isAdminOf = (c) =>
-      (c.admins || []).includes(u.id) || (c.adminEmails || []).includes(uEmail);
-    const mine = comps.filter(c =>
-      isAdminOf(c) || (c.userEmails || []).includes(uEmail) ||
-      (c.users || []).some(x => typeof x === 'string' && x === u.id)
-    );
+    const mine = comps.map(c => ({ c, role: roleIn(c, uEmail, u.id) })).filter(x => x.role);
     const compLabels = mine.length
-      ? mine.map(c => {
-          const isAdmin = isAdminOf(c);
-          return `<span class="badge ${isAdmin ? 'badge-blue' : 'badge-gray'}" title="${escapeHtml(c.name)}">${escapeHtml(c.shortName || c.name)}${isAdmin ? ' · admin' : ''}</span>`;
-        }).join(' ')
-      : '<span class="muted t-sm">—</span>';
+      ? mine.map(({ c, role }) =>
+          `<a class="badge ${ROLE_BADGE[role]}" href="/app/c/${escapeHtml(c.id)}/settings" data-link title="${escapeHtml(c.name)} — ${ROLE_LABEL[role]}" style="text-decoration:none;">${escapeHtml(c.shortName || c.name)} · ${ROLE_LABEL[role]}</a>`
+        ).join(' ')
+      : '<span class="muted t-sm">— ingen tävling</span>';
     const self = u.id === user.uid;
     return `
       <tr>
@@ -170,6 +213,18 @@ export async function renderAdminUsers(app, user) {
       </tr>
     `;
   }
+}
+
+// Vilken roll en e-post har PÅ EN TÄVLING (inget att göra med kontorollen
+// user/super-admin). Admin vinner över ekonomi som vinner över läsrättighet.
+const ROLE_LABEL = { admin: 'admin', ekonomi: 'ekonomi', las: 'läser' };
+const ROLE_BADGE = { admin: 'badge-blue', ekonomi: 'badge-green', las: 'badge-gray' };
+function roleIn(c, email, uid) {
+  if ((c.admins || []).includes(uid) || (c.adminEmails || []).includes(email)) return 'admin';
+  if ((c.ekonomiEmails || []).includes(email)) return 'ekonomi';
+  if ((c.userEmails || []).includes(email)) return 'las';
+  if ((c.users || []).some(x => typeof x === 'string' && x === uid)) return 'las';
+  return null;
 }
 
 function msOf(ts) {
