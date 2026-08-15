@@ -152,7 +152,11 @@ function ensureStyles() {
   const st = document.createElement('style');
   st.textContent = `
     #eskil-broadcast {
-      position: fixed; top: 0; left: 0; right: 0; z-index: 900;
+      /* Över ett öppet blad (.sheet-overlay = 1100) men under återkopplings-
+         toasten (1400). Ett kritiskt meddelande ska synas även när någon har
+         poängbladet öppet — annars låg den pulserande röda bannern bakom
+         bladets mörka backdrop och texten var oläslig tills bladet stängdes. */
+      position: fixed; top: 0; left: 0; right: 0; z-index: 1200;
       display: flex; flex-direction: column;
       /* Många meddelanden får aldrig täcka hela mobilskärmen — stacken
          scrollar internt och sidan förskjuts bara med stackens synliga höjd. */
@@ -326,7 +330,12 @@ function doAck(msgId) {
   const local = loadLocal();
   const st = local[msgId] || (local[msgId] = {});
   st.ackAt = new Date().toISOString();
-  saveLocal(local);
+  // keepIds skyddar aktiva meddelandens tillstånd från 30-poster-cappen. Utan
+  // det kunde ett långlivat (gammalt `at`) aktivt meddelande som JUST bekräftats
+  // vräkas direkt av saveLocal — ackAt förlorades, bannern kom tillbaka och
+  // funktionären uppmanades bekräfta i evighet.
+  const keepIds = new Set(activeMsgs().map(m => m.id));
+  saveLocal(local, keepIds);
   haptic([12, 40, 12]);
   // Offline: promisen förblir pending tills Firestore-kön synkat — det lokala
   // ✓:t står sig. Ett AVSLAG betyder med append-only-reglerna att identiteten
@@ -337,7 +346,7 @@ function doAck(msgId) {
   // Kvitterade banners viker undan av sig själva efter en stund.
   setTimeout(() => {
     const l = loadLocal();
-    if (l[msgId]?.ackAt) { l[msgId].hidden = true; saveLocal(l); render(); }
+    if (l[msgId]?.ackAt) { l[msgId].hidden = true; saveLocal(l, new Set(activeMsgs().map(m => m.id))); render(); }
   }, 2500);
   render();
 }
@@ -395,7 +404,11 @@ export function ackBroadcast(id) { doAck(id); }
 
 // Systemnotisernas tillstånd, för panelens "aktivera notiser"-rad.
 export function notificationState() {
-  if (!canNotify()) return null;
+  // Skilj "stöds inte" (t.ex. iOS Safari i vanlig flik, window.Notification
+  // saknas) från "default". Utan det behandlade chat.js null som 'default' och
+  // ritade en "Aktivera notiser"-knapp som bara kastade ReferenceError vid
+  // klick — en död knapp för en hel enhetsklass.
+  if (!canNotify()) return 'unsupported';
   return Notification.permission;
 }
 export async function requestNotifications() {

@@ -126,15 +126,23 @@ export function mountMessages({ cid, kind, refId, enabled = true } = {}) {
     const notif = overlay.querySelector('#emb-notif');
     if (notif) {
       const läge = notificationState();
-      notif.innerHTML = läge === 'granted'
-        ? `Notiser är aktiva på den här enheten ${icon('check', { size: 13 })}`
-        : läge === 'denied'
-          ? 'Notiser är blockerade i webbläsarens inställningar.'
-          : `<button type="button" id="emb-enable">Aktivera notiser på den här enheten</button>
-             <div class="emb-notif-hint">Då syns nya meddelanden även när skärmen visar något annat.</div>`;
-      notif.querySelector('#emb-enable')?.addEventListener('click', async () => {
-        await requestNotifications(); ritaPanel();
-      });
+      // Enheter utan Notification-API (t.ex. iOS Safari i vanlig flik) ska inte
+      // se en död "Aktivera"-knapp — göm hela raden i stället.
+      if (läge === 'unsupported') {
+        notif.innerHTML = '';
+        notif.hidden = true;
+      } else {
+        notif.hidden = false;
+        notif.innerHTML = läge === 'granted'
+          ? `Notiser är aktiva på den här enheten ${icon('check', { size: 13 })}`
+          : läge === 'denied'
+            ? 'Notiser är blockerade i webbläsarens inställningar.'
+            : `<button type="button" id="emb-enable">Aktivera notiser på den här enheten</button>
+               <div class="emb-notif-hint">Då syns nya meddelanden även när skärmen visar något annat.</div>`;
+        notif.querySelector('#emb-enable')?.addEventListener('click', async () => {
+          await requestNotifications(); ritaPanel();
+        });
+      }
     }
   };
 
