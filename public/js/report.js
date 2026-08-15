@@ -646,9 +646,13 @@ async function main() {
         );
         removeFromQueue(cid, ctrlId, patrol.id);
         haptic([12, 40, 12]);
-        rtoast(existing ? 'Poäng uppdaterat' : 'Poäng sparat');
         sync.render();
+        // Stäng bladet FÖRST, sedan toasten: rtoast lämnar över till bladets
+        // notisrad så länge bladet är öppet, och den raden försvinner med
+        // bladet. En kontrollant i skogen ska se att poängen gick fram, så
+        // bekräftelsen måste ligga kvar på sidan efter att bladet glidit ner.
         close();
+        rtoast(existing ? 'Poäng uppdaterat' : 'Poäng sparat');
       } catch (e) {
         if (isPermanentError(e)) {
           // Firestore actively rejected the write (e.g. the control was just
@@ -666,9 +670,12 @@ async function main() {
         // will be retried by trySync() when the network comes back.
         console.warn('[ESKIL] score queued for later sync:', e.message);
         haptic(20);
-        rtoast('Sparat offline — synkas när nätet kommer tillbaka');
         sync.render();
+        // Se kommentaren i success-grenen: bekräftelsen måste överleva att
+        // bladet stängs. Extra viktigt här — "sparat offline" är hela
+        // tryggheten när nätet är borta.
         close();
+        rtoast('Sparat offline — synkas när nätet kommer tillbaka');
       }
     });
 
@@ -682,9 +689,9 @@ async function main() {
         removeFromQueue(cid, ctrlId, patrol.id);
         try {
           await deleteScore(cid, ctrlId, existing.id);
-          rtoast('Borttagen');
           sync.render();
           close();
+          rtoast('Borttagen');
         } catch (e) {
           rtoast('Fel: ' + e.message, 'err');
         }
