@@ -11,20 +11,25 @@
 import { escapeHtml, wireOverlayClose } from './utils.js';
 import { icon } from './icons.js';
 import { initMapPicker } from './mappicker.js';
-import { PLACE_KINDS, PLACE_ICONS, PALETTE, placeKind, normPlace } from './places.js';
+import { PLACE_KINDS, PLACE_ICONS, PALETTE, placeKind, normPlace, drawPlaces } from './places.js';
 
 /**
  * @param {object} opts
  *   title      dialogrubrik
  *   value      { name, note, lat, lng, kind?, icon?, color? }
- *   fields     { kind?: bool, look?: bool }  — visa sortväljare / symbol+färg
+ *   fields     { kind?: bool, look?: bool, course?: bool } — sortväljare /
+ *              symbol+färg / "ingår i spåret"
+ *   context    { controls: [{nummer, name, lat, lng}], places: [normPlace] }
+ *              ritas som blek bakgrund på kartan så man ser var man sätter
+ *              punkten i förhållande till resten
  *   namePlaceholder
  *   onSave(v)  async; dialogen stängs när den gått igenom
  *   onDelete   valfri; visar en "Ta bort"-knapp
  * @returns Promise<void>
  */
 export function openPlaceModal({
-  title, value = {}, fields = {}, namePlaceholder = '', onSave, onDelete
+  title, value = {}, fields = {}, namePlaceholder = '',
+  context = null, onSave, onDelete
 } = {}) {
   return new Promise((resolve) => {
     const v = normPlace(value);
@@ -77,6 +82,31 @@ export function openPlaceModal({
               </div>
             </div>` : ''}
 
+          ${fields.course ? `
+            <div style="border-top:1px solid var(--border);padding-top:var(--sp-3);">
+              <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
+                <input type="checkbox" id="pm-incourse" ${v.inCourse ? 'checked' : ''} style="margin-top:4px;">
+                <span>
+                  <strong>Ingår i spåret</strong>
+                  <div class="field-hint" style="margin-top:2px;">Platsen blir en punkt i banan — Start → 1 → 2 → <em>Matplats</em> → 3 — och spåret dras dit. Den ger inga poäng och räknas aldrig som en avklarad kontroll.</div>
+                </span>
+              </label>
+              <div id="pm-course-fields" class="grid grid-2 mt-3" style="display:${v.inCourse ? 'grid' : 'none'};">
+                <div>
+                  <label class="field" for="pm-after">Passeras efter</label>
+                  <select class="select" id="pm-after">
+                    <option value="0" ${v.courseAfter === 0 ? 'selected' : ''}>Starten</option>
+                    ${(context?.controls || []).map(c => `<option value="${Number(c.nummer)}" ${v.courseAfter === Number(c.nummer) ? 'selected' : ''}>Kontroll ${escapeHtml(String(c.nummer))}${c.name ? ' · ' + escapeHtml(c.name) : ''}</option>`).join('')}
+                  </select>
+                </div>
+                <div>
+                  <label class="field" for="pm-dwell">Tid på platsen (min)</label>
+                  <input class="input" type="number" id="pm-dwell" min="0" step="5" placeholder="0" value="${v.dwellMinutes || ''}">
+                  <div class="field-hint">Räknas in i banans tid och i ETA. Lämna tomt om man bara passerar.</div>
+                </div>
+              </div>
+            </div>` : ''}
+
           <div>
             <label class="field">Position</label>
             <div class="field-hint" style="margin-bottom:6px;">Klicka på kartan för att placera. Markören kan dras för att finjustera.</div>
@@ -118,7 +148,36 @@ export function openPlaceModal({
       container: overlay.querySelector('#pm-map'),
       lat: lat ?? undefined, lng: lng ?? undefined,
       onChange: ({ lat: la, lng: ln }) => setPos(la, ln)
-    }).then(p => { picker = p; }).catch(() => {});
+    }).then(p => {
+      picker = p;
+      // Bakgrunden: befintliga kontroller och platser, dämpade och
+      // oklickbara. Att sätta ut en punkt utan att se banan är att gissa.
+      if (!context || !p?.map || !p?.L) return;
+      const { L, map } = p;
+      for (const c of context.controls || []) {
+        if (!Number.isFinite(c.lat) || !Number.isFinite(c.lng)) continue;
+        L.circleMarker([c.lat, c.lng], {
+          radius: 11, color: '#ffffff', weight: 2,
+          fillColor: '#E95F13', fillOpacity: 0.55, interactive: false
+        }).bindTooltip(String(c.nummer ?? '?'), {
+          permanent: true, direction: 'center', className: 'map-label map-label-ctx'
+        }).addTo(map);
+      }
+      const andra = (context.places || []).filter(pl => pl.id !== value?.id);
+      drawPlaces(L, map, andra, { iconHtml: (n) => icon(n, { size: 15 }) })
+        .forEach(m => {
+          m.setStyle({ fillOpacity: 0.5, weight: 2, interactive: false });
+          m.getTooltip()?.getElement()?.classList.add('map-label-ctx');
+        });
+      for (const sfp of context.startFinish || []) {
+        L.circleMarker([sfp.lat, sfp.lng], {
+          radius: 12, color: '#003660', weight: 2,
+          fillColor: '#E2E000', fillOpacity: 0.6, interactive: false
+        }).bindTooltip(sfp.label, {
+          permanent: true, direction: 'center', className: 'map-label map-label-sf map-label-ctx'
+        }).addTo(map);
+      }
+    }).catch(() => {});
 
     overlay.querySelector('#pm-gps').addEventListener('click', async () => {
       try {
@@ -150,6 +209,11 @@ export function openPlaceModal({
       vald.color = b.dataset.color; egetUtseende = true; markera('#pm-colors', 'color', vald.color);
     }));
 
+    const inCourseBox = overlay.querySelector('#pm-incourse');
+    inCourseBox?.addEventListener('change', () => {
+      overlay.querySelector('#pm-course-fields').style.display = inCourseBox.checked ? 'grid' : 'none';
+    });
+
     overlay.querySelector('#pm-del')?.addEventListener('click', async () => {
       await onDelete?.();
       close();
@@ -160,10 +224,14 @@ export function openPlaceModal({
       const btn = e.currentTarget;
       btn.disabled = true;
       try {
+        const inCourse = !!overlay.querySelector('#pm-incourse')?.checked;
         await onSave?.({
           ...vald,
           name: overlay.querySelector('#pm-name').value.trim(),
           note: overlay.querySelector('#pm-note').value.trim(),
+          inCourse,
+          courseAfter: inCourse ? Number(overlay.querySelector('#pm-after')?.value) || 0 : 0,
+          dwellMinutes: inCourse ? Number(overlay.querySelector('#pm-dwell')?.value) || 0 : 0,
           lat, lng
         });
         close();

@@ -130,9 +130,13 @@ export const HELP = {
     title: 'Platser på kartan',
     body: [
       'Allt som ska pekas ut på kartan utan att vara en kontroll: parkering, sekretariat, toaletter, vattenpost, matplats, samlingsplats. Varje plats får en färgad nål med sin symbol och syns på tävlingssidan, startkorten och i Läget.',
-      'Välj en sorts plats så sätts symbol och färg åt dig — eller välj "Egen plats" och peka ut vad som helst med den symbol och färg du vill. Noteringen visas publikt, till exempel "Parkera högst upp, ej framför lokalen".'
+      'Välj en sorts plats så sätts symbol och färg åt dig — eller välj "Egen plats" och peka ut vad som helst med den symbol och färg du vill. Noteringen visas publikt, till exempel "Parkera högst upp, ej framför lokalen".',
+      'En plats kan också ingå i banan. Kryssa i "Ingår i spåret" så vävs den in mellan kontrollerna — Start → 1 → 2 → 3 → Matplats → 4 — och spåret dras dit.'
     ],
     faq: [
+      { q: 'Vad gör "Ingår i spåret"?', a: 'Platsen blir en punkt i banan. Väljer du att den passeras efter kontroll 3 blir sekvensen Start → 1 → 2 → 3 → Matplats → 4, och spårdragningen får två ben i stället för ett. Platsen ger fortfarande inga poäng och räknas aldrig som en avklarad kontroll.' },
+      { q: 'Vad är "Tid på platsen"?', a: 'Hur länge patrullen står still där — lunchen tar den tid arrangören planerat, och vi gissar inte åt dig. Tiden räknas in i banans totaltid och i ETA:n som sekretariatet planerar prisutdelningen efter. Lämna tomt om man bara passerar.' },
+      { q: 'Jag har redan ritat spåret — vad händer?', a: 'Benet som platsen läggs in i delas i två. Punkterna du ritat på det gamla benet följer inte med, så den biten blir streckad igen och får ritas om. Resten av spåret är orört.' },
       { q: 'Var sätter jag start och mål?', a: 'I kontrollistan, tillsammans med resten av banan. De är banans ändpunkter — ETA:n räknar ben från dem och spåret hänger på dem — så de hör hemma där banan byggs, inte här.' },
       { q: 'Var tog parkeringsinställningen vägen?', a: 'Den är en plats som alla andra nu. Parkeringar som redan var utsatta ligger kvar och ritas som förut; nästa gång du sparar flyttar den in i listan.' },
       { q: 'Syns platserna innan tävlingsdagen?', a: 'Ja. Till skillnad från kontrollerna är de inte hemliga — de är till för att folk ska hitta.' }

@@ -5,7 +5,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  courseEta, courseEtaCalibrated, patrolFinishEtaMs, controlEtaWindow,
+  courseEta, courseEtaCalibrated, patrolFinishEtaMs, controlEtaWindow, courseLegs,
   waypointInsertIndex, nearestSegmentIndex, pointToSegmentDistance,
   DEFAULT_DWELL_MIN, ETA_MIN_SAMPLES, fmtDist, fmtMin
 } from '../public/js/course.js';
@@ -14,7 +14,9 @@ import {
   effectiveIntervalSec, swishAppUrl, swishQrString
 } from '../public/js/utils.js';
 import { hasIcon } from '../public/js/icons.js';
-import { PLACE_KINDS, PLACE_ICONS, PALETTE, placeColorHex, normPlace, compPlaces, placeToStorage } from '../public/js/places.js';
+import {
+  PLACE_KINDS, PLACE_ICONS, PALETTE, placeColorHex, normPlace, compPlaces, placeToStorage, coursePlaces
+} from '../public/js/places.js';
 import { patrolHighlights, controlRank, totalRank } from '../public/js/highlights.js';
 import { DISTRICTS, districtById, districtShort, districtName, districtHue, normDistrict } from '../public/js/districts.js';
 
@@ -517,5 +519,79 @@ describe('Intressepunkter', () => {
     const s = placeToStorage({ id: 'a', kind: 'vatten', name: 'Kranen', lat: 58, lng: 15 });
     assert.deepEqual(Object.keys(s).sort(), ['color', 'icon', 'id', 'kind', 'lat', 'lng', 'name']);
     assert.equal(s.colorHex, undefined, 'colorHex är en vy-detalj, inte data');
+  });
+});
+
+describe('Platser som ingår i banan', () => {
+  // Tre kontroller på rad, plus en matplats efter kontroll 2.
+  const comp = (places) => ({
+    startTimes: { enabled: true, firstStart: '09:00', intervalMinutes: 10 },
+    startFinish: { enabled: true, mode: 'same', start: { name: 'S/M', lat: 57.995, lng: 15.0 } },
+    places
+  });
+  const MAT = {
+    id: 'mat1', kind: 'mat', name: 'Matplatsen', lat: 58.0135, lng: 15.0,
+    inCourse: true, courseAfter: 2, dwellMinutes: 40
+  };
+
+  test('platsen vävs in på rätt ställe i sekvensen', () => {
+    const { nodes } = courseLegs(comp([MAT]), CONTROLS, null);
+    assert.deepEqual(nodes.map(n => n.kind), ['start', 'control', 'control', 'place', 'control', 'finish']);
+    assert.equal(nodes[3].title, 'Matplatsen');
+    assert.equal(nodes[3].key, 'place:mat1');
+  });
+
+  test('en plats utanför banan påverkar inte sekvensen', () => {
+    const utanfor = { ...MAT, inCourse: false };
+    const { nodes } = courseLegs(comp([utanfor]), CONTROLS, null);
+    assert.deepEqual(nodes.map(n => n.kind), ['start', 'control', 'control', 'control', 'finish']);
+  });
+
+  test('platsens stopptid räknas in i banan', () => {
+    const utan = courseEta(comp([]), CONTROLS, null);
+    const med = courseEta(comp([MAT]), CONTROLS, null);
+    // Samma sträcka (matplatsen ligger på linjen), 40 min längre dag.
+    assert.ok(Math.abs(med.finishMin - utan.finishMin - 40) < 2,
+      `${utan.finishMin} → ${med.finishMin}`);
+  });
+
+  test('utan angiven stopptid är platsen bara en punkt att gå förbi', () => {
+    const snabb = { ...MAT, dwellMinutes: 0 };
+    const utan = courseEta(comp([]), CONTROLS, null);
+    const med = courseEta(comp([snabb]), CONTROLS, null);
+    assert.ok(Math.abs(med.finishMin - utan.finishMin) < 2, 'ingen gissad tid');
+  });
+
+  test('platsen kalibreras aldrig men kostar sin tid', () => {
+    // Platser rapporterar inget — de får inte råka räknas som en kontroll
+    // som saknar underlag och därmed tappa sin stopptid.
+    const cal = courseEtaCalibrated(comp([MAT]), CONTROLS, null, [], PATROLS, NOW);
+    const nod = cal.byKey['place:mat1'];
+    assert.equal(nod.calibrated, false);
+    assert.equal(nod.samples, 0);
+    assert.ok(nod.depMin - nod.etaMin >= 39, `stopptiden saknas: ${nod.etaMin} → ${nod.depMin}`);
+  });
+
+  test('plats efter en kontroll som inte finns hamnar sist, inte i intet', () => {
+    // Kontrollen kan ha raderats eller numrerats om efter att platsen sattes.
+    const vilse = { ...MAT, courseAfter: 99 };
+    const { nodes } = courseLegs(comp([vilse]), CONTROLS, null);
+    assert.equal(nodes.filter(n => n.kind === 'place').length, 1, 'platsen får inte försvinna');
+    assert.equal(nodes[nodes.length - 2].kind, 'place', 'den hamnar sist före mål');
+  });
+
+  test('flera platser efter samma kontroll behåller sin ordning', () => {
+    const a = { ...MAT, id: 'a', name: 'Först' };
+    const b = { ...MAT, id: 'b', name: 'Sedan' };
+    const { nodes } = courseLegs(comp([a, b]), CONTROLS, null);
+    const namn = nodes.filter(n => n.kind === 'place').map(n => n.title);
+    assert.deepEqual(namn, ['Först', 'Sedan']);
+  });
+
+  test('coursePlaces sorterar efter passageordning', () => {
+    const sen = { ...MAT, id: 'sen', name: 'Sent', courseAfter: 3 };
+    const tidig = { ...MAT, id: 'tidig', name: 'Tidigt', courseAfter: 0 };
+    assert.deepEqual(coursePlaces(comp([sen, MAT, tidig])).map(p => p.name),
+      ['Tidigt', 'Matplatsen', 'Sent']);
   });
 });

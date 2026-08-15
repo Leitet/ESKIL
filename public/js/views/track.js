@@ -22,6 +22,9 @@ const CONTROL_MINUTES = 5;     // scheduled stop per control (fixed by design)
 const SPEEDS = [3, 4, 5];      // selectable walking pace, km/h
 const DEFAULT_SPEED = DEFAULT_SPEED_KMH;
 
+// Kontroller har ett nummer i etiketten, banplatser bara ett namn.
+const legLabel = (n) => n.label || n.title || '?';
+
 export async function renderTrack(app, user, cid) {
   const wrap = document.createElement('div');
   wrap.innerHTML = `<div class="muted">Laddar…</div>`;
@@ -58,6 +61,10 @@ export async function renderTrack(app, user, cid) {
 
   // --- Layout --------------------------------------------------------------------
   const nCtrls = nodes.filter(n => n.kind === 'control').length;
+  // Banplatser (matplats, rastplats) har sin egen angivna tid — den ska in i
+  // totalen, annars ljuger totalsumman med en hel lunch.
+  const placeMin = nodes.reduce((a, n) => a + (n.kind === 'place' ? (Number(n.dwellMin) || 0) : 0), 0);
+  const nPlaces = nodes.filter(n => n.kind === 'place').length;
   setDocTitle('Spår', compLabel(comp));
   wrap.innerHTML = `
     <div class="page-head" style="margin-bottom:var(--sp-3);">
@@ -113,11 +120,14 @@ export async function renderTrack(app, user, cid) {
 
   // Fixed nodes (start/controls/mål)
   nodes.forEach(n => {
-    const bg = n.kind === 'control' ? 'var(--scout-blue)' : '#41A62A';
+    const bg = n.kind === 'control' ? 'var(--scout-blue)'
+      : n.kind === 'place' ? (n.colorHex || '#6B4E9B')
+      : '#41A62A';
+    const inner = n.kind === 'place' ? icon(n.icon || 'map-pin', { size: 15, stroke: 2.5 }) : escapeHtml(n.label);
     L.marker([n.lat, n.lng], {
       icon: L.divIcon({
         className: '',
-        html: `<div style="width:26px;height:26px;border-radius:50%;background:${bg};color:#fff;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font:700 12px/1 Helvetica,Arial,sans-serif;">${escapeHtml(n.label)}</div>`,
+        html: `<div style="width:26px;height:26px;border-radius:50%;background:${bg};color:#fff;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font:700 12px/1 Helvetica,Arial,sans-serif;">${inner}</div>`,
         iconSize: [26, 26], iconAnchor: [13, 13]
       }),
       title: n.title, keyboard: false
@@ -257,7 +267,7 @@ export async function renderTrack(app, user, cid) {
     const dists = legs.map(legDist);
     const total = dists.reduce((s, d) => s + d, 0);
     const walk = walkMin(total);
-    const ctrlMin = nCtrls * CONTROL_MINUTES;
+    const ctrlMin = nCtrls * CONTROL_MINUTES + placeMin;
 
     panel.innerHTML = `
       <div class="row" style="justify-content:space-between;align-items:center;">
@@ -268,8 +278,8 @@ export async function renderTrack(app, user, cid) {
       <div class="track-totals">
         <div><span class="muted">Spårlängd</span><strong>${fmtDist(total)}</strong></div>
         <div><span class="muted">Gångtid</span><strong>${fmtMin(walk)}</strong></div>
-        <div><span class="muted">Kontrolltid</span><strong>${fmtMin(ctrlMin)}</strong><span class="muted t-sm">${nCtrls} × ${CONTROL_MINUTES} min</span></div>
-        <div class="track-grand"><span class="muted">Totalt inkl. kontroller</span><strong>${fmtMin(walk + ctrlMin)}</strong></div>
+        <div><span class="muted">Stopptid</span><strong>${fmtMin(ctrlMin)}</strong><span class="muted t-sm">${nCtrls} × ${CONTROL_MINUTES} min${placeMin ? ` + ${nPlaces} plats${nPlaces === 1 ? '' : 'er'}` : ''}</span></div>
+        <div class="track-grand"><span class="muted">Totalt inkl. stopp</span><strong>${fmtMin(walk + ctrlMin)}</strong></div>
       </div>
 
       <label class="t-sm muted" style="display:flex;align-items:center;gap:8px;margin:10px 0 4px;">Promenadtempo
@@ -281,7 +291,7 @@ export async function renderTrack(app, user, cid) {
       <div class="track-legs">
         ${legs.map((leg, i) => `
           <button type="button" class="track-leg ${i === activeIdx ? 'active' : ''}" data-leg="${i}">
-            <span class="track-leg-name">${escapeHtml(leg.from.label)} → ${escapeHtml(leg.to.label)}</span>
+            <span class="track-leg-name">${escapeHtml(legLabel(leg.from))} → ${escapeHtml(legLabel(leg.to))}</span>
             <span class="mono t-sm">${fmtDist(dists[i])}</span>
             <span class="mono t-sm muted">${fmtMin(walkMin(dists[i]))}</span>
             ${leg.wps.length === 0 ? `<span class="muted t-sm" title="Inga punkter ritade — fågelvägen">${icon('pencil', { size: 12 })}</span>` : ''}

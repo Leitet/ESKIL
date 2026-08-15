@@ -20,7 +20,7 @@ import {
   registrationSettings, REG_PRICING_MODELS, registrationUrl, copyToClipboard,
   AVDELNINGAR, allowedAvdelningar,
   isCompAdminUser, normEmail, ekonomiFromManagement,
-  normSlug, isValidSlug, suggestSlug
+  normSlug, isValidSlug, suggestSlug, startFinishPoints
 } from '../utils.js';
 import { createManagementForm } from '../managementform.js';
 import { icon } from '../icons.js';
@@ -1097,6 +1097,19 @@ function renderAnmalanTab(comp, cid, refresh, readOnly) {
 function renderPlacesTab(comp, cid, refresh, readOnly) {
   const host = document.createElement('div');
 
+  // Kartkontext: banans kontroller och start/mål ritas dämpat i väljaren så
+  // man ser var punkten hamnar i förhållande till banan. Hämtas en gång och
+  // används i alla dialoger på fliken.
+  let ctx = { controls: [], places: [], startFinish: startFinishPoints(comp) };
+  listControls(cid)
+    .then(rows => {
+      ctx.controls = rows
+        .filter(c => Number.isFinite(c.lat) && Number.isFinite(c.lng))
+        .sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0));
+      draw();   // "Passeras efter"-listan behöver kontrollerna
+    })
+    .catch(() => {});
+
   const spara = async (lista) => {
     await updateCompetition(cid, { places: lista.map(placeToStorage) });
     await refresh();
@@ -1135,7 +1148,8 @@ function renderPlacesTab(comp, cid, refresh, readOnly) {
       openPlaceModal({
         title: 'Redigera plats',
         value: platser[i],
-        fields: { kind: true, look: true },
+        fields: { kind: true, look: true, course: true },
+        context: { ...ctx, places: platser },
         namePlaceholder: 'Ex. Grusparkeringen vid scoutgården',
         onSave: async (v) => {
           const nya = platser.map((p, j) => j === i ? { ...p, ...v } : p);
@@ -1156,7 +1170,8 @@ function renderPlacesTab(comp, cid, refresh, readOnly) {
     openPlaceModal({
       title: 'Ny plats',
       value: { kind: 'parkering' },
-      fields: { kind: true, look: true },
+      fields: { kind: true, look: true, course: true },
+      context: { ...ctx, places: compPlaces(comp) },
       namePlaceholder: 'Ex. Grusparkeringen vid scoutgården',
       onSave: async (v) => {
         // Id:t behöver bara vara unikt inom tävlingen — listan är kort och

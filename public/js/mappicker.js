@@ -61,6 +61,9 @@ export async function initMapPicker({
   setTimeout(() => map.invalidateSize(), 120);
 
   return {
+    // Leaflet-instansen exponeras så anropare kan rita egen bakgrund
+    // (befintliga kontroller och platser) i samma karta.
+    L,
     map,
     setPosition(la, ln, zoom = 16) {
       place(la, ln);

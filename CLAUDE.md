@@ -153,6 +153,15 @@ new request and the requester on the decision.
   ritar dem och de ska se likadana ut på alla.
   Symbolnamnen måste finnas i `icons.js`; det testas (`hasIcon`), för en
   symbol som saknas renderar tomt och upptäcks annars först i skogen.
+  En plats kan dessutom INGÅ I BANAN (`inCourse` + `courseAfter` =
+  kontrollnumret den följer, 0 = efter start, + `dwellMinutes`). `courseLegs`
+  väver då in den som en nod med `kind: 'place'` och nyckeln `place:<id>` —
+  Start → 1 → 2 → Matplats → 3. Sådana noder har inga poäng, ingen
+  rapportsida, kalibreras aldrig (de rapporterar inget) men kostar sin
+  `dwellMin` i ETA:n. En plats som pekar på ett kontrollnummer som inte finns
+  hamnar sist före mål i stället för att tyst falla ur banan. Att lägga in en
+  plats DELAR ett ben — waypoints ritade på det gamla benet blir föräldralösa
+  (hjälptexten säger det).
 - **Scoutdistrikt.** `public/js/districts.js` holds Scouterna's 26 districts
   plus `annat`. Every competition carries a `district` id: it is REQUIRED in
   the request form, settable in the super-admin create modal, and editable

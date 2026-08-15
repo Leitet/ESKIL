@@ -112,6 +112,11 @@ att köra gratis på Spark-planen.
   med sin symbol (Lucide) och visas på tävlingssidan, startkorten och i Läget.
   Sorten sätter symbol och färg automatiskt; båda går att välja fritt.
   Noteringen visas publikt. Äldre tävlingars parkering följer med automatiskt.
+  En plats kan också **ingå i spåret** — kryssa i det och välj vilken kontroll
+  den passeras efter, så vävs den in i banan (Start → 1 → 2 → 3 → Matplats →
+  4) och spårdragningen får ett ben dit. Ange gärna hur länge patrullen står
+  still där; tiden räknas in i banans totaltid och i ETA:n. Banplatser ger
+  inga poäng och räknas aldrig som avklarade kontroller.
 - **Tävlingsområde** — per-tävlingsinställning (Inställningar → Regler & info:
   "Visa kontrollplatser på publika sidan"). Avbockad visar publika kartan ett
   skuggat konvext "Tävlingsområde" (buffrat ~120 m) i stället för kontroller

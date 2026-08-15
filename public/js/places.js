@@ -66,6 +66,8 @@ export function normPlace(raw, index = 0) {
   const icon = PLACE_ICONS.includes(raw?.icon) ? raw.icon : kind.icon;
   const color = COLOR_BY_ID.has(raw?.color) ? raw.color : kind.color;
   const lat = Number(raw?.lat), lng = Number(raw?.lng);
+  const after = Number(raw?.courseAfter);
+  const dwell = Number(raw?.dwellMinutes);
   return {
     id: String(raw?.id || `p${index}`),
     kind: kind.id,
@@ -73,7 +75,14 @@ export function normPlace(raw, index = 0) {
     note: String(raw?.note || '').trim(),
     icon, color, colorHex: placeColorHex(color),
     lat: Number.isFinite(lat) ? lat : null,
-    lng: Number.isFinite(lng) ? lng : null
+    lng: Number.isFinite(lng) ? lng : null,
+    // Ingår platsen i banan? En matplats mellan kontroll 3 och 4 är en nod i
+    // spåret, inte bara en nål. `courseAfter` är NUMRET på kontrollen den
+    // följer (0 = direkt efter start), `dwellMinutes` hur länge patrullen
+    // står still där — arrangören vet, vi gissar inte.
+    inCourse: raw?.inCourse === true,
+    courseAfter: Number.isFinite(after) ? Math.max(0, Math.round(after)) : 0,
+    dwellMinutes: Number.isFinite(dwell) && dwell > 0 ? Math.round(dwell) : 0
   };
 }
 
@@ -103,8 +112,21 @@ export function placeToStorage(p) {
   const n = normPlace(p);
   return {
     id: n.id, kind: n.kind, name: n.name, icon: n.icon, color: n.color,
-    lat: n.lat, lng: n.lng, ...(n.note ? { note: n.note } : {})
+    lat: n.lat, lng: n.lng,
+    ...(n.note ? { note: n.note } : {}),
+    ...(n.inCourse ? { inCourse: true, courseAfter: n.courseAfter } : {}),
+    ...(n.dwellMinutes ? { dwellMinutes: n.dwellMinutes } : {})
   };
+}
+
+// Platserna som ingår i banan, i den ordning de passeras. Sorteringen är
+// stabil: två platser efter samma kontroll behåller listans ordning.
+export function coursePlaces(comp) {
+  return compPlaces(comp)
+    .filter(p => p.inCourse)
+    .map((p, i) => ({ ...p, __i: i }))
+    .sort((a, b) => a.courseAfter - b.courseAfter || a.__i - b.__i)
+    .map(({ __i, ...p }) => p);
 }
 
 // --- Kartritning --------------------------------------------------------------

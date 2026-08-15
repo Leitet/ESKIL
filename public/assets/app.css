@@ -898,3 +898,7 @@ table.t tr.sf-row.park-row td {
   min-width: 0;
 }
 .map-label-place svg { display: block; }
+
+/* Bakgrundskontext i kartväljaren — befintliga kontroller och platser,
+   dämpade så de inte konkurrerar med punkten man håller på att sätta. */
+.map-label-ctx { opacity: 0.6; }

@@ -9,6 +9,7 @@
 // "<fromKey>__<toKey>" plus the chosen walking pace.
 
 import { startFinishPoints, patrolStartDateTime } from './utils.js';
+import { coursePlaces } from './places.js';
 
 export const DEFAULT_SPEED_KMH = 4;
 
@@ -32,7 +33,35 @@ export function courseLegs(comp, controls, track) {
   const sf = startFinishPoints(comp);
   const nodes = [];
   if (sf.length) nodes.push({ key: '__start', label: 'S', title: sf[0].title, lat: sf[0].lat, lng: sf[0].lng, kind: 'start' });
-  placed.forEach(c => nodes.push({ key: c.id, label: String(c.nummer ?? '?'), title: `Kontroll ${c.nummer ?? '?'} · ${c.name || ''}`, lat: c.lat, lng: c.lng, kind: 'control' }));
+
+  // Platser som ingår i banan (matplats, rastplats …) vävs in mellan
+  // kontrollerna: Start → 1 → 2 → 3 → Matplats → 4. De är noder i spåret men
+  // INTE kontroller — de har inga poäng, ingen rapportsida och räknas aldrig
+  // som avklarade. Deras dwellMin är arrangörens uppgift, inte vår gissning.
+  const platser = coursePlaces(comp);
+  const efter = new Map();                       // kontrollnummer -> platser
+  for (const pl of platser) {
+    if (!efter.has(pl.courseAfter)) efter.set(pl.courseAfter, []);
+    efter.get(pl.courseAfter).push(pl);
+  }
+  const placeNode = (pl) => ({
+    key: `place:${pl.id}`, label: '', title: pl.name,
+    lat: pl.lat, lng: pl.lng, kind: 'place',
+    dwellMin: pl.dwellMinutes, icon: pl.icon, colorHex: pl.colorHex
+  });
+  // courseAfter 0 = direkt efter start (även när ingen start är satt: då
+  // öppnar platsen banan).
+  (efter.get(0) || []).forEach(pl => nodes.push(placeNode(pl)));
+  placed.forEach(c => {
+    nodes.push({ key: c.id, label: String(c.nummer ?? '?'), title: `Kontroll ${c.nummer ?? '?'} · ${c.name || ''}`, lat: c.lat, lng: c.lng, kind: 'control' });
+    (efter.get(Number(c.nummer)) || []).forEach(pl => nodes.push(placeNode(pl)));
+  });
+  // Platser som pekar på ett kontrollnummer som inte finns (kontrollen
+  // raderad eller omnumrerad) hamnar sist före mål i stället för att tyst
+  // falla ur banan.
+  const nummerFinns = new Set([0, ...placed.map(c => Number(c.nummer))]);
+  platser.filter(pl => !nummerFinns.has(pl.courseAfter)).forEach(pl => nodes.push(placeNode(pl)));
+
   if (sf.length === 2) nodes.push({ key: '__mal', label: 'M', title: sf[1].title, lat: sf[1].lat, lng: sf[1].lng, kind: 'finish' });
   else if (sf.length === 1 && placed.length) nodes.push({ key: '__mal', label: 'M', title: 'Mål', lat: sf[0].lat, lng: sf[0].lng, kind: 'finish' });
 
@@ -87,21 +116,28 @@ export function courseEta(comp, controls, track) {
   const { nodes, legs, hasDrawn } = courseLegs(comp, controls, track);
   const speedKmh = Number(track?.speedKmh) || DEFAULT_SPEED_KMH;
   const dwellMin = Number(comp?.etaDwellMinutes) || DEFAULT_DWELL_MIN;
+  // Stopptiden per nod: kontroller kostar tävlingens stationstid, banplatser
+  // sin egen (0 om arrangören inte angett någon — då är de bara en punkt att
+  // gå förbi).
+  const stopAt = (n) => n.kind === 'control' ? dwellMin
+    : n.kind === 'place' ? (Number(n.dwellMin) || 0) : 0;
+
   const byKey = {};
-  let dist = 0, before = 0;
+  let dist = 0, before = 0, stopped = 0;
   nodes.forEach((n, i) => {
     if (i > 0) {
       dist += legDistance(legs[i - 1]);
       if (nodes[i - 1].kind === 'control') before += 1;
+      stopped += stopAt(nodes[i - 1]);
     }
     const walkMin = (dist / 1000) / speedKmh * 60;
-    byKey[n.key] = { node: n, dist, walkMin, controlsBefore: before, etaMin: walkMin + before * dwellMin };
+    byKey[n.key] = { node: n, dist, walkMin, controlsBefore: before, stopMin: stopped, etaMin: walkMin + stopped };
   });
   const last = nodes[nodes.length - 1];
   const atLast = last ? byKey[last.key] : null;
   // A course that ends at a control (no mål configured) still spends the
   // dwell there before the day is over.
-  const finishMin = atLast ? atLast.etaMin + (last.kind === 'control' ? dwellMin : 0) : null;
+  const finishMin = atLast ? atLast.etaMin + stopAt(last) : null;
   return { nodes, legs, hasDrawn, speedKmh, dwellMin, byKey, totalDist: dist, finishMin };
 }
 
@@ -200,6 +236,8 @@ export function courseEtaCalibrated(comp, controls, track, scores = [], patrols 
     if (first.kind === 'control') {
       ({ obsMin, samples } = observedSeg(first, null, 6 * dwellMin));
       cum = obsMin ?? dwellMin;
+    } else if (first.kind === 'place') {
+      cum = Number(first.dwellMin) || 0;
     }
     byKey[first.key] = { ...base.byKey[first.key], etaMin: 0, depMin: cum, obsMin, samples, calibrated: obsMin != null };
   }
@@ -211,13 +249,18 @@ export function courseEtaCalibrated(comp, controls, track, scores = [], patrols 
     if (node.kind === 'control') {
       ({ obsMin, samples } = observedSeg(node, prev, 3 * (walkMin + dwellMin)));
       segMin = obsMin ?? (walkMin + dwellMin);
+    } else if (node.kind === 'place') {
+      // Banplatser rapporterar inget, så de kan aldrig kalibreras — men de
+      // kostar den tid arrangören angett.
+      segMin = walkMin + (Number(node.dwellMin) || 0);
     }
     cum += segMin;
     byKey[node.key] = { ...base.byKey[node.key], etaMin: arriveMin, depMin: cum, obsMin, samples, calibrated: obsMin != null };
   }
 
   const last = nodes[nodes.length - 1];
-  const finishMin = last.kind === 'control' ? byKey[last.key].depMin : byKey[last.key].etaMin;
+  const finishMin = (last.kind === 'control' || last.kind === 'place')
+    ? byKey[last.key].depMin : byKey[last.key].etaMin;
   return {
     ...base, byKey, finishMin, demoMode,
     calibrated: nodes.some(n => byKey[n.key].calibrated)

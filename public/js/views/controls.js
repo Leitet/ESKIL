@@ -13,6 +13,7 @@ import { initMapPicker } from '../mappicker.js';
 import { icon } from '../icons.js';
 import { help } from '../help.js';
 import { openPlaceModal } from '../place-modal.js';
+import { compPlaces } from '../places.js';
 import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
 
 // Lazy-load SortableJS (also used by patrols.js).
@@ -248,6 +249,15 @@ export async function renderControls(app, user, cid) {
     await openPlaceModal({
       title: isFinish ? 'Målplats' : (separat ? 'Startplats' : 'Start- och målplats'),
       value: nuv,
+      // Banan i bakgrunden: att sätta ut starten utan att se kontrollerna är
+      // att gissa.
+      context: {
+        controls: [...state.rows]
+          .filter(c => Number.isFinite(c.lat) && Number.isFinite(c.lng))
+          .sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0)),
+        places: compPlaces(comp),
+        startFinish: startFinishPoints(comp).filter(x => (x.kind === 'finish') !== isFinish)
+      },
       namePlaceholder: isFinish ? 'Ex. Målgång vid parkeringen' : 'Ex. Lindsdals scoutgård',
       onSave: async (v) => {
         const nytt = {
