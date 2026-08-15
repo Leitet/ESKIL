@@ -24,6 +24,7 @@ import {
 } from '../utils.js';
 import { createManagementForm } from '../managementform.js';
 import { icon } from '../icons.js';
+import { help } from '../help.js';
 import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
 import { navigate } from '../router.js';
 import { initMapPicker } from '../mappicker.js';
@@ -119,7 +120,7 @@ function section(title, bodyHtml, opts = {}) {
   const card = document.createElement('section');
   card.className = 'card';
   card.innerHTML = `
-    <h3 class="t-h3" style="margin-top:0;">${escapeHtml(title)}</h3>
+    <h3 class="t-h3" style="margin-top:0;">${escapeHtml(title)}${opts.help ? help(opts.help) : ''}</h3>
     ${opts.hint ? `<p class="muted t-sm" style="margin-top:-6px;">${escapeHtml(opts.hint)}</p>` : ''}
     ${bodyHtml}
   `;
@@ -161,7 +162,7 @@ function renderBasicTab(comp, cid, refresh, readOnly, isSuperAdmin, user) {
     <form class="field-group" ${readOnly ? 'inert' : ''}>
       <div class="grid grid-2">
         <div>
-          <label class="field" for="shortName">Kort namn</label>
+          <label class="field" for="shortName">Kort namn ${help('comp.shortName')}</label>
           <input class="input" id="shortName" required value="${escapeHtml(comp.shortName || '')}">
         </div>
         <div>
@@ -175,7 +176,7 @@ function renderBasicTab(comp, cid, refresh, readOnly, isSuperAdmin, user) {
       </div>
       <div class="grid grid-2">
         <div>
-          <label class="field" for="date">Datum</label>
+          <label class="field" for="date">Datum ${help('comp.date')}</label>
           <input class="input" id="date" type="date" value="${comp.date || ''}">
         </div>
         <div>
@@ -192,7 +193,7 @@ function renderBasicTab(comp, cid, refresh, readOnly, isSuperAdmin, user) {
         <textarea class="textarea" id="description">${escapeHtml(comp.description || '')}</textarea>
       </div>
       <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
-        <label class="field">Avdelningar som deltar</label>
+        <label class="field">Avdelningar som deltar ${help('comp.avdelningar')}</label>
         <div class="field-hint" style="margin-bottom:var(--sp-3);">Endast valda avdelningar visas i t.ex. anmälan och patrullformulär. Minst en måste vara vald.</div>
         <div class="row wrap" style="gap:6px;">
           ${(() => {
@@ -226,7 +227,7 @@ function renderBasicTab(comp, cid, refresh, readOnly, isSuperAdmin, user) {
       <input class="input mono" id="slug-input" placeholder="ah26" maxlength="24" style="max-width:200px;text-transform:lowercase;">
       <button type="button" class="btn btn-primary btn-sm" id="set-slug">Lås fast kortadressen</button>
     </div>
-  `);
+  `, { help: 'comp.slug' });
   host.appendChild(slugCard);
 
   slugCard.querySelector('#copy-slug-url')?.addEventListener('click', () => {
@@ -593,7 +594,7 @@ function renderRulesTab(comp, cid, refresh, readOnly) {
       <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
         <input type="checkbox" id="anonymousControls" ${comp.anonymousControls !== false ? 'checked' : ''} style="margin-top:4px;">
         <span>
-          <strong>Anonyma kontroller</strong>
+          <strong>Anonyma kontroller ${help('comp.anonymousControls')}</strong>
           <div class="field-hint" style="margin-top:2px;">Patruller ser bara "Kontroll N" tills de fått poäng — då avslöjas kontrollens namn och poängen.</div>
         </span>
       </label>
@@ -602,7 +603,7 @@ function renderRulesTab(comp, cid, refresh, readOnly) {
         <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
           <input type="checkbox" id="publicScores" ${comp.publicScores !== false ? 'checked' : ''} style="margin-top:4px;">
           <span>
-            <strong>Publicera poäng på publika sidan</strong>
+            <strong>Publicera poäng på publika sidan ${help('comp.publicScores')}</strong>
             <div class="field-hint" style="margin-top:2px;">Avbockad: publika sidan visar bara en grön bock när en patrull genomfört en kontroll — inga poäng, totaler eller placeringar. Bocka i när poängställningen ska publiceras (kan även växlas från poängtabellen).</div>
           </span>
         </label>
@@ -612,14 +613,14 @@ function renderRulesTab(comp, cid, refresh, readOnly) {
         <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
           <input type="checkbox" id="publicControls" ${comp.publicControls !== false ? 'checked' : ''} style="margin-top:4px;">
           <span>
-            <strong>Visa kontrollplatser på publika sidan</strong>
+            <strong>Visa kontrollplatser på publika sidan ${help('comp.publicControls')}</strong>
             <div class="field-hint" style="margin-top:2px;">Avbockad: publika kartan visar start/mål, parkering och ett skuggat "Tävlingsområde" — men inga kontroller eller spår. Bocka i på tävlingsdagen. Startkort och inloggade ser alltid allt.</div>
           </span>
         </label>
         <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin-top:var(--sp-3);padding-left:26px;">
           <input type="checkbox" id="autoReleaseControls" ${comp.autoReleaseControls ? 'checked' : ''} style="margin-top:4px;">
           <span>
-            <strong>Släpp banan automatiskt 5 min före första start</strong>
+            <strong>Släpp banan automatiskt 5 min före första start ${help('comp.autoReleaseControls')}</strong>
             <div class="field-hint" style="margin-top:2px;">Gäller när kontrollplatserna är dolda: publika kartan visar kontroller och spår av sig själv 5 minuter före första patrullens starttid på tävlingsdatumet. Kräver att datum och starttider är satta.</div>
           </span>
         </label>
@@ -629,7 +630,7 @@ function renderRulesTab(comp, cid, refresh, readOnly) {
         <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
           <input type="checkbox" id="autoCloseControls" ${comp.autoCloseControls ? 'checked' : ''} style="margin-top:4px;">
           <span>
-            <strong>Stäng kontroller automatiskt</strong>
+            <strong>Stäng kontroller automatiskt ${help('comp.autoCloseControls')}</strong>
             <div class="field-hint" style="margin-top:2px;">När samtliga patruller rapporterat poäng på en kontroll stängs den automatiskt (syns som "Stängd" i listor). Gäller bara när en administratör är inne och tittar på kontrollen eller poängtabellen.</div>
           </span>
         </label>
@@ -639,7 +640,7 @@ function renderRulesTab(comp, cid, refresh, readOnly) {
         <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
           <input type="checkbox" id="st-enabled" ${comp.startTimes?.enabled ? 'checked' : ''} style="margin-top:4px;">
           <span>
-            <strong>Starttider</strong>
+            <strong>Starttider ${help('comp.startTimes')}</strong>
             <div class="field-hint" style="margin-top:2px;">Patrullernas starttid beräknas utifrån deras ordning i patrullistan. Dra och släpp i patrullvyn för att ändra.</div>
           </span>
         </label>
@@ -673,7 +674,7 @@ function renderRulesTab(comp, cid, refresh, readOnly) {
               </div>
               <div class="field-hint mt-2" id="st-range-hint" style="display:${mode === 'range' ? 'block' : 'none'};">Intervallet räknas ut automatiskt från antalet patruller. Går tider över midnatt (t.ex. 22:00 → 02:00) hanteras det korrekt.</div>
               <div class="mt-3" style="max-width:260px;">
-                <label class="field" for="st-maxtime">Maxtid på banan (minuter, valfritt)</label>
+                <label class="field" for="st-maxtime">Maxtid på banan (minuter, valfritt) ${help('comp.maxTime')}</label>
                 <input class="input" type="number" id="st-maxtime" min="0" placeholder="T.ex. 240" value="${comp.startTimes?.maxTimeMinutes ?? ''}">
                 <div class="field-hint">Visas som nedräkning på patrullernas startkort. Lämna tomt för ingen maxtid.</div>
               </div>
@@ -683,7 +684,7 @@ function renderRulesTab(comp, cid, refresh, readOnly) {
       </div>
 
       <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
-        <label class="field" for="generalInfo">Allmän information</label>
+        <label class="field" for="generalInfo">Allmän information ${help('comp.generalInfo')}</label>
         <textarea class="textarea" id="generalInfo" placeholder="T.ex. akutrutiner, ansvarig vid olycka…" rows="4">${escapeHtml(comp.generalInfo || '')}</textarea>
         <div class="field-hint">Syns under instruktionerna på varje kontrolls rapporteringssida.</div>
       </div>
@@ -774,14 +775,14 @@ function renderAnmalanTab(comp, cid, refresh, readOnly) {
       <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
         <input type="checkbox" id="reg-enabled" ${s.enabled ? 'checked' : ''} style="margin-top:4px;">
         <span>
-          <strong>Öppna för anmälan</strong>
+          <strong>Öppna för anmälan ${help('reg.enabled')}</strong>
           <div class="field-hint" style="margin-top:2px;">Kårer/patruller anmäler sig via den publika anmälningssidan. Länken hittar du längst ner.</div>
         </span>
       </label>
 
       <div id="reg-fields" style="display:${s.enabled ? 'block' : 'none'};" class="field-group">
         <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
-          <label class="field">Anmälningssätt</label>
+          <label class="field">Anmälningssätt ${help('reg.mode')}</label>
           <div class="row wrap" style="gap:var(--sp-4);">
             <label style="display:inline-flex;align-items:flex-start;gap:8px;cursor:pointer;max-width:280px;">
               <input type="radio" name="reg-mode" value="kar" ${s.mode === 'kar' ? 'checked' : ''} style="margin-top:3px;">
@@ -795,7 +796,7 @@ function renderAnmalanTab(comp, cid, refresh, readOnly) {
         </div>
 
         <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
-          <label class="field">Anmälningsperiod</label>
+          <label class="field">Anmälningsperiod ${help('reg.period')}</label>
           <div class="grid grid-2" style="max-width:460px;">
             <div>
               <label class="field" for="reg-opens">Öppnar</label>
@@ -810,7 +811,7 @@ function renderAnmalanTab(comp, cid, refresh, readOnly) {
         </div>
 
         <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
-          <label class="field">Prismodell</label>
+          <label class="field">Prismodell ${help('reg.pricing')}</label>
           <div class="field-group" style="gap:var(--sp-2);">
             ${REG_PRICING_MODELS.map(m => `
               <label style="display:inline-flex;align-items:flex-start;gap:8px;cursor:pointer;">
@@ -823,14 +824,14 @@ function renderAnmalanTab(comp, cid, refresh, readOnly) {
         </div>
 
         <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
-          <label class="field">Betalningssätt</label>
+          <label class="field">Betalningssätt ${help('reg.methods')}</label>
           <div class="field-hint" style="margin-bottom:var(--sp-3);">Visas på betalningssidan. Swish genererar en QR-kod med belopp och betalningsreferens låsta.</div>
           <div id="method-list"></div>
           <button type="button" class="btn btn-secondary btn-sm" id="add-method">${icon('plus', { size: 14 })} Lägg till betalningssätt</button>
         </div>
 
         <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
-          <label class="field">Egna fält i anmälan</label>
+          <label class="field">Egna fält i anmälan ${help('reg.fields')}</label>
           <div class="field-hint" style="margin-bottom:var(--sp-3);">Fritextfrågor som anmälaren fyller i — t.ex. "Information till tävlingsledningen" (en per anmälan) eller "Allergier" (en per patrull).</div>
           <div id="field-list"></div>
           <button type="button" class="btn btn-secondary btn-sm" id="add-field">${icon('plus', { size: 14 })} Lägg till fält</button>
@@ -1112,7 +1113,7 @@ function renderStartFinishTab(comp, cid, refresh, readOnly) {
       </div>
     </form>
     ${readOnly ? '' : saveRow('Spara start/mål')}
-  `);
+  `, { help: 'comp.startFinish' });
   host.appendChild(card);
 
   // --- Parking card (separate save row) ------------------------------------
@@ -1143,7 +1144,7 @@ function renderStartFinishTab(comp, cid, refresh, readOnly) {
       </div>
     </form>
     ${readOnly ? '' : saveRow('Spara parkering')}
-  `);
+  `, { help: 'comp.parking' });
   host.appendChild(parkingCard);
 
   const sfEnabled = card.querySelector('#sf-enabled');
@@ -1267,7 +1268,7 @@ function renderManagementTab(comp, cid, refresh, readOnly) {
   const card = document.createElement('section');
   card.className = 'card';
   card.innerHTML = `
-    <h3 class="t-h3" style="margin-top:0;">Tävlingsledning</h3>
+    <h3 class="t-h3" style="margin-top:0;">Tävlingsledning${help('comp.management')}</h3>
     <p class="muted t-sm" style="margin-top:-6px;">Lägg till valfria roller. Välj för varje om den ska vara <strong>publik</strong> (syns på startkort och offentlig sida) eller <strong>intern</strong> (syns bara på kontrollernas rapportkort).</p>
   `;
   const form = document.createElement('form');
@@ -1308,7 +1309,7 @@ function renderMembersTab(comp, cid, user, refresh) {
   const card = document.createElement('section');
   card.className = 'card';
   card.innerHTML = `
-    <h3 class="t-h3" style="margin-top:0;">Användare & administratörer</h3>
+    <h3 class="t-h3" style="margin-top:0;">Användare &amp; administratörer${help('comp.users')}</h3>
     <p class="muted t-sm" style="margin-top:-6px;">Ange e-postadress (och gärna namn) — personen behöver inte ha loggat in i ESKIL tidigare, rättigheterna gäller från första inloggningen. Kontrollansvariga utses på respektive kontroll.</p>
     <div id="member-body"><div class="muted">Laddar…</div></div>
   `;

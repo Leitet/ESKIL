@@ -11,6 +11,7 @@ import {
 } from '../utils.js';
 import { renderQrToImg, downloadStartPdf } from '../pdf.js';
 import { icon } from '../icons.js';
+import { help } from '../help.js';
 import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
 
 let unsub = null;
@@ -123,7 +124,7 @@ export async function renderPatrols(app, user, cid) {
           <thead>
             <tr>
               ${dragEnabled ? '<th style="width:36px;"></th>' : ''}
-              ${st.enabled ? th('startOrder', 'Start', state, { num: true }) : ''}
+              ${st.enabled ? th('startOrder', 'Start', state, { num: true, help: 'patrol.startOrder' }) : ''}
               ${th('number', 'Nr', state, { num: true })}
               ${th('name', 'Namn', state)}
               ${th('avdelning', 'Avdelning', state)}
@@ -261,7 +262,9 @@ export async function renderPatrols(app, user, cid) {
 function th(key, label, state, opts = {}) {
   const arrow = state.sort === key ? (state.dir > 0 ? '▲' : '▼') : '';
   const cls = 'sortable' + (opts.num ? ' num' : '');
-  return `<th class="${cls}" data-key="${key}">${escapeHtml(label)} <span class="arrow">${arrow}</span></th>`;
+  // Hjälpknappen stoppar sitt eget klick (help.js), så den krockar inte med
+  // kolumnsorteringen.
+  return `<th class="${cls}" data-key="${key}">${escapeHtml(label)}${opts.help ? help(opts.help) : ''} <span class="arrow">${arrow}</span></th>`;
 }
 
 function shortOf(avd) {
@@ -338,7 +341,7 @@ function openPatrolModal(cid, comp, patrol, fallbackOrder = null, onSaved = null
         <form id="f" class="field-group">
           <div class="grid grid-2">
             <div>
-              <label class="field" for="number">Nr</label>
+              <label class="field" for="number">Nr ${help('patrol.number')}</label>
               <input class="input" id="number" type="number" value="${escapeHtml(String(patrol?.number ?? ''))}">
             </div>
             <div>

@@ -23,6 +23,7 @@ import {
 import { ensureLeaflet } from '../leaflet.js';
 import { renderQrToImg } from '../pdf.js';
 import { icon } from '../icons.js';
+import { help } from '../help.js';
 import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
 
 const WARN_SILENT_MIN = 60;   // patrol out with no sign of life this long → warning
@@ -433,7 +434,7 @@ export async function renderLaget(app, user, cid) {
       <div class="table-wrap"><table class="t">
         <thead><tr>
           <th class="num">#</th><th>Patrull</th><th>Status</th><th>Start</th>
-          <th class="num">Klara</th><th>Mål ca</th><th>Senast sedd</th>
+          <th class="num">Klara</th><th>Mål ca${help('eta.model')}</th><th>Senast sedd</th>
         </tr></thead>
         <tbody>
           ${rows.map(pp => {

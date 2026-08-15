@@ -14,7 +14,7 @@ cd "$(dirname "$0")/.."
 case "${1:-all}" in
   logic) exec node --test test/logic.test.js ;;
   rules) FILES=(test/rules.test.js) ;;
-  all)   FILES=(test/) ;;
+  all)   FILES=(test/*.test.js) ;;
   *) echo "Okänt argument: $1 (använd: all | logic | rules)"; exit 2 ;;
 esac
 

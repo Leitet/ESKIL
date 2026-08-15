@@ -18,6 +18,7 @@ import { deleteField } from '../firebase.js';
 import { escapeHtml, toast, withBusy, confirmDialog, isCompAdminUser, formatTime } from '../utils.js';
 import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
 import { icon } from '../icons.js';
+import { help } from '../help.js';
 
 const LEVELS = [['info', 'Information'], ['varning', 'Varning'], ['kritisk', 'Kritisk — larmar']];
 const PRESETS = [
@@ -86,7 +87,7 @@ export async function renderMeddelanden(app, user, cid) {
     const renderComposer = () => {
       composerHost.innerHTML = `
         <div class="card mb-4" style="padding:var(--sp-4);">
-          <h3 class="t-h3" style="margin:0 0 var(--sp-3);">Nytt meddelande</h3>
+          <h3 class="t-h3" style="margin:0 0 var(--sp-3);">Nytt meddelande${help('msg.level')}</h3>
           <div class="row wrap" style="gap:6px;">
             ${LEVELS.map(([k, l]) => `<button type="button" class="btn btn-sm ${level === k ? 'btn-primary' : 'btn-secondary'}" data-level="${k}">${l}</button>`).join('')}
           </div>
@@ -95,7 +96,7 @@ export async function renderMeddelanden(app, user, cid) {
             ${PRESETS.map((p, i) => `<button type="button" class="btn btn-ghost btn-sm" data-preset="${i}">${escapeHtml(p.label)}</button>`).join('')}
           </div>
           <div class="row wrap mt-3" style="gap:var(--sp-5);align-items:center;">
-            <label class="t-sm" style="display:inline-flex;gap:8px;align-items:center;font-weight:600;">Kontroller
+            <label class="t-sm" style="display:inline-flex;gap:8px;align-items:center;font-weight:600;">Kontroller${help('msg.target')}
               <select class="select" id="msg-k" style="padding:6px 30px 6px 10px;">
                 <option value="alla" ${kMode === 'alla' ? 'selected' : ''}>Alla</option>
                 <option value="vissa" ${kMode === 'vissa' ? 'selected' : ''}>Vissa…</option>
@@ -111,11 +112,11 @@ export async function renderMeddelanden(app, user, cid) {
             </label>
             <label class="t-sm" style="display:inline-flex;gap:8px;align-items:center;font-weight:600;cursor:pointer;">
               <input type="checkbox" id="msg-ack" ${requireAck ? 'checked' : ''} style="margin:0;">
-              Begär bekräftelse
+              Begär bekräftelse ${help('msg.requireAck')}
             </label>
             <label class="t-sm" style="display:inline-flex;gap:8px;align-items:center;font-weight:600;cursor:pointer;">
               <input type="checkbox" id="msg-clear" ${clearOthers ? 'checked' : ''} style="margin:0;">
-              Avsluta alla andra aktiva samtidigt
+              Avsluta alla andra aktiva samtidigt ${help('msg.clearOthers')}
             </label>
           </div>
           <div class="row wrap mt-2" style="gap:6px;${kMode === 'vissa' ? '' : 'display:none;'}" id="msg-k-pick">

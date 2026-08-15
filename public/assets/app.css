@@ -734,3 +734,98 @@ table.t tr.sf-row.park-row td {
 .sys-map code, .sys-info code { font-size: 12px; background: var(--bg-muted); padding: 1px 5px; border-radius: 4px; }
 .sys-config { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--sp-4); }
 .sys-config .field { display: flex; flex-direction: column; gap: 4px; font-weight: 600; font-size: 14px; }
+
+/* ---- Fälthjälp (?) ------------------------------------------------------
+   Tredje informationsnivån: knappen sitter i etiketten, modalen förklarar
+   varför fältet finns och vad det får för effekt ute i produktion. */
+.help-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  vertical-align: -3px; margin-left: 5px;
+  width: 18px; height: 18px; padding: 0;
+  border: none; border-radius: 50%;
+  background: none; color: var(--fg3);
+  cursor: pointer;
+}
+.help-btn:hover { color: var(--scout-blue); background: var(--scout-blue-100); }
+.help-btn:focus-visible { outline: 2px solid var(--scout-blue); outline-offset: 1px; }
+
+.help-modal { max-width: 560px; }
+.help-modal .modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-3); }
+.help-close {
+  border: none; background: none; color: var(--fg3);
+  cursor: pointer; padding: 2px; line-height: 1; border-radius: var(--r-sm);
+}
+.help-close:hover { color: var(--ink, var(--scout-blue)); }
+.help-modal .modal-body p { font-size: 15px; line-height: 1.6; margin: 0 0 var(--sp-3); }
+.help-modal .modal-body p:last-of-type { margin-bottom: 0; }
+
+.help-warn {
+  border-left: 3px solid var(--avent-orange);
+  background: #fdf3ec;
+  border-radius: 0 8px 8px 0;
+  padding: 10px 14px; margin: var(--sp-4) 0 0;
+  font-size: 14px; line-height: 1.55;
+}
+
+.help-faq-head {
+  font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--fg3); margin: var(--sp-5) 0 var(--sp-2);
+}
+.help-faq { border-top: 1px solid var(--border); padding: 10px 0; }
+.help-faq:last-child { padding-bottom: 0; }
+.help-q { font-weight: 700; font-size: 14.5px; margin-bottom: 2px; }
+.help-a { font-size: 14px; color: var(--fg2, var(--fg3)); line-height: 1.55; }
+
+/* Demoillustrationer — efterliknar produktionsytorna med samma tokens. */
+.help-demo { margin: var(--sp-4) 0 0; }
+.help-demo-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); }
+.help-demo-cap { font-size: 12px; color: var(--fg3); margin: 6px 0 0; }
+.help-demo-2 .help-demo-cap { margin: 0 0 6px; font-weight: 700; }
+
+.help-urlbar {
+  display: flex; align-items: center; gap: 5px;
+  background: var(--bg-muted); border: 1px solid var(--border);
+  border-radius: 999px; padding: 7px 14px;
+}
+.help-urlbar .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border-strong); }
+.help-url { font-family: var(--font-mono); font-size: 13.5px; color: var(--scout-blue); margin-left: 6px; }
+
+.help-banner {
+  display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+  padding: 9px 13px; border-radius: 8px; font-size: 13.5px; font-weight: 600;
+}
+.help-banner-label {
+  font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+  background: rgba(0,0,0,.18); padding: 2px 7px; border-radius: 999px; white-space: nowrap;
+}
+.help-banner-text { flex: 1 1 140px; }
+.help-banner-btn {
+  border: 1.5px solid currentColor; border-radius: 999px;
+  padding: 3px 11px; font-size: 12px; font-weight: 700; white-space: nowrap;
+}
+.help-banner-info { background: var(--scout-blue); color: #fff; }
+.help-banner-varning { background: var(--rover-yellow); color: var(--scout-blue); }
+.help-banner-kritisk { background: var(--utm-pink); color: #fff; animation: help-pulse 1.6s ease-in-out infinite; }
+@keyframes help-pulse { 0%,100% { filter: brightness(1); } 50% { filter: brightness(1.3); } }
+@media (prefers-reduced-motion: reduce) { .help-banner-kritisk { animation: none; } }
+
+.help-card { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--white); }
+.help-map { position: relative; height: 108px; background: #eef3ea; }
+.help-map-area {
+  position: absolute; inset: 16% 12%; border: 1.5px dashed var(--scout-blue);
+  border-radius: 12px; background: rgba(0,54,96,.10);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; color: var(--scout-blue);
+}
+.help-track { position: absolute; inset: 0; width: 100%; height: 100%; color: var(--scout-blue); opacity: .7; }
+.help-pin {
+  position: absolute; transform: translate(-50%, -50%);
+  width: 21px; height: 21px; border-radius: 50%;
+  background: var(--avent-orange); color: #fff; border: 2px solid #fff;
+  font-size: 11px; font-weight: 800;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,.3);
+}
+.help-pin-sf { background: var(--rover-yellow); color: var(--scout-blue); border-color: var(--scout-blue); }
+
+@media (max-width: 560px) { .help-demo-2 { grid-template-columns: 1fr; } }

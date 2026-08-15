@@ -10,6 +10,7 @@ import {
 import { navigate } from '../router.js';
 import { initMapPicker } from '../mappicker.js';
 import { icon } from '../icons.js';
+import { help } from '../help.js';
 import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
 
 // Lazy-load SortableJS (also used by patrols.js).
@@ -288,7 +289,7 @@ export function openControlModal(cid, control, onSaved, { manageAnsvariga = true
         <form id="f" class="field-group">
           <div class="grid grid-2">
             <div>
-              <label class="field" for="nummer">Nummer</label>
+              <label class="field" for="nummer">Nummer ${help('ctrl.nummer')}</label>
               <input class="input" id="nummer" type="number" required value="${escapeHtml(String(control?.nummer ?? ''))}">
             </div>
             <div>
@@ -299,7 +300,7 @@ export function openControlModal(cid, control, onSaved, { manageAnsvariga = true
 
           <div class="grid grid-2">
             <div>
-              <label class="field" for="maxPoang">Max poäng</label>
+              <label class="field" for="maxPoang">Max poäng ${help('ctrl.points')}</label>
               <input class="input" id="maxPoang" type="number" value="${control?.maxPoang ?? 10}">
             </div>
             <div>
@@ -322,7 +323,7 @@ export function openControlModal(cid, control, onSaved, { manageAnsvariga = true
               </span>
             </label>
             <div id="utslag-fields" style="margin-top:var(--sp-3);${control?.utslag ? '' : 'display:none;'}">
-              <label class="field" for="utslagFraga">Utslagsfråga</label>
+              <label class="field" for="utslagFraga">Utslagsfråga ${help('ctrl.utslag')}</label>
               <input class="input" id="utslagFraga" value="${escapeHtml(control?.utslagFraga || '')}" placeholder="Ex. Hur många knopar är det i burken?">
               <label class="field mt-3" for="utslagSvar">Rätt svar</label>
               <input class="input" id="utslagSvar" type="number" step="any" value="${control?.utslagSvar ?? ''}" placeholder="Lämna tomt tills facit är klart" style="max-width:260px;">
@@ -341,7 +342,7 @@ export function openControlModal(cid, control, onSaved, { manageAnsvariga = true
             <input type="hidden" id="lat" value="${control?.lat ?? ''}">
             <input type="hidden" id="lng" value="${control?.lng ?? ''}">
             <div class="mt-4">
-              <label class="field" for="placement">Placeringsbeskrivning (visas på PDF-sida 1)</label>
+              <label class="field" for="placement">Placeringsbeskrivning (visas på PDF-sida 1) ${help('ctrl.placement')}</label>
               <input class="input" id="placement" value="${escapeHtml(control?.placement || '')}" placeholder="Ex. Strax innan korsningen, på den stora stenen på höger sida">
               <div class="field-hint">Fri text för den som ställer upp kontrollen. Visas under kartan i utskriften.</div>
             </div>
@@ -349,7 +350,7 @@ export function openControlModal(cid, control, onSaved, { manageAnsvariga = true
 
           <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
             <div class="row" style="justify-content:space-between;margin-bottom:var(--sp-3);">
-              <div class="t-over" style="color:var(--scout-blue);">Instruktioner per avdelning</div>
+              <div class="t-over" style="color:var(--scout-blue);">Instruktioner per avdelning${help('ctrl.instructions')}</div>
               <button type="button" class="btn btn-ghost btn-sm" id="add-group">+ Lägg till grupp</button>
             </div>
             <div class="field-hint" style="margin-bottom:var(--sp-3);">Första gruppen utan avdelningar är default och gäller för alla som inte har en egen grupp.</div>
@@ -357,7 +358,7 @@ export function openControlModal(cid, control, onSaved, { manageAnsvariga = true
           </div>
 
           <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
-            <label class="field" for="telefon">Telefon till kontrollen</label>
+            <label class="field" for="telefon">Telefon till kontrollen ${help('ctrl.telefon')}</label>
             <input class="input" id="telefon" type="tel" value="${escapeHtml(control?.telefon || '')}" placeholder="070-123 45 67" style="max-width:260px;">
             <div class="field-hint">Till någon som är på plats på kontrollen, så att sekretariatet kan nå den under tävlingen. Visas bara internt och raderas när tävlingen avslutas.</div>
           </div>
@@ -376,7 +377,7 @@ export function openControlModal(cid, control, onSaved, { manageAnsvariga = true
 
           ${showAnsvariga ? `
             <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
-              <label class="field">Kontrollansvariga</label>
+              <label class="field">Kontrollansvariga ${help('ctrl.ansvariga')}</label>
               <div class="field-hint" style="margin-bottom:var(--sp-3);">${manageAnsvariga
                 ? 'Kan redigera och öppna/stänga den här kontrollen, och får läsåtkomst till resten av tävlingen. Rättigheterna gäller från deras första inloggning.'
                 : 'Bjud in fler som hjälper till på kontrollen — de får ett välkomstmail med rapportlänken. Bara administratörer kan ta bort någon.'}</div>
