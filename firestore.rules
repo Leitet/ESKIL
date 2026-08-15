@@ -119,6 +119,11 @@ service cloud.firestore {
         && (!('utslagGissning' in data) || data.utslagGissning is number)
         && (!('note' in data) || (data.note is string && data.note.size() <= 500))
         && (!('clientReportedAt' in data) || data.clientReportedAt is timestamp)
+        // reporter är ett kort pseudonymt enhets-id — utan tak vore det en
+        // ostryparad textkanal (upp till Firestores 1 MB) som varje läsning
+        // av score-dokumentet betalar för. (history behöver ingen vakt här —
+        // create/update-reglerna nedan kräver redan tom/oförändrad history.)
+        && (!('reporter' in data) || (data.reporter is string && data.reporter.size() <= 100))
         && data.keys().hasOnly(['patrolId','poang','extraPoang','note','reportedAt','clientReportedAt','reporter','utslagGissning','history']);
     }
 

@@ -97,6 +97,32 @@ describe('Poängrapportering (anonym)', () => {
       `competitions/${bare}/controls/${CTRL}`, `competitions/${bare}/patrols/${PATROL}`,
       `competitions/${bare}`]) await remove(p, 'owner');
   });
+
+  test('reporter-id har ett storlekstak (ostryparad textkanal annars)', async () => {
+    allow(await write(scorePath, { patrolId: PATROL, poang: 5, reporter: 'r_abc123' }, null),
+      'kort reporter-id');
+    deny(await write(scorePath, { patrolId: PATROL, poang: 5, reporter: 'x'.repeat(200) }, null),
+      '200-teckens reporter');
+  });
+
+  test('anonym får inte injicera eller växa ett justeringsspår (history)', async () => {
+    // history skrivs bara av admins (adjustScore). En anonym re-rapport får
+    // bära med sig en befintlig historik oförändrad, aldrig hitta på en egen.
+    await remove(scorePath, 'owner');
+    deny(await write(scorePath,
+      { patrolId: PATROL, poang: 5, history: [{ note: 'påhittad justering', by: 'angripare' }] }, null),
+      'anonym injicerar history på en färsk rapport');
+
+    // Admin lägger ett äkta spår; anon-rapport som bevarar det oförändrat är ok.
+    await seed(scorePath, { patrolId: PATROL, poang: 5, history: [{ note: 'äkta', poang: 5 }] });
+    allow(await write(scorePath,
+      { patrolId: PATROL, poang: 6, history: [{ note: 'äkta', poang: 5 }] }, null),
+      'anon-rapport bevarar befintlig history');
+    deny(await write(scorePath,
+      { patrolId: PATROL, poang: 6, history: [{ note: 'äkta', poang: 5 }, { note: 'tillagd', poang: 9 }] }, null),
+      'anon växer history');
+    await remove(scorePath, 'owner');
+  });
 });
 
 describe('Tävlingar — vem får skapa', () => {
