@@ -52,9 +52,12 @@ const app = initializeApp(config);
 
 // Initialise App Check before any Firestore/Functions calls so requests carry
 // an attestation token. Guarded on appId (App Check needs a registered web
-// app) so a missing/propagating config never throws. While App Check is in
-// MONITOR mode this only populates metrics — nothing is blocked; enforcement
-// is turned on separately in the console once the metrics look clean.
+// app) so a missing/propagating config never throws.
+// ENFORCEMENT IS ON for Firestore and Cloud Functions (since 2026-08-13), so
+// this is not optional in production: without a token every read and write is
+// rejected before the rules even run. Localhost is exempt because the
+// emulators are not behind App Check. See SECURITY.md; to unblock a
+// production incident: Firebase console → App Check → APIs → un-enforce.
 if (!isLocalHost && config.appId) {
   try {
     initializeAppCheck(app, {

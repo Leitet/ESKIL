@@ -131,8 +131,9 @@ async function queueMail(doc) {
 // admin-SDK functions touch them. These daily caps bound the blast radius of
 // the anonymous/self-service mail vectors (registration confirmations, PM
 // fan-out, login links) against spam/relay abuse and Brevo quota exhaustion.
-// NOTE: the real fix is Firebase App Check on the Firestore write path — see
-// README. Bump the caps if a large legitimate day needs more headroom.
+// App Check (reCAPTCHA v3) is ENFORCED on Firestore and Functions since
+// 2026-08-13 and is the primary defence — these caps are the second line
+// behind it. Bump them if a large legitimate day needs more headroom.
 // Defaults for the mail rate-limit caps. Super-admin can override them in the
 // config/system doc (ESKIL → Super-admin → Systemhubb) without a deploy.
 const MAIL_DAILY_CAP = 800;         // transactional mails/day (confirmations, PM, …)

@@ -17,6 +17,12 @@ Email extension). Production domain: https://eskilscout.se.
 - **The control ID is the secret.** `/k/<cid>/<ctrlId>` is the reporter URL.
   Firestore rules allow anonymous score writes only when the control document
   has `open == true`.
+- **App Check is ENFORCED in production** (reCAPTCHA v3, on Firestore and
+  Cloud Functions since 2026-08-13; initialised in `firebase.js`, skipped on
+  localhost since the emulators sit outside it). Anonymous ≠ unattested:
+  every prod read/write needs a token, so curl/bot traffic is rejected before
+  the rules run. Never remove the init or drop `www.google.com` from the CSP.
+  Details and the un-enforce escape hatch: SECURITY.md.
 - **The registration ID is the secret too.** `/a/<cid>/<regId>` is the manage
   link for a registration (Anmälan). Anonymous create/update is allowed while
   `competition.registration.enabled == true`; the open/close period is
