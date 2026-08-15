@@ -174,6 +174,25 @@ export function fmtVaraktighet(ms) {
 
 const ordningstal = (n) => `${n}:a`;
 
+// Kortets stora tal. Ordningen är hela poängen med funktionen: en patrull som
+// fick noll på allt ska INTE få en enorm nolla på en bild som ligger kvar i
+// ett flöde. Då säger kortet i stället det som ändå är sant och fint — att de
+// gick hela banan.
+//
+// (Placeringen är redan grindad av rankWorthShowing() i highlights.js innan
+// den når hit; en sistaplats finns aldrig i `data.rank`.)
+export function hjälte(data, val) {
+  if (val.placering && data.rank) {
+    return { v: ordningstal(data.rank.rank), l: `av ${data.rank.of}` };
+  }
+  if (val.poang && data.points > 0) return { v: String(data.points), l: 'poäng' };
+  const klara = (data.legs || []).length;
+  // Kort etikett: den står bredvid talet i Färgfält och under det i en smal
+  // ring i Djup, och "kontroller klarade" nådde kanten i båda.
+  if (klara > 0) return { v: String(klara), l: klara === 1 ? 'kontroll' : 'kontroller' };
+  return null;
+}
+
 // Raderna under hjälten: höjdpunkter först, sedan tid. Delad av alla
 // designer så valen betyder samma sak oavsett vilken man valt.
 function punktrader(data, val) {
@@ -246,9 +265,11 @@ function ritaDjup(ctx, W, H, data, val) {
   ritaEtikett(ctx, `${data.compName}${data.compYear ? ' · ' + data.compYear : ''}`,
     W / 2, P + W * 0.03, W * 0.031, accent, { mitt: true });
 
-  const visaRank = val.placering && !!data.rank;
-  const visaPoäng = val.poang && data.points != null;
-  const harHjälte = visaRank || visaPoäng;
+  const hj = hjälte(data, val);
+  const harHjälte = !!hj;
+  // Poängen på underraden bara när ringen visar något annat OCH det finns
+  // poäng att visa.
+  const visaPoängrad = val.poang && data.points > 0 && hj?.l !== 'poäng';
   const maxB = W - P * 2;
 
   // --- Mät ------------------------------------------------------------------
@@ -266,7 +287,7 @@ function ritaDjup(ctx, W, H, data, val) {
   // Två separata rader åt 150 px höjd som kvadratformatet inte har, och då
   // föll höjdpunkterna bort — de är det kortet egentligen handlar om.
   const underrad = [val.kar && data.kar ? data.kar : null,
-                    (visaRank && visaPoäng) ? `${data.points} poäng` : null].filter(Boolean).join('  ·  ');
+                    visaPoängrad ? `${data.points} poäng` : null].filter(Boolean).join('  ·  ');
   const underradH = underrad ? W * 0.068 : 0;
   const punktH = W * 0.06;
   const alla = punktrader(data, val);
@@ -300,8 +321,7 @@ function ritaDjup(ctx, W, H, data, val) {
     ctx.lineWidth = W * 0.005;
     ctx.beginPath(); ctx.arc(W / 2, cy, r * 1.12, 0, Math.PI * 2); ctx.stroke();
 
-    const stort = visaRank ? ordningstal(data.rank.rank) : String(data.points);
-    const under = visaRank ? `av ${data.rank.of}` : 'poäng';
+    const stort = hj.v, under = hj.l;
     ctx.fillStyle = VIT;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -370,8 +390,9 @@ function ritaFalt(ctx, W, H, data, val) {
   const maxB = W - P * 2;
   const block = [];
 
-  if (val.poang && data.points != null) {
-    const tal = String(data.points);
+  const hj = hjälte(data, val);
+  if (hj) {
+    const tal = hj.v;
     const px = passaIn(ctx, tal, maxB * 0.78, W * 0.32, 800);
     ctx.font = font(800, px);
     // Talets VERSALHÖJD, inte teckengraden: siffrorna har varken över- eller
@@ -382,7 +403,7 @@ function ritaFalt(ctx, W, H, data, val) {
       ctx.font = font(800, px);
       ctx.fillStyle = bläck;
       ctx.fillText(tal, P, y + cap);
-      ritaEtikett(ctx, 'poäng', P + bredd + W * 0.028, y + cap - W * 0.012, W * 0.036, dämpad);
+      ritaEtikett(ctx, hj.l, P + bredd + W * 0.028, y + cap - W * 0.012, W * 0.036, dämpad);
     }});
   }
 
@@ -415,9 +436,10 @@ function ritaFalt(ctx, W, H, data, val) {
       ctx.fillText(data.kar, P, y + W * 0.04);
     }});
   }
-  if (val.placering && data.rank) {
+  // Poängen som egen rad när hjälten visar något annat — och aldrig en nolla.
+  if (val.poang && data.points > 0 && hj?.l !== 'poäng') {
     block.push({ h: W * 0.062, rita: (y) => {
-      ritaEtikett(ctx, `Plats ${data.rank.rank} av ${data.rank.of}`, P, y + W * 0.038, W * 0.034, bläck);
+      ritaEtikett(ctx, `${data.points} poäng`, P, y + W * 0.038, W * 0.034, bläck);
     }});
   }
 
@@ -516,7 +538,10 @@ function ritaBanan(ctx, W, H, data, val) {
         const andel = l.max > 0 ? Math.max(0, Math.min(1, l.poang / l.max)) : 0;
 
         ctx.lineWidth = W * 0.008;
-        ctx.strokeStyle = rgba(SVART, 0.14);
+        // Grundringen i accentfärgen, inte i grått: den säger "här var vi".
+        // Med grå grundring blev en patrull utan poäng tio bleka cirklar —
+        // ett kort som skriker misslyckande, och det ska det inte göra.
+        ctx.strokeStyle = rgba(accent, 0.3);
         ctx.beginPath(); ctx.arc(cx, cy, r - ctx.lineWidth / 2, 0, Math.PI * 2); ctx.stroke();
         if (andel > 0) {
           ctx.strokeStyle = accent;
@@ -542,8 +567,11 @@ function ritaBanan(ctx, W, H, data, val) {
   }
 
   const tal = [];
-  if (val.poang && data.points != null) tal.push({ v: String(data.points), l: 'poäng' });
+  if (val.poang && data.points > 0) tal.push({ v: String(data.points), l: 'poäng' });
   if (val.placering && data.rank) tal.push({ v: ordningstal(data.rank.rank), l: `av ${data.rank.of}` });
+  // Ingen fallback till antalet kontroller här: bildtexten under ringarna
+  // säger redan "10 kontroller", och ringarna ÄR den här designens hjälte.
+  // Talblocket utgår hellre än står och upprepar raden ovanför.
   if (tal.length) {
     block.push({ h: W * 0.16, rita: (y) => {
       let x = P;

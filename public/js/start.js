@@ -22,7 +22,7 @@ import { ensureLeaflet } from './leaflet.js';
 import { icon } from './icons.js';
 import { bindHaptic, bindTap, lockScroll, unlockScroll } from './haptic.js';
 import { updateBroadcast } from './broadcast.js';
-import { patrolHighlights, totalRank } from './highlights.js';
+import { patrolHighlights, totalRank, rankWorthShowing } from './highlights.js';
 import { mountMessages } from './chat.js';
 import { openSheet } from './sheet.js';
 import { compPlaces, placeKind, drawPlaces } from './places.js';
@@ -452,11 +452,16 @@ function shareData() {
     kar: patrol.kar || '',
     avdelning: patrol.avdelning || '',
     points: t.points,
-    rank: tr ? { rank: tr.rank, of: tr.of } : null,
+    // Samma grind som höjdpunkterna: en placering som inte är värd att fira
+    // erbjuds inte ens som val.
+    rank: rankWorthShowing(tr) ? { rank: tr.rank, of: tr.of } : null,
     courseMs: (startMs != null && slutMs != null && slutMs > startMs) ? slutMs - startMs : null,
+    // UTAN start/slut: kortet äger tidsraden själv via kryssrutan "Tid på
+    // banan". Skickades tiden in här hamnade den både i höjdpunkterna och
+    // som egen rad, och stod två gånger på bilden.
     highlights: patrolHighlights({
       patrolId: patrol.id, controls, scoresByControl: allScoresByCtrl,
-      showRank: visaJamforelser, startMs, endMs: slutMs
+      showRank: visaJamforelser
     }),
     legs: [...controls]
       .sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0))

@@ -317,7 +317,17 @@ new request and the requester on the decision.
   tredjepartsanrop, och därför inga kartrutor: en patrull i mål står ofta
   utan täckning, och en publicerad bankarta vore ett problem så länge andra
   är kvar ute. Bilden får aldrig bära startkortets hemliga länk, bara
-  `/t/<slug>`. Placeringen erbjuds bara när `publicScores` tillåter det.
+  `/t/<slug>`. Placeringen erbjuds bara när `publicScores` tillåter det OCH
+  när den passerar `rankWorthShowing()` i highlights.js — samma grind som
+  höjdpunkterna. Utan den skickade `shareData()` in `totalRank` rakt av och
+  kortet tryckte "12:a av 12" stort i en ring; till skillnad från startkortet
+  ligger den bilden kvar i ett offentligt flöde. Mutationsverifierat.
+  Av samma skäl finns `hjälte()`: kortets stora tal är placering → poäng →
+  antal klarade kontroller, så en patrull med noll på allt får "10
+  kontroller" i stället för en enorm nolla. Ringarnas grundring är i
+  accentfärg, inte grå — annars blev en poänglös patrull tio bleka cirklar.
+  `shareData()` anropar `patrolHighlights` UTAN start/slut: kortet äger
+  tidsraden själv via kryssrutan, annars stod den två gånger.
   Kortet följer inte nattläget — en delad bild ska se likadan ut oavsett hur
   telefonen stod inställd.
   Layouten MÄTS innan den ritas (`stapla()`): block med känd höjd staplas,

@@ -14,7 +14,7 @@ import {
   effectiveIntervalSec, swishAppUrl, swishQrString, patrolLabel
 } from '../public/js/utils.js';
 import { hasIcon } from '../public/js/icons.js';
-import { AVD_FÄRG, textPå, accentMotBlått } from '../public/js/share-card.js';
+import { AVD_FÄRG, textPå, accentMotBlått, hjälte } from '../public/js/share-card.js';
 
 // WCAG-kontrast — testets egen räknare, så det inte mäter med samma kod som
 // det granskar.
@@ -31,7 +31,7 @@ import { fitView, niceScale } from '../public/js/pdf.js';
 import {
   PLACE_KINDS, PLACE_ICONS, PALETTE, placeColorHex, normPlace, compPlaces, placeToStorage, coursePlaces
 } from '../public/js/places.js';
-import { patrolHighlights, controlRank, totalRank } from '../public/js/highlights.js';
+import { patrolHighlights, controlRank, totalRank, rankWorthShowing } from '../public/js/highlights.js';
 import { DISTRICTS, districtById, districtShort, districtName, districtHue, normDistrict } from '../public/js/districts.js';
 
 // Tre kontroller på rad med ~1 km mellan sig.
@@ -778,5 +778,56 @@ describe('Delningsbildens färgval', () => {
   test('okänd avdelning ger en accent i stället för att försvinna', () => {
     assert.ok(kontrastMellan(accentMotBlått('Nyfikna'), '#003660') >= 3);
     assert.ok(kontrastMellan(accentMotBlått(undefined), '#003660') >= 3);
+  });
+});
+
+describe('Extremfallet: noll poäng och sist', () => {
+  // Fältet: en patrull med 0 på allt, elva andra med poäng.
+  const controls = Array.from({ length: 10 }, (_, i) => ({ id: 'c' + i, nummer: i + 1, maxPoang: 12 }));
+  const scoresByControl = {};
+  for (const c of controls) {
+    scoresByControl[c.id] = [
+      { patrolId: 'sist', poang: 0, extraPoang: 0 },
+      ...Array.from({ length: 11 }, (_, j) => ({ patrolId: 'p' + j, poang: 4 + (j % 6), extraPoang: 0 }))
+    ];
+  }
+
+  test('höjdpunkterna nämner varken placering eller poäng', () => {
+    const rader = patrolHighlights({ patrolId: 'sist', controls, scoresByControl, showRank: true })
+      .map(h => h.text);
+    assert.deepEqual(rader, ['Alla 10 kontroller klara!']);
+  });
+
+  test('sistaplatsen passerar inte grinden', () => {
+    const tr = totalRank('sist', controls, scoresByControl);
+    assert.equal(tr.rank, 12);
+    assert.equal(rankWorthShowing(tr), false, 'en sistaplats får aldrig visas');
+  });
+
+  test('grinden släpper igenom topp 3 och övre halvan', () => {
+    assert.equal(rankWorthShowing({ rank: 1, of: 40 }), true);
+    assert.equal(rankWorthShowing({ rank: 3, of: 4 }), true, 'topp 3 gäller även i ett litet fält');
+    assert.equal(rankWorthShowing({ rank: 6, of: 12 }), true, 'övre halvan');
+    assert.equal(rankWorthShowing({ rank: 7, of: 12 }), false);
+    assert.equal(rankWorthShowing(null), false);
+  });
+
+  test('delningsbildens stora tal blir aldrig en nolla eller en sistaplats', () => {
+    // Så som start.js bygger det: rank grindas bort innan den når kortet.
+    const data = { points: 0, rank: null, legs: controls.map(c => ({ nummer: c.nummer, poang: 0, max: 12 })) };
+    const val = { placering: true, poang: true };
+    assert.deepEqual(hjälte(data, val), { v: '10', l: 'kontroller' });
+  });
+
+  test('med poäng är poängen hjälten, med placering är placeringen det', () => {
+    const legs = [{ nummer: 1, poang: 5, max: 10 }];
+    assert.deepEqual(hjälte({ points: 5, rank: null, legs }, { placering: true, poang: true }),
+      { v: '5', l: 'poäng' });
+    assert.deepEqual(hjälte({ points: 5, rank: { rank: 2, of: 9 }, legs }, { placering: true, poang: true }),
+      { v: '2:a', l: 'av 9' });
+  });
+
+  test('utan något alls finns ingen hjälte att rita', () => {
+    assert.equal(hjälte({ points: 0, rank: null, legs: [] }, { placering: true, poang: true }), null);
   });
 });

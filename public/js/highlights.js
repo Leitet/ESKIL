@@ -60,6 +60,17 @@ export function totalRank(patrolId, controls, scoresByControl) {
   return { rank: better + 1, of: totals.size, points: own };
 }
 
+// Placeringen är den enda siffran som kan svida, så den visas bara när den är
+// något att glädjas åt: topp 3 eller övre halvan.
+//
+// EXPORTERAD därför att delningsbilden måste lyda exakt samma regel. Den
+// hämtade förr totalRank rakt av och tryckte "12:a av 12" stort i en ring —
+// precis det den här filen finns för att förhindra, och till skillnad från
+// startkortet ligger den bilden kvar i ett offentligt flöde.
+export function rankWorthShowing(tr) {
+  return !!tr && (tr.rank <= TOP_N || tr.rank <= Math.ceil(tr.of / 2));
+}
+
 function fmtDuration(ms) {
   const min = Math.round(ms / 60000);
   const h = Math.floor(min / 60);
@@ -92,7 +103,7 @@ export function patrolHighlights({ patrolId, controls = [], scoresByControl = {}
   // Totalplacering — bara när den är värd att fira (se filhuvudet).
   if (showRank) {
     const tr = totalRank(patrolId, controls, scoresByControl);
-    if (tr && (tr.rank <= TOP_N || tr.rank <= Math.ceil(tr.of / 2))) {
+    if (rankWorthShowing(tr)) {
       out.push({
         icon: 'trophy',
         text: tr.rank === 1 ? `Bäst i tävlingen — ${tr.points} poäng!`
