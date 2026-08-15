@@ -1036,6 +1036,7 @@ function renderAnmalanTab(comp, cid, refresh, readOnly) {
           .map(f => ({
             id: f.id,
             label: f.label.trim(),
+            description: (f.description || '').trim(),
             scope: f.scope === 'patrull' ? 'patrull' : 'anmalan',
             required: f.required === true
           }))
