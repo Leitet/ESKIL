@@ -243,6 +243,184 @@ exports.requestLoginLink = onCall(async (req) => {
   return { ok: true };
 });
 
+// --- Radera mitt konto (GDPR) -------------------------------------------------
+// Måste köras server-side: en användare får varken radera sitt eget
+// users-dokument eller redigera tävlingar hen bara är medlem i (rules), och
+// kontrollansvarig-listorna är append-only. Admin-SDK:n går förbi allt det.
+//
+// Två lägen: dryRun ger en sanningsenlig sammanställning av VAR kontot
+// förekommer (det modalen visar), skarpt läge städar bort det och raderar
+// kontot. Ensam administratör måste ange en ersättare per tävling — annars
+// blir tävlingen omöjlig att administrera.
+
+const lower = (s) => String(s || '').trim().toLowerCase();
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+// Läser upp allt kontot rör vid. Returnerar både sammanställningen (till
+// modalen) och de referenser städningen behöver, så inget läses två gånger.
+async function accountFootprint(uid, email) {
+  const comps = await db.collection('competitions').get();
+  const rows = [];
+  for (const doc of comps.docs) {
+    const c = doc.data();
+    const accessSnap = await db.doc(`competitions/${doc.id}/private/access`).get();
+    const a = accessSnap.exists ? accessSnap.data() : {};
+
+    const adminEmails = (a.adminEmails || c.adminEmails || []).map(lower);
+    const adminUids = [...new Set([...(a.admins || []), ...(c.admins || [])])];
+    const userEmails = (a.userEmails || c.userEmails || []).map(lower);
+    const ekonomiEmails = (a.ekonomiEmails || []).map(lower);
+
+    const isAdmin = adminEmails.includes(email) || adminUids.includes(uid);
+    const isEkonomi = ekonomiEmails.includes(email);
+    const isUser = userEmails.includes(email);
+    const inManagement = (c.management || []).some(r => lower(r.email) === email);
+
+    // Kontrollansvarig — bara värt att läsa när kontot rör tävlingen alls.
+    const ansvarigControls = [];
+    if (isAdmin || isEkonomi || isUser || inManagement) {
+      const ctrls = await db.collection(`competitions/${doc.id}/controls`).get();
+      for (const ct of ctrls.docs) {
+        const metaSnap = await db.doc(`competitions/${doc.id}/controls/${ct.id}/private/meta`).get();
+        const m = metaSnap.exists ? metaSnap.data() : {};
+        const emails = (m.ansvarigaEmails || ct.data().ansvarigaEmails || []).map(lower);
+        if (emails.includes(email)) {
+          ansvarigControls.push({ id: ct.id, nummer: ct.data().nummer ?? null, name: ct.data().name || '' });
+        }
+      }
+    }
+    if (!isAdmin && !isEkonomi && !isUser && !inManagement && !ansvarigControls.length) continue;
+
+    // "Ensam admin" = ingen ANNAN admin, varken via e-post eller uid.
+    const otherAdminEmails = adminEmails.filter(e => e !== email);
+    const otherAdminUids = adminUids.filter(u => u !== uid);
+    rows.push({
+      id: doc.id,
+      name: c.name || '',
+      shortName: c.shortName || '',
+      role: isAdmin ? 'admin' : isEkonomi ? 'ekonomi' : isUser ? 'las' : null,
+      inManagement,
+      controls: ansvarigControls,
+      soleAdmin: isAdmin && otherAdminEmails.length === 0 && otherAdminUids.length === 0,
+      otherAdmins: otherAdminEmails,
+      otherAdminCount: otherAdminEmails.length + otherAdminUids.length
+    });
+  }
+
+  const reqSnap = await db.collection('competitionRequests').where('requestedBy', '==', uid).get();
+  return { competitions: rows, requestCount: reqSnap.size, requestIds: reqSnap.docs.map(d => d.id) };
+}
+
+exports.deleteMyAccount = onCall(async (req) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Du måste vara inloggad.');
+  const uid = req.auth.uid;
+  const email = lower(req.auth.token.email);
+  if (!email) throw new HttpsError('failed-precondition', 'Kontot saknar e-postadress.');
+
+  const dryRun = !(req.data && req.data.confirm === true);
+  const replacements = {};
+  for (const [cid, val] of Object.entries((req.data && req.data.replacements) || {})) {
+    const e = lower(val);
+    if (e) replacements[String(cid)] = e;
+  }
+
+  // Systemets sista super-admin får inte försvinna — då kan ingen längre
+  // godkänna tävlingar eller hantera användare.
+  const meSnap = await db.doc(`users/${uid}`).get();
+  const isSuper = meSnap.exists && meSnap.data().role === 'super-admin';
+  if (isSuper) {
+    const sa = await db.collection('users').where('role', '==', 'super-admin').get();
+    if (sa.size <= 1) {
+      throw new HttpsError('failed-precondition',
+        'Du är systemets enda super-admin. Utse någon annan till super-admin först.');
+    }
+  }
+
+  const fp = await accountFootprint(uid, email);
+  const sole = fp.competitions.filter(c => c.soleAdmin);
+
+  if (dryRun) {
+    return {
+      email,
+      isSuperAdmin: isSuper,
+      requestCount: fp.requestCount,
+      competitions: fp.competitions.map(c => ({
+        id: c.id, name: c.name, shortName: c.shortName, role: c.role,
+        inManagement: c.inManagement, soleAdmin: c.soleAdmin,
+        otherAdminCount: c.otherAdminCount, otherAdmins: c.otherAdmins,
+        controls: c.controls
+      }))
+    };
+  }
+
+  // Skarpt läge: varje ensam-admin-tävling måste ha en giltig ersättare.
+  const missing = sole.filter(c => !EMAIL_RE.test(replacements[c.id] || ''));
+  if (missing.length) {
+    throw new HttpsError('failed-precondition',
+      `Ange en ny administratör för: ${missing.map(c => c.name || c.id).join(', ')}`);
+  }
+
+  for (const c of fp.competitions) {
+    const accessRef = db.doc(`competitions/${c.id}/private/access`);
+    const compRef = db.doc(`competitions/${c.id}`);
+    const [accessSnap, compSnap] = await Promise.all([accessRef.get(), compRef.get()]);
+    const a = accessSnap.exists ? accessSnap.data() : {};
+    const comp = compSnap.exists ? compSnap.data() : {};
+
+    const strip = (arr) => (arr || []).filter(x => lower(x) !== email);
+    const stripObjs = (arr) => (arr || []).filter(o => lower(o && o.email) !== email);
+
+    const nextAdminEmails = strip(a.adminEmails || comp.adminEmails);
+    // Ersättaren läggs till INNAN kontot städas bort, så tävlingen aldrig
+    // står utan administratör ens ett ögonblick.
+    const repl = replacements[c.id];
+    if (c.soleAdmin && repl && !nextAdminEmails.map(lower).includes(repl)) nextAdminEmails.push(repl);
+
+    await accessRef.set({
+      adminEmails: nextAdminEmails,
+      userEmails: strip(a.userEmails || comp.userEmails),
+      ekonomiEmails: strip(a.ekonomiEmails),
+      users: stripObjs(a.users || comp.users),
+      ekonomi: stripObjs(a.ekonomi),
+      admins: (a.admins || comp.admins || []).filter(u => u !== uid)
+    }, { merge: true });
+
+    // Publika dokumentet: uid-listan och tävlingsledningens kontaktuppgifter.
+    const compPatch = { admins: (comp.admins || []).filter(u => u !== uid) };
+    if (Array.isArray(comp.management) && comp.management.some(r => lower(r.email) === email)) {
+      // Samma linje som vid avslutad tävling: rollen kvar, personuppgifterna bort.
+      compPatch.management = comp.management.map(r =>
+        lower(r.email) === email ? { ...r, name: '', phone: '', email: '' } : r);
+    }
+    await compRef.update(compPatch);
+
+    // Kontrollansvarig — listorna är append-only för klienter, admin-SDK:n
+    // går förbi den spärren.
+    for (const ct of c.controls) {
+      const metaRef = db.doc(`competitions/${c.id}/controls/${ct.id}/private/meta`);
+      const metaSnap = await metaRef.get();
+      const m = metaSnap.exists ? metaSnap.data() : {};
+      await metaRef.set({
+        ansvariga: stripObjs(m.ansvariga),
+        ansvarigaEmails: strip(m.ansvarigaEmails)
+      }, { merge: true });
+      await db.doc(`competitions/${c.id}/controls/${ct.id}`).update({
+        ansvarigaEmails: strip((await db.doc(`competitions/${c.id}/controls/${ct.id}`).get()).data()?.ansvarigaEmails)
+      }).catch(() => { /* fältet finns inte längre på nya kontroller */ });
+    }
+  }
+
+  for (const rid of fp.requestIds) {
+    await db.doc(`competitionRequests/${rid}`).delete().catch(() => {});
+  }
+  await db.doc(`users/${uid}`).delete().catch(() => {});
+  try { await admin.auth().deleteUser(uid); }
+  catch (e) { logger.warn(`Kunde inte radera auth-kontot ${uid}`, e); }
+
+  logger.info(`Konto raderat: ${email} (${fp.competitions.length} tävlingar städade)`);
+  return { ok: true, competitions: fp.competitions.length };
+});
+
 // --- Tävlingsförfrågningar ----------------------------------------------------
 // Vanliga användare kan inte skapa tävlingar (firestore.rules) utan skickar en
 // förfrågan. Här går mailen: ny förfrågan → alla super-admins; beslut →

@@ -171,6 +171,16 @@ first sign-in. Other users get `role: "user"`.
   `resendManageLink` (self-service re-send of a registration's manage link —
   ALWAYS answers a neutral ok so registrations can't be enumerated; throttled
   per address via `resendRequests/{email}` and the global `caps/` mail lanes).
+  A third callable, `deleteMyAccount`, does GDPR account erasure: it MUST be
+  server-side because a user may neither delete their own `users/{uid}` doc
+  nor edit competitions they only belong to, and ansvariga lists are
+  append-only. Called with no args it is a DRY RUN returning where the account
+  appears (that is what the confirm modal renders); with `confirm: true` it
+  strips the email from every access doc, control meta, `management` (PII
+  blanked, role kept) and the uid from `admins`, deletes the user's
+  competitionRequests, the users doc and the Auth account. Sole admin of a
+  competition must supply a replacement admin per competition, and the last
+  super-admin is refused outright.
   Never add rules matches for `/mail/**`, `/caps/**`, `/loginRequests/**` or
   `/resendRequests/**` — only the admin SDK may touch them. Keep all
   other logic client-side + rules. Functions deploy manually:
