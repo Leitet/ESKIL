@@ -161,7 +161,17 @@ export function el(tag, attrs = {}, ...children) {
 }
 
 export function toast(msg, kind = '') {
-  const wrap = document.getElementById('toasts') || document.body;
+  // Wrapen är det som gör toasten fixed och centrerad. Sidor som saknade den
+  // (t.html, a.html) fick i stället ett statiskt block sist i dokumentet —
+  // på en lång anmälningssida långt utanför skärmen. Skapa den hellre än att
+  // lita på att varje ny sida minns att lägga in den.
+  let wrap = document.getElementById('toasts');
+  if (!wrap) {
+    wrap = document.createElement('div');
+    wrap.className = 'toast-wrap';
+    wrap.id = 'toasts';
+    document.body.appendChild(wrap);
+  }
   const t = document.createElement('div');
   t.className = 'toast' + (kind ? ' ' + kind : '');
   t.textContent = msg;

@@ -17,6 +17,36 @@ import { lockScroll, unlockScroll } from './haptic.js';
 // Så långt man måste dra innan det räknas som "stäng".
 const STÄNG_PX = 90;
 
+// Öppna blad, äldst först. Behövs för sheetNotice(): ett meddelande om vad som
+// just hände hör hemma i det blad man tryckte i, inte bakom det.
+const öppna = [];
+
+// Hur länge en notis står kvar. Längre än en toast — den förklarar oftast
+// varför något INTE gick, och det ska hinna läsas.
+const NOTIS_MS = 5000;
+
+/**
+ * Visar en rad i det översta öppna bladet, strax ovanför dess knappar.
+ *
+ * En toast i sidans nederkant hamnar bakom ett öppet blad — så syntes aldrig
+ * "Demospår — rapportering är avstängd" när någon tryckte Spara. Här står
+ * svaret där handlingen skedde.
+ *
+ * @returns {boolean} false om inget blad är öppet (anropa en toast i stället)
+ */
+export function sheetNotice(text, kind = 'err') {
+  const ark = öppna[öppna.length - 1];
+  if (!ark) return false;
+  const rad = ark.el.querySelector('.sheet-notice');
+  if (!rad) return false;
+  rad.textContent = text;
+  rad.className = 'sheet-notice' + (kind === 'err' ? ' err' : '');
+  rad.hidden = false;
+  clearTimeout(rad._t);
+  rad._t = setTimeout(() => { rad.hidden = true; }, NOTIS_MS);
+  return true;
+}
+
 /**
  * @param opts
  *   title     rubrik (sträng) — utelämna för ett blad utan huvud
@@ -44,6 +74,7 @@ export function openSheet({ title = '', eyebrow = '', body = '', footer = '', on
           <button type="button" class="sheet-close" id="sheet-x" aria-label="Stäng">${icon('x', { size: 22 })}</button>
         </div>` : ''}
       <div class="sheet-body" id="sheet-body">${body}</div>
+      <div class="sheet-notice" hidden></div>
       <div class="sheet-foot" id="sheet-foot" ${footer ? '' : 'hidden'}>${footer}</div>
     </div>`;
   document.body.appendChild(overlay);
@@ -54,6 +85,8 @@ export function openSheet({ title = '', eyebrow = '', body = '', footer = '', on
   const close = () => {
     if (stängd) return;
     stängd = true;
+    const i = öppna.findIndex(x => x.el === overlay);
+    if (i >= 0) öppna.splice(i, 1);
     document.removeEventListener('keydown', onKey);
     ark.style.transition = 'transform .18s ease-in';
     ark.style.transform = 'translateY(100%)';
@@ -100,7 +133,7 @@ export function openSheet({ title = '', eyebrow = '', body = '', footer = '', on
     });
   }
 
-  return {
+  const handtag = {
     el: overlay,
     close,
     setBody(html) { overlay.querySelector('#sheet-body').innerHTML = html; },
@@ -110,4 +143,6 @@ export function openSheet({ title = '', eyebrow = '', body = '', footer = '', on
       f.hidden = !html;
     }
   };
+  öppna.push(handtag);
+  return handtag;
 }

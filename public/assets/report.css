@@ -495,6 +495,18 @@ html[data-mode="night"] .sheet-overlay { background: rgba(0,0,0,0.85); }
 }
 .sheet-body { overflow-y: auto; -webkit-overflow-scrolling: touch; flex: 1; min-height: 0; }
 .sheet-foot { flex-shrink: 0; }
+/* Notisraden: svaret på "varför hände inget?" — mellan innehållet och
+   knapparna, där blicken redan är. Se sheetNotice() i sheet.js. */
+.sheet-notice {
+  flex-shrink: 0;
+  margin: 8px 0 2px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  font-weight: 600; font-size: 14.5px;
+  background: var(--r-success); color: #fff;
+  animation: fadeIn 0.16s;
+}
+.sheet-notice.err { background: var(--r-danger); }
 .sheet-eyebrow {
   font-size: 11.5px; font-weight: 800; letter-spacing: .09em;
   text-transform: uppercase; color: var(--r-fg-muted); margin-bottom: 2px;
@@ -714,7 +726,7 @@ html[data-mode="night"] .r-done-banner.has-pending { background: #4a0a20; border
   padding: 14px 18px;
   border-radius: 12px;
   font-weight: 600;
-  z-index: 60;
+  z-index: 1400;   /* över bladen (1100) — återkoppling får aldrig gömmas */
   text-align: center;
   box-shadow: var(--r-shadow);
   animation: slideUp 0.22s;
@@ -766,34 +778,6 @@ html[data-mode="night"] .r-done-banner.has-pending { background: #4a0a20; border
   font: 800 11.5px/1 Helvetica, Arial, sans-serif;
 }
 
-.emb-overlay {
-  position: fixed; inset: 0; z-index: 2147483002;
-  display: flex; align-items: flex-end; justify-content: center;
-  background: rgba(0, 0, 0, .45);
-}
-.emb-modal {
-  width: 100%; max-width: 560px; max-height: 88vh;
-  display: flex; flex-direction: column;
-  border-radius: 18px 18px 0 0;
-  background: var(--r-bg); color: var(--r-fg);
-  box-shadow: 0 -6px 30px rgba(0, 0, 0, .35);
-}
-@media (min-width: 600px) {
-  .emb-overlay { align-items: center; }
-  .emb-modal { border-radius: 18px; max-height: 82vh; }
-}
-.emb-modal-head {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--r-border);
-  font-size: 16px;
-}
-.emb-x {
-  width: 36px; height: 36px; padding: 0;
-  display: inline-flex; align-items: center; justify-content: center;
-  border: 0; border-radius: 50%;
-  background: none; color: var(--r-fg-muted); cursor: pointer;
-}
 .emb-log {
   flex: 1; overflow-y: auto;
   display: flex; flex-direction: column; gap: 10px;

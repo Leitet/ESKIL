@@ -99,6 +99,15 @@ Email extension). Production domain: https://eskilscout.se.
   `--field-top` (report.css) är summan av båda — sticky-remsor och
   `scroll-padding-top` måste utgå från den, annars hamnar det de scrollar
   fram under headern.
+- **Återkoppling: toast eller notis i bladet.** `toast()` (utils.js, admin +
+  publika sidor) skapar sin egen `.toast-wrap` om sidan saknar `#toasts` —
+  utan wrapen blir toasten ett statiskt block sist i dokumentet och syns
+  aldrig på en lång sida. Fältsidornas `rtoast` (report.js) lämnar i stället
+  över till `sheetNotice()` i sheet.js när ett blad är öppet: en toast i
+  nederkanten hamnar bakom bladet, och även med rätt z-index landar den
+  ovanpå knappen man just tryckte. Notisen står mellan innehållet och
+  knapparna — svaret på "varför hände inget?" där blicken redan är.
+  Mutationsverifierat: med gamla `z-index: 60` blockeras toasten av `.r-btn`.
 - **`[hidden]` är en global regel** (`display: none !important`) i report.css
   och app.css. Ett element med eget `display` vinner annars över attributet,
   och den fällan har slagit till flera gånger (notisbadgen visade "0",

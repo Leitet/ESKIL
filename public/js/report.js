@@ -11,7 +11,7 @@ import { icon } from './icons.js';
 import { haptic, bindHaptic, bindTap } from './haptic.js';
 import { updateBroadcast } from './broadcast.js';
 import { mountMessages } from './chat.js';
-import { openSheet } from './sheet.js';
+import { openSheet, sheetNotice } from './sheet.js';
 import { enqueue, removeFromQueue, listQueue, isPending, flushQueue, withTimeout, isPermanentError } from './offline-queue.js';
 
 const root = document.getElementById('root');
@@ -264,6 +264,9 @@ function parsePath() {
 }
 
 function rtoast(msg, kind) {
+  // Ett öppet blad täcker sidan — en toast i nederkanten hamnar bakom det.
+  // Då stod svaret på varför Spara inte gick där ingen såg det.
+  if (sheetNotice(msg, kind === 'err' ? 'err' : 'ok')) return;
   const el = document.createElement('div');
   el.className = 'r-toast' + (kind === 'err' ? ' err' : '');
   el.textContent = msg;
