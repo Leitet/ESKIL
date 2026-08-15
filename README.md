@@ -400,6 +400,30 @@ Kräver **Blaze-planen** (inom fria kvoter ≈ 0 kr/mån — sätt budgetlarm).
 Extension-parametrar: collection `mail`, default FROM
 `ESKIL <noreply@eskilscout.se>`, SMTP via Brevo.
 
+### Avsändarautentisering (DNS) — annars fastnar mailen i skräpfiltren
+
+Domänen `eskilscout.se` måste auktorisera **både** Firebase och Brevo. Det finns
+bara EN SPF-post per domän, så includerna måste stå i samma rad:
+
+```
+eskilscout.se.  TXT  "v=spf1 include:_spf.firebasemail.com include:spf.brevo.com ~all"
+```
+
+Saknas `spf.brevo.com` skickar Brevo från IP:n som domänen inte pekar ut, och
+strikta mottagare avvisar med `554 5.7.1 Spam message rejected` — mailet ser
+levererat ut i extension-loggen ("accepted: 1") men studsar hos mottagaren.
+Kontrollera i Brevo (Statistics → Email) om ett mail bounce:at.
+
+Övriga poster som ska finnas: DKIM (`brevo1._domainkey` och `brevo2._domainkey`
+som CNAME till Brevos nycklar), verifieringsposten `brevo-code:…` och en
+DMARC-post på `_dmarc.eskilscout.se`.
+
+Snabbkoll:
+
+```bash
+dig +short TXT eskilscout.se
+```
+
 Deploy av functions (ingår inte i CI-workflowen):
 
 ```bash
