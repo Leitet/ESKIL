@@ -268,6 +268,99 @@ export function fitView(pts, wPx, hPx, { margin = MAP_MARGIN_PX } = {}) {
   return { zoom: bäst.zoom, scale: Math.min(bäst.scale, MAX_UPSCALE) };
 }
 
+// Skalstockens längd: en JÄMN sträcka (1, 2 eller 5 × en tiopotens) som ryms
+// inom `maxPx`. Stapelns pixelbredd räknas ur den valda sträckan — aldrig
+// tvärtom. En skalstock vars streck inte motsvarar sin siffra är värre än
+// ingen skalstock alls; scouter mäter i den.
+export function niceScale(metersPerPx, maxPx) {
+  const råd = metersPerPx * maxPx;
+  const pot = Math.pow(10, Math.floor(Math.log10(råd)));
+  const jämn = [5, 2, 1].map(k => k * pot).find(v => v <= råd) || pot;
+  return {
+    meters: jämn,
+    barPx: jämn / metersPerPx,
+    etikett: jämn >= 1000 ? `${+(jämn / 1000).toFixed(2)} km` : `${jämn} m`
+  };
+}
+
+// Kompass, skalstock och attribution — ritas på den FÄRDIGA bilden, efter en
+// eventuell rotation. Norr är inte uppåt på en roterad karta, och en kompass
+// som pekar fel är värre än ingen kompass alls; att räkna om nålen i efterhand
+// vore lätt att glömma, så geometrin görs på ett enda ställe.
+//
+// `northDeg` är den riktning norr faktiskt har i bilden: 0 = uppåt, 90 = höger.
+function drawMapChrome(ctx, w, h, { metersPerPx, northDeg }) {
+  const { barPx, etikett } = niceScale(metersPerPx, Math.min(300, w * 0.22));
+
+  const bx = 26, by = h - 40, bh = 12;
+  ctx.fillStyle = 'rgba(255,255,255,.9)';
+  ctx.fillRect(bx - 10, by - 30, barPx + 20, 52);
+  // Två fält i svart/vitt — läsbart även i gråskala.
+  for (let i = 0; i < 2; i++) {
+    ctx.fillStyle = i % 2 ? '#ffffff' : '#1c1c1c';
+    ctx.fillRect(bx + (barPx / 2) * i, by, barPx / 2, bh);
+  }
+  ctx.strokeStyle = '#1c1c1c';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(bx, by, barPx, bh);
+  ctx.fillStyle = '#1c1c1c';
+  ctx.font = '700 20px Helvetica, Arial, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText('0', bx, by - 8);
+  ctx.textAlign = 'right';
+  ctx.fillText(etikett, bx + barPx, by - 8);
+
+  // --- Kompass ---
+  const r = 34, cx = w - r - 26, cy = r + 26;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255,255,255,.92)';
+  ctx.fill();
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = '#1c1c1c';
+  ctx.stroke();
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(northDeg * Math.PI / 180);
+  // Nål: röd norrhalva, vit södra — samma bild som på en riktig kompass.
+  const nålL = r - 9, nålB = 8;
+  ctx.beginPath();
+  ctx.moveTo(0, -nålL); ctx.lineTo(nålB, 0); ctx.lineTo(-nålB, 0);
+  ctx.closePath();
+  ctx.fillStyle = '#C8102E';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(0, nålL); ctx.lineTo(nålB, 0); ctx.lineTo(-nålB, 0);
+  ctx.closePath();
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  ctx.lineWidth = 1.6;
+  ctx.strokeStyle = '#1c1c1c';
+  ctx.beginPath();
+  ctx.moveTo(0, -nålL); ctx.lineTo(nålB, 0); ctx.lineTo(0, nålL); ctx.lineTo(-nålB, 0);
+  ctx.closePath();
+  ctx.stroke();
+  // N:et roterar med nålen — annars pekar bokstaven åt ett håll och nålen åt
+  // ett annat på en roterad karta.
+  ctx.font = '800 19px Helvetica, Arial, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#1c1c1c';
+  ctx.fillText('N', 0, -r + 1);
+  ctx.restore();
+
+  // --- Attribution ---
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'bottom';
+  ctx.font = 'bold 18px sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,.85)';
+  ctx.fillRect(w - 210, h - 30, 210, 30);
+  ctx.fillStyle = '#333';
+  ctx.fillText('© OpenStreetMap', w - 10, h - 8);
+}
+
 /**
  * Hela banan som en PNG-data-URI.
  * @param comp, controls, track  samma indata som kartorna i appen
@@ -405,24 +498,30 @@ export async function courseMapDataUrl(comp, controls, track, places = [], { wPx
     ctx.fillText(nd.label, px, py + 1);
   }
 
-  ctx.textAlign = 'right';
-  ctx.textBaseline = 'bottom';
-  ctx.font = 'bold 18px sans-serif';
-  ctx.fillStyle = 'rgba(255,255,255,.85)';
-  ctx.fillRect(cw - 210, ch - 30, 210, 30);
-  ctx.fillStyle = '#333';
-  ctx.fillText('© OpenStreetMap', cw - 10, ch - 8);
-
   try {
-    if (!rotera) return { url: canvas.toDataURL('image/jpeg', 0.86), rotated: false };
-    // Rotera 90° medurs in i den efterfrågade formen.
-    const ut = document.createElement('canvas');
-    ut.width = wPx; ut.height = hPx;
-    const uctx = ut.getContext('2d');
-    uctx.translate(wPx, 0);
-    uctx.rotate(Math.PI / 2);
-    uctx.drawImage(canvas, 0, 0);
-    return { url: ut.toDataURL('image/jpeg', 0.86), rotated: true };
+    let färdig = canvas;
+    if (rotera) {
+      // Rotera 90° MEDURS in i den efterfrågade formen. Det som pekade uppåt
+      // (norr) pekar därefter åt höger — se northDeg nedan.
+      färdig = document.createElement('canvas');
+      färdig.width = wPx; färdig.height = hPx;
+      const uctx = färdig.getContext('2d');
+      // save/restore, inte bara translate+rotate: transformen ligger annars
+      // kvar på kontexten, och kompassen och skalstocken nedan ritas roterade
+      // i fel hörn.
+      uctx.save();
+      uctx.translate(wPx, 0);
+      uctx.rotate(Math.PI / 2);
+      uctx.drawImage(canvas, 0, 0);
+      uctx.restore();
+    }
+    // Meter per bildpixel: markupplösningen vid ekvatorn, korrigerad för
+    // breddgraden och för nedskalningen av kartrutorna.
+    const mittLat = pts.reduce((a, q) => a + q.lat, 0) / pts.length;
+    const metersPerPx =
+      156543.03392 * Math.cos(mittLat * Math.PI / 180) / Math.pow(2, zoom) / scale;
+    drawMapChrome(färdig.getContext('2d'), wPx, hPx, { metersPerPx, northDeg: rotera ? 90 : 0 });
+    return { url: färdig.toDataURL('image/jpeg', 0.86), rotated: rotera };
   } catch { return null; }
 }
 
@@ -1373,21 +1472,8 @@ export async function generateManualStartPdf(comp, patrol, controls, opts = {}) 
     pdf.setTextColor('#6b7684');
     pdf.text('Ingen karta kunde ritas — kontrollerna saknar positioner.', A4L.W / 2, A4L.H / 2, { align: 'center' });
   }
-  // Identitetsbricka: ett löst blad ska gå att lägga tillbaka i rätt hög.
-  pdf.setFillColor('#ffffff');
-  pdf.rect(4, A4L.H - 14, patrol ? 86 : 82, 10, 'F');
-  pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(9);
-  pdf.setTextColor(BLUE);
-  if (patrol) {
-    pdf.text(`#${patrol.number ?? ''} ${patrol.name || ''}`, 7, A4L.H - 7);
-  } else {
-    pdf.text('Patrull:', 7, A4L.H - 7);
-    pdf.setDrawColor('#7d99b3');
-    pdf.setLineWidth(0.3);
-    pdf.line(7 + pdf.getTextWidth('Patrull:') + 3, A4L.H - 6, 78, A4L.H - 6);
-  }
-
+  // Ingen patrulluppgift här — kartsidan är bara karta. Patrullen står på
+  // andra sidan, och kompassen och skalstocken ligger i bilden.
   drawFoldLine(pdf);
 
   // --- Sida 2: information + poängkort ---

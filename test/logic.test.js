@@ -14,7 +14,7 @@ import {
   effectiveIntervalSec, swishAppUrl, swishQrString
 } from '../public/js/utils.js';
 import { hasIcon } from '../public/js/icons.js';
-import { fitView } from '../public/js/pdf.js';
+import { fitView, niceScale } from '../public/js/pdf.js';
 import {
   PLACE_KINDS, PLACE_ICONS, PALETTE, placeColorHex, normPlace, compPlaces, placeToStorage, coursePlaces
 } from '../public/js/places.js';
@@ -675,5 +675,37 @@ describe('Bankartans passning (utskrift)', () => {
     const { zoom, scale } = fitView([pt(55.5, 12.9), pt(67.8, 20.3)], W, H);
     assert.ok(zoom >= 3 && zoom <= 18, `zoom utanför skalan: ${zoom}`);
     assert.ok(scale > 0 && scale <= 1.45);
+  });
+});
+
+describe('Skalstocken på den utskrivna kartan', () => {
+  test('stapeln motsvarar sin siffra', () => {
+    // Det tysta felet: en stapel vars längd inte hänger ihop med etiketten.
+    // Scouter mäter i den, så pixelbredden MÅSTE räknas ur den valda sträckan.
+    for (const mpp of [0.2, 0.6, 1.4, 3.7, 12, 55, 400]) {
+      const { meters, barPx } = niceScale(mpp, 300);
+      assert.ok(Math.abs(barPx * mpp - meters) < 1e-6,
+        `${meters} m ritas som ${(barPx * mpp).toFixed(1)} m`);
+    }
+  });
+
+  test('sträckan är alltid ett jämnt tal man kan räkna med', () => {
+    for (const mpp of [0.2, 0.6, 1.4, 3.7, 12, 55, 400]) {
+      const { meters } = niceScale(mpp, 300);
+      const pot = Math.pow(10, Math.floor(Math.log10(meters)));
+      assert.ok([1, 2, 5].includes(Math.round(meters / pot)),
+        `${meters} m är inte 1/2/5 × tiopotens`);
+    }
+  });
+
+  test('stapeln ryms i utrymmet den fått', () => {
+    for (const mpp of [0.2, 0.6, 1.4, 3.7, 12, 55, 400]) {
+      assert.ok(niceScale(mpp, 300).barPx <= 300, 'stapeln spiller över');
+    }
+  });
+
+  test('långa sträckor visas i kilometer', () => {
+    assert.equal(niceScale(20, 300).etikett, '5 km');
+    assert.equal(niceScale(1.5, 300).etikett, '200 m');
   });
 });

@@ -63,7 +63,13 @@ Email extension). Production domain: https://eskilscout.se.
   Zoomnivån väljs så att skalan hamnar närmast 1 — antalet kartrutor växer med
   kvadraten på 1/skalan, och att alltid skala ner kostade 140 rutor och 6 s
   mot 48 rutor och 0,2 s utan synlig skillnad på papperet. `MAX_UPSCALE`
-  hindrar att en kort bana blåses upp till oläslighet. Kartan renderas EN gång
+  hindrar att en kort bana blåses upp till oläslighet.
+  Kompass och skalstock ritas i `drawMapChrome` — EFTER en eventuell rotation,
+  och nålens `northDeg` är 90 när bilden roterats. Norr är inte uppåt på en
+  roterad karta, och en kompass som pekar fel är värre än ingen. Verifierat
+  genom att mäta var en känd nordpunkt hamnar i den färdiga bilden.
+  Roterar du canvasen: `save()`/`restore()`, annars ligger transformen kvar
+  och kompassen hamnar roterad i fel hörn. Kartan renderas EN gång
   per massutskrift; 30 patruller ska inte bli 30 tile-omgångar.
   `patrol = null` ger ett TOMT reservkort: namn, kår och starttid blir
   skrivrader. `downloadManualStartPdf` tar ett TAL i patrols-argumentet för

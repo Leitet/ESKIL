@@ -97,7 +97,8 @@ att köra gratis på Spark-planen.
   banan, och kartan läggs på högkant när banan är avlång så den fyller
   papperet), andra sidan har information på ena halvan och ett ifyllbart
   poängkort på den andra. Skrivs banan ut med anonyma kontroller får
-  poängkortet skrivrader i stället för kontrollnamn. Två varianter:
+  poängkortet skrivrader i stället för kontrollnamn. Kartsidan har kompass och
+  skalstock för den som navigerar. Två varianter:
   **tomma reservkort** (utan namn och starttid — sekretariatet fyller i för
   hand; normalfallet när tävlingen kör digitalt och bara enstaka patruller
   saknar mobil) eller **ett kort per patrull** med allt ifyllt. Båda i en fil,
