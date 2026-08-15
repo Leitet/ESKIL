@@ -99,6 +99,7 @@
       <tr><td>Offline-kopior av fältsidorna (Cache Storage + IndexedDB)</td><td>Rapportsidan, startkortet och stationssidan sparas lokalt så de kan öppnas helt utan mobiltäckning i skogen, tillsammans med tävlingsdatat de visar. Rensas med webbplatsdata.</td></tr>
       <tr><td>Favoritpatruller på tävlingssidan</td><td>Kommer ihåg vilka patruller du stjärnmärkt så de visas överst i startlistan och poängtabellen. Bara i din webbläsare — skickas aldrig till servern.</td></tr>
       <tr><td>Meddelandehistorik (notisklockan)</td><td>Fältsidorna sparar tävlingsledningens driftmeddelanden lokalt så notisklockan kan visa tidigare mottagna meddelanden och vilka du bekräftat. Bekräftelsen i sig skickas till tävlingsledningen (kontrollens/patrullens nummer och tidpunkt — inga personuppgifter).</td></tr>
+      <tr><td>Länk till ditt ärende</td><td>Skickar du in kontaktformuläret sparas ärendets länk i din webbläsare så att du hittar tillbaka till det. Bara adressen — inget innehåll.</td></tr>
       <tr><td>Val i "Dela ert resultat"</td><td>Startkortet kommer ihåg vilken design, vilket format och vilka uppgifter du senast valde till delningsbilden. Bara i din webbläsare.</td></tr>
       <tr><td>Notisbehörighet (valfri)</td><td>Väljer du "Aktivera notiser" i klockan frågar webbläsaren om lov att visa systemnotiser för nya meddelanden. Behörigheten hanteras helt av webbläsaren och kan återkallas där när som helst.</td></tr>
     </table>
@@ -122,8 +123,10 @@
     kan läsa och svara. Adressen används <strong>bara</strong> för att svara dig, aldrig för utskick
     eller marknadsföring.</p>
     <p>En notis skickas till de ansvariga när ett meddelande kommer in. Svaret skrivs i ESKIL och
-    skickas därifrån — inte från någons privata mailadress. Ärendet raderas när det är avslutat och
-    inte längre behövs. Vill du att det tas bort tidigare, skriv till oss så gör vi det.</p>
+    skickas därifrån — inte från någons privata mailadress. Med svaret får du en länk till ditt
+    ärende där du kan läsa hela samtalet och svara. <strong>Den som har länken kommer åt ärendet</strong>,
+    så dela den inte vidare. Länken slutar fungera när ärendet avslutas. Ärendet raderas när det
+    inte längre behövs — vill du att det tas bort tidigare, skriv till oss så gör vi det.</p>
     <p>Ett påbörjat meddelande sparas tillfälligt i din egen webbläsare (sessionStorage) så att det
     inte försvinner om du laddar om sidan. Det försvinner när du stänger fliken.</p>
 

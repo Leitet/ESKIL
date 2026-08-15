@@ -190,14 +190,27 @@ anonymt skrivbar toppnivåkollektion vore en öppen kran rakt in i databasen.
 Lägg därför ALDRIG till en rules-match som tillåter klient-create på
 `feedback/**` eller `feedbackRequests/**`.
 
-Hela `feedback`-kollektionen är super-admin-only: den innehåller fritext och
-en mailadress från någon utanför systemet. Notismailet till super-admins bär
-meddelandet men har INGET Reply-To — svaret skrivs i `/app/admin/feedback`,
-och `onFeedbackReplyCreated` mailar det till avsändaren FRÅN ESKIL. Poängen är
-att ingen super-admins privata adress ska hamna i inkorgen hos en utomstående.
-Svarsmailet har därför inte heller något Reply-To; vill avsändaren skriva igen
-hänvisas hen till formuläret. Ett skickat svar går varken att ändra eller
-radera — det ligger redan i någons inkorg. Allt fem guards är
+**Id:t är hemligheten** även här: avsändaren får `/kontakt/<fbId>` i
+svarsmailet och kan läsa tråden och svara i den, precis som anmälningarnas
+ändringslänk. Därför är `get` öppen men `list` super-admin-only — `read`
+täcker båda, och med `read: true` gick hela kollektionen att räkna upp
+anonymt (fångat av ett test).
+
+Regler kan inte dölja ENSKILDA FÄLT, så uppdelningen ÄR skyddet: trådhuvudet
+och `messages/` innehåller bara sådant avsändaren själv skrivit plus svarens
+text, medan allt internt — vilken super-admin som svarat (`authors`), som
+hanterat, och om avsändaren var inloggad — ligger i `feedback/{id}/private/meta`,
+som bara super-admin når. Lägg ALDRIG tillbaka en super-admins adress i ett
+dokument som länken kan läsa; hela poängen med att svara i ESKIL är att den
+adressen inte lämnar systemet.
+
+Notismailet till super-admins bär meddelandet men har INGET Reply-To — svaret
+skrivs i `/app/admin/feedback`, och `onFeedbackMessageCreated` mailar det till
+avsändaren FRÅN ESKIL med länken till tråden. Samma funktion notifierar åt
+andra hållet när avsändaren svarar. Ett **avslutat** ärende tar inte emot fler
+meddelanden från länken: det stänger både tjatet och möjligheten att använda
+en läckt länk för att mata ut notismail. Ett skickat meddelande går varken att
+ändra eller radera — det ligger redan i någons inkorg. Alla sju guards är
 mutationsverifierade i `test/rules.test.js`.
 
 ## Firestore rules model

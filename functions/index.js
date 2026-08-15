@@ -624,10 +624,35 @@ exports.sendFeedback = onCall(async (req) => {
     throw new HttpsError('invalid-argument', 'Meddelandet är för långt — korta ner det lite.');
   }
 
+  await throttleFeedback(email);
+
+  // Trådhuvudet innehåller BARA sådant avsändaren själv skrivit: hen kan
+  // läsa det med sin hemliga länk, och regler kan inte dölja enskilda fält.
+  const ref = await db.collection('feedback').add({
+    at: FieldValue.serverTimestamp(),
+    lastAt: FieldValue.serverTimestamp(),
+    lastFrom: 'anvandare',
+    email, name, kind, message,
+    status: 'ny',
+    replyCount: 0
+  });
+  // Det interna ligger utanför räckhåll för länken.
+  await ref.collection('private').doc('meta').set({
+    accountEmail: (req.auth && req.auth.token && req.auth.token.email) || null
+  });
+  logger.info(`Meddelande till ESKIL mottaget (${kind}) — ${ref.id}`);
+
+  await notifieraSuperAdmins(ref.id, { email, name, kind }, message, true);
+  // Länken tillbaka till tråden — visas på kvittosidan så avsändaren kan
+  // spara den direkt, inte bara när vi hunnit svara.
+  return { ok: true, id: ref.id };
+});
+
+async function throttleFeedback(email) {
   const today = new Date().toISOString().slice(0, 10);
-  const throttleRef = db.doc(`feedbackRequests/${email}`);
+  const ref = db.doc(`feedbackRequests/${email}`);
   await db.runTransaction(async (tx) => {
-    const snap = await tx.get(throttleRef);
+    const snap = await tx.get(ref);
     const t = snap.exists ? snap.data() : {};
     const now = Date.now();
     if (t.lastSentAt && now - t.lastSentAt < FEEDBACK_MIN_INTERVAL_MS) {
@@ -637,36 +662,26 @@ exports.sendFeedback = onCall(async (req) => {
     if (count >= FEEDBACK_MAX_PER_DAY) {
       throw new HttpsError('resource-exhausted', 'För många meddelanden idag. Försök igen imorgon.');
     }
-    tx.set(throttleRef, { lastSentAt: now, day: today, count: count + 1 });
+    tx.set(ref, { lastSentAt: now, day: today, count: count + 1 });
   });
+}
 
-  const ref = await db.collection('feedback').add({
-    at: FieldValue.serverTimestamp(),
-    lastAt: FieldValue.serverTimestamp(),
-    email, name, kind, message,
-    // Inloggad avsändare: super-admin ser vem det är utan att behöva gissa.
-    // Adressen ovan är den hen bad oss svara på och kan vara en annan.
-    accountEmail: (req.auth && req.auth.token && req.auth.token.email) || null,
-    status: 'ny',
-    replyCount: 0
-  });
-  logger.info(`Meddelande till ESKIL mottaget (${kind}) — ${ref.id}`);
-
-  // Notisen till super-admins. Meddelandet står med i mailet så de ser vad
-  // det gäller direkt, men det finns INGET Reply-To: svaret skrivs i ESKIL
-  // så det går ut från ESKIL och inte från någons privata adress.
+// Notisen till super-admins. Meddelandet står med i mailet så de ser vad det
+// gäller direkt, men det finns INGET Reply-To: svaret skrivs i ESKIL så det
+// går ut därifrån och inte från någons privata adress.
+async function notifieraSuperAdmins(fbId, fb, text, forsta) {
   const to = await superAdminEmails();
-  if (!to.length) { logger.warn('Ingen super-admin att notifiera om meddelandet'); return { ok: true }; }
+  if (!to.length) { logger.warn('Ingen super-admin att notifiera om meddelandet'); return; }
   if (!(await reserveMail('mail', to.length))) {
     logger.warn('Daily mail cap reached — hoppar över notis om meddelande');
-    return { ok: true };
+    return;
   }
-
+  const rubrik = FEEDBACK_KINDS[fb.kind] || FEEDBACK_KINDS.annat;
   const body = `
-    <p><strong>${esc(name || email)}</strong> har skickat ett meddelande till ESKIL.</p>
-    <p style="margin:0 0 4px;"><span style="display:inline-block;background:#e8eef4;color:#003660;font-size:12px;font-weight:bold;padding:3px 10px;border-radius:99px;">${esc(FEEDBACK_KINDS[kind])}</span></p>
-    <p style="border-left:3px solid #d2dde8;padding-left:12px;color:#56544f;white-space:pre-wrap;">${esc(message)}</p>
-    <p style="font-size:13px;color:#8a8a8a;">Svara till: ${esc(email)}</p>
+    <p><strong>${esc(fb.name || fb.email)}</strong> har ${forsta ? 'skickat ett meddelande till ESKIL' : 'svarat i ett pågående ärende'}.</p>
+    <p style="margin:0 0 4px;"><span style="display:inline-block;background:#e8eef4;color:#003660;font-size:12px;font-weight:bold;padding:3px 10px;border-radius:99px;">${esc(rubrik)}</span></p>
+    <p style="border-left:3px solid #d2dde8;padding-left:12px;color:#56544f;white-space:pre-wrap;">${esc(text)}</p>
+    <p style="font-size:13px;color:#8a8a8a;">Från: ${esc(fb.email)}</p>
     ${button(`${APP_URL}/app/admin/feedback`, 'Läs och svara i ESKIL')}
     <p style="font-size:13px;color:#8a8a8a;">Svara inte på det här mailet — skriv svaret i ESKIL,
     så går det ut därifrån i stället för från din egen adress.</p>
@@ -674,51 +689,60 @@ exports.sendFeedback = onCall(async (req) => {
   await queueMail({
     to,
     message: {
-      subject: `${FEEDBACK_KINDS[kind]}: ${message.slice(0, 60)}${message.length > 60 ? '…' : ''}`,
+      subject: `${forsta ? '' : 'Svar · '}${rubrik}: ${text.slice(0, 60)}${text.length > 60 ? '…' : ''}`,
       html: layout(FEEDBACK_COMP, body, 'Mailet går inte att svara på — svara i ESKIL.'),
-      text: `${name || email} (${email}) skrev till ESKIL [${FEEDBACK_KINDS[kind]}]:\n\n${message}\n\nSvara i ESKIL: ${APP_URL}/app/admin/feedback`
+      text: `${fb.name || fb.email} (${fb.email}) skrev [${rubrik}]:\n\n${text}\n\nSvara i ESKIL: ${APP_URL}/app/admin/feedback`
     }
   });
-  return { ok: true };
-});
+}
 
-// Super-admin skriver svaret i ESKIL — här går det ut som mail FRÅN ESKIL.
-// Inget Reply-To: svararens egen adress ska aldrig lämna systemet, och den
-// som får svaret hänvisas till formuläret om hen vill skriva igen.
-exports.onFeedbackReplyCreated = onDocumentCreated('feedback/{fbId}/replies/{replyId}', async (event) => {
+// Ett meddelande i tråden — åt något av hållen.
+//
+// Från ESKIL: mailas till avsändaren FRÅN ESKIL, med länken till tråden så
+// hen kan svara där i stället för att försöka svara på ett noreply-mail.
+// Från avsändaren: notis till super-admins, som svarar i ESKIL.
+exports.onFeedbackMessageCreated = onDocumentCreated('feedback/{fbId}/messages/{msgId}', async (event) => {
   const { fbId } = event.params;
-  const reply = event.data && event.data.data();
-  if (!reply || !reply.text) return;
+  const m = event.data && event.data.data();
+  if (!m || !m.text) return;
 
   const parent = await db.doc(`feedback/${fbId}`).get();
   const fb = parent.exists ? parent.data() : null;
-  if (!fb || !fb.email) { logger.warn(`Svar på okänt meddelande ${fbId}`); return; }
+  if (!fb || !fb.email) { logger.warn(`Meddelande i okänd tråd ${fbId}`); return; }
 
+  const frånEskil = m.from === 'eskil';
   await parent.ref.update({
-    status: 'besvarad',
+    status: frånEskil ? 'besvarad' : 'ny',
     lastAt: FieldValue.serverTimestamp(),
+    lastFrom: frånEskil ? 'eskil' : 'anvandare',
     replyCount: FieldValue.increment(1)
   });
+
+  if (!frånEskil) {
+    await notifieraSuperAdmins(fbId, fb, m.text, false);
+    return;
+  }
 
   if (!(await reserveMail('mail', 1))) {
     logger.warn('Daily mail cap reached — svaret ligger kvar i ESKIL men mailas inte');
     return;
   }
-
+  const url = `${APP_URL}/kontakt/${fbId}`;
   const body = `
     <p>Hej ${esc(fb.name || '')}!</p>
-    <p>Du skrev till ESKIL${fb.kind && FEEDBACK_KINDS[fb.kind] ? ` (${esc(FEEDBACK_KINDS[fb.kind])})` : ''}. Här är svaret:</p>
-    <p style="border-left:3px solid #003660;padding-left:14px;white-space:pre-wrap;">${esc(reply.text)}</p>
-    <p style="font-size:13px;color:#8a8a8a;border-top:1px solid #e8eef4;padding-top:12px;">Ditt meddelande:</p>
-    <p style="font-size:13px;color:#8a8a8a;white-space:pre-wrap;">${esc(fb.message || '')}</p>
-    ${button(`${APP_URL}/kontakt`, 'Skriv till oss igen')}
+    <p>Du skrev till ESKIL${FEEDBACK_KINDS[fb.kind] ? ` (${esc(FEEDBACK_KINDS[fb.kind])})` : ''}. Här är svaret:</p>
+    <p style="border-left:3px solid #003660;padding-left:14px;white-space:pre-wrap;">${esc(m.text)}</p>
+    ${button(url, 'Läs och svara')}
+    <p style="font-size:13px;color:#8a8a8a;">Svara inte på det här mailet — det går inte fram.
+    Använd knappen ovan, så hamnar svaret direkt hos oss. Spara gärna länken,
+    den fungerar tills ärendet avslutas.</p>
   `;
   await queueMail({
     to: [fb.email],
     message: {
       subject: 'Svar från ESKIL',
-      html: layout(FEEDBACK_COMP, body, 'Mailet går inte att svara på — använd formuläret om du vill skriva igen.'),
-      text: `Svar från ESKIL:\n\n${reply.text}\n\nSkriv till oss igen: ${APP_URL}/kontakt`
+      html: layout(FEEDBACK_COMP, body, 'Mailet går inte att svara på — använd länken i mailet.'),
+      text: `Svar från ESKIL:\n\n${m.text}\n\nLäs och svara: ${url}`
     }
   });
   logger.info(`Svar på meddelande ${fbId} köat till ${fb.email}`);

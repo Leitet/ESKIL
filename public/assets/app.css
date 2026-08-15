@@ -1028,3 +1028,33 @@ table.t tr.sf-row.park-row td {
   white-space: pre-wrap; line-height: 1.55;
 }
 .fb-reply-head { font-size: 12px; font-weight: 700; color: var(--fg3); margin-bottom: 4px; }
+
+/* Pågående ärende på kontaktformuläret + tråden på /kontakt/<id> */
+.kontakt-pagaende {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--sp-4); flex-wrap: wrap;
+  margin-bottom: var(--sp-4);
+  border-left: 4px solid var(--upp-blue);
+}
+.ar-topp {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--sp-3); margin-bottom: var(--sp-5);
+}
+.ar-tradd { display: flex; flex-direction: column; gap: var(--sp-4); }
+.ar-post { padding: 14px 16px; border-radius: var(--r-md); }
+.ar-min { background: var(--gray-50); border: 1px solid var(--border); }
+.ar-eskil { background: var(--scout-blue-50); border-left: 3px solid var(--scout-blue); }
+.ar-post-head { font-size: 12px; font-weight: 700; color: var(--fg3); margin-bottom: 5px; }
+.ar-post-text { white-space: pre-wrap; line-height: 1.6; }
+.ar-stangt {
+  margin: var(--sp-6) 0 0; padding: 13px 16px;
+  border-radius: var(--r-md); background: var(--gray-100); color: var(--fg2);
+  font-size: 14px;
+}
+/* Inkommande svar i inkorgen — samma riktningsmarkering som i tråden. */
+.fb-reply-in { background: var(--gray-50); border-left-color: var(--upp-blue); }
+.fb-nytt {
+  display: inline-block; margin-left: 6px;
+  font-size: 11px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--upp-blue);
+}

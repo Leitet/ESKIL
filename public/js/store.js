@@ -1170,44 +1170,73 @@ export async function deleteRegistration(cid, regId) {
 }
 
 // --- Meddelanden till ESKIL (kontaktformuläret) -------------------------------
-// Dokumenten skapas ALDRIG härifrån: formuläret går genom den anropbara
-// funktionen sendFeedback, som stryper per adress innan admin-SDK:n skriver.
-// Här finns bara super-adminens sida av det — läsa och svara.
+// Tråden skapas ALDRIG härifrån: formuläret går genom den anropbara funktionen
+// sendFeedback, som stryper per adress innan admin-SDK:n skriver.
+//
+// Id:t är hemligheten. Den som har `/kontakt/<fbId>` får läsa tråden och svara
+// i den — precis som anmälningarnas ändringslänk. Därför innehåller
+// trådhuvudet bara sådant avsändaren själv skrivit; det interna (vilken
+// super-admin som svarat) ligger i private/meta, som bara super-admin når.
 
 export function watchFeedback(cb) {
   return onSnapshot(query(collection(db, 'feedback'), orderBy('lastAt', 'desc')),
     snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() }))), () => cb([]));
 }
 
-export function watchFeedbackReplies(fbId, cb) {
-  return onSnapshot(query(collection(db, 'feedback', fbId, 'replies'), orderBy('at', 'asc')),
+export function watchFeedbackThread(fbId, cb) {
+  return onSnapshot(doc(db, 'feedback', fbId),
+    snap => cb(snap.exists() ? { id: snap.id, ...snap.data() } : null), () => cb(null));
+}
+
+export function watchFeedbackMessages(fbId, cb) {
+  return onSnapshot(query(collection(db, 'feedback', fbId, 'messages'), orderBy('at', 'asc')),
     snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() }))), () => cb([]));
 }
 
-// Svaret mailas ut av onFeedbackReplyCreated — FRÅN ESKIL, inte från den som
-// skriver. Statusen och räknaren stämplas där också, så klienten rör dem inte.
-export async function sendFeedbackReply(fbId, text) {
-  await addDoc(collection(db, 'feedback', fbId, 'replies'), {
-    text: String(text).slice(0, 5000),
-    byEmail: (auth.currentUser?.email || '').toLowerCase(),
+// `from` är 'eskil' eller 'anvandare' — reglerna kräver super-admin för
+// 'eskil' och att ärendet är öppet för 'anvandare'. Vem som skrev ett
+// ESKIL-svar loggas i private/meta, inte i meddelandet: den som har länken
+// ska aldrig se en super-admins adress.
+export async function sendFeedbackMessage(fbId, from, text) {
+  const ref = await addDoc(collection(db, 'feedback', fbId, 'messages'), {
+    from,
+    text: String(text).slice(0, 4000),
     at: serverTimestamp()
   });
+  if (from === 'eskil') {
+    await setDoc(doc(db, 'feedback', fbId, 'private', 'meta'), {
+      authors: { [ref.id]: (auth.currentUser?.email || '').toLowerCase() }
+    }, { merge: true });
+  }
+}
+
+export function watchFeedbackMeta(fbId, cb) {
+  return onSnapshot(doc(db, 'feedback', fbId, 'private', 'meta'),
+    snap => cb(snap.exists() ? snap.data() : {}), () => cb({}));
 }
 
 export async function setFeedbackStatus(fbId, status) {
-  await updateDoc(doc(db, 'feedback', fbId), {
-    status,
+  await updateDoc(doc(db, 'feedback', fbId), { status });
+  await setDoc(doc(db, 'feedback', fbId, 'private', 'meta'), {
     handledBy: (auth.currentUser?.email || '').toLowerCase(),
     handledAt: serverTimestamp()
-  });
+  }, { merge: true });
+}
+
+// Läskvitto — för de andra super-adminsen, så två personer inte sitter och
+// svarar på samma sak utan att veta om varandra.
+export async function markFeedbackRead(fbId) {
+  await setDoc(doc(db, 'feedback', fbId, 'private', 'meta'),
+    { readAt: serverTimestamp() }, { merge: true });
+}
+
+// Avsändaren öppnade tråden. Enda fältet hen får röra i huvudet.
+export async function markFeedbackSeenByUser(fbId) {
+  await updateDoc(doc(db, 'feedback', fbId), { faltReadAt: serverTimestamp() });
 }
 
 // Antalet obesvarade — bara till badgen på kontosidan.
 export async function listNewFeedback() {
   const snap = await getDocs(query(collection(db, 'feedback'), where('status', '==', 'ny')));
   return snap.size;
-}
-
-export async function markFeedbackRead(fbId) {
-  await updateDoc(doc(db, 'feedback', fbId), { readAt: serverTimestamp() });
 }

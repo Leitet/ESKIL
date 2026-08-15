@@ -5,12 +5,14 @@
 // svaret som mail FRÅN ESKIL, så att ingen super-admins privata adress hamnar
 // i inkorgen hos en utomstående.
 //
-// Avsändaren har inget konto och kommer aldrig hit — hela kollektionen är
-// super-admin-only i reglerna, eftersom den innehåller fritext och en
-// mailadress från någon utanför systemet.
+// Avsändaren har ingen inloggning men når SIN egen tråd via den hemliga
+// länken /kontakt/<fbId> och kan svara där. Därför innehåller trådhuvudet
+// bara sådant hen själv skrivit — det interna (vilken super-admin som svarat
+// och hanterat) ligger i private/meta, som bara super-admin når. Regler kan
+// inte dölja enskilda fält, så uppdelningen ÄR skyddet.
 
 import { layout } from '../app.js';
-import { watchFeedback, watchFeedbackReplies, sendFeedbackReply, setFeedbackStatus, markFeedbackRead } from '../store.js';
+import { watchFeedback, watchFeedbackMessages, watchFeedbackMeta, sendFeedbackMessage, setFeedbackStatus, markFeedbackRead } from '../store.js';
 import { escapeHtml } from '../utils.js';
 import { icon } from '../icons.js';
 import { crumbs, setDocTitle } from '../nav.js';
@@ -47,8 +49,9 @@ export function renderAdminFeedback(app, user) {
 
   let poster = [];
   let öppen = null;              // id på det meddelande som är utfällt
-  let svar = [];                 // svaren i det öppna meddelandet
-  let svarStopp = null;
+  let svar = [];                 // hela samtalet i det öppna ärendet
+  let meta = {};                 // private/meta — vem som svarat och hanterat
+  let svarStopp = [];
   let filter = 'oppna';          // 'oppna' | 'alla'
 
   const unsub = watchFeedback(rows => { poster = rows; rita(); });
@@ -94,10 +97,9 @@ export function renderAdminFeedback(app, user) {
       const id = b.dataset.open;
       öppen = öppen === id ? null : id;
       lyssnaPåSvar();
-      const p = poster.find(x => x.id === id);
       // Läskvittot är för de andra super-adminsen: två personer ska inte
       // sitta och svara på samma meddelande utan att veta om varandra.
-      if (öppen && p && !p.readAt) markFeedbackRead(id).catch(() => {});
+      if (öppen) markFeedbackRead(id).catch(() => {});
       rita();
     }));
     kopplaÖppet();
@@ -116,7 +118,8 @@ export function renderAdminFeedback(app, user) {
               <span class="badge ${st.klass}">${escapeHtml(st.label)}</span>
               ${p.replyCount ? `<span class="muted t-sm">${p.replyCount} svar</span>` : ''}
             </div>
-            <div class="fb-from">${escapeHtml(p.name || p.email || '')}</div>
+            <div class="fb-from">${escapeHtml(p.name || p.email || '')}${
+              p.lastFrom === 'anvandare' && p.replyCount ? ' <span class="fb-nytt">svarade</span>' : ''}</div>
             <div class="fb-preview">${escapeHtml((p.message || '').slice(0, 120))}${(p.message || '').length > 120 ? '…' : ''}</div>
           </div>
           <div class="fb-head-side">
@@ -133,18 +136,21 @@ export function renderAdminFeedback(app, user) {
       <div class="fb-body">
         <div class="fb-msg">${escapeHtml(p.message || '')}</div>
         <div class="fb-facts">
-          <div><span class="muted t-sm">Svara till</span><a href="mailto:${escapeHtml(p.email || '')}">${escapeHtml(p.email || '')}</a></div>
-          ${p.accountEmail && p.accountEmail !== p.email
-            ? `<div><span class="muted t-sm">Inloggad som</span><strong>${escapeHtml(p.accountEmail)}</strong></div>` : ''}
-          ${p.readAt ? `<div><span class="muted t-sm">Läst</span><strong>${escapeHtml(tid(p.readAt))}</strong></div>` : ''}
-          ${p.handledBy ? `<div><span class="muted t-sm">Hanterad av</span><strong>${escapeHtml(p.handledBy)}</strong></div>` : ''}
+          <div><span class="muted t-sm">Avsändare</span><strong>${escapeHtml(p.email || '')}</strong></div>
+          ${meta.accountEmail && meta.accountEmail !== p.email
+            ? `<div><span class="muted t-sm">Inloggad som</span><strong>${escapeHtml(meta.accountEmail)}</strong></div>` : ''}
+          ${meta.readAt ? `<div><span class="muted t-sm">Läst</span><strong>${escapeHtml(tid(meta.readAt))}</strong></div>` : ''}
+          ${p.faltReadAt ? `<div><span class="muted t-sm">Avsändaren öppnade</span><strong>${escapeHtml(tid(p.faltReadAt))}</strong></div>` : ''}
+          ${meta.handledBy ? `<div><span class="muted t-sm">Hanterad av</span><strong>${escapeHtml(meta.handledBy)}</strong></div>` : ''}
         </div>
 
         ${svar.length ? `
           <div class="fb-replies">
             ${svar.map(r => `
-              <div class="fb-reply">
-                <div class="fb-reply-head">${escapeHtml(r.byEmail || '')} · ${escapeHtml(tid(r.at))}</div>
+              <div class="fb-reply${r.from === 'anvandare' ? ' fb-reply-in' : ''}">
+                <div class="fb-reply-head">${r.from === 'eskil'
+                  ? escapeHtml(meta.authors?.[r.id] || 'ESKIL')
+                  : escapeHtml(p.name || p.email || 'Avsändaren')} · ${escapeHtml(tid(r.at))}</div>
                 <div>${escapeHtml(r.text || '')}</div>
               </div>`).join('')}
           </div>` : ''}
@@ -163,11 +169,14 @@ export function renderAdminFeedback(app, user) {
   }
 
   function lyssnaPåSvar() {
-    svarStopp?.();
-    svarStopp = null;
-    svar = [];
+    svarStopp.forEach(f => { try { f(); } catch {} });
+    svarStopp = [];
+    svar = []; meta = {};
     if (!öppen) return;
-    svarStopp = watchFeedbackReplies(öppen, rows => { svar = rows; if (öppen) rita(); });
+    svarStopp = [
+      watchFeedbackMessages(öppen, rows => { svar = rows; if (öppen) rita(); }),
+      watchFeedbackMeta(öppen, m => { meta = m || {}; if (öppen) rita(); })
+    ];
   }
 
   function kopplaÖppet() {
@@ -183,7 +192,7 @@ export function renderAdminFeedback(app, user) {
       const b = e.currentTarget;
       b.disabled = true; b.textContent = 'Skickar…';
       try {
-        await sendFeedbackReply(p.id, text);
+        await sendFeedbackMessage(p.id, 'eskil', text);
         ta.value = '';
         fel.hidden = true;
         // Snapshoten ritar om med svaret; status och räknare stämplas av
@@ -205,7 +214,7 @@ export function renderAdminFeedback(app, user) {
 
   // Städa när vyn byts ut.
   const observer = new MutationObserver(() => {
-    if (!wrap.isConnected) { unsub?.(); svarStopp?.(); observer.disconnect(); }
+    if (!wrap.isConnected) { unsub?.(); svarStopp.forEach(f => { try { f(); } catch {} }); observer.disconnect(); }
   });
   observer.observe(document.body, { childList: true, subtree: true });
 }

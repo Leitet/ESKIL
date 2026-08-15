@@ -499,16 +499,21 @@ describe('Användarkonton', () => {
 
 describe('Meddelanden till ESKIL (kontaktformuläret)', () => {
   const FB = uniq('fb');
+  const STANGD = uniq('fb');
   const bas = {
-    at: new Date(), lastAt: new Date(),
+    at: new Date(), lastAt: new Date(), lastFrom: 'anvandare',
     email: 'utomstaende@example.com', name: 'Kim', kind: 'forslag',
     message: 'Det vore bra om kontrollerna kunde sorteras om.',
     status: 'ny', replyCount: 0
   };
 
-  before(async () => { await seed(`feedback/${FB}`, bas); });
+  before(async () => {
+    await seed(`feedback/${FB}`, bas);
+    await seed(`feedback/${FB}/private/meta`, { accountEmail: null, handledBy: 'super@test.se' });
+    await seed(`feedback/${STANGD}`, { ...bas, status: 'stangd' });
+  });
 
-  test('ingen klient får skapa ett meddelande — det går via funktionen', async () => {
+  test('ingen klient får skapa ett ärende — det går via funktionen', async () => {
     // sendFeedback stryper per adress innan admin-SDK:n skriver. En anonymt
     // skrivbar toppnivåkollektion vore en öppen kran rakt in i databasen.
     deny(await write(`feedback/${uniq('fb')}`, bas, null), 'anonym skapar');
@@ -516,45 +521,74 @@ describe('Meddelanden till ESKIL (kontaktformuläret)', () => {
     deny(await write(`feedback/${uniq('fb')}`, bas, SUPER), 'super-admin skapar');
   });
 
-  test('innehållet är super-admin-only — det är någon annans fritext och adress', async () => {
-    assert.equal((await read(`feedback/${FB}`, null)).ok, false, 'anonym läser');
-    assert.equal((await read(`feedback/${FB}`, USER)).ok, false, 'inloggad läser');
-    assert.equal((await read(`feedback/${FB}`, SUPER)).ok, true, 'super-admin läser');
+  test('den som har länken får läsa sitt ärende', async () => {
+    assert.equal((await read(`feedback/${FB}`, null)).ok, true, 'anonym med id');
+    assert.equal((await list('feedback', null)).ok, false, 'anonym räknar upp');
     assert.equal((await list('feedback', USER)).ok, false, 'inloggad räknar upp');
+    assert.equal((await list('feedback', SUPER)).ok, true, 'super-admin listar');
+  });
+
+  test('det interna når inte den som har länken — där ligger super-adminens adress', async () => {
+    assert.equal((await read(`feedback/${FB}/private/meta`, null)).ok, false, 'anonym läser meta');
+    assert.equal((await read(`feedback/${FB}/private/meta`, USER)).ok, false, 'inloggad läser meta');
+    assert.equal((await read(`feedback/${FB}/private/meta`, SUPER)).ok, true, 'super-admin läser meta');
+  });
+
+  test('avsändaren får bara stämpla att hen öppnat ärendet', async () => {
+    assert.equal((await write(`feedback/${FB}`, { faltReadAt: new Date() }, null, { merge: true })).ok,
+      true, 'stämpla läst');
+    deny(await write(`feedback/${FB}`, { message: 'omskrivet' }, null, { merge: true }),
+      'skriva om sitt meddelande');
+    deny(await write(`feedback/${FB}`, { status: 'stangd' }, null, { merge: true }),
+      'avsluta sitt eget ärende');
+    deny(await write(`feedback/${FB}`, { email: 'annan@example.com' }, null, { merge: true }),
+      'byta adress');
   });
 
   test('super-admin får ändra handläggningen men inte meddelandet', async () => {
-    assert.equal((await write(`feedback/${FB}`, { status: 'stangd' }, SUPER, { merge: true })).ok,
+    assert.equal((await write(`feedback/${FB}`, { status: 'besvarad' }, SUPER, { merge: true })).ok,
       true, 'sätta status');
     deny(await write(`feedback/${FB}`, { message: 'omskrivet' }, SUPER, { merge: true }),
       'redigera meddelandet');
-    deny(await write(`feedback/${FB}`, { email: 'annan@example.com' }, SUPER, { merge: true }),
-      'byta avsändaradress');
   });
 
-  test('ingen får radera ett meddelande', async () => {
+  test('ingen får radera ett ärende', async () => {
     assert.equal((await remove(`feedback/${FB}`, SUPER)).ok, false, 'super-admin raderar');
+    assert.equal((await remove(`feedback/${FB}`, null)).ok, false, 'anonym raderar');
   });
 
-  test('bara super-admin får svara, och svaret bär hens egen adress', async () => {
-    const ok = { text: 'Tack! Vi lägger in det.', byEmail: SUPER.email, at: new Date() };
-    deny(await write(`feedback/${FB}/replies/${uniq('r')}`, ok, null), 'anonymt svar');
-    deny(await write(`feedback/${FB}/replies/${uniq('r')}`, ok, USER), 'inloggad svarar');
-    assert.equal((await write(`feedback/${FB}/replies/${uniq('r')}`, ok, SUPER)).ok, true,
+  test('båda hållen får skriva i tråden — men bara i sitt eget namn', async () => {
+    const min = { from: 'anvandare', text: 'En följdfråga.', at: new Date() };
+    const deras = { from: 'eskil', text: 'Här är svaret.', at: new Date() };
+    assert.equal((await write(`feedback/${FB}/messages/${uniq('m')}`, min, null)).ok, true,
+      'avsändaren svarar med länken');
+    assert.equal((await write(`feedback/${FB}/messages/${uniq('m')}`, deras, SUPER)).ok, true,
       'super-admin svarar');
-    deny(await write(`feedback/${FB}/replies/${uniq('r')}`,
-      { ...ok, byEmail: 'nagon.annan@example.com' }, SUPER), 'svar i annans namn');
-    deny(await write(`feedback/${FB}/replies/${uniq('r')}`, { ...ok, text: '' }, SUPER),
-      'tomt svar');
+    // Det farliga: ett falskt "från ESKIL" i någons ärende.
+    deny(await write(`feedback/${FB}/messages/${uniq('m')}`, deras, null), 'falskt ESKIL-svar');
+    deny(await write(`feedback/${FB}/messages/${uniq('m')}`, deras, USER), 'inloggad låtsas vara ESKIL');
+    deny(await write(`feedback/${FB}/messages/${uniq('m')}`,
+      { ...min, byEmail: 'nagon@example.com' }, null), 'extra fält');
+    deny(await write(`feedback/${FB}/messages/${uniq('m')}`, { ...min, text: '' }, null), 'tomt');
+    deny(await write(`feedback/${FB}/messages/${uniq('m')}`,
+      { ...min, text: 'x'.repeat(5000) }, null), 'för långt');
   });
 
-  test('ett skickat svar går inte att skriva om — det ligger redan i en inkorg', async () => {
-    const id = uniq('r');
-    await write(`feedback/${FB}/replies/${id}`,
-      { text: 'Första svaret', byEmail: SUPER.email, at: new Date() }, SUPER);
-    deny(await write(`feedback/${FB}/replies/${id}`,
-      { text: 'Ändrat i efterhand', byEmail: SUPER.email, at: new Date() }, SUPER),
-      'redigera svar');
-    assert.equal((await remove(`feedback/${FB}/replies/${id}`, SUPER)).ok, false, 'radera svar');
+  test('ett avslutat ärende tar inte emot mer — länken kan inte mata ut mail', async () => {
+    deny(await write(`feedback/${STANGD}/messages/${uniq('m')}`,
+      { from: 'anvandare', text: 'Hallå?', at: new Date() }, null), 'skriva i avslutat ärende');
+    // Super-admin kan fortfarande skriva — och öppna igen.
+    assert.equal((await write(`feedback/${STANGD}/messages/${uniq('m')}`,
+      { from: 'eskil', text: 'Vi öppnar igen.', at: new Date() }, SUPER)).ok, true,
+      'super-admin skriver i avslutat');
+  });
+
+  test('ett skickat meddelande går inte att skriva om — det ligger redan i en inkorg', async () => {
+    const id = uniq('m');
+    await write(`feedback/${FB}/messages/${id}`,
+      { from: 'anvandare', text: 'Första', at: new Date() }, null);
+    deny(await write(`feedback/${FB}/messages/${id}`,
+      { from: 'anvandare', text: 'Ändrat', at: new Date() }, null), 'redigera');
+    assert.equal((await remove(`feedback/${FB}/messages/${id}`, SUPER)).ok, false, 'radera');
   });
 });

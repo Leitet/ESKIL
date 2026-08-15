@@ -13,7 +13,7 @@ import { compLabel } from './nav.js';
 import { icon } from './icons.js';
 import { renderLogin } from './views/login.js';
 import { renderLanding } from './views/landing.js';
-import { renderKontakt } from './views/kontakt.js';
+import { renderKontakt, renderKontaktArende } from './views/kontakt.js';
 import { renderAdminFeedback } from './views/admin-feedback.js';
 import { renderHome } from './views/home.js';
 import { renderCompetition } from './views/competition.js';
@@ -42,6 +42,8 @@ let currentUser = null;
 route('/',             () => renderLanding(app, currentUser));
 // Publik kontaktsida — meddelanden till dem som ansvarar för ESKIL.
 route('/kontakt',      () => renderKontakt(app, currentUser));
+// Ärendet — id:t är hemligheten, precis som anmälningarnas ändringslänk.
+route('/kontakt/:id',  (p) => renderKontaktArende(app, p.id));
 route('/app',          () => guard(() => renderHome(app, currentUser)));
 route('/app/settings', () => guard(() => renderSettings(app, currentUser)));
 route('/app/admin/users', () => guard(() => renderAdminUsers(app, currentUser)));

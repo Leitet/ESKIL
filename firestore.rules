@@ -175,41 +175,59 @@ service cloud.firestore {
     }
 
     // --- Meddelanden till ESKIL (kontaktformuläret på /kontakt) ------------
-    // Dokumenten SKAPAS aldrig av en klient: formuläret går via den anropbara
-    // funktionen sendFeedback, som strypljuder per adress och mot dygnskvoten
+    // Dokumentet SKAPAS aldrig av en klient: formuläret går via den anropbara
+    // funktionen sendFeedback, som stryper per adress och mot dygnskvoten
     // innan admin-SDK:n skriver. Rules kan inte räkna anrop, och en anonymt
     // skrivbar toppnivåkollektion vore en öppen kran rakt in i databasen.
     //
-    // Avsändaren har inget konto och kommer aldrig hit — hen får svaret som
-    // mail. Därför är HELA kollektionen super-admin-only: den innehåller
-    // fritext och en mailadress från en utomstående.
+    // ID:T ÄR HEMLIGHETEN, precis som för anmälningarnas ändringslänk:
+    // avsändaren får `/kontakt/<fbId>` i svarsmailet och kan läsa tråden och
+    // svara där. Därför får det HÄR dokumentet bara innehålla sådant
+    // avsändaren själv skrivit — regler kan inte dölja enskilda fält, så
+    // allt som är internt (vilken super-admin som svarat, om avsändaren var
+    // inloggad) ligger i private/meta nedan.
     match /feedback/{fbId} {
-      allow read: if isSuperAdmin();
-      // Bara handläggningen får ändras. Meddelandet självt är det någon
-      // faktiskt skrev — det ska inte gå att redigera i efterhand.
+      // get, inte read: `read` täcker även `list`, och då hade vem som helst
+      // kunnat räkna upp HELA kollektionen — alla andras meddelanden och
+      // adresser. Att känna till id:t är att hålla den hemliga länken.
+      allow get: if true;
+      allow list: if isSuperAdmin();
+      // Handläggningen sätts av super-admin. faltReadAt får avsändaren
+      // stämpla själv — den säger bara att tråden är öppnad.
       allow update: if isSuperAdmin()
         && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['status', 'handledBy', 'handledAt', 'readAt', 'lastAt', 'replyCount']);
+             .hasOnly(['status', 'lastAt', 'lastFrom', 'replyCount']);
+      allow update: if request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['faltReadAt']);
       allow create, delete: if false;
 
-      // Svaren. Skrivs av super-admin här inne; en Cloud Function reagerar
-      // och skickar dem som mail FRÅN ESKIL — aldrig från super-adminens
-      // egen adress, vilket är hela poängen med att svara härifrån.
-      match /replies/{replyId} {
-        allow read: if isSuperAdmin();
-        allow create: if isSuperAdmin()
-          && request.resource.data.text is string
+      // Det interna: vilken super-admin som hanterat ärendet och om
+      // avsändaren var inloggad. Aldrig läsbart för den som har länken —
+      // hela poängen med att svara i ESKIL är att super-adminens adress
+      // inte lämnar systemet.
+      match /private/{doc} {
+        allow read, write: if isSuperAdmin();
+      }
+
+      // Samtalet. Båda hållen skriver hit; en Cloud Function mailar vidare —
+      // svaret till avsändaren FRÅN ESKIL, en följdfråga till super-admins.
+      match /messages/{msgId} {
+        allow read: if true;
+        allow create: if request.resource.data.text is string
           && request.resource.data.text.size() > 0
-          && request.resource.data.text.size() <= 5000
-          // byEmail är den guard som bär: ett svar får inte kunna tillskrivas
-          // en annan super-admin. Tiden kontrolleras bara till typen — den
-          // som redan är super-admin kan inte vinna något på att backdatera
-          // sitt eget svar, och en == request.time-jämförelse skulle låsa
-          // fältet till serverTimestamp() utan att skydda mot något.
-          && request.resource.data.byEmail == authEmail()
+          && request.resource.data.text.size() <= 4000
           && request.resource.data.at is timestamp
-          && request.resource.data.keys().hasOnly(['text', 'byEmail', 'at']);
-        // Ett skickat svar är skickat. Det ligger redan i någons inkorg.
+          && request.resource.data.keys().hasOnly(['from', 'text', 'at'])
+          && (
+            // Super-admin svarar.
+            (isSuperAdmin() && request.resource.data.from == 'eskil')
+            // Avsändaren skriver igen — men bara så länge ärendet är öppet.
+            // Ett avslutat ärende tar inte emot mer; då hänvisas hen till
+            // formuläret, och länken kan inte användas för att mata ut mail.
+            || (request.resource.data.from == 'anvandare'
+                && get(/databases/$(database)/documents/feedback/$(fbId)).data.status != 'stangd')
+          );
+        // Ett skickat meddelande är skickat. Det ligger redan i någons inkorg.
         allow update, delete: if false;
       }
     }
