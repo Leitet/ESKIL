@@ -146,6 +146,8 @@ export async function renderControls(app, user, cid) {
                 <td>${r.telefon ? `<a class="mono t-sm" href="tel:${escapeHtml(r.telefon)}" style="color:var(--scout-blue);text-decoration:none;white-space:nowrap;">${escapeHtml(r.telefon)}</a>` : '<span class="muted">—</span>'}</td>
                 <td>${r.open ? '<span class="badge badge-green">Öppen</span>' : '<span class="badge badge-gray">Stängd</span>'}</td>
                 <td class="actions">
+                  <a class="btn btn-ghost btn-sm" href="/app/c/${cid}/meddelanden?kontroll=${encodeURIComponent(r.id)}" data-link
+                     title="Skicka meddelande till den här kontrollen" aria-label="Skicka meddelande till kontroll ${r.nummer ?? ''}">${icon('send', { size: 15 })}</a>
                   <a class="btn btn-ghost btn-sm" href="/app/c/${cid}/controls/${r.id}" data-link>Öppna</a>
                 </td>
               </tr>

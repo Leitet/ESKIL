@@ -829,3 +829,12 @@ table.t tr.sf-row.park-row td {
 .help-pin-sf { background: var(--rover-yellow); color: var(--scout-blue); border-color: var(--scout-blue); }
 
 @media (max-width: 560px) { .help-demo-2 { grid-template-columns: 1fr; } }
+
+/* Mottagarchips i meddelandekompositören */
+.msg-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 10px; border: 1.5px solid var(--border); border-radius: 999px;
+  cursor: pointer; font-size: 13px; background: var(--white);
+}
+.msg-chip input { margin: 0; }
+.msg-chip.is-on { border-color: var(--scout-blue); background: var(--scout-blue-100); }

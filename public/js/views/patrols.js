@@ -147,6 +147,8 @@ export async function renderPatrols(app, user, cid) {
                 <td class="num">${escapeHtml(String(r.antal ?? ''))}</td>
                 <td class="muted">${escapeHtml((r.notering || '').slice(0, 60))}</td>
                 ${isAdmin ? `<td class="actions">
+                  <a class="btn btn-ghost btn-sm" href="/app/c/${cid}/meddelanden?patrull=${encodeURIComponent(r.id)}" data-link
+                     title="Skicka meddelande till den här patrullen" aria-label="Skicka meddelande till patrull ${r.number ?? ''}">${icon('send', { size: 15 })}</a>
                   <button class="btn btn-secondary btn-sm" data-start="${r.id}">Startkort</button>
                   <button class="btn btn-ghost btn-sm" data-edit="${r.id}">Redigera</button>
                   <button class="btn btn-ghost btn-sm" data-del="${r.id}" style="color:var(--utm-pink);">Ta bort</button>

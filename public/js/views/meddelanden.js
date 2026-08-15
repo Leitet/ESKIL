@@ -29,6 +29,13 @@ const PRESETS = [
   { label: 'Tävlingen återupptas', text: 'Tävlingen återupptas — lycka till!', level: 'info', requireAck: false, clearOthers: true }
 ];
 
+const AUDIENCES = [
+  ['alla', 'Alla'],
+  ['kontroller', 'Alla kontroller'],
+  ['patruller', 'Alla patruller'],
+  ['vissa', 'Välj enskilda…']
+];
+
 const levelBadge = (lvl) => lvl === 'kritisk' ? 'badge-pink' : lvl === 'varning' ? 'badge-yellow' : 'badge-blue';
 const levelLabel = (lvl) => lvl === 'kritisk' ? 'KRITISK' : lvl === 'varning' ? 'VARNING' : 'INFORMATION';
 
@@ -80,9 +87,44 @@ export async function renderMeddelanden(app, user, cid) {
     let level = 'info';
     let requireAck = false;
     let clearOthers = false;
-    let kMode = 'alla', pMode = 'alla';
+    // ETT mottagarval i stället för två menyer med nio kombinationer (varav
+    // en var ogiltig). De tre vanliga fallen är ett klick; enskilda mottagare
+    // väljs i en gemensam panel.
+    let audience = 'alla'; // 'alla' | 'kontroller' | 'patruller' | 'vissa'
     const kIds = new Set(), pIds = new Set();
-    const modeValue = (mode, ids) => mode === 'alla' ? true : mode === 'inga' ? false : [...ids];
+
+    // Djuplänk från kontroll- och patrullistan: ?kontroll=<id> / ?patrull=<id>
+    // förväljer mottagaren så att "skicka till just den här" blir ett klick.
+    const q = new URLSearchParams(location.search);
+    const preK = q.get('kontroll'), preP = q.get('patrull');
+    if (preK && controls.some(c => c.id === preK)) { kIds.add(preK); audience = 'vissa'; }
+    if (preP && patrols.some(p => p.id === preP)) { pIds.add(preP); audience = 'vissa'; }
+
+    // Målgruppen på datamodellens form: true = hela kanalen, [] = utvalda,
+    // false = kanalen berörs inte.
+    const targetFromUI = () => {
+      if (audience === 'alla') return { kontroller: true, patruller: true };
+      if (audience === 'kontroller') return { kontroller: true, patruller: false };
+      if (audience === 'patruller') return { kontroller: false, patruller: true };
+      return { kontroller: kIds.size ? [...kIds] : false, patruller: pIds.size ? [...pIds] : false };
+    };
+
+    // Klartext om vem som faktiskt nås — mottagarvalet ska aldrig behöva gissas.
+    const summaryText = () => {
+      const stationTxt = stations.length ? ' och start/mål-stationen' : '';
+      if (audience === 'alla') {
+        return `Går till alla ${controls.length} kontroller${stationTxt}, alla ${patrols.length} patrullers startkort och startskärmen.`;
+      }
+      if (audience === 'kontroller') return `Går till alla ${controls.length} kontroller${stationTxt}.`;
+      if (audience === 'patruller') return `Går till alla ${patrols.length} patrullers startkort och startskärmen.`;
+      if (!kIds.size && !pIds.size) return 'Välj minst en mottagare nedan.';
+      const namn = [
+        ...[...kIds].map(id => { const c = controls.find(x => x.id === id); return c ? `kontroll ${c.nummer ?? '?'}` : null; }),
+        ...[...pIds].map(id => { const p = patrols.find(x => x.id === id); return p ? `#${p.number ?? '?'} ${p.name || ''}`.trim() : null; })
+      ].filter(Boolean);
+      const lista = namn.length <= 4 ? namn.join(', ') : `${namn.slice(0, 3).join(', ')} och ${namn.length - 3} till`;
+      return `Går till ${lista}${kIds.size && stations.length ? stationTxt : ''}.`;
+    };
 
     const renderComposer = () => {
       composerHost.innerHTML = `
@@ -95,21 +137,33 @@ export async function renderMeddelanden(app, user, cid) {
           <div class="row wrap mt-2" style="gap:6px;">
             ${PRESETS.map((p, i) => `<button type="button" class="btn btn-ghost btn-sm" data-preset="${i}">${escapeHtml(p.label)}</button>`).join('')}
           </div>
+          <div class="mt-4">
+            <div class="t-sm" style="font-weight:700;margin-bottom:6px;">Mottagare${help('msg.target')}</div>
+            <div class="row wrap" style="gap:6px;">
+              ${AUDIENCES.map(([k, l]) => `
+                <button type="button" class="btn btn-sm ${audience === k ? 'btn-primary' : 'btn-secondary'}" data-aud="${k}">${l}</button>
+              `).join('')}
+            </div>
+            <div class="mt-3" ${audience === 'vissa' ? '' : 'hidden'} id="msg-pick">
+              <div class="t-sm muted" style="margin-bottom:4px;">Kontroller — meddelandet når även start/mål-stationen</div>
+              <div class="row wrap" style="gap:6px;">
+                ${[...controls].sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0)).map(c => `
+                  <label class="msg-chip ${kIds.has(c.id) ? 'is-on' : ''}">
+                    <input type="checkbox" data-kid="${escapeHtml(c.id)}" ${kIds.has(c.id) ? 'checked' : ''}>${c.nummer ?? '?'}. ${escapeHtml(c.name || '')}
+                  </label>`).join('') || '<span class="muted t-sm">Inga kontroller ännu.</span>'}
+              </div>
+              <div class="t-sm muted" style="margin:var(--sp-3) 0 4px;">Patruller — meddelandet visas på deras startkort</div>
+              <div class="row wrap" style="gap:6px;">
+                ${[...patrols].sort((a, b) => (a.number ?? 0) - (b.number ?? 0)).map(p => `
+                  <label class="msg-chip ${pIds.has(p.id) ? 'is-on' : ''}">
+                    <input type="checkbox" data-pid="${escapeHtml(p.id)}" ${pIds.has(p.id) ? 'checked' : ''}>#${p.number ?? '?'} ${escapeHtml(p.name || '')}
+                  </label>`).join('') || '<span class="muted t-sm">Inga patruller ännu.</span>'}
+              </div>
+            </div>
+            <p class="field-hint" id="msg-summary" style="margin-top:8px;">${escapeHtml(summaryText())}</p>
+          </div>
+
           <div class="row wrap mt-3" style="gap:var(--sp-5);align-items:center;">
-            <label class="t-sm" style="display:inline-flex;gap:8px;align-items:center;font-weight:600;">Kontroller${help('msg.target')}
-              <select class="select" id="msg-k" style="padding:6px 30px 6px 10px;">
-                <option value="alla" ${kMode === 'alla' ? 'selected' : ''}>Alla</option>
-                <option value="vissa" ${kMode === 'vissa' ? 'selected' : ''}>Vissa…</option>
-                <option value="inga" ${kMode === 'inga' ? 'selected' : ''}>Inga</option>
-              </select>
-            </label>
-            <label class="t-sm" style="display:inline-flex;gap:8px;align-items:center;font-weight:600;">Patruller & startskärm
-              <select class="select" id="msg-p" style="padding:6px 30px 6px 10px;">
-                <option value="alla" ${pMode === 'alla' ? 'selected' : ''}>Alla</option>
-                <option value="vissa" ${pMode === 'vissa' ? 'selected' : ''}>Vissa…</option>
-                <option value="inga" ${pMode === 'inga' ? 'selected' : ''}>Inga</option>
-              </select>
-            </label>
             <label class="t-sm" style="display:inline-flex;gap:8px;align-items:center;font-weight:600;cursor:pointer;">
               <input type="checkbox" id="msg-ack" ${requireAck ? 'checked' : ''} style="margin:0;">
               Begär bekräftelse ${help('msg.requireAck')}
@@ -118,18 +172,6 @@ export async function renderMeddelanden(app, user, cid) {
               <input type="checkbox" id="msg-clear" ${clearOthers ? 'checked' : ''} style="margin:0;">
               Avsluta alla andra aktiva samtidigt ${help('msg.clearOthers')}
             </label>
-          </div>
-          <div class="row wrap mt-2" style="gap:6px;${kMode === 'vissa' ? '' : 'display:none;'}" id="msg-k-pick">
-            ${[...controls].sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0)).map(c => `
-              <label style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border:1.5px solid ${kIds.has(c.id) ? 'var(--scout-blue)' : 'var(--border)'};border-radius:999px;cursor:pointer;font-size:13px;background:${kIds.has(c.id) ? 'var(--scout-blue-100)' : 'var(--white)'};">
-                <input type="checkbox" data-kid="${escapeHtml(c.id)}" ${kIds.has(c.id) ? 'checked' : ''} style="margin:0;">${c.nummer ?? '?'}. ${escapeHtml(c.name || '')}
-              </label>`).join('') || '<span class="muted t-sm">Inga kontroller ännu.</span>'}
-          </div>
-          <div class="row wrap mt-2" style="gap:6px;${pMode === 'vissa' ? '' : 'display:none;'}" id="msg-p-pick">
-            ${[...patrols].sort((a, b) => (a.number ?? 0) - (b.number ?? 0)).map(p => `
-              <label style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border:1.5px solid ${pIds.has(p.id) ? 'var(--scout-blue)' : 'var(--border)'};border-radius:999px;cursor:pointer;font-size:13px;background:${pIds.has(p.id) ? 'var(--scout-blue-100)' : 'var(--white)'};">
-                <input type="checkbox" data-pid="${escapeHtml(p.id)}" ${pIds.has(p.id) ? 'checked' : ''} style="margin:0;">#${p.number ?? '?'} ${escapeHtml(p.name || '')}
-              </label>`).join('') || '<span class="muted t-sm">Inga patruller ännu.</span>'}
           </div>
           <p class="field-hint" style="margin:10px 0 8px;">Meddelandet är publikt — skriv inga personuppgifter.
           Kritisk nivå larmar med ljud och vibration. Med "Begär bekräftelse" ser du här vilka som tagit
@@ -147,27 +189,31 @@ export async function renderMeddelanden(app, user, cid) {
         renderComposer();
         composerHost.querySelector('#msg-text').value = p.text;
       }));
-      composerHost.querySelector('#msg-k').addEventListener('change', (e) => rerenderKeeping(() => { kMode = e.target.value; }));
-      composerHost.querySelector('#msg-p').addEventListener('change', (e) => rerenderKeeping(() => { pMode = e.target.value; }));
+      composerHost.querySelectorAll('[data-aud]').forEach(b => b.addEventListener('click', () =>
+        rerenderKeeping(() => { audience = b.dataset.aud; })));
       composerHost.querySelector('#msg-ack').addEventListener('change', (e) => { requireAck = e.target.checked; });
       composerHost.querySelector('#msg-clear').addEventListener('change', (e) => { clearOthers = e.target.checked; });
-      composerHost.querySelectorAll('[data-kid]').forEach(cb => cb.addEventListener('change', () => {
-        cb.checked ? kIds.add(cb.dataset.kid) : kIds.delete(cb.dataset.kid);
-        cb.closest('label').style.borderColor = cb.checked ? 'var(--scout-blue)' : 'var(--border)';
-        cb.closest('label').style.background = cb.checked ? 'var(--scout-blue-100)' : 'var(--white)';
-      }));
-      composerHost.querySelectorAll('[data-pid]').forEach(cb => cb.addEventListener('change', () => {
-        cb.checked ? pIds.add(cb.dataset.pid) : pIds.delete(cb.dataset.pid);
-        cb.closest('label').style.borderColor = cb.checked ? 'var(--scout-blue)' : 'var(--border)';
-        cb.closest('label').style.background = cb.checked ? 'var(--scout-blue-100)' : 'var(--white)';
+      // Chipsen uppdaterar sammanfattningen direkt — man ska se följden av
+      // sitt val utan att först trycka Skicka.
+      const refreshSummary = () => {
+        const el = composerHost.querySelector('#msg-summary');
+        if (el) el.textContent = summaryText();
+      };
+      composerHost.querySelectorAll('[data-kid], [data-pid]').forEach(cb => cb.addEventListener('change', () => {
+        const set = cb.dataset.kid ? kIds : pIds;
+        const id = cb.dataset.kid || cb.dataset.pid;
+        cb.checked ? set.add(id) : set.delete(id);
+        cb.closest('label').classList.toggle('is-on', cb.checked);
+        refreshSummary();
       }));
       composerHost.querySelector('#msg-send').addEventListener('click', async (e) => {
         const text = keepText().trim();
         if (!text) { toast('Skriv ett meddelande först.', 'error'); return; }
-        if (kMode === 'vissa' && !kIds.size && pMode === 'inga') { toast('Välj minst en kontroll.', 'error'); return; }
-        if (pMode === 'vissa' && !pIds.size && kMode === 'inga') { toast('Välj minst en patrull.', 'error'); return; }
-        const target = { kontroller: modeValue(kMode, kIds), patruller: modeValue(pMode, pIds) };
-        if (target.kontroller === false && target.patruller === false) { toast('Välj minst en mottagare.', 'error'); return; }
+        const target = targetFromUI();
+        if (target.kontroller === false && target.patruller === false) {
+          toast('Välj minst en mottagare.', 'error');
+          return;
+        }
         await withBusy(e.currentTarget, 'Skickar…', async () => {
           try {
             const newId = await createBroadcastMessage(cid, { text, level, target, requireAck });
