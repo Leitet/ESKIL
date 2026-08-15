@@ -25,9 +25,11 @@ const STÄNG_PX = 90;
  *   footer    HTML som ligger fast under det scrollande innehållet
  *   onClose   anropas när bladet stängts
  *   className extra klass på arket, för ytor med egna behov
+ *   backdropClose  false för blad där ett tapp bredvid skulle slänga arbete
+ *                  (poängbladet) — handtaget, ✕ och Esc stänger ändå
  * @returns { el, close, setBody, setFooter }
  */
-export function openSheet({ title = '', eyebrow = '', body = '', footer = '', onClose = null, className = '' } = {}) {
+export function openSheet({ title = '', eyebrow = '', body = '', footer = '', onClose = null, className = '', backdropClose = true } = {}) {
   const overlay = document.createElement('div');
   overlay.className = 'sheet-overlay';
   overlay.innerHTML = `
@@ -60,7 +62,7 @@ export function openSheet({ title = '', eyebrow = '', body = '', footer = '', on
 
   const onKey = (e) => { if (e.key === 'Escape') close(); };
   document.addEventListener('keydown', onKey);
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  if (backdropClose) overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
   overlay.querySelector('#sheet-x')?.addEventListener('click', close);
 
   // --- Svep ner ---------------------------------------------------------------

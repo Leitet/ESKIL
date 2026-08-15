@@ -931,5 +931,6 @@ table.t tr.sf-row.park-row td {
 .inbox-attach { margin-top: var(--sp-3); display: flex; align-items: center; gap: var(--sp-3); }
 .inbox-attach img { max-width: 130px; border-radius: 9px; border: 1.5px solid var(--border); display: block; }
 
-/* Samma fälla som i samtalspanelen: display slår ut [hidden]. */
-.inbox-attach[hidden] { display: none; }
+/* hidden ska betyda dold — ett eget display-värde vinner annars över
+   attributet. Samma regel finns i report.css för fältsidorna. */
+[hidden] { display: none !important; }

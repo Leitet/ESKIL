@@ -3,6 +3,12 @@
    Large touch targets, minimal chrome, optimized for dark outdoors
    ============================================ */
 
+/* hidden ska betyda dold. Ett element med ett eget display-värde vinner
+   annars över attributet, och den fällan har slagit till upprepade gånger på
+   fältsidorna (notisbadgen, avståndschipen). En regel i stället för en per
+   klass. report.css laddas av k, s och m — den gäller alla tre. */
+[hidden] { display: none !important; }
+
 :root {
   --r-bg:         #ffffff;
   --r-bg-soft:    #f8f8f7;
@@ -147,81 +153,26 @@ button, a, input, textarea, select, label { touch-action: manipulation; }
   margin-right: 8px;
 }
 
-/* Flip card — front shows title, back shows instructions + map */
-.flip-card {
-  perspective: 1600px;
-  margin-bottom: 24px;
-}
-.flip-card-inner {
-  position: relative;
-  transform-style: preserve-3d;
-  -webkit-transform-style: preserve-3d;
-  transition: transform 0.65s cubic-bezier(0.2, 0, 0, 1),
-              min-height 0.45s cubic-bezier(0.2, 0, 0, 1);
-}
-.flip-card.flipped .flip-card-inner { transform: rotateY(180deg); }
-
-.flip-face {
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
-  min-width: 0;
-}
-.flip-front { position: relative; }
-.flip-back {
-  position: absolute;
-  inset: 0 0 auto 0;              /* top-left, width:100%, height natural */
-  transform: rotateY(180deg);
+/* Kontrollens informationsblad — innehållet som förr låg på kortets baksida.
+   Bladet staplar sina delar med gap, så rubrikerna behöver ingen egen marginal
+   (utom luften som skiljer ett nytt avsnitt från det föregående). */
+.sheet-info .sheet-body {
   display: flex; flex-direction: column; gap: 14px;
+  padding-bottom: calc(6px + env(safe-area-inset-bottom));
 }
-.flip-card.flipped .flip-front { pointer-events: none; }
-.flip-card:not(.flipped) .flip-back { pointer-events: none; }
-
-/* Title row with the info button */
-.flip-title-row {
-  display: flex; align-items: flex-start; gap: 10px;
-  margin-top: 6px;
-}
-.flip-title-row .r-title { flex: 1; margin: 0; }
-
-.flip-btn {
-  flex-shrink: 0;
-  width: 42px; height: 42px;
-  border-radius: 50%;
-  background: var(--r-chip-bg);
-  color: var(--r-chip-fg);
-  border: 2px solid transparent;
-  cursor: pointer;
-  transition: transform 0.1s, background 0.15s;
-  margin-top: 4px;
-  display: inline-flex; align-items: center; justify-content: center;
-}
-.flip-btn .lucide { vertical-align: baseline; }
-.flip-btn:active { transform: scale(0.92); }
-.flip-card.flipped .flip-btn { background: var(--r-primary); color: var(--r-primary-fg); }
-
-.flip-back-close {
-  align-self: flex-start;          /* left side so it doesn't clash with the fixed mode toggle */
-  background: var(--r-chip-bg);
-  color: var(--r-chip-fg);
-  border: none;
-  width: 44px; height: 44px;
-  border-radius: 999px;
-  font-size: 20px; font-weight: 700;
-  cursor: pointer;
-  line-height: 1;
-  margin-bottom: -4px;
-  display: inline-flex; align-items: center; justify-content: center;
-}
-.flip-back-close:active { transform: scale(0.92); }
-
-.flip-back h3 {
-  margin: 0;
+/* Kolumn-flex krymper barnen när innehållet är högre än bladet — kartan gick
+   från 260 px till 3 px och såg ut att inte ladda alls. Här ska allt behålla
+   sin höjd och kroppen scrolla i stället. */
+.sheet-info .sheet-body > * { flex-shrink: 0; }
+.sheet-info h3 {
+  margin: 6px 0 0;
   font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   font-weight: 700;
   color: var(--r-fg-muted);
 }
+.sheet-info .sheet-body > h3:first-child { margin-top: 0; }
 
 .flip-inst-group {
   background: var(--r-card);
@@ -543,16 +494,7 @@ html[data-mode="night"] .sheet-overlay { background: rgba(0,0,0,0.85); }
   background: var(--r-border);
 }
 .sheet-body { overflow-y: auto; -webkit-overflow-scrolling: touch; flex: 1; min-height: 0; }
-/* Blad som ännu bygger sin egen markup (rapportsidans poängblad) saknar
-   .sheet-body och skulle klippas av overflow:hidden ovan. De behåller sitt
-   gamla beteende tills de flyttats till sheet.js — ett klippt poängblad är
-   det sista som får hända mitt i en rapportering. */
-.sheet:not(:has(.sheet-body)) {
-  display: block; overflow-y: auto;
-  padding-top: 24px;
-}
 .sheet-foot { flex-shrink: 0; }
-.sheet-foot[hidden] { display: none; }
 .sheet-eyebrow {
   font-size: 11.5px; font-weight: 800; letter-spacing: .09em;
   text-transform: uppercase; color: var(--r-fg-muted); margin-bottom: 2px;
@@ -673,7 +615,7 @@ html[data-mode="night"] .sheet-overlay { background: rgba(0,0,0,0.85); }
 /* Offline status strip — sticky under the header */
 .r-sync {
   position: sticky;
-  top: 0;
+  top: var(--field-top, 0px);
   z-index: 25;
   margin: -4px -16px 16px;
   padding: 10px 16px;
@@ -693,7 +635,6 @@ html[data-mode="night"] .r-sync { background: #2a0808; color: var(--r-fg); borde
 html[data-mode="night"] .r-sync.is-offline { background: #3a1010; color: #ffb56b; }
 html[data-mode="night"] .r-sync.is-syncing { background: #2a0808; color: var(--r-fg); }
 html[data-mode="night"] .r-sync.is-ok      { background: #1a2a10; color: #a7e08a; }
-.r-sync[hidden] { display: none; }
 .r-sync-dot {
   width: 10px; height: 10px; border-radius: 999px;
   background: currentColor; flex-shrink: 0;
@@ -934,8 +875,6 @@ html[data-mode="night"] .r-done-banner.has-pending { background: #4a0a20; border
 }
 .emb-notif-hint { margin-top: 6px; opacity: .8; }
 
-/* Ett explicit display-värde vinner över [hidden]. */
-.emb-attach[hidden] { display: none; }
 
 /* --- Fast fältheader --------------------------------------------------------
    Informationsbladet, meddelandena och dagsljusläget ska alltid gå att nå.
@@ -953,6 +892,13 @@ html[data-mode="night"] .r-done-banner.has-pending { background: #4a0a20; border
   padding: 0 12px;
 }
 body:has(.field-bar) { padding-top: calc(56px + env(safe-area-inset-top)); }
+/* Hur långt ner sidans egen "topp" börjar: driftbannern + headern. Allt som
+   ska ligga kvar överst (sticky-remsor) eller scrollas fram (scrollIntoView)
+   måste utgå från den, annars hamnar det under headern. */
+html:has(.field-bar) {
+  --field-top: calc(var(--field-bar-offset, 0px) + 56px + env(safe-area-inset-top));
+  scroll-padding-top: calc(var(--field-top) + 10px);
+}
 /* Driftmeddelandenas banner skjuter ner sidan via body padding-top — headern
    är fixed och måste flyttas ner lika mycket för att inte hamna under den. */
 .field-bar { top: var(--field-bar-offset, 0px); }
@@ -967,13 +913,30 @@ body:has(.field-bar) { padding-top: calc(56px + env(safe-area-inset-top)); }
   cursor: pointer; position: relative;
 }
 .field-btn:active { transform: scale(0.97); }
-.field-btn[hidden] { display: none; }
 /* Nattläge-knappen ärver .field-btn men behöver inte längre positioneras. */
 .mode-toggle.field-btn { position: relative; top: auto; right: auto; box-shadow: none; }
 @media (max-width: 380px) { .field-btn-label { display: none; } }
 
 /* Meddelandebladet — loggen tar den plats som blir över. */
 .sheet-messages .sheet-body { display: flex; flex-direction: column; }
-.sheet-messages .emb-log { flex: 1; min-height: 40vh; padding: 0 0 8px; overflow: visible; }
+/* Ankrat nedåt som en chatt: det senaste ligger närmast skrivfältet, och
+   tomrummet i en kort historik hamnar överst i stället för under. */
+.sheet-messages .emb-log {
+  flex: 1; min-height: 40vh; padding: 0 0 8px; overflow: visible;
+  display: flex; flex-direction: column; justify-content: flex-end;
+}
 .sheet-messages .emb-compose { padding: 10px 0 0; }
 .sheet-messages .emb-notif { padding: 11px 0 0; }
+
+/* Poängbladet — Spara ligger i den fasta foten så den alltid går att nå,
+   även när utslagsfrågan och noteringen tryckt ner innehållet. */
+/* Ingen negativ marginal — den klipps av bladets overflow och kapade
+   bokstävernas överkant. */
+.score-who { color: var(--r-fg-muted); margin: 0 0 4px; }
+.sheet-score .sheet-body { padding-bottom: 4px; }
+.sheet-score .sheet-foot {
+  padding-top: 10px;
+  border-top: 1.5px solid var(--r-border);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.sheet-score .sheet-foot .r-btn { margin-top: 0; }

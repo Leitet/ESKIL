@@ -21,10 +21,19 @@
 </head>
 <body>
 
-<button type="button" class="mode-toggle" id="mode-toggle" aria-label="Växla läge">
-  <span id="mode-icon"></span>
-  <span id="mode-label">Nattläge</span>
-</button>
+<!-- Fast fältheader — samma som startkortet. Kontrollanten ska nå
+     instruktionerna, tävlingsledningen och dagsljusläget oavsett hur långt
+     ner i patrullistan hen scrollat. -->
+<header class="field-bar" id="field-bar">
+  <div class="field-bar-inner">
+    <button type="button" class="field-btn" id="info-btn" aria-label="Instruktioner och karta" hidden></button>
+    <span id="msg-slot"></span>
+    <button type="button" class="field-btn mode-toggle" id="mode-toggle" aria-label="Växla läge">
+      <span id="mode-icon"></span>
+      <span id="mode-label" class="field-btn-label">Nattläge</span>
+    </button>
+  </div>
+</header>
 
 <main class="r-page" id="root">
   <div class="r-loading">Laddar kontrollen…</div>

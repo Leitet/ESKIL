@@ -8,9 +8,10 @@ import { AVDELNINGAR, escapeHtml, allInstructionGroups, internalManagement } fro
 import { controlEtaWindow } from './course.js';
 import { ensureLeaflet } from './leaflet.js';
 import { icon } from './icons.js';
-import { haptic, bindHaptic, bindTap, lockScroll, unlockScroll } from './haptic.js';
+import { haptic, bindHaptic, bindTap } from './haptic.js';
 import { updateBroadcast } from './broadcast.js';
 import { mountMessages } from './chat.js';
+import { openSheet } from './sheet.js';
 import { enqueue, removeFromQueue, listQueue, isPending, flushQueue, withTimeout, isPermanentError } from './offline-queue.js';
 
 const root = document.getElementById('root');
@@ -63,51 +64,84 @@ function reporterId() {
   return id;
 }
 
-// Wire up the flip card: (i) toggles, ✕ closes, map lazy-loads on first flip.
-// renderHead() rebuilds this DOM whenever the control opens/closes, so all
-// state that outlives one render (map instance, GPS watch, resize listener)
-// lives here at module level and is cleaned up before re-wiring — the old
-// one-shot `flipMapLoaded` flag left the map box permanently empty after a
-// rebuild, kept a leaked GPS watch running, and stacked resize listeners.
+// Informationsknappen i fältheadern öppnar kontrollens blad: instruktioner,
+// karta med "hitta mig", placering, allmän information och tävlingsledningen.
+//
+// Tidigare snurrade hela kortet runt. Bottensheeten gör samma innehåll
+// tillgängligt på samma sätt som allt annat som poppar upp här, och — det som
+// avgjorde saken på mobil — den tar inte plats ovanför patrullistan när den
+// är stängd.
+//
+// renderHead() bygger om headern varje gång kontrollen öppnas/stängs, så allt
+// som lever längre än en rendering (kartan, GPS-vakten) ligger på modulnivå
+// och städas innan det kopplas om.
 let chatPanel = null;        // samtalspanelen mot tävlingsledningen
 let flipMap = null;          // active Leaflet instance (or null)
 let flipStopLocate = null;   // stops the geolocation watch of that instance
-let flipResizeHandler = null;
-function wireFlipCard(control) {
-  const card = document.getElementById('flip-card');
-  const inner = card?.querySelector('.flip-card-inner');
-  const openBtn = document.getElementById('flip-open');
-  const closeBtn = document.getElementById('flip-close');
-  const front = card?.querySelector('.flip-front');
-  const back = card?.querySelector('.flip-back');
-  if (!card || !openBtn || !inner) return;
+let infoSheet = null;        // öppet informationsblad, om något
 
-  const applyHeight = () => {
-    const isFlipped = card.classList.contains('flipped');
-    const h = isFlipped ? back.offsetHeight : front.offsetHeight;
-    inner.style.minHeight = h + 'px';
-  };
+function wireInfoButton(control, groups, generalInfo, mgmt, harInnehåll) {
+  const btn = document.getElementById('info-btn');
+  if (!btn) return;
+  btn.hidden = !harInnehåll;
+  btn.innerHTML = icon('info', { size: 20 });
+  if (!harInnehåll || btn.dataset.wired) return;
+  btn.dataset.wired = '1';
 
-  const setFlipped = (on) => {
-    // Load the map when flipping to the back and the (fresh) host is empty —
-    // works both on first flip and after renderHead() replaced the DOM.
-    const mapHost = document.getElementById('flip-map');
-    if (on && control.lat && control.lng && mapHost && !mapHost.hasChildNodes()) {
-      loadFlipMap(control.lat, control.lng);
+  btn.addEventListener('click', () => {
+    if (infoSheet) { infoSheet.close(); return; }
+    infoSheet = openSheet({
+      eyebrow: `Kontroll ${control.nummer ?? ''}`,
+      title: control.name || 'Kontrollen',
+      className: 'sheet-info',
+      body: `
+        ${groups.length ? `
+          <h3>Instruktioner</h3>
+          ${groups.map(g => `
+            <div class="flip-inst-group">
+              <span class="tag">${(g.avdelningar || []).length ? escapeHtml(g.avdelningar.join(' · ')) : 'Default (alla andra)'}</span>
+              <p>${escapeHtml(g.text)}</p>
+            </div>`).join('')}` : ''}
+        ${control.placement ? `
+          <h3>Placering</h3>
+          <div class="flip-placement">
+            <p>${escapeHtml(control.placement)}</p>
+          </div>` : ''}
+        ${(control.lat && control.lng) ? `
+          <h3>Karta</h3>
+          <div class="flip-coords" aria-label="Koordinater">
+            <span class="flip-coords-label">Koordinater (vid nödsituation)</span>
+            <span class="flip-coords-value">${control.lat.toFixed(5)}, ${control.lng.toFixed(5)}</span>
+          </div>
+          <div class="flip-map" id="flip-map"></div>` : ''}
+        ${generalInfo ? `
+          <h3>Allmän information</h3>
+          <div class="flip-placement"><p>${escapeHtml(generalInfo)}</p></div>` : ''}
+        ${mgmt.length ? `
+          <h3>Tävlingsledning</h3>
+          <div class="flip-mgmt">
+            ${mgmt.map(r => `
+              <div class="flip-mgmt-row">
+                <div class="flip-mgmt-label">${escapeHtml(r.label)}</div>
+                ${r.name ? `<div class="flip-mgmt-name">${escapeHtml(r.name)}</div>` : ''}
+                ${r.phone ? `<a class="flip-mgmt-contact" href="tel:${escapeHtml(r.phone)}">${icon('phone', { size: 16 })} ${escapeHtml(r.phone)}</a>` : ''}
+                ${r.email ? `<a class="flip-mgmt-contact" href="mailto:${escapeHtml(r.email)}">${icon('mail', { size: 16 })} ${escapeHtml(r.email)}</a>` : ''}
+              </div>`).join('')}
+          </div>` : ''}`,
+      onClose: () => {
+        infoSheet = null;
+        // Kartan följer med bladet ut — annars ligger en GPS-vakt kvar och
+        // tuggar batteri i en kontrollant­telefon resten av dagen.
+        flipStopLocate?.(); flipStopLocate = null;
+        if (flipMap) { try { flipMap.remove(); } catch {} flipMap = null; }
+      }
+    });
+    // Kartan ritas när bladet glidit klart — Leaflet mäter sin container vid
+    // skapandet, och mitt i animationen är den inte på plats än.
+    if (control.lat && control.lng) {
+      setTimeout(() => loadFlipMap(control.lat, control.lng), 220);
     }
-    card.classList.toggle('flipped', on);
-    openBtn.setAttribute('aria-expanded', on ? 'true' : 'false');
-    back.setAttribute('aria-hidden', on ? 'false' : 'true');
-    applyHeight();
-  };
-
-  openBtn.addEventListener('click', () => setFlipped(!card.classList.contains('flipped')));
-  closeBtn?.addEventListener('click', () => setFlipped(false));
-  // Initial size once fonts etc. have painted
-  requestAnimationFrame(applyHeight);
-  if (flipResizeHandler) window.removeEventListener('resize', flipResizeHandler);
-  flipResizeHandler = applyHeight;
-  window.addEventListener('resize', applyHeight);
+  });
 }
 
 async function loadFlipMap(lat, lng) {
@@ -295,8 +329,7 @@ async function main() {
 
   // --- UI State ---
   const state = {
-    avd: null, // selected avdelning filter
-    openSheetFor: null // patrol being reported
+    avd: null // selected avdelning filter
   };
 
   // --- ETA: "Patruller väntas ca X–Y" ---
@@ -335,76 +368,17 @@ async function main() {
     const hasBackContent = groups.length > 0 || (control.lat && control.lng) || !!control.placement || !!generalInfo || mgmt.length > 0;
     head.innerHTML = `
       ${closedBanner}
-      <div class="flip-card" id="flip-card">
-        <div class="flip-card-inner">
-          <div class="flip-face flip-front">
-            <div class="r-head">
-              <div class="r-eyebrow">${escapeHtml(comp?.shortName || 'Tävling')} ${comp?.year ? '· ' + comp.year : ''}</div>
-              <div class="flip-title-row">
-                <h1 class="r-title">
-                  <span class="r-ctrl-no">${escapeHtml(String(control.nummer ?? ''))}</span>${escapeHtml(control.name || '')}
-                </h1>
-                ${hasBackContent ? `<button type="button" class="flip-btn" id="flip-open" aria-expanded="false" aria-label="Visa instruktioner och karta">${icon('info', { size: 22 })}</button>` : ''}
-              </div>
-              <div class="r-sub">Rapportera poäng. Max ${control.maxPoang ?? 0} · Min ${control.minPoang ?? 0}${control.extraPoang ? ' · Extra max ' + control.extraPoang : ''}</div>
-              ${etaText ? `<div class="r-eta">${icon('clock', { size: 13 })} ${escapeHtml(etaText)}</div>` : ''}
-            </div>
-          </div>
-          <div class="flip-face flip-back" aria-hidden="true">
-            <button type="button" class="flip-back-close" id="flip-close" aria-label="Stäng instruktioner">${icon('x', { size: 22 })}</button>
-
-            ${groups.length ? `
-              <h3>Instruktioner</h3>
-              ${groups.map(g => `
-                <div class="flip-inst-group">
-                  <span class="tag">${(g.avdelningar || []).length ? escapeHtml(g.avdelningar.join(' · ')) : 'Default (alla andra)'}</span>
-                  <p>${escapeHtml(g.text)}</p>
-                </div>
-              `).join('')}
-            ` : ''}
-
-            ${generalInfo ? `
-              <h3>Allmän information</h3>
-              <div class="flip-placement">
-                <p>${escapeHtml(generalInfo)}</p>
-              </div>
-            ` : ''}
-
-            ${mgmt.length ? `
-              <h3>Tävlingsledning</h3>
-              <div class="flip-mgmt">
-                ${mgmt.map(r => `
-                  <div class="flip-mgmt-row">
-                    <div class="flip-mgmt-label">${escapeHtml(r.label)}</div>
-                    ${r.name ? `<div class="flip-mgmt-name">${escapeHtml(r.name)}</div>` : ''}
-                    ${r.phone ? `<a class="flip-mgmt-contact" href="tel:${escapeHtml(r.phone)}">${icon('phone', { size: 16 })} ${escapeHtml(r.phone)}</a>` : ''}
-                    ${r.email ? `<a class="flip-mgmt-contact" href="mailto:${escapeHtml(r.email)}">${icon('mail', { size: 16 })} ${escapeHtml(r.email)}</a>` : ''}
-                  </div>
-                `).join('')}
-              </div>
-            ` : ''}
-
-            ${(control.lat && control.lng) ? `
-              <h3>Karta</h3>
-              <div class="flip-coords" aria-label="Koordinater">
-                <span class="flip-coords-label">Koordinater (vid nödsituation)</span>
-                <span class="flip-coords-value">${control.lat.toFixed(5)}, ${control.lng.toFixed(5)}</span>
-              </div>
-              <div class="flip-map" id="flip-map"></div>
-            ` : ''}
-            ${control.placement ? `
-              <div class="flip-placement">
-                <div class="label">Placering</div>
-                <p>${escapeHtml(control.placement)}</p>
-              </div>
-            ` : ''}
-          </div>
-        </div>
+      <div class="r-head">
+        <div class="r-eyebrow">${escapeHtml(comp?.shortName || 'Tävling')} ${comp?.year ? '· ' + comp.year : ''}</div>
+        <h1 class="r-title">
+          <span class="r-ctrl-no">${escapeHtml(String(control.nummer ?? ''))}</span>${escapeHtml(control.name || '')}
+        </h1>
+        <div class="r-sub">Rapportera poäng. Max ${control.maxPoang ?? 0} · Min ${control.minPoang ?? 0}${control.extraPoang ? ' · Extra max ' + control.extraPoang : ''}</div>
+        ${etaText ? `<div class="r-eta">${icon('clock', { size: 13 })} ${escapeHtml(etaText)}</div>` : ''}
       </div>
     `;
 
-    if (!hasBackContent) return;
-    wireFlipCard(control);
+    wireInfoButton(control, groups, generalInfo, mgmt, hasBackContent);
   }
 
   // --- Avdelning chips ---
@@ -504,12 +478,12 @@ async function main() {
 
     plist.querySelectorAll('.patrol-btn').forEach(b => {
       bindHaptic(b);
-      b.addEventListener('click', () => openSheet(b.dataset.id));
+      b.addEventListener('click', () => openScoreSheet(b.dataset.id));
     });
   }
 
   // --- Score entry sheet ---
-  function openSheet(patrolId) {
+  function openScoreSheet(patrolId) {
     const patrol = patrols.find(p => p.id === patrolId);
     if (!patrol) return;
     const existing = scores.find(s => s.patrolId === patrolId);
@@ -529,18 +503,19 @@ async function main() {
     const isUtslag = !!control.utslag;
     const seedGissning = seed?.utslagGissning;
 
-    const overlay = document.createElement('div');
-    overlay.className = 'sheet-overlay';
-    overlay.innerHTML = `
-      <div class="sheet" role="dialog" aria-modal="true">
-        <div class="sheet-head">
-          <div>
-            <div style="font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--r-fg-muted);font-weight:700;">Patrull #${patrol.number ?? ''}</div>
-            <h2>${escapeHtml(patrol.name || '')}</h2>
-            <div style="color:var(--r-fg-muted);margin-top:2px;">${escapeHtml(patrol.avdelning || '')} · ${escapeHtml(patrol.kar || '')}</div>
-          </div>
-          <button type="button" class="sheet-close" id="close" aria-label="Stäng">${icon('x', { size: 22 })}</button>
-        </div>
+    // Poängbladet ligger i samma bottensheet som allt annat på fältsidorna.
+    // Spara-knappen bor i fotens fasta yta: på en telefon med långa
+    // instruktioner ska man aldrig behöva scrolla för att komma åt den.
+    const ark = openSheet({
+      eyebrow: `Patrull #${patrol.number ?? ''}`,
+      title: patrol.name || '',
+      className: 'sheet-score',
+      // Inget stäng-på-tapp-bredvid: kontrollanten kan ha prickat in poäng
+      // och skrivit en notering, och ett slarvigt tapp ovanför bladet får
+      // inte kasta det. Handtaget, ✕ och Esc stänger.
+      backdropClose: false,
+      body: `
+        <div class="score-who">${escapeHtml(patrol.avdelning || '')} · ${escapeHtml(patrol.kar || '')}</div>
 
         <div class="r-label-inline">Poäng</div>
         <div class="score-stepper">
@@ -559,38 +534,23 @@ async function main() {
             <button type="button" class="step-btn" id="eminus" aria-label="Minska extra">${icon('minus', { size: 28 })}</button>
             <div class="score-display" id="eval">${extra}<span class="range">0 – ${maxE}</span></div>
             <button type="button" class="step-btn" id="eplus" aria-label="Öka extra">${icon('plus', { size: 28 })}</button>
-          </div>
-        ` : ''}
+          </div>` : ''}
 
         ${isUtslag ? `
           <div style="margin-top:18px;" class="r-label-inline">Utslagsfråga${control.utslagFraga ? `: ${escapeHtml(control.utslagFraga)}` : ''}</div>
           <input type="number" class="r-input" id="gissning-input" inputmode="decimal" step="any"
             value="${seedGissning != null && Number.isFinite(Number(seedGissning)) ? seedGissning : ''}"
             placeholder="Patrullens svar" style="display:block;">
-          <div style="font-size:13px;color:var(--r-fg-muted);margin-top:4px;">Vid lika poäng vinner patrullen närmast rätt svar — glöm inte fylla i!</div>
-        ` : ''}
+          <div style="font-size:13px;color:var(--r-fg-muted);margin-top:4px;">Vid lika poäng vinner patrullen närmast rätt svar — glöm inte fylla i!</div>` : ''}
 
         <div style="margin-top:18px;" class="r-label-inline">Notering (frivilligt)</div>
-        <textarea class="r-textarea" id="note" placeholder="T.ex. regelavvikelse eller kommentar…">${escapeHtml(note)}</textarea>
-
+        <textarea class="r-textarea" id="note" placeholder="T.ex. regelavvikelse eller kommentar…">${escapeHtml(note)}</textarea>`,
+      footer: `
         <button type="button" class="r-btn" id="save">${existing ? 'Uppdatera poäng' : 'Spara poäng'}</button>
-        ${existing ? '<button type="button" class="r-btn danger" id="remove">Ta bort rapport</button>' : ''}
-      </div>
-    `;
-    document.body.appendChild(overlay);
-    lockScroll();
-    let closed = false;
-    const close = () => {
-      if (closed) return;
-      closed = true;
-      overlay.remove();
-      unlockScroll();
-    };
-    // No backdrop-tap close — the kontrollant may have picked points and
-    // typed a note; a stray tap above the sheet must not throw that away.
-    // bindTap fires on touchstart so the X responds instantly on iOS, which
-    // otherwise delays/swallows clicks under its double-tap-zoom heuristic.
-    bindTap(overlay.querySelector('#close'), close);
+        ${existing ? '<button type="button" class="r-btn danger" id="remove">Ta bort rapport</button>' : ''}`
+    });
+    const overlay = ark.el;
+    const close = ark.close;
 
     const valEl = overlay.querySelector('#val');
     const inp = overlay.querySelector('#poang-input');

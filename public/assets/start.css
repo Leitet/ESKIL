@@ -124,6 +124,20 @@ html[data-mode="night"] .start-time-chip.go {
   font-size: 14px;
 }
 .start-next .sn-go { font-size: 13px; color: var(--r-fg-muted); white-space: nowrap; }
+/* På telefon får etikett, namn och länk inte trängas på samma rad —
+   kontrollnamnet bröts i två rader och raden blev svårläst. */
+@media (max-width: 480px) {
+  .start-next {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas: "label label" "name go";
+    gap: 3px 10px;
+    align-items: center;
+  }
+  .start-next .sn-label { grid-area: label; }
+  .start-next .sn-name  { grid-area: name; }
+  .start-next .sn-go    { grid-area: go; }
+}
 
 /* Offline banner — persistent cache still shows the last known state */
 .start-offline {
@@ -153,9 +167,12 @@ html[data-mode="night"] .start-time-chip.go {
 }
 
 /* Summary pills row */
+/* Alltid tre i bredd — de tre talen hör ihop och läses som en rad.
+   auto-fit bröt dem till 2+1 på en telefon, vilket lade "Kvar" ensamt
+   under och såg ut som något annat än en summering. */
 .start-kpis {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: 10px;
   margin-bottom: 20px;
 }
@@ -174,7 +191,9 @@ html[data-mode="night"] .start-time-chip.go {
 .start-kpi .kp-value {
   font-family: 'SF Mono', ui-monospace, monospace;
   font-weight: 700;
-  font-size: 22px;
+  /* "12 / 14" måste rymmas i en tredjedels telefonskärm utan att brytas. */
+  font-size: clamp(17px, 4.6vw, 22px);
+  white-space: nowrap;
   color: var(--r-fg);
   line-height: 1.1;
 }

@@ -84,17 +84,26 @@ Email extension). Production domain: https://eskilscout.se.
   kritiskt meddelande ska synas utan att någon öppnar en modal. Panelen ärver
   report.css-variablerna så nattläget håller. Ledningens sida: inkorgen i
   `views/meddelanden.js`.
-- **Fältsidornas UI-mönster** (infört på /s; /k och /m följer efter):
-  en FAST header (`.field-bar` i s.html) med informations-, meddelande- och
-  nattlägesknapp högerjusterade och reserverad höjd, samt `public/js/sheet.js`
-  (`openSheet`) som ETT sätt att visa allt som poppar upp — kontrollblad,
-  information, meddelanden. Bladet har draghandtag, svep ner, klick utanför
-  och Esc. Bygg inte en egen overlay till nästa yta.
+- **Fältsidornas UI-mönster** (gäller /s och /k; /m följer efter):
+  en FAST header (`.field-bar` i s.html och k.html) med informations-,
+  meddelande- och nattlägesknapp högerjusterade och reserverad höjd, samt
+  `public/js/sheet.js` (`openSheet`) som ETT sätt att visa allt som poppar
+  upp — kontrollblad, poängblad, information, meddelanden. Bladet har
+  draghandtag, svep ner, klick utanför och Esc. Bygg inte en egen overlay
+  till nästa yta; det finns ingen fallback kvar för handrullade blad.
+  `backdropClose: false` för blad där ett tapp bredvid skulle slänga arbete
+  (poängbladet). Rapportsidans gamla flip-kort är borta — samma innehåll
+  ligger i informationsbladet bakom (i)-knappen.
   Bannern och headern delar toppen: broadcast.js sätter `--field-bar-offset`
   och räknar in headern i body-paddingen, annars hamnar headern bakom bannern.
-  `.sheet` utan `.sheet-body` behåller sitt gamla scrollbeteende (`:not(:has())`)
-  så ännu ej konverterade blad inte klipps — ta bort den regeln först när
-  ingen sådan finns kvar.
+  `--field-top` (report.css) är summan av båda — sticky-remsor och
+  `scroll-padding-top` måste utgå från den, annars hamnar det de scrollar
+  fram under headern.
+- **`[hidden]` är en global regel** (`display: none !important`) i report.css
+  och app.css. Ett element med eget `display` vinner annars över attributet,
+  och den fällan har slagit till flera gånger (notisbadgen visade "0",
+  avståndschipen låg som en tom vit pill över kartan). Lägg inte till
+  `.nånting[hidden]`-regler — den globala täcker dem.
 - **Patrullens etikett är `patrolLabel()` i utils.js**: `Rävarna (Lindsdals
   Scoutkår)`. Används där patrullen visas som EN etikett — Läget,
   stationssidan, reservprotokollet, delade placeringar — eftersom flera kårer
