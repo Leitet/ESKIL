@@ -17,7 +17,7 @@
 //
 // Bump VERSION whenever cached-asset behavior must be reset.
 
-const VERSION = 'eskil-sw-v4';
+const VERSION = 'eskil-sw-v5';
 const RUNTIME = `${VERSION}-runtime`;
 
 const FIELD_SHELLS = { '/k/': '/k.html', '/s/': '/s.html', '/m/': '/m.html' };
@@ -81,14 +81,22 @@ async function networkFirst(request) {
 
 async function navigateFieldPage(request, shell) {
   const cache = await caches.open(RUNTIME);
-  try {
-    const resp = await fetch(request);
-    if (resp && resp.ok) cache.put(shell, resp.clone());
-    return resp;
-  } catch {
-    const cached = await cache.match(shell);
-    return cached || Response.error();
-  }
+  // Samma deadline-kapplöpning som networkFirst — utan den hängde en
+  // fältsidenavigering på ett långsamt-men-levande skogsnät på webbläsarens
+  // socket-timeout (tiotals sekunder) i stället för att öppna det precachade
+  // skalet direkt. catch-grenen fångar bara ÄKTA offline (fetch rejectar);
+  // det trögflytande fallet (fetch varken resolvar eller rejectar) klaras nu
+  // av deadlinen. `no-cache` revaliderar via ETag så en deploy syns direkt.
+  const fromNetwork = fetch(request, { cache: 'no-cache' })
+    .then(resp => { if (resp && resp.ok) cache.put(shell, resp.clone()); return resp; });
+  const deadline = new Promise(resolve => setTimeout(() => resolve(null), NETWORK_DEADLINE_MS));
+  const winner = await Promise.race([
+    fromNetwork,
+    deadline.then(async () => (await cache.match(shell)) || fromNetwork)
+  ]).catch(async () => (await cache.match(shell)) || null);
+  if (winner) return winner;
+  const cached = await cache.match(shell);
+  return cached || fromNetwork.catch(() => Response.error());
 }
 
 self.addEventListener('fetch', (event) => {

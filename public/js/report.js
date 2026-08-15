@@ -688,12 +688,23 @@ async function main() {
         // doesn't resurrect the deleted score when it eventually syncs.
         removeFromQueue(cid, ctrlId, patrol.id);
         try {
-          await deleteScore(cid, ctrlId, existing.id);
+          // Samma timeout-mönster som spara-vägen: en offline Firestore-
+          // skrivning (även delete) resolvar aldrig, så utan withTimeout
+          // hänger bladet öppet utan återkoppling i exakt de svaga-nät-
+          // förhållanden fältet lever i. Firestore buffrar borttagningen
+          // lokalt och synkar den när nätet är tillbaka.
+          await withTimeout(deleteScore(cid, ctrlId, existing.id), navigator.onLine ? 5000 : 500);
           sync.render();
           close();
           rtoast('Borttagen');
         } catch (e) {
-          rtoast('Fel: ' + e.message, 'err');
+          if (e?.message === 'offline-timeout') {
+            sync.render();
+            close();
+            rtoast('Borttagen offline — synkas när nätet kommer tillbaka');
+          } else {
+            rtoast('Fel: ' + e.message, 'err');
+          }
         }
       });
     }
