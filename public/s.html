@@ -23,10 +23,19 @@
 </head>
 <body>
 
-<button type="button" class="mode-toggle" id="mode-toggle" aria-label="Växla läge">
-  <span id="mode-icon"></span>
-  <span id="mode-label">Nattläge</span>
-</button>
+<!-- Fast fältheader: informationsbladet, meddelandena och dagsljusläget ska
+     alltid gå att nå, oavsett hur långt ner i kontrollistan man scrollat.
+     Reserverad höjd så innehållet aldrig hamnar under den. -->
+<header class="field-bar" id="field-bar">
+  <div class="field-bar-inner">
+    <button type="button" class="field-btn" id="info-btn" aria-label="Tävlingsinformation" hidden></button>
+    <span id="msg-slot"></span>
+    <button type="button" class="field-btn mode-toggle" id="mode-toggle" aria-label="Växla läge">
+      <span id="mode-icon"></span>
+      <span id="mode-label" class="field-btn-label">Nattläge</span>
+    </button>
+  </div>
+</header>
 
 <main class="r-page" id="root">
   <div class="r-loading">Laddar startkort…</div>

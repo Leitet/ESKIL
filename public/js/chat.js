@@ -13,7 +13,7 @@
 // Bilder skickas som nedskalade data-URL:er, se photo.js.
 
 import { escapeHtml } from './utils.js';
-import { lockScroll, unlockScroll } from './haptic.js';
+import { openSheet } from './sheet.js';
 import { icon } from './icons.js';
 import { watchThread, watchThreadDoc, sendThreadMessage, markThreadRead } from './store.js';
 import { pickImage } from './photo.js';
@@ -44,15 +44,19 @@ export function mountMessages({ cid, kind, refId, enabled = true } = {}) {
   const unsubs = [];
 
   // --- Ikonen -----------------------------------------------------------------
+  // Sidor med fast fältheader (#msg-slot) får knappen där, bland de andra —
+  // en fast rad som alltid går att nå. Sidor utan header får den flytande,
+  // placerad mätt så den aldrig täcker Nattläge-knappen.
+  const slot = document.getElementById('msg-slot');
   const knapp = document.createElement('button');
   knapp.id = 'eskil-msg-btn';
   knapp.type = 'button';
   knapp.setAttribute('aria-label', 'Meddelanden');
-  document.body.appendChild(knapp);
+  if (slot) { knapp.classList.add('field-btn'); slot.appendChild(knapp); }
+  else document.body.appendChild(knapp);
 
-  // Placeras mätt, inte gissat: till vänster om Nattläge-knappen och nedanför
-  // bannerstacken, så de aldrig täcker varandra.
   const placera = () => {
+    if (slot) return;
     const toggle = document.querySelector('.mode-toggle');
     knapp.style.right = toggle
       ? Math.round(window.innerWidth - toggle.getBoundingClientRect().left + 10) + 'px'
@@ -84,6 +88,7 @@ export function mountMessages({ cid, kind, refId, enabled = true } = {}) {
   ].filter(p => p.at).sort((a, b) => a.at - b.at);
 
   let overlay = null;
+  let ark = null;
   const ritaPanel = () => {
     if (!öppen || !overlay) return;
     const log = overlay.querySelector('#emb-log');
@@ -140,25 +145,15 @@ export function mountMessages({ cid, kind, refId, enabled = true } = {}) {
     if (bild) rad.querySelector('img').src = bild.dataUrl;
   };
 
-  const stäng = () => {
-    öppen = false;
-    overlay?.remove();
-    overlay = null;
-    unlockScroll();
-    ritaKnapp();
-  };
+  const stäng = () => { ark?.close(); };
 
   const öppna = () => {
     öppen = true;
-    overlay = document.createElement('div');
-    overlay.className = 'emb-overlay';
-    overlay.innerHTML = `
-      <div class="emb-modal" role="dialog" aria-modal="true" aria-label="Meddelanden">
-        <div class="emb-modal-head">
-          <strong>Meddelanden</strong>
-          <button type="button" class="emb-x" id="emb-close" aria-label="Stäng">${icon('x', { size: 20 })}</button>
-        </div>
-        <div class="emb-log" id="emb-log"></div>
+    ark = openSheet({
+      title: 'Meddelanden',
+      className: 'sheet-messages',
+      body: '<div class="emb-log" id="emb-log"></div>',
+      footer: `
         ${enabled ? `
           <div class="emb-compose">
             <div class="emb-attach" id="emb-attach" hidden>
@@ -173,13 +168,10 @@ export function mountMessages({ cid, kind, refId, enabled = true } = {}) {
             <p class="emb-hint" id="emb-hint">Tävlingsledningen ser frågan direkt och svarar här.</p>
           </div>` : `
           <p class="emb-hint emb-readonly">Tävlingsledningen har stängt av möjligheten att skriva hit.</p>`}
-        <div class="emb-notif" id="emb-notif"></div>
-      </div>`;
-    document.body.appendChild(overlay);
-    lockScroll();
-
-    overlay.querySelector('#emb-close').addEventListener('click', stäng);
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) stäng(); });
+        <div class="emb-notif" id="emb-notif"></div>`,
+      onClose: () => { öppen = false; ark = null; ritaKnapp(); }
+    });
+    overlay = ark.el;
 
     if (enabled) {
       overlay.querySelector('#emb-photo').addEventListener('click', async () => {
@@ -210,7 +202,8 @@ export function mountMessages({ cid, kind, refId, enabled = true } = {}) {
     if (oläsraSvar()) markThreadRead(cid, kind, refId, 'falt').catch(() => {});
     ritaPanel();
     ritaKnapp();
-    overlay.querySelector('#emb-log').scrollTop = overlay.querySelector('#emb-log').scrollHeight;
+    const log = overlay.querySelector('#emb-log');
+    log.scrollTop = log.scrollHeight;
   };
 
   knapp.addEventListener('click', () => (öppen ? stäng() : öppna()));

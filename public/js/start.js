@@ -24,6 +24,7 @@ import { bindHaptic, bindTap, lockScroll, unlockScroll } from './haptic.js';
 import { updateBroadcast } from './broadcast.js';
 import { patrolHighlights } from './highlights.js';
 import { mountMessages } from './chat.js';
+import { openSheet } from './sheet.js';
 import { compPlaces, placeKind, drawPlaces } from './places.js';
 
 const root = document.getElementById('root');
@@ -429,7 +430,6 @@ function render() {
 
   const generalInfo = (comp.generalInfo || '').trim();
   const mgmt = publicManagement(comp);
-  const hasBackContent = !!generalInfo || mgmt.length > 0;
 
   const t = totals();
   const phase = cardPhase();
@@ -441,69 +441,39 @@ function render() {
 
   root.innerHTML = `
     ${!navigator.onLine ? `<div class="start-offline">Offline — visar senast kända läge. Allt uppdateras automatiskt när nätet är tillbaka.</div>` : ''}
-    <div class="flip-card" id="flip-card">
-      <div class="flip-card-inner">
-        <div class="flip-face flip-front">
-          <div class="start-head">
-            ${patrol.__test ? `<div style="background:#fde5d4;color:#b84a0a;border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:13px;font-weight:700;">TESTLÄGE — så här ser patrullernas startkort ut. Riktiga startkort får patrullens namn och poäng.</div>` : ''}
-            <div class="start-eyebrow">${escapeHtml(comp.shortName || 'Tävling')} ${comp.year ? '· ' + comp.year : ''} · STARTKORT</div>
-            <div class="flip-title-row">
-              <h1 class="start-title">
-                <span class="r-ctrl-no">#${escapeHtml(String(patrol.number ?? ''))}</span>${escapeHtml(patrol.name || '')}
-              </h1>
-              ${hasBackContent ? `<button type="button" class="flip-btn" id="flip-open" aria-expanded="false" aria-label="Visa tävlingsinformation">${icon('info', { size: 22 })}</button>` : ''}
-            </div>
-            <div class="start-sub">
-              ${escapeHtml(patrol.avdelning || '')}${patrol.kar ? ' · ' + escapeHtml(patrol.kar) : ''}${patrol.antal ? ' · ' + patrol.antal + ' deltagare' : ''}
-            </div>
-            ${(() => {
-              const t = patrolStartTime(comp, patrol, patrols.length);
-              if (!t) return '';
-              const dt = patrolStartDateTime(comp, patrol, new Date(), patrols.length);
-              // Maxtid: nedräkning mot planerad start + maxTimeMinutes.
-              const maxMin = Number(comp.startTimes?.maxTimeMinutes) || 0;
-              // Maxtiden räknas från när patrullen FAKTISKT gick. Med
-              // självbekräftad start är det bekräftelsen — annars hade
-              // nedräkningen tickat medan de fortfarande stod i kön.
-              const ankare = selfStartAt || dt;
-              // Banan avklarad → ingen nedräkning kvar att bry sig om.
-              const deadline = maxMin > 0 && ankare && !courseFinished()
-                && !(selfStartEnabled() && !selfStarted())
-                ? new Date(ankare.getTime() + maxMin * 60000) : null;
-              return `<div class="start-time-chip" id="start-time-chip" data-start="${dt?.toISOString() || ''}">
-                ${icon('clock', { size: 18 })}
-                <span>Starttid</span>
-                <span class="start-time-value">${escapeHtml(t)}</span>
-                <span class="start-time-sep">·</span>
-                <span class="start-time-countdown" id="start-time-countdown">—</span>
-              </div>
-              ${deadline ? `<div class="start-max-chip" id="start-max-chip" data-deadline="${deadline.toISOString()}" hidden>
-                ${icon('clock', { size: 15 })} <span>Maxtid</span> <span id="start-max-countdown">—</span>
-              </div>` : ''}`;
-            })()}
-          </div>
-        </div>
-        <div class="flip-face flip-back" aria-hidden="true">
-          <button type="button" class="flip-back-close" id="flip-close" aria-label="Stäng">${icon('x', { size: 22 })}</button>
-          ${generalInfo ? `
-            <h3>Allmän information</h3>
-            <div class="flip-placement"><p>${escapeHtml(generalInfo)}</p></div>
-          ` : ''}
-          ${mgmt.length ? `
-            <h3>Tävlingsledning</h3>
-            <div class="flip-mgmt">
-              ${mgmt.map(r => `
-                <div class="flip-mgmt-row">
-                  <div class="flip-mgmt-label">${escapeHtml(r.label)}</div>
-                  ${r.name ? `<div class="flip-mgmt-name">${escapeHtml(r.name)}</div>` : ''}
-                  ${r.phone ? `<a class="flip-mgmt-contact" href="tel:${escapeHtml(r.phone)}">${icon('phone', { size: 16 })} ${escapeHtml(r.phone)}</a>` : ''}
-                  ${r.email ? `<a class="flip-mgmt-contact" href="mailto:${escapeHtml(r.email)}">${icon('mail', { size: 16 })} ${escapeHtml(r.email)}</a>` : ''}
-                </div>
-              `).join('')}
-            </div>
-          ` : ''}
-        </div>
+    <div class="start-head">
+      ${patrol.__test ? `<div style="background:#fde5d4;color:#b84a0a;border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:13px;font-weight:700;">TESTLÄGE — så här ser patrullernas startkort ut. Riktiga startkort får patrullens namn och poäng.</div>` : ''}
+      <div class="start-eyebrow">${escapeHtml(comp.shortName || 'Tävling')} ${comp.year ? '· ' + comp.year : ''} · STARTKORT</div>
+      <h1 class="start-title">
+        <span class="r-ctrl-no">#${escapeHtml(String(patrol.number ?? ''))}</span>${escapeHtml(patrol.name || '')}
+      </h1>
+      <div class="start-sub">
+        ${escapeHtml(patrol.avdelning || '')}${patrol.kar ? ' · ' + escapeHtml(patrol.kar) : ''}${patrol.antal ? ' · ' + patrol.antal + ' deltagare' : ''}
       </div>
+      ${(() => {
+        const t = patrolStartTime(comp, patrol, patrols.length);
+        if (!t) return '';
+        const dt = patrolStartDateTime(comp, patrol, new Date(), patrols.length);
+        const maxMin = Number(comp.startTimes?.maxTimeMinutes) || 0;
+        // Maxtiden räknas från när patrullen FAKTISKT gick. Med
+        // självbekräftad start är det bekräftelsen — annars hade
+        // nedräkningen tickat medan de fortfarande stod i kön.
+        const ankare = selfStartAt || dt;
+        // Banan avklarad → ingen nedräkning kvar att bry sig om.
+        const deadline = maxMin > 0 && ankare && !courseFinished()
+          && !(selfStartEnabled() && !selfStarted())
+          ? new Date(ankare.getTime() + maxMin * 60000) : null;
+        return `<div class="start-time-chip" id="start-time-chip" data-start="${dt?.toISOString() || ''}">
+          ${icon('clock', { size: 18 })}
+          <span>Starttid</span>
+          <span class="start-time-value">${escapeHtml(t)}</span>
+          <span class="start-time-sep">·</span>
+          <span class="start-time-countdown" id="start-time-countdown">—</span>
+        </div>
+        ${deadline ? `<div class="start-max-chip" id="start-max-chip" data-deadline="${deadline.toISOString()}" hidden>
+          ${icon('clock', { size: 15 })} <span>Maxtid</span> <span id="start-max-countdown">—</span>
+        </div>` : ''}`;
+      })()}
     </div>
 
     ${phase === 'info' ? renderInfoBody() : `
@@ -573,7 +543,7 @@ function render() {
   });
 
   // Flip card
-  wireFlipCard();
+  wireInfoButton();
 
   // Bekräfta start / Vi är i mål — samma knapp, olika stämpel.
   root.querySelectorAll('[data-confirm]').forEach(btn => bindTap(btn, async () => {
@@ -673,29 +643,61 @@ function renderList() {
 }
 
 // --- Flip card (reuses reporter page CSS/markup) ---
-let flipMapLoaded = false;
-function wireFlipCard() {
-  const card = document.getElementById('flip-card');
-  const inner = card?.querySelector('.flip-card-inner');
-  const openBtn = document.getElementById('flip-open');
-  const closeBtn = document.getElementById('flip-close');
-  const front = card?.querySelector('.flip-front');
-  const back = card?.querySelector('.flip-back');
-  if (!card || !openBtn || !inner) return;
+// Informationsbladet — knappen sitter i den fasta fältheadern och innehållet
+// öppnas som bottensheet, samma som allt annat som poppar upp här. Tidigare
+// snurrade hela startkortet runt sin egen axel; det var en fin effekt men ett
+// eget beteende att lära sig, och innehållet gick inte att scrolla.
+function wireInfoButton() {
+  const btn = document.getElementById('info-btn');
+  if (!btn) return;
+  const generalInfo = (comp?.generalInfo || '').trim();
+  const mgmt = publicManagement(comp);
+  const sf = startFinishPoints(comp);
+  const places = compPlaces(comp);
+  const harNåt = !!generalInfo || mgmt.length > 0 || sf.length > 0 || places.length > 0;
 
-  const applyHeight = () => {
-    const on = card.classList.contains('flipped');
-    inner.style.minHeight = (on ? back.offsetHeight : front.offsetHeight) + 'px';
-  };
-  const setFlipped = (on) => {
-    card.classList.toggle('flipped', on);
-    openBtn.setAttribute('aria-expanded', on ? 'true' : 'false');
-    back.setAttribute('aria-hidden', on ? 'false' : 'true');
-    applyHeight();
-  };
-  openBtn.addEventListener('click', () => setFlipped(!card.classList.contains('flipped')));
-  closeBtn?.addEventListener('click', () => setFlipped(false));
-  requestAnimationFrame(applyHeight);
+  btn.hidden = !harNåt;
+  btn.innerHTML = icon('info', { size: 20 });
+  if (!harNåt || btn.dataset.wired) return;
+  btn.dataset.wired = '1';
+
+  btn.addEventListener('click', () => {
+    const rader = [
+      ...sf.map(p => ({ namn: p.name || p.title, sort: p.title, lat: p.lat, lng: p.lng })),
+      ...places.map(p => ({ namn: p.name, sort: placeKind(p.kind).label, lat: p.lat, lng: p.lng }))
+    ];
+    openSheet({
+      eyebrow: `${comp.shortName || ''}${comp.year ? ' · ' + comp.year : ''}`,
+      title: 'Tävlingsinformation',
+      body: `
+        ${generalInfo ? `
+          <h3 class="start-info-h">Allmän information</h3>
+          <div class="start-info-body">${escapeHtml(generalInfo)}</div>` : ''}
+        ${rader.length ? `
+          <h3 class="start-info-h">Platser</h3>
+          <div class="start-ctrl-list">
+            ${rader.map(r => `
+              <div class="start-ctrl start-ctrl-sf">
+                <div class="start-ctrl-body">
+                  <div class="start-ctrl-name">${escapeHtml(r.namn || '')}</div>
+                  <div class="start-ctrl-sub">${escapeHtml(r.sort || '')}</div>
+                </div>
+                <span class="start-ctrl-status mono">${r.lat.toFixed(4)}, ${r.lng.toFixed(4)}</span>
+              </div>`).join('')}
+          </div>` : ''}
+        ${mgmt.length ? `
+          <h3 class="start-info-h">Tävlingsledning</h3>
+          <div class="flip-mgmt start-info-mgmt">
+            ${mgmt.map(r => `
+              <div class="flip-mgmt-row">
+                <div class="flip-mgmt-label">${escapeHtml(r.label)}</div>
+                ${r.name ? `<div class="flip-mgmt-name">${escapeHtml(r.name)}</div>` : ''}
+                ${r.phone ? `<a class="flip-mgmt-contact" href="tel:${escapeHtml(r.phone)}">${icon('phone', { size: 16 })} ${escapeHtml(r.phone)}</a>` : ''}
+                ${r.email ? `<a class="flip-mgmt-contact" href="mailto:${escapeHtml(r.email)}">${icon('mail', { size: 16 })} ${escapeHtml(r.email)}</a>` : ''}
+              </div>`).join('')}
+          </div>` : ''}`
+    });
+  });
 }
 
 // --- Overview map with all control pins ---
@@ -830,20 +832,14 @@ function openControlSheet(ctrlId) {
   const name = displayName(c);
   const anon = isAnonymous() && !done;
 
-  const overlay = document.createElement('div');
-  overlay.className = 'sheet-overlay';
-  overlay.innerHTML = `
-    <div class="sheet sheet-tall" role="dialog" aria-modal="true">
-      <div class="sheet-head">
-        <div>
-          <div style="font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--r-fg-muted);font-weight:700;">Kontroll #${escapeHtml(String(c.nummer ?? ''))}</div>
-          <h2 style="${anon ? 'color:var(--r-fg-muted);font-style:italic;' : ''}">${escapeHtml(name)}</h2>
-          <div style="color:var(--r-fg-muted);margin-top:2px;">
-            ${done ? `<span style="color:var(--r-success);font-weight:700;">Rapporterad · ${score.poang}${score.extraPoang ? '+' + score.extraPoang : ''} p</span>`
-                   : (c.open ? 'Öppen för rapportering' : 'Inte öppen ännu')}
-          </div>
-        </div>
-        <button type="button" class="sheet-close" id="close" aria-label="Stäng">${icon('x', { size: 22 })}</button>
+  const ark = openSheet({
+    className: 'sheet-tall',
+    eyebrow: `Kontroll #${c.nummer ?? ''}`,
+    title: name,
+    body: `
+      <div style="color:var(--r-fg-muted);margin:0 0 14px;">
+        ${done ? `<span style="color:var(--r-success);font-weight:700;">Rapporterad · ${score.poang}${score.extraPoang ? '+' + score.extraPoang : ''} p</span>`
+               : (c.open ? 'Öppen för rapportering' : 'Inte öppen ännu')}
       </div>
 
       ${c.lat && c.lng && positionsVisible() ? `
@@ -867,23 +863,10 @@ function openControlSheet(ctrlId) {
           <p style="margin:0;">Kontrollens uppgift avslöjas först när ni rapporterat poäng.</p>
         </div>
       ` : ''}
-    </div>
-  `;
-  document.body.appendChild(overlay);
-  lockScroll();
-  let closed = false;
-  const close = () => {
-    if (closed) return;
-    closed = true;
-    overlay.remove();
-    unlockScroll();
-  };
-  // bindTap fires on touchstart — instant, reliable closing on mobiles where
-  // iOS' double-tap-zoom heuristic delays or swallows plain clicks. The
-  // backdrop close only triggers when a still tap starts AND ends on the
-  // backdrop, so map-drags and scrolls can never close the sheet by mistake.
-  bindTap(overlay.querySelector('#close'), close);
-  wireOverlayClose(overlay, close);
+    `
+  });
+  const overlay = ark.el;
+  const close = () => ark.close();
 
   if (c.lat && c.lng && positionsVisible()) {
     ensureLeaflet().then(L => {
@@ -1143,37 +1126,19 @@ function openStartFinishSheet(kind) {
   // fasta gula look på alla kartor.
   const isPlace = String(kind).startsWith('place:');
 
-  const overlay = document.createElement('div');
-  overlay.className = 'sheet-overlay';
-  overlay.innerHTML = `
-    <div class="sheet" role="dialog" aria-modal="true">
-      <div class="sheet-head">
-        <div>
-          <div style="font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--r-fg-muted);font-weight:700;">${escapeHtml(p.title)}</div>
-          <h2>${escapeHtml(p.name || (p.kind === 'startfinish' ? 'Start / Mål' : p.title))}</h2>
-          <div style="color:var(--r-fg-muted);margin-top:2px;">Specialplats · inga poäng</div>
-        </div>
-        <button type="button" class="sheet-close" id="close" aria-label="Stäng">${icon('x', { size: 22 })}</button>
-      </div>
-
-      <div class="detail-field" style="margin-top:6px;">
+  const ark = openSheet({
+    eyebrow: p.title,
+    title: p.name || (p.kind === 'startfinish' ? 'Start / Mål' : p.title),
+    body: `
+      <div style="color:var(--r-fg-muted);margin:0 0 14px;">Specialplats · inga poäng</div>
+      ${p.note ? `<div class="detail-field"><div class="dfl">Notering</div><p style="margin:0;">${escapeHtml(p.note)}</p></div>` : ''}
+      <div class="detail-field">
         <div class="dfl">Koordinater</div>
         <div class="detail-coord">${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}</div>
       </div>
-      <div class="detail-map" id="sf-detail-map"></div>
-    </div>
-  `;
-  document.body.appendChild(overlay);
-  lockScroll();
-  let closed = false;
-  const close = () => {
-    if (closed) return;
-    closed = true;
-    overlay.remove();
-    unlockScroll();
-  };
-  bindTap(overlay.querySelector('#close'), close);
-  wireOverlayClose(overlay, close);
+      <div class="detail-map" id="sf-detail-map"></div>`
+  });
+  const overlay = ark.el;
 
   ensureLeaflet().then(L => {
     const host = overlay.querySelector('#sf-detail-map');

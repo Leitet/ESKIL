@@ -261,7 +261,11 @@ function render() {
   const visible = act.filter(m => !local[m.id]?.hidden);
   let host = document.getElementById('eskil-broadcast');
   if (!visible.length) {
-    if (host) { host.remove(); document.body.style.removeProperty('padding-top'); }
+    if (host) {
+      host.remove();
+      document.body.style.removeProperty('padding-top');
+      document.documentElement.style.removeProperty('--field-bar-offset');
+    }
     lastStackHtml = '';
   } else {
     if (!host) {
@@ -304,7 +308,12 @@ function render() {
         render();
       }));
     }
-    document.body.style.paddingTop = host.offsetHeight + 'px';
+    // Bannern och den fasta fältheadern (om sidan har en) delar toppen:
+    // headern skjuts ner under bannern, och body-paddingen reserverar båda.
+    // Utan det hamnar headern bakom bannern och blir oklickbar.
+    const barH = document.getElementById('field-bar')?.offsetHeight || 0;
+    document.documentElement.style.setProperty('--field-bar-offset', host.offsetHeight + 'px');
+    document.body.style.paddingTop = (host.offsetHeight + barH) + 'px';
   }
 
   meddelaLyssnare();
@@ -437,6 +446,7 @@ export function teardownBroadcast() {
   cid = null; ctx = null; lastStackHtml = '';
   document.getElementById('eskil-broadcast')?.remove();
   document.body.style.removeProperty('padding-top');
+  document.documentElement.style.removeProperty('--field-bar-offset');
 }
 
 export function updateBroadcast(comp, newCtx = null) {

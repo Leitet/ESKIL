@@ -84,6 +84,17 @@ Email extension). Production domain: https://eskilscout.se.
   kritiskt meddelande ska synas utan att någon öppnar en modal. Panelen ärver
   report.css-variablerna så nattläget håller. Ledningens sida: inkorgen i
   `views/meddelanden.js`.
+- **Fältsidornas UI-mönster** (infört på /s; /k och /m följer efter):
+  en FAST header (`.field-bar` i s.html) med informations-, meddelande- och
+  nattlägesknapp högerjusterade och reserverad höjd, samt `public/js/sheet.js`
+  (`openSheet`) som ETT sätt att visa allt som poppar upp — kontrollblad,
+  information, meddelanden. Bladet har draghandtag, svep ner, klick utanför
+  och Esc. Bygg inte en egen overlay till nästa yta.
+  Bannern och headern delar toppen: broadcast.js sätter `--field-bar-offset`
+  och räknar in headern i body-paddingen, annars hamnar headern bakom bannern.
+  `.sheet` utan `.sheet-body` behåller sitt gamla scrollbeteende (`:not(:has())`)
+  så ännu ej konverterade blad inte klipps — ta bort den regeln först när
+  ingen sådan finns kvar.
 - **Patrullens etikett är `patrolLabel()` i utils.js**: `Rävarna (Lindsdals
   Scoutkår)`. Används där patrullen visas som EN etikett — Läget,
   stationssidan, reservprotokollet, delade placeringar — eftersom flera kårer

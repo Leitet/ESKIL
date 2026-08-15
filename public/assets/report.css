@@ -524,18 +524,45 @@ html[data-mode="night"] .sheet-overlay { background: rgba(0,0,0,0.85); }
 
 .sheet {
   background: var(--r-bg);
-  width: 100%;
+  width: 100%; max-width: 640px; margin: 0 auto;
   border-radius: 20px 20px 0 0;
-  padding: 24px 20px calc(24px + env(safe-area-inset-bottom));
+  padding: 0 20px calc(20px + env(safe-area-inset-bottom));
   max-height: 92vh;
-  overflow-y: auto;
+  display: flex; flex-direction: column;
+  overflow: hidden;                     /* kroppen scrollar, inte arket */
   animation: slideUp 0.22s cubic-bezier(0.2, 0, 0, 1);
+}
+/* Draghandtag — den synliga inbjudan att flicka ner bladet. */
+.sheet-grip {
+  padding: 10px 0 6px; margin: 0 -20px;
+  display: flex; justify-content: center;
+  cursor: grab; touch-action: none; flex-shrink: 0;
+}
+.sheet-grip span {
+  width: 40px; height: 4px; border-radius: 999px;
+  background: var(--r-border);
+}
+.sheet-body { overflow-y: auto; -webkit-overflow-scrolling: touch; flex: 1; min-height: 0; }
+/* Blad som ännu bygger sin egen markup (rapportsidans poängblad) saknar
+   .sheet-body och skulle klippas av overflow:hidden ovan. De behåller sitt
+   gamla beteende tills de flyttats till sheet.js — ett klippt poängblad är
+   det sista som får hända mitt i en rapportering. */
+.sheet:not(:has(.sheet-body)) {
+  display: block; overflow-y: auto;
+  padding-top: 24px;
+}
+.sheet-foot { flex-shrink: 0; }
+.sheet-foot[hidden] { display: none; }
+.sheet-eyebrow {
+  font-size: 11.5px; font-weight: 800; letter-spacing: .09em;
+  text-transform: uppercase; color: var(--r-fg-muted); margin-bottom: 2px;
 }
 @keyframes slideUp { from { transform: translateY(100%) } to { transform: translateY(0) } }
 
 .sheet-head {
   display: flex; align-items: flex-start; justify-content: space-between;
-  gap: 16px; margin-bottom: 18px;
+  gap: 16px; margin-bottom: 14px; flex-shrink: 0;
+  cursor: grab; touch-action: none; user-select: none;
 }
 .sheet-head h2 { margin: 0; font-size: 22px; }
 .sheet-close {
@@ -780,6 +807,15 @@ html[data-mode="night"] .r-done-banner.has-pending { background: #4a0a20; border
   cursor: pointer;
 }
 #eskil-msg-btn.has-unread { border-color: var(--r-primary); }
+/* I den fasta fältheadern är knappen en i raden, inte en flytande bubbla.
+   id-selektorn ovan vinner annars över .field-btn och lämnar den hängande
+   under headern. */
+#eskil-msg-btn.field-btn {
+  position: relative; top: auto; right: auto;
+  width: auto; min-width: 44px; height: 40px;
+  border-radius: 999px; box-shadow: none;
+}
+#eskil-msg-btn.field-btn .emb-badge { top: -6px; right: -6px; }
 #eskil-msg-btn .emb-badge {
   position: absolute; top: -4px; right: -4px;
   min-width: 20px; height: 20px; padding: 0 5px;
@@ -900,3 +936,44 @@ html[data-mode="night"] .r-done-banner.has-pending { background: #4a0a20; border
 
 /* Ett explicit display-värde vinner över [hidden]. */
 .emb-attach[hidden] { display: none; }
+
+/* --- Fast fältheader --------------------------------------------------------
+   Informationsbladet, meddelandena och dagsljusläget ska alltid gå att nå.
+   Höjden är reserverad via body-padding så innehållet aldrig glider under. */
+.field-bar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 1050;
+  background: var(--r-bg);
+  border-bottom: 1px solid var(--r-border);
+  padding-top: env(safe-area-inset-top);
+}
+.field-bar-inner {
+  max-width: 640px; margin: 0 auto;
+  height: 56px;
+  display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+  padding: 0 12px;
+}
+body:has(.field-bar) { padding-top: calc(56px + env(safe-area-inset-top)); }
+/* Driftmeddelandenas banner skjuter ner sidan via body padding-top — headern
+   är fixed och måste flyttas ner lika mycket för att inte hamna under den. */
+.field-bar { top: var(--field-bar-offset, 0px); }
+
+.field-btn {
+  min-width: 44px; height: 40px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 0 12px;
+  border: 1.5px solid var(--r-border); border-radius: 999px;
+  background: var(--r-card); color: var(--r-fg);
+  font-family: inherit; font-weight: 600; font-size: 13px;
+  cursor: pointer; position: relative;
+}
+.field-btn:active { transform: scale(0.97); }
+.field-btn[hidden] { display: none; }
+/* Nattläge-knappen ärver .field-btn men behöver inte längre positioneras. */
+.mode-toggle.field-btn { position: relative; top: auto; right: auto; box-shadow: none; }
+@media (max-width: 380px) { .field-btn-label { display: none; } }
+
+/* Meddelandebladet — loggen tar den plats som blir över. */
+.sheet-messages .sheet-body { display: flex; flex-direction: column; }
+.sheet-messages .emb-log { flex: 1; min-height: 40vh; padding: 0 0 8px; overflow: visible; }
+.sheet-messages .emb-compose { padding: 10px 0 0; }
+.sheet-messages .emb-notif { padding: 11px 0 0; }
