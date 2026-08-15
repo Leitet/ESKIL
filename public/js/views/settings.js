@@ -60,6 +60,14 @@ export async function renderSettings(app, user) {
           </div>
           <span class="muted t-sm">Öppna ${icon('arrow-right', { size: 14 })}</span>
         </a>
+        <a class="card" style="text-decoration:none;color:inherit;display:flex;align-items:center;justify-content:space-between;gap:var(--sp-4);" href="/app/admin/feedback" data-link>
+          <div>
+            <div class="t-over" style="color:var(--upp-blue);">Meddelanden till ESKIL</div>
+            <h3 class="t-h4" style="margin:4px 0 0;color:var(--scout-blue);">Läs och svara <span id="fb-badge"></span></h3>
+            <p class="muted t-sm" style="margin:4px 0 0;">Det som skickas via kontaktformuläret. Svaret går ut från ESKIL, inte från din egen adress.</p>
+          </div>
+          <span class="muted t-sm">Öppna ${icon('arrow-right', { size: 14 })}</span>
+        </a>
         <a class="card" style="text-decoration:none;color:inherit;display:flex;align-items:center;justify-content:space-between;gap:var(--sp-4);" href="/app/admin/requests" data-link>
           <div>
             <div class="t-over" style="color:var(--avent-orange);">Tävlingsförfrågningar</div>
@@ -112,6 +120,14 @@ export async function renderSettings(app, user) {
         const n = reqs.filter(r => r.status === 'vantar').length;
         const badge = wrap.querySelector('#req-badge');
         if (badge && n) badge.outerHTML = `<span class="badge badge-orange">${n} väntar</span>`;
+      })
+      .catch(() => { /* badgen är en bonus */ });
+
+    // Samma sak för olästa meddelanden till ESKIL.
+    import('../store.js').then(({ listNewFeedback }) => listNewFeedback())
+      .then(n => {
+        const badge = wrap.querySelector('#fb-badge');
+        if (badge && n) badge.outerHTML = `<span class="badge badge-green">${n} ny${n === 1 ? 'tt' : 'a'}</span>`;
       })
       .catch(() => { /* badgen är en bonus */ });
   }

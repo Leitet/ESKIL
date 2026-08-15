@@ -934,3 +934,97 @@ table.t tr.sf-row.park-row td {
 /* hidden ska betyda dold — ett eget display-värde vinner annars över
    attributet. Samma regel finns i report.css för fältsidorna. */
 [hidden] { display: none !important; }
+
+/* --- Kontaktsidan (/kontakt) och inkorgen (/app/admin/feedback) -------------
+   Meddelanden till ESKIL. Formuläret är publikt; inkorgen är super-admin-only
+   och det är DÄR svaret skrivs — så att mailet går ut från ESKIL och inte
+   från någons privata adress. */
+.pub-hero-slim { padding-bottom: var(--sp-8); }
+.pub-back {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: #a7bccf; text-decoration: none;
+  font-size: 13px; font-weight: 600;
+  margin-bottom: var(--sp-4);
+}
+.pub-back:hover { color: var(--white); }
+
+.kontakt-kinds {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--sp-3);
+}
+.kontakt-kind {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 12px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--white);
+  font-family: inherit; text-align: left; cursor: pointer;
+}
+.kontakt-kind.active { border-color: var(--scout-blue); background: var(--scout-blue-50); }
+.kontakt-kind .kk-label { font-weight: 700; font-size: 15px; color: var(--scout-blue); }
+.kontakt-kind .kk-hint { font-size: 12px; color: var(--fg3); line-height: 1.3; }
+
+.kontakt-err, .fb-err {
+  margin: var(--sp-4) 0 0;
+  padding: 11px 14px;
+  border-radius: var(--r-md);
+  background: #fad4e2; color: #a6004a;
+  font-size: 14px; font-weight: 600;
+}
+.kontakt-tack { text-align: center; padding: var(--sp-8) var(--sp-6); }
+.kontakt-tack-ikon {
+  width: 62px; height: 62px; margin: 0 auto var(--sp-4);
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: #e3f4dd; color: #2d7a1c;
+}
+.kontakt-tack .btn-row { justify-content: center; margin-top: var(--sp-5); }
+
+.fb-filter { display: flex; gap: var(--sp-2); margin-bottom: var(--sp-5); flex-wrap: wrap; }
+.fb-filter button {
+  padding: 8px 16px;
+  border: 1.5px solid var(--border); border-radius: 999px;
+  background: var(--white); color: var(--fg2);
+  font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.fb-filter button.active { background: var(--scout-blue); border-color: var(--scout-blue); color: var(--white); }
+
+.fb-card { padding: 0; overflow: hidden; }
+.fb-card.is-new { border-left: 4px solid var(--spaer-green); }
+.fb-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-4);
+  width: 100%; padding: var(--sp-5);
+  background: none; border: 0; font-family: inherit; text-align: left; cursor: pointer;
+  color: inherit;
+}
+.fb-head-main { min-width: 0; }
+.fb-head-side { display: flex; align-items: center; gap: var(--sp-3); flex-shrink: 0; color: var(--fg3); }
+.fb-meta { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin-bottom: 6px; }
+.fb-kind {
+  font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--fb-color);
+}
+.fb-from { font-weight: 700; color: var(--scout-blue); }
+.fb-preview {
+  color: var(--fg2); font-size: 14px; margin-top: 2px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.fb-body { padding: 0 var(--sp-5) var(--sp-5); border-top: 1px solid var(--border); padding-top: var(--sp-5); }
+.fb-msg { white-space: pre-wrap; line-height: 1.6; }
+.fb-facts {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--sp-3);
+  margin-top: var(--sp-5); padding-top: var(--sp-4);
+  border-top: 1px solid var(--border);
+}
+.fb-facts > div { display: flex; flex-direction: column; gap: 2px; }
+.fb-replies { display: flex; flex-direction: column; gap: var(--sp-3); margin-top: var(--sp-5); }
+.fb-reply {
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  background: var(--scout-blue-50);
+  border-left: 3px solid var(--scout-blue);
+  white-space: pre-wrap; line-height: 1.55;
+}
+.fb-reply-head { font-size: 12px; font-weight: 700; color: var(--fg3); margin-bottom: 4px; }

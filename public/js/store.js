@@ -1168,3 +1168,46 @@ export async function updateRegistration(cid, regId, data) {
 export async function deleteRegistration(cid, regId) {
   await deleteDoc(doc(db, 'competitions', cid, 'registrations', regId));
 }
+
+// --- Meddelanden till ESKIL (kontaktformuläret) -------------------------------
+// Dokumenten skapas ALDRIG härifrån: formuläret går genom den anropbara
+// funktionen sendFeedback, som stryper per adress innan admin-SDK:n skriver.
+// Här finns bara super-adminens sida av det — läsa och svara.
+
+export function watchFeedback(cb) {
+  return onSnapshot(query(collection(db, 'feedback'), orderBy('lastAt', 'desc')),
+    snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() }))), () => cb([]));
+}
+
+export function watchFeedbackReplies(fbId, cb) {
+  return onSnapshot(query(collection(db, 'feedback', fbId, 'replies'), orderBy('at', 'asc')),
+    snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() }))), () => cb([]));
+}
+
+// Svaret mailas ut av onFeedbackReplyCreated — FRÅN ESKIL, inte från den som
+// skriver. Statusen och räknaren stämplas där också, så klienten rör dem inte.
+export async function sendFeedbackReply(fbId, text) {
+  await addDoc(collection(db, 'feedback', fbId, 'replies'), {
+    text: String(text).slice(0, 5000),
+    byEmail: (auth.currentUser?.email || '').toLowerCase(),
+    at: serverTimestamp()
+  });
+}
+
+export async function setFeedbackStatus(fbId, status) {
+  await updateDoc(doc(db, 'feedback', fbId), {
+    status,
+    handledBy: (auth.currentUser?.email || '').toLowerCase(),
+    handledAt: serverTimestamp()
+  });
+}
+
+// Antalet obesvarade — bara till badgen på kontosidan.
+export async function listNewFeedback() {
+  const snap = await getDocs(query(collection(db, 'feedback'), where('status', '==', 'ny')));
+  return snap.size;
+}
+
+export async function markFeedbackRead(fbId) {
+  await updateDoc(doc(db, 'feedback', fbId), { readAt: serverTimestamp() });
+}

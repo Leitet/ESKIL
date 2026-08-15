@@ -199,7 +199,9 @@ function footHtml(user) {
         </div>
         <span class="muted">${user
           ? '<a href="/app" data-link style="color:#a7bccf;">Till dina tävlingar</a>'
-          : 'Vill din kår använda ESKIL? <a href="/app" data-link style="color:#a7bccf;">Logga in</a> eller kontakta oss.'} · <a href="/integritet" style="color:#a7bccf;">Integritet &amp; GDPR</a></span>
+          : 'Vill din kår använda ESKIL? <a href="/app" data-link style="color:#a7bccf;">Logga in</a>.'}
+          · <a href="/kontakt" data-link style="color:#a7bccf;">Skriv till oss</a>
+          · <a href="/integritet" style="color:#a7bccf;">Integritet &amp; GDPR</a></span>
       </div>
     </footer>
   `;

@@ -180,6 +180,26 @@ CREATES the competition with the requester as admin (uid + email) and stamps
 the request; denying creates nothing. Cloud Functions mail super-admins on a
 new request and the requester on the decision.
 
+## Meddelanden till ESKIL (kontaktformuläret)
+
+`/kontakt` är publik och öppen för vem som helst. Meddelandet skrivs INTE
+direkt till Firestore — det går via den anropbara funktionen `sendFeedback`,
+som stryper per adress (`feedbackRequests/{email}`, 1/min och 10/dygn) och mot
+`caps/mail` innan admin-SDK:n skriver. Rules kan inte räkna anrop, och en
+anonymt skrivbar toppnivåkollektion vore en öppen kran rakt in i databasen.
+Lägg därför ALDRIG till en rules-match som tillåter klient-create på
+`feedback/**` eller `feedbackRequests/**`.
+
+Hela `feedback`-kollektionen är super-admin-only: den innehåller fritext och
+en mailadress från någon utanför systemet. Notismailet till super-admins bär
+meddelandet men har INGET Reply-To — svaret skrivs i `/app/admin/feedback`,
+och `onFeedbackReplyCreated` mailar det till avsändaren FRÅN ESKIL. Poängen är
+att ingen super-admins privata adress ska hamna i inkorgen hos en utomstående.
+Svarsmailet har därför inte heller något Reply-To; vill avsändaren skriva igen
+hänvisas hen till formuläret. Ett skickat svar går varken att ändra eller
+radera — det ligger redan i någons inkorg. Allt fem guards är
+mutationsverifierade i `test/rules.test.js`.
+
 ## Firestore rules model
 
 - `users/{uid}` — a user's own doc.

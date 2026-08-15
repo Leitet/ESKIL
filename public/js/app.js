@@ -13,6 +13,8 @@ import { compLabel } from './nav.js';
 import { icon } from './icons.js';
 import { renderLogin } from './views/login.js';
 import { renderLanding } from './views/landing.js';
+import { renderKontakt } from './views/kontakt.js';
+import { renderAdminFeedback } from './views/admin-feedback.js';
 import { renderHome } from './views/home.js';
 import { renderCompetition } from './views/competition.js';
 import { renderCompetitionSettings } from './views/competition-settings.js';
@@ -38,10 +40,13 @@ let currentUser = null;
 // Root = public landing page (no auth) — promotes ESKIL, lists competitions
 // open for registration / ongoing / finished, and links to login.
 route('/',             () => renderLanding(app, currentUser));
+// Publik kontaktsida — meddelanden till dem som ansvarar för ESKIL.
+route('/kontakt',      () => renderKontakt(app, currentUser));
 route('/app',          () => guard(() => renderHome(app, currentUser)));
 route('/app/settings', () => guard(() => renderSettings(app, currentUser)));
 route('/app/admin/users', () => guard(() => renderAdminUsers(app, currentUser)));
 route('/app/admin/requests', () => guard(() => renderAdminRequests(app, currentUser)));
+route('/app/admin/feedback', () => guard(() => renderAdminFeedback(app, currentUser)));
 route('/app/admin/system', () => guard(() => renderAdminSystem(app, currentUser)));
 route('/app/c/:cid',                          (p) => guard(() => renderCompetition(app, currentUser, p.cid), p.cid));
 route('/app/c/:cid/settings',                 (p) => guard(() => renderCompetitionSettings(app, currentUser, p.cid), p.cid));
@@ -174,7 +179,7 @@ export function layout(inner, { narrow = false } = {}) {
   foot.innerHTML = `
     <div class="app-foot-inner">
       <span>ESKIL · Scouttävlingar</span>
-      <span><a href="/" data-link>ESKIL:s startsida</a> · <a href="/integritet">Integritet &amp; GDPR</a></span>
+      <span><a href="/" data-link>ESKIL:s startsida</a> · <a href="/kontakt" data-link>Kontakta oss</a> · <a href="/integritet">Integritet &amp; GDPR</a></span>
     </div>`;
   app.appendChild(foot);
 }

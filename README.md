@@ -378,6 +378,8 @@ public/
     qr.js               # QR-kodslib (lazy-loaded CDN), används av anmälans Swish-QR
     report.js           # Kontrollsida (k.html) logik
     share-card.js       # Delningsbilden — ritar resultatkortet i canvas
+    views/kontakt.js    # Publikt kontaktformulär (/kontakt)
+    views/admin-feedback.js # Super-admins inkorg för de meddelandena
     share-sheet.js      # "Dela ert resultat" — bladet med design, format och innehåll
     start.js            # Startkort (s.html) logik
     public.js           # Publik tävlingssida (t.html) logik
