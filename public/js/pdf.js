@@ -221,22 +221,51 @@ const lonLatToWorld = (lat, lng, zoom) => {
   return { x: t.x * TILE_PX, y: t.y * TILE_PX };
 };
 
-// Högsta zoom där punkterna ryms i wPx × hPx med marginal. `pad` är andelen
-// av bilden som lämnas som luft runt banan — utan den hamnar ytterkontrollerna
-// i kanten och nålarna klipps.
-export function fitZoom(pts, wPx, hPx, { minZoom = 3, maxZoom = 17, pad = 0.12 } = {}) {
-  if (pts.length < 2) return 15;
-  const usableW = wPx * (1 - pad * 2), usableH = hPx * (1 - pad * 2);
-  for (let z = maxZoom; z >= minZoom; z--) {
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    for (const p of pts) {
-      const w = lonLatToWorld(p.lat, p.lng, z);
-      minX = Math.min(minX, w.x); maxX = Math.max(maxX, w.x);
-      minY = Math.min(minY, w.y); maxY = Math.max(maxY, w.y);
+// Hur banan ska ligga i bilden.
+//
+// Kartrutor finns bara i hela zoomsteg, och varje steg är en fördubbling. Att
+// bara välja "högsta zoom som får plats" lämnar därför upp till halva bilden
+// tom — banan kan vara nätt och jämnt för stor för nästa nivå. Bilden skalas
+// i stället till exakt passning, så banan alltid fyller ytan.
+//
+// Vilken zoomnivå rutorna hämtas från är en avvägning: nästa nivå upp ger
+// skarpare underlag men FYRA gånger så många rutor att hämta. Därför väljs
+// den nivå vars skalfaktor ligger närmast 1 — skalan hamnar då mellan ~0,71
+// och ~1,41, alltså högst 41 % uppskalning (knappt synligt i tryck) mot högst
+// dubbla antalet rutor. Att alltid skala ner hade gett 2–4× rutor och en
+// väntan på flera sekunder utan att det syns på papperet.
+//
+// `margin` är i bildpixlar och ska bara rymma nålarna som ritas i kanten,
+// inte vara en andel av bilden: en procentsats blir enorm på en tryckstor
+// bild och var hela orsaken till de tomma fälten runt banan.
+const MAP_MARGIN_PX = 46;
+const MIN_Z = 3, MAX_Z = 18;
+// Tak för uppskalning. En riktigt kort bana ryms i ytan även på högsta
+// zoomnivån — då FINNS ingen mer kartdata att zooma in på, och att blåsa upp
+// den till full bredd ger bara en suddig karta. Bättre med luft runt banan än
+// en karta man inte kan läsa.
+const MAX_UPSCALE = 1.45;
+
+export function fitView(pts, wPx, hPx, { margin = MAP_MARGIN_PX } = {}) {
+  if (pts.length < 2) return { zoom: 16, scale: 1 };
+  const usableW = Math.max(50, wPx - margin * 2);
+  const usableH = Math.max(50, hPx - margin * 2);
+  const skalaVid = (z) => {
+    let a = Infinity, b = -Infinity, c = Infinity, d = -Infinity;
+    for (const q of pts) {
+      const w = lonLatToWorld(q.lat, q.lng, z);
+      a = Math.min(a, w.x); b = Math.max(b, w.x);
+      c = Math.min(c, w.y); d = Math.max(d, w.y);
     }
-    if (maxX - minX <= usableW && maxY - minY <= usableH) return z;
+    return Math.min(usableW / Math.max(1, b - a), usableH / Math.max(1, d - c));
+  };
+  let bäst = { zoom: MIN_Z, scale: skalaVid(MIN_Z) };
+  for (let z = MIN_Z + 1; z <= MAX_Z; z++) {
+    const scale = skalaVid(z);
+    if (Math.abs(Math.log(scale)) < Math.abs(Math.log(bäst.scale))) bäst = { zoom: z, scale };
+    if (scale < 0.5) break;   // härifrån blir det bara sämre
   }
-  return minZoom;
+  return { zoom: bäst.zoom, scale: Math.min(bäst.scale, MAX_UPSCALE) };
 }
 
 /**
@@ -280,7 +309,7 @@ export async function courseMapDataUrl(comp, controls, track, places = [], { wPx
   const cw = rotera ? hPx : wPx;
   const ch = rotera ? wPx : hPx;
 
-  const zoom = fitZoom(pts, cw, ch);
+  const { zoom, scale } = fitView(pts, cw, ch);
   // Bildens mitt = mitten av innehållets utsträckning, inte medelvärdet:
   // en enstaka avlägsen punkt ska inte dra kartan ur balans.
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -297,25 +326,29 @@ export async function courseMapDataUrl(comp, controls, track, places = [], { wPx
   ctx.fillStyle = '#e8eef4';
   ctx.fillRect(0, 0, cw, ch);
 
-  // Världspixel -> bildpixel
+  // Världspixel -> bildpixel. `scale` är nedskalningen från kartrutornas
+  // upplösning till bildens; allt annat (nålar, linjer, text) ritas i
+  // bildpixlar och påverkas inte.
   const toPx = (p) => {
     const w = lonLatToWorld(p.lat, p.lng, zoom);
-    return { px: cw / 2 + (w.x - centerX), py: ch / 2 + (w.y - centerY) };
+    return { px: cw / 2 + (w.x - centerX) * scale, py: ch / 2 + (w.y - centerY) * scale };
   };
 
-  // Tiles: alla som skär bilden.
-  const originX = centerX - cw / 2, originY = centerY - ch / 2;
-  const firstTx = Math.floor(originX / TILE_PX), lastTx = Math.floor((originX + cw) / TILE_PX);
-  const firstTy = Math.floor(originY / TILE_PX), lastTy = Math.floor((originY + ch) / TILE_PX);
+  // Tiles: alla som skär bilden. Bilden täcker cw/scale världspixlar.
+  const originX = centerX - (cw / 2) / scale, originY = centerY - (ch / 2) / scale;
+  const worldW = cw / scale, worldH = ch / scale;
+  const firstTx = Math.floor(originX / TILE_PX), lastTx = Math.floor((originX + worldW) / TILE_PX);
+  const firstTy = Math.floor(originY / TILE_PX), lastTy = Math.floor((originY + worldH) / TILE_PX);
   const n = Math.pow(2, zoom);
+  const step = TILE_PX * scale;
   const jobs = [];
   for (let ty = firstTy; ty <= lastTy; ty++) {
     for (let tx = firstTx; tx <= lastTx; tx++) {
       if (ty < 0 || ty >= n) continue;
       const wrapTx = ((tx % n) + n) % n;                 // världen är rund
-      const dx = tx * TILE_PX - originX, dy = ty * TILE_PX - originY;
+      const dx = (tx * TILE_PX - originX) * scale, dy = (ty * TILE_PX - originY) * scale;
       jobs.push(loadImage(`https://tile.openstreetmap.org/${zoom}/${wrapTx}/${ty}.png`)
-        .then(img => ctx.drawImage(img, dx, dy))
+        .then(img => ctx.drawImage(img, dx, dy, step, step))
         .catch(() => { /* saknad ruta lämnas grå */ }));
     }
   }
@@ -1325,7 +1358,7 @@ function drawScoreCard(pdf, comp, patrol, controls, coursePlaceNodes) {
  */
 export async function generateManualStartPdf(comp, patrol, controls, opts = {}) {
   await ensureLibs();
-  const { mapUrl = null, mapRotated = false, places = [], coursePlaceNodes = [], startTid = null, pdf: existing = null } = opts;
+  const { mapUrl = null, places = [], coursePlaceNodes = [], startTid = null, pdf: existing = null } = opts;
   // eslint-disable-next-line no-undef
   const { jsPDF } = window.jspdf;
   const pdf = existing || new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
@@ -1342,32 +1375,19 @@ export async function generateManualStartPdf(comp, patrol, controls, opts = {}) 
   }
   // Identitetsbricka: ett löst blad ska gå att lägga tillbaka i rätt hög.
   pdf.setFillColor('#ffffff');
-  pdf.rect(4, A4L.H - 14, mapRotated ? (patrol ? 130 : 140) : 86, 10, 'F');
+  pdf.rect(4, A4L.H - 14, patrol ? 86 : 82, 10, 'F');
   pdf.setFont('helvetica', 'bold');
   pdf.setFontSize(9);
   pdf.setTextColor(BLUE);
-  // `slut` är där identitetsdelen tar slut — vrid-texten börjar efter den,
-  // annars skriver de över varandra på reservkortets skrivrad.
-  let slut;
   if (patrol) {
-    const bricka = `#${patrol.number ?? ''} ${patrol.name || ''}`;
-    pdf.text(bricka, 7, A4L.H - 7);
-    slut = 7 + pdf.getTextWidth(bricka);
+    pdf.text(`#${patrol.number ?? ''} ${patrol.name || ''}`, 7, A4L.H - 7);
   } else {
     pdf.text('Patrull:', 7, A4L.H - 7);
     pdf.setDrawColor('#7d99b3');
     pdf.setLineWidth(0.3);
-    slut = 78;
-    pdf.line(7 + pdf.getTextWidth('Patrull:') + 3, A4L.H - 6, slut, A4L.H - 6);
+    pdf.line(7 + pdf.getTextWidth('Patrull:') + 3, A4L.H - 6, 78, A4L.H - 6);
   }
-  if (mapRotated) {
-    // Kartan är lagd på högkant för att banan ska fylla papperet — säg det,
-    // annars ser den bara ut att ligga fel.
-    pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(7.5);
-    pdf.setTextColor('#6b7684');
-    pdf.text('Vrid papperet för att läsa kartan', slut + 6, A4L.H - 7);
-  }
+
   drawFoldLine(pdf);
 
   // --- Sida 2: information + poängkort ---
@@ -1407,7 +1427,7 @@ export async function downloadManualStartPdf(comp, patrols, controls, track, pla
   let pdf = null;
   for (const patrol of lista) {
     pdf = await generateManualStartPdf(comp, patrol, ordered, {
-      mapUrl: karta?.url || null, mapRotated: !!karta?.rotated, places, coursePlaceNodes,
+      mapUrl: karta?.url || null, places, coursePlaceNodes,
       startTid: patrol ? patrolStartTime(comp, patrol, lista.length > 1 ? lista.length : null) : null,
       pdf
     });

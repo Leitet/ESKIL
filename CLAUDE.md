@@ -54,10 +54,17 @@ Email extension). Production domain: https://eskilscout.se.
 - **Manuella startkort (`generateManualStartPdf` i `pdf.js`)** — pappersvarianten
   för patruller utan mobil. A4 LIGGANDE, vikt på mitten till A5: sida 1 hela
   kartan, sida 2 halv information + halvt poängkort. Kartan kommer från
-  `courseMapDataUrl`, som väljer zoom efter innehållet (`fitZoom`, testad) och
-  **roterar bilden 90°** när banan är avlång — då fyller den papperet och
-  kortet skriver ut att man ska vrida det. Kartan renderas EN gång per
-  massutskrift; 30 patruller ska inte bli 30 tile-omgångar.
+  `courseMapDataUrl`. Ramningen (`fitView`, testad) gör två saker: den
+  **roterar bilden 90°** när banan är avlång, och den skalar bilden till exakt
+  passning i stället för att snäppa till hela zoomsteg — annars kan halva
+  sidan bli tom, eftersom varje zoomsteg är en fördubbling. Marginalen är i
+  PIXLAR (`MAP_MARGIN_PX`), inte procent: en procentsats blir enorm på en
+  tryckstor bild och var hela orsaken till de tomma fälten runt banan.
+  Zoomnivån väljs så att skalan hamnar närmast 1 — antalet kartrutor växer med
+  kvadraten på 1/skalan, och att alltid skala ner kostade 140 rutor och 6 s
+  mot 48 rutor och 0,2 s utan synlig skillnad på papperet. `MAX_UPSCALE`
+  hindrar att en kort bana blåses upp till oläslighet. Kartan renderas EN gång
+  per massutskrift; 30 patruller ska inte bli 30 tile-omgångar.
   `patrol = null` ger ett TOMT reservkort: namn, kår och starttid blir
   skrivrader. `downloadManualStartPdf` tar ett TAL i patrols-argumentet för
   att göra N sådana.

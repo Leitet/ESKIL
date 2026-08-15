@@ -14,7 +14,7 @@ import {
   effectiveIntervalSec, swishAppUrl, swishQrString
 } from '../public/js/utils.js';
 import { hasIcon } from '../public/js/icons.js';
-import { fitZoom } from '../public/js/pdf.js';
+import { fitView } from '../public/js/pdf.js';
 import {
   PLACE_KINDS, PLACE_ICONS, PALETTE, placeColorHex, normPlace, compPlaces, placeToStorage, coursePlaces
 } from '../public/js/places.js';
@@ -597,48 +597,83 @@ describe('Platser som ingår i banan', () => {
   });
 });
 
-describe('Bankartans zoomval (utskrift)', () => {
+describe('Bankartans passning (utskrift)', () => {
   const pt = (lat, lng) => ({ lat, lng });
-  // ~2 km bana kring Linköping.
   const BANA = [pt(58.380, 15.600), pt(58.398, 15.640)];
+  const W = 1900, H = 1328, MARGIN = 46;
 
-  test('samma bana ger högre zoom i en större bild', () => {
-    const liten = fitZoom(BANA, 600, 400);
-    const stor = fitZoom(BANA, 1900, 1328);
-    assert.ok(stor > liten, `${liten} → ${stor}`);
+  // Banans utsträckning i kartrutornas pixlar vid en given zoom.
+  const span = (pts, z) => {
+    const n = Math.pow(2, z) * 256;
+    const xy = pts.map(p => {
+      const r = p.lat * Math.PI / 180;
+      return { x: (p.lng + 180) / 360 * n,
+               y: (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n };
+    });
+    return { x: Math.max(...xy.map(q => q.x)) - Math.min(...xy.map(q => q.x)),
+             y: Math.max(...xy.map(q => q.y)) - Math.min(...xy.map(q => q.y)) };
+  };
+
+  test('banan fyller ytan — inte bara "får plats"', () => {
+    // Kärnan i det här: kartrutor finns bara i hela zoomsteg, och varje steg
+    // är en fördubbling. Väljer man bara högsta nivå som får plats kan halva
+    // bilden bli tom. Efter nedskalningen ska banan fylla minst en av
+    // riktningarna nästan helt.
+    const { zoom, scale } = fitView(BANA, W, H);
+    const sp = span(BANA, zoom);
+    const bredd = sp.x * scale, hojd = sp.y * scale;
+    const fyllnad = Math.max(bredd / (W - MARGIN * 2), hojd / (H - MARGIN * 2));
+    assert.ok(fyllnad > 0.98, `banan fyller bara ${(fyllnad * 100).toFixed(0)} % av ytan`);
+  });
+
+  test('banan ryms fortfarande, med marginal för nålarna', () => {
+    // Skalan sätts av den TRÅNGASTE riktningen, så banan kan aldrig spilla
+    // över kanten — oavsett om den skalas upp eller ner.
+    for (const bana of [BANA, [pt(58.30, 15.40), pt(58.50, 15.90)], [pt(58.38, 15.60), pt(58.39, 15.601)]]) {
+      const { zoom, scale } = fitView(bana, W, H);
+      const sp = span(bana, zoom);
+      assert.ok(sp.x * scale <= W - MARGIN * 2 + 0.5, 'bredden spiller över kanten');
+      assert.ok(sp.y * scale <= H - MARGIN * 2 + 0.5, 'höjden spiller över kanten');
+    }
+  });
+
+  test('skalan håller sig nära 1 — skärpa mot antal kartrutor', () => {
+    // Antalet rutor växer med kvadraten på 1/skalan. Skalan ska därför ligga
+    // inom ett halvt zoomsteg från 1 åt båda håll: högst ~45 % uppskalning
+    // (knappt synligt i tryck) mot högst dubbla antalet hämtningar.
+    for (const bana of [BANA,
+      [pt(58.30, 15.40), pt(58.50, 15.90)],
+      [pt(58.38, 15.60), pt(58.381, 15.601)],
+      [pt(57.0, 14.0), pt(59.5, 18.5)]]) {
+      const { scale } = fitView(bana, W, H);
+      assert.ok(scale >= 0.7 && scale <= 1.45, `skalan ${scale.toFixed(3)} ligger för långt från 1`);
+    }
+  });
+
+  test('en mycket kort bana blåses inte upp till oläslighet', () => {
+    // Cirka 100 m mellan ytterpunkterna: det finns ingen mer detaljerad
+    // kartdata, så banan ska hellre ligga liten och skarp än stor och suddig.
+    const { zoom, scale } = fitView([pt(58.3800, 15.6000), pt(58.3809, 15.6009)], W, H);
+    assert.equal(zoom, 18, 'högsta tillgängliga detaljnivå ska användas');
+    assert.ok(scale <= 1.45, `blåste upp ${scale.toFixed(2)} gånger`);
   });
 
   test('en större bana ger lägre zoom', () => {
     const vid = [pt(58.30, 15.40), pt(58.50, 15.90)];
-    assert.ok(fitZoom(vid, 1900, 1328) < fitZoom(BANA, 1900, 1328));
+    assert.ok(fitView(vid, W, H).zoom < fitView(BANA, W, H).zoom);
   });
 
-  test('banan får plats i bilden med marginal', () => {
-    // Regressionsvakten: väljs zoomen en nivå för högt hamnar ytterkontrollen
-    // utanför papperet, och den upptäcks först när kartan är utskriven.
-    const W = 1900, H = 1328, PAD = 0.12;
-    const z = fitZoom(BANA, W, H);
-    const värld = (p, zz) => {
-      const n = Math.pow(2, zz);
-      const x = (p.lng + 180) / 360 * n * 256;
-      const r = p.lat * Math.PI / 180;
-      const y = (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n * 256;
-      return { x, y };
-    };
-    const w = BANA.map(p => värld(p, z));
-    const spanX = Math.max(...w.map(q => q.x)) - Math.min(...w.map(q => q.x));
-    const spanY = Math.max(...w.map(q => q.y)) - Math.min(...w.map(q => q.y));
-    assert.ok(spanX <= W * (1 - PAD * 2), `bredden spiller: ${spanX} > ${W * (1 - PAD * 2)}`);
-    assert.ok(spanY <= H * (1 - PAD * 2), `höjden spiller: ${spanY} > ${H * (1 - PAD * 2)}`);
+  test('samma bana ger högre zoom i en större bild', () => {
+    assert.ok(fitView(BANA, W, H).zoom > fitView(BANA, 600, 400).zoom);
   });
 
   test('en enda punkt ger en rimlig närzoom', () => {
-    assert.equal(fitZoom([pt(58.4, 15.6)], 1900, 1328), 15);
+    assert.deepEqual(fitView([pt(58.4, 15.6)], W, H), { zoom: 16, scale: 1 });
   });
 
-  test('en bana som spänner över halva landet klarar sig utan att låsa sig', () => {
-    const orimlig = [pt(55.5, 12.9), pt(67.8, 20.3)];
-    const z = fitZoom(orimlig, 1900, 1328);
-    assert.ok(z >= 3 && z <= 17, `zoom utanför skalan: ${z}`);
+  test('en bana över halva landet låser sig inte', () => {
+    const { zoom, scale } = fitView([pt(55.5, 12.9), pt(67.8, 20.3)], W, H);
+    assert.ok(zoom >= 3 && zoom <= 18, `zoom utanför skalan: ${zoom}`);
+    assert.ok(scale > 0 && scale <= 1.45);
   });
 });
