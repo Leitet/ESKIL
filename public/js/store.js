@@ -93,8 +93,24 @@ async function readAccess(cid) {
 // godkännandet skapar tävlingen med sökanden som admin. Cloud Functions
 // mailar super-admins vid ny förfrågan och sökanden vid beslut.
 
+// Tre platser per konto: dokument-id:t är "<uid>-0|1|2" och reglerna nekar
+// create på ett id som redan finns. Leta upp en ledig plats — är alla tagna
+// får sökanden dölja en behandlad förfrågan först.
+export const MAX_COMPETITION_REQUESTS = 3;
+
 export async function createCompetitionRequest({ name, description, date, message }, user) {
-  const ref = doc(collection(db, 'competitionRequests'));
+  const mine = await listMyCompetitionRequests(user);
+  const taken = new Set(mine.map(r => r.id));
+  const slot = [...Array(MAX_COMPETITION_REQUESTS).keys()]
+    .map(i => `${user.uid}-${i}`)
+    .find(id => !taken.has(id));
+  if (!slot) {
+    const pending = mine.filter(r => r.status === 'vantar').length;
+    throw new Error(pending >= MAX_COMPETITION_REQUESTS
+      ? `Du har redan ${pending} förfrågningar som väntar på svar. Avvakta beskedet innan du skickar fler.`
+      : 'Du har tre förfrågningar registrerade. Dölj en färdigbehandlad först, så frigörs en plats.');
+  }
+  const ref = doc(db, 'competitionRequests', slot);
   await setDoc(ref, {
     name: String(name || '').trim().slice(0, 120),
     description: String(description || '').trim().slice(0, 2000),

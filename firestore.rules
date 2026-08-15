@@ -137,7 +137,12 @@ service cloud.firestore {
       allow read: if isSuperAdmin()
         || (isSignedIn() && resource.data.requestedBy == request.auth.uid);
 
+      // Högst TRE förfrågningar per konto, framtvingat via dokument-id:t:
+      // "<uid>-0|1|2". Rules kan inte räkna dokument, men create nekas på ett
+      // id som redan finns — alltså är tre platser ett hårt tak. Sökanden
+      // frigör en plats genom att dölja en behandlad förfrågan.
       allow create: if isSignedIn()
+        && reqId.matches('^' + request.auth.uid + '-[0-2]$')
         && request.resource.data.requestedBy == request.auth.uid
         && request.resource.data.requestedByEmail == authEmail()
         && request.resource.data.status == 'vantar'

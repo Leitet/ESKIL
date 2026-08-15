@@ -197,3 +197,25 @@ firebase emulators:start
 ```
 
 Emulator UI at http://127.0.0.1:4000. Hosting at http://127.0.0.1:5000.
+
+## Tests
+
+```
+scripts/test.sh          # allt (kräver igång-varande emulator)
+scripts/test.sh logic     # ren logik — ingen emulator behövs
+scripts/test.sh rules     # bara säkerhetsreglerna
+```
+
+Node's built-in runner, ZERO dependencies — no package.json, no framework, in
+keeping with the no-build-step rule. `test/logic.test.js` imports the ES
+modules directly (ETA engine, start-time anchoring, slug/reference rules).
+`test/rules.test.js` drives the Firestore emulator's REST API with self-minted
+unsigned JWTs (`test/helpers.js`), which is how every identity — anonymous,
+user, super-admin — can be exercised against the real rules file.
+
+RUN THE RULES SUITE AFTER EVERY `firestore.rules` EDIT. Rules fail silently
+and in production: the `.get('field', default)` trap (reading a missing
+property is an evaluation ERROR that denies the write) has shipped twice, once
+killing all score reporting and once all competition creation. Both are now
+regression-tested — verified by mutation, i.e. re-introducing each bug makes a
+test fail.
