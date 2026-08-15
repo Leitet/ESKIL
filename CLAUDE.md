@@ -310,6 +310,24 @@ new request and the requester on the decision.
   Summering renders `patrolHighlights()` from `public/js/highlights.js`:
   positive only, by design — a last place is never printed, and comparisons
   are gated on `publicScores`. Logic tested in `test/logic.test.js`.
+- **Dela ert resultat** ligger i summeringen: `share-card.js` ritar bilden,
+  `share-sheet.js` är bladet, båda laddas med `import()` först vid tryck så
+  en patrull mitt på banan aldrig betalar för dem. Bilden ritas i canvas och
+  lämnar ALDRIG telefonen av sig själv — ingen uppladdning, inget
+  tredjepartsanrop, och därför inga kartrutor: en patrull i mål står ofta
+  utan täckning, och en publicerad bankarta vore ett problem så länge andra
+  är kvar ute. Bilden får aldrig bära startkortets hemliga länk, bara
+  `/t/<slug>`. Placeringen erbjuds bara när `publicScores` tillåter det.
+  Kortet följer inte nattläget — en delad bild ska se likadan ut oavsett hur
+  telefonen stod inställd.
+  Layouten MÄTS innan den ritas (`stapla()`): block med känd höjd staplas,
+  kapas och centreras. Ett fast y per block såg rätt ut i ett format och
+  ritade över etiketten i nästa; kapningen växer dessutom tillbaka när något
+  annat krympt, annars stod en liten ring mitt i ett halvtomt kort.
+  Textfärgen mot avdelningsfärgen väljs som *bäst av vit och svart*, inte mot
+  en 4,5-gräns — äventyrarorange (#E95F13) klarar ingen av dem, och all text
+  på kortet är stor (WCAG-kravet är då 3:1). Regressionstestat per
+  avdelningsfärg i `test/logic.test.js`.
 - `.../stations/{stationId}/passages/{patrolId}` — start/finish check-outs
   (`startAt`/`finishAt` timestamps), doc id IS the patrolId. Anonymous clients
   may only touch `patrolId`/`startAt`/`finishAt` (affectedKeys guard); station

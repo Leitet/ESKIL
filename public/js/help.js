@@ -251,10 +251,12 @@ export const HELP = {
     title: 'Publika poäng',
     body: [
       'Styr om poängen syns på den offentliga tävlingssidan medan tävlingen pågår. Är den av visas i stället bara hur många kontroller varje patrull genomfört — spänningen sparas till prisutdelningen.',
-      'Inställningen påverkar bara vad som visas. Tävlingsledningen ser alltid allt.'
+      'Inställningen påverkar bara vad som visas. Tävlingsledningen ser alltid allt.',
+      'Den styr också patrullernas delningsbild: är poängen mörklagda kan patrullen dela sina egna poäng och höjdpunkter, men inte sin placering.'
     ],
     faq: [
-      { q: 'Kan jag slå på den efter prisutdelningen?', a: 'Ja, det är precis tanken: kör mörklagt under dagen och tänd resultaten när pallen är avslöjad.' }
+      { q: 'Kan jag slå på den efter prisutdelningen?', a: 'Ja, det är precis tanken: kör mörklagt under dagen och tänd resultaten när pallen är avslöjad.' },
+      { q: 'Ser patrullerna sina egna poäng ändå?', a: 'Ja. Startkortet visar alltid patrullens egna poäng — det är jämförelserna med andra som mörkläggs.' }
     ]
   },
 

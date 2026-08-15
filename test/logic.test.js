@@ -14,6 +14,19 @@ import {
   effectiveIntervalSec, swishAppUrl, swishQrString, patrolLabel
 } from '../public/js/utils.js';
 import { hasIcon } from '../public/js/icons.js';
+import { AVD_FÄRG, textPå, accentMotBlått } from '../public/js/share-card.js';
+
+// WCAG-kontrast — testets egen räknare, så det inte mäter med samma kod som
+// det granskar.
+function kontrastMellan(a, b) {
+  const lum = (hex) => {
+    const n = parseInt(hex.slice(1), 16);
+    const k = (v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); };
+    return 0.2126 * k((n >> 16) & 255) + 0.7152 * k((n >> 8) & 255) + 0.0722 * k(n & 255);
+  };
+  const la = lum(a), lb = lum(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
 import { fitView, niceScale } from '../public/js/pdf.js';
 import {
   PLACE_KINDS, PLACE_ICONS, PALETTE, placeColorHex, normPlace, compPlaces, placeToStorage, coursePlaces
@@ -730,5 +743,40 @@ describe('Patrullens etikett', () => {
   test('blanksteg runt om städas bort', () => {
     assert.equal(patrolLabel({ name: '  Rävarna ', kar: ' Lindsdals Scoutkår  ' }),
       'Rävarna (Lindsdals Scoutkår)');
+  });
+});
+
+describe('Delningsbildens färgval', () => {
+  test('texten på avdelningens färg är läsbar för varje avdelning', () => {
+    // 3:1 är WCAG-kravet för stor text, och all text på kortet är stor.
+    // Äventyrarorange når inte 4,5 mot vare sig vit eller svart — därför är
+    // regeln "bäst av de två", inte "passerar 4,5".
+    for (const [avd, hex] of Object.entries(AVD_FÄRG)) {
+      const bläck = textPå(hex);
+      const k = kontrastMellan(hex, bläck);
+      assert.ok(k >= 3, `${avd} (${hex}) fick ${bläck} med kontrast ${k.toFixed(2)}`);
+      const andra = bläck === '#ffffff' ? '#282727' : '#ffffff';
+      assert.ok(k >= kontrastMellan(hex, andra), `${avd}: ${andra} hade varit läsbarare`);
+    }
+  });
+
+  test('rovergult får svart text, inte vit', () => {
+    // Den här är hela poängen med regeln: vit text på #E2E000 går inte att
+    // läsa, och rovergult är en av Scouternas åldersfärger.
+    assert.equal(textPå(AVD_FÄRG['Rover']), '#282727');
+  });
+
+  test('accenten syns mot den mörkblå bottnen — även ledarsvart', () => {
+    for (const avd of Object.keys(AVD_FÄRG)) {
+      const a = accentMotBlått(avd);
+      assert.ok(kontrastMellan(a, '#003660') >= 3, `${avd} gav accenten ${a}`);
+    }
+    // Ledarsvart mot mörkblått är osynligt och MÅSTE bytas ut.
+    assert.notEqual(accentMotBlått('Ledare'), AVD_FÄRG['Ledare']);
+  });
+
+  test('okänd avdelning ger en accent i stället för att försvinna', () => {
+    assert.ok(kontrastMellan(accentMotBlått('Nyfikna'), '#003660') >= 3);
+    assert.ok(kontrastMellan(accentMotBlått(undefined), '#003660') >= 3);
   });
 });

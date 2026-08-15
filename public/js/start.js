@@ -12,7 +12,7 @@ import {
 } from './store.js';
 import { courseLegs, drawCourseOnMap, addCourseChip, legLatLngs, courseEtaCalibrated, patrolFinishEtaMs, fmtDist, fmtMin, competitionArea } from './course.js';
 import {
-  escapeHtml, publicManagement, patrolStartTime, patrolStartDateTime,
+  escapeHtml, formatDate, publicManagement, patrolStartTime, patrolStartDateTime,
   startFinishPoints, startTimeSettings,
   effectiveIntervalSec as effectiveIntervalSecValue,
   wireOverlayClose, allowedAvdelningar,
@@ -22,7 +22,7 @@ import { ensureLeaflet } from './leaflet.js';
 import { icon } from './icons.js';
 import { bindHaptic, bindTap, lockScroll, unlockScroll } from './haptic.js';
 import { updateBroadcast } from './broadcast.js';
-import { patrolHighlights } from './highlights.js';
+import { patrolHighlights, totalRank } from './highlights.js';
 import { mountMessages } from './chat.js';
 import { openSheet } from './sheet.js';
 import { compPlaces, placeKind, drawPlaces } from './places.js';
@@ -422,7 +422,55 @@ function renderSummaryBody() {
         ${punkter.map(h => `<li>${icon(h.icon, { size: 17 })}<span>${escapeHtml(h.text)}</span></li>`).join('')}
       </ul>
       ${visaJamforelser ? '' : `<p class="start-summary-foot">Placeringarna visas när tävlingsledningen publicerat resultatet.</p>`}
+      <button type="button" class="start-share" id="start-share">
+        ${icon('share-2', { size: 19 })}<span>Dela ert resultat</span>
+      </button>
     </div>`;
+}
+
+// Underlaget till delningsbilden. Samma siffror som kortet visar — bilden
+// får aldrig påstå något annat än sidan den kommer från.
+function shareData() {
+  const t = totals();
+  const visaJamforelser = comp?.publicScores !== false;
+  const tr = visaJamforelser ? totalRank(patrol.id, controls, allScoresByCtrl) : null;
+  const rapporter = Object.values(scoresForPatrol)
+    .map(s => s?.clientReportedAt ?? s?.reportedAt)
+    .map(v => (v && typeof v.toDate === 'function' ? v.toDate() : v ? new Date(v) : null))
+    .filter(Boolean)
+    .sort((a, b) => b - a);
+  const startMs = effectiveStartMs();
+  const slutMs = selfFinishAt ? selfFinishAt.getTime() : (rapporter[0] ? rapporter[0].getTime() : null);
+
+  return {
+    compName: comp.shortName || 'Tävling',
+    compYear: comp.year || '',
+    compDate: comp.date ? formatDate(comp.date) : '',
+    // Publik adress — ALDRIG startkortets egen länk, den är hemlig.
+    tavlingUrl: `${location.host}/t/${comp.slug || parsePath().cid}`,
+    patrolName: patrol.name || '',
+    kar: patrol.kar || '',
+    avdelning: patrol.avdelning || '',
+    points: t.points,
+    rank: tr ? { rank: tr.rank, of: tr.of } : null,
+    courseMs: (startMs != null && slutMs != null && slutMs > startMs) ? slutMs - startMs : null,
+    highlights: patrolHighlights({
+      patrolId: patrol.id, controls, scoresByControl: allScoresByCtrl,
+      showRank: visaJamforelser, startMs, endMs: slutMs
+    }),
+    legs: [...controls]
+      .sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0))
+      .map(c => {
+        const s = scoresForPatrol[c.id];
+        if (!s) return null;
+        return {
+          nummer: c.nummer,
+          poang: (Number(s.poang) || 0) + (Number(s.extraPoang) || 0),
+          max: (Number(c.maxPoang) || 0) + (Number(c.extraPoang) || 0)
+        };
+      })
+      .filter(Boolean)
+  };
 }
 
 function render() {
@@ -544,6 +592,19 @@ function render() {
 
   // Flip card
   wireInfoButton();
+
+  // Dela resultat — bladet laddas först när någon faktiskt trycker, så
+  // ritmodulen aldrig kostar något för en patrull mitt på banan.
+  const delaKnapp = document.getElementById('start-share');
+  if (delaKnapp) bindTap(delaKnapp, async () => {
+    delaKnapp.disabled = true;
+    try {
+      const { openShareSheet } = await import('./share-sheet.js');
+      openShareSheet(shareData(), { kanVisaPlacering: comp?.publicScores !== false });
+    } catch (e) {
+      alert('Kunde inte öppna delningen: ' + (e?.message || e));
+    } finally { delaKnapp.disabled = false; }
+  });
 
   // Bekräfta start / Vi är i mål — samma knapp, olika stämpel.
   root.querySelectorAll('[data-confirm]').forEach(btn => bindTap(btn, async () => {
