@@ -10,6 +10,7 @@
 [hidden] { display: none !important; }
 
 :root {
+  --r-badge-h:    24px;   /* nummerbadgen i rubriker, se .r-ctrl-no */
   --r-bg:         #ffffff;
   --r-bg-soft:    #f8f8f7;
   --r-fg:         #282727;
@@ -113,6 +114,7 @@ button, a, input, textarea, select, label { touch-action: manipulation; }
   line-height: 1.15;
   margin: 6px 0 4px;
   color: var(--r-fg);
+  display: flex; align-items: flex-start; gap: 10px;
 }
 .r-sub {
   color: var(--r-fg-muted);
@@ -141,17 +143,27 @@ button, a, input, textarea, select, label { touch-action: manipulation; }
   font-size: 13px;
   font-weight: 600;
 }
+/* Nummerbadgen i en rubrik — kontrollens nummer på /k, patrullens
+   startnummer på /s. Höjden är fast och delad, för marginalen nedan räknas
+   ur den. */
 .r-ctrl-no {
-  display: inline-block;
-  font-family: 'SF Mono', ui-monospace, monospace;
+  display: inline-flex; align-items: center;
+  flex: 0 0 auto;
+  height: var(--r-badge-h);
+  padding: 0 10px;
+  border-radius: 6px;
   background: var(--r-chip-bg);
   color: var(--r-chip-fg);
-  padding: 2px 10px;
-  border-radius: 6px;
-  font-weight: 700;
-  font-size: 14px;
-  margin-right: 8px;
+  font: 700 15px/1 'SF Mono', ui-monospace, monospace;
 }
+/* Badgen satt förr på rubrikens baslinje. Dess box hänger då under
+   baslinjen medan versalerna reser sig långt över den, så siffran hamnade
+   7 px under rubrikens optiska mitt (mätt). Centrera den i stället mot
+   rubrikens FÖRSTA rad — halva skillnaden mellan radhöjd och badgehöjd.
+   Badgens egen em duger inte till formeln: den är mindre än rubrikens.
+   Mätt efteråt: 0,3 px fel, och det håller även när rubriken bryter till
+   två rader (flex + align-items:center ger då 23 px fel). */
+.r-title .r-ctrl-no { margin-top: calc((32px * 1.15 - var(--r-badge-h)) / 2); }
 
 /* Kontrollens informationsblad — innehållet som förr låg på kortets baksida.
    Bladet staplar sina delar med gap, så rubrikerna behöver ingen egen marginal
