@@ -501,18 +501,19 @@ html[data-mode="night"] .start-map-label-sf {
   color: #8a1a1a !important;
 }
 
-/* Parking label — blue pill wrapping the square-parking icon */
-.start-map-label-park {
-  background: #003660 !important;
+/* Intressepunkter — etiketten bär bara symbolen; färgen sitter på cirkeln
+   under (se drawPlaces i places.js), så en toalett ser likadan ut här som på
+   tävlingssidan. */
+.start-map-label-place {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
   color: #ffffff !important;
-  padding: 4px !important;
+  padding: 0 !important;
   line-height: 0;
   min-width: 0;
 }
-html[data-mode="night"] .start-map-label-park {
-  background: var(--r-danger) !important;
-  color: #ffd5d5 !important;
-}
+.start-map-label-place svg { display: block; }
 
 /* --- Bekräfta start ---------------------------------------------------------
    Knappen finns hela tiden men är släckt tills patrullens starttid passerats.

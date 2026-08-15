@@ -126,6 +126,19 @@ export const HELP = {
     ]
   },
 
+  'comp.places': {
+    title: 'Platser på kartan',
+    body: [
+      'Allt som ska pekas ut på kartan utan att vara en kontroll: parkering, sekretariat, toaletter, vattenpost, matplats, samlingsplats. Varje plats får en färgad nål med sin symbol och syns på tävlingssidan, startkorten och i Läget.',
+      'Välj en sorts plats så sätts symbol och färg åt dig — eller välj "Egen plats" och peka ut vad som helst med den symbol och färg du vill. Noteringen visas publikt, till exempel "Parkera högst upp, ej framför lokalen".'
+    ],
+    faq: [
+      { q: 'Var sätter jag start och mål?', a: 'I kontrollistan, tillsammans med resten av banan. De är banans ändpunkter — ETA:n räknar ben från dem och spåret hänger på dem — så de hör hemma där banan byggs, inte här.' },
+      { q: 'Var tog parkeringsinställningen vägen?', a: 'Den är en plats som alla andra nu. Parkeringar som redan var utsatta ligger kvar och ritas som förut; nästa gång du sparar flyttar den in i listan.' },
+      { q: 'Syns platserna innan tävlingsdagen?', a: 'Ja. Till skillnad från kontrollerna är de inte hemliga — de är till för att folk ska hitta.' }
+    ]
+  },
+
   'comp.selfFinish': {
     title: 'Patrullerna markerar sig i mål själva',
     body: [
@@ -340,23 +353,18 @@ export const HELP = {
 
   // ---------- Start/Mål ----------
   'comp.startFinish': {
-    title: 'Start och mål',
+    title: 'Start- och målplats',
     body: [
-      'Positionerna ritas ut på tävlingssidans karta och på startkorten, och de blir ändpunkter för banan när gångtider och sträckor räknas ut.',
-      'Ligger start och mål på samma plats markeras de med en gemensam symbol. Ligger de isär får de var sin, och banan räknas från start via kontrollerna till målet.'
+      'Banans ändpunkter. De sätts i kontrollistan, tillsammans med resten av banan: ETA-motorn räknar första och sista benet från dem, spårdragningen hänger på dem och start/mål-stationen checkar av mot dem.',
+      'Normalt är start och mål samma plats. Ligger målet någon annanstans väljer du "Målet ligger någon annanstans" i listan — då blir det ett eget ben in i mål, och sträckan räknas om.'
     ],
     faq: [
-      { q: 'Måste jag ange dem?', a: 'Nej, men utan dem kan systemet inte räkna ut total banlängd eller beräknad målgång — bara sträckan mellan kontrollerna.' }
+      { q: 'Behöver jag sätta start och mål?', a: 'Nej, men utan dem räknas banan bara mellan kontrollerna. Startkortets "Så tar ni er till starten" blir också tommare.' },
+      { q: 'Kan de ha egen symbol och färg?', a: 'Nej. Start och mål har en fast, igenkännbar look på alla kartor — de ska aldrig kunna förväxlas med en intressepunkt. Vill du färgsätta något är det platserna under Inställningar → Platser.' },
+      { q: 'Vad händer om jag tar bort målet?', a: 'Banan går tillbaka till samma plats för start och mål.' }
     ]
   },
 
-  'comp.parking': {
-    title: 'Parkering',
-    body: [
-      'Visas som en egen markör på tävlingssidans karta och på startkorten, tillsammans med en länk som öppnar vägbeskrivning i mobilens kartapp.',
-      'Anteckningen är rätt plats för det som annars blir samtal på morgonen: var man svänger av, om det är avgift och var man inte får ställa sig.'
-    ]
-  },
 
   // ---------- Tävlingsledning ----------
   'comp.management': {

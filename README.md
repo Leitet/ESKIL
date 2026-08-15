@@ -102,6 +102,16 @@ att köra gratis på Spark-planen.
   Finns ett ritat spår används det alltid på alla kartor: offentliga sidan,
   startkortets översiktskarta (med chip "Spår X km · ca Y min gång") och
   Läget-kartan (dämpad bakgrundslinje). Delade hjälpare i `js/course.js`.
+- **Start och mål** sätts i kontrollistan, tillsammans med resten av banan —
+  de är banans ändpunkter (ETA:n räknar ben från dem, spåret hänger på dem).
+  Normalt samma plats; "Målet ligger någon annanstans" ger ett eget mål med
+  eget slutben.
+- **Platser** (Inställningar → Platser) — allt annat som ska pekas ut på
+  kartan: parkering, sekretariat, toaletter, vatten, första hjälpen, matplats,
+  eldplats, samling … eller helt egna punkter. Varje plats får en färgad nål
+  med sin symbol (Lucide) och visas på tävlingssidan, startkorten och i Läget.
+  Sorten sätter symbol och färg automatiskt; båda går att välja fritt.
+  Noteringen visas publikt. Äldre tävlingars parkering följer med automatiskt.
 - **Tävlingsområde** — per-tävlingsinställning (Inställningar → Regler & info:
   "Visa kontrollplatser på publika sidan"). Avbockad visar publika kartan ett
   skuggat konvext "Tävlingsområde" (buffrat ~120 m) i stället för kontroller
@@ -340,6 +350,8 @@ public/
     course.js           # Delad spårlogik (bensekvens, distans/tid, kartritning)
     districts.js        # Scouternas 26 distrikt + "annat" (gruppering av tävlingar)
     highlights.js       # Positiva höjdpunkter på startkortet efter målgång
+    places.js           # Intressepunkter (sort, symbol, färg) + kartritning
+    place-modal.js      # Delad redigeringsdialog för en plats på kartan
     utils.js            # Hjälpare (inkl. prisberäkning + Swish-QR-payload)
     views/              # En fil per vy (login, home, competition, patrols, ...)
 

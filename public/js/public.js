@@ -10,11 +10,12 @@ import {
   AVDELNINGAR, escapeHtml, formatDate, publicManagement, patrolStartTime,
   patrolStartDateTime, startTimeSettings, allowedAvdelningar,
   registrationSettings, registrationState,
-  startFinishPoints, parkingPoint, rankPatrols, rankKarer, RANKING_RULES_TEXT,
+  startFinishPoints, rankPatrols, rankKarer, RANKING_RULES_TEXT,
   wireOverlayClose, controlsAutoReleased, controlsReleaseTime, utslagRows, isNumSet,
   copyToClipboard, toast
 } from './utils.js';
 import { ensureLeaflet } from './leaflet.js';
+import { compPlaces, placeKind, drawPlaces } from './places.js';
 import { icon } from './icons.js';
 
 const root = document.getElementById('root');
@@ -221,16 +222,16 @@ function pointPopupHtml(p) {
   const dir = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${p.lat},${p.lng}`)}`;
   return `
     <div class="map-popup">
-      <div class="map-popup-title ${p.kind === 'parking' ? 'is-park' : ''}">${escapeHtml(p.title || '')}</div>
+      <div class="map-popup-title">${escapeHtml(p.title || '')}</div>
       ${p.name ? `<div class="map-popup-name">${escapeHtml(p.name)}</div>` : ''}
       ${(p.note || '').trim() ? `<p class="map-popup-note">${escapeHtml(p.note)}</p>` : ''}
       <a class="map-popup-dir" href="${dir}" target="_blank" rel="noopener">Vägbeskrivning ${icon('external', { size: 12 })}</a>
     </div>`;
 }
 
-async function renderLeafletMap(withPos, sfPoints = [], park = null) {
+async function renderLeafletMap(withPos, sfPoints = [], places = []) {
   const host = document.getElementById('pub-map');
-  if (!host || (!withPos.length && !sfPoints.length && !park)) return;
+  if (!host || (!withPos.length && !sfPoints.length && !places.length)) return;
   try {
     const L = await ensureLeaflet();
     if (!host.isConnected) return; // re-rendered while Leaflet loaded
@@ -238,7 +239,7 @@ async function renderLeafletMap(withPos, sfPoints = [], park = null) {
     const allPts = [
       ...withPos.map(c => [c.lat, c.lng]),
       ...sfPoints.map(p => [p.lat, p.lng]),
-      ...(park ? [[park.lat, park.lng]] : [])
+      ...places.map(p => [p.lat, p.lng])
     ];
     const avgLat = allPts.reduce((s, p) => s + p[0], 0) / allPts.length;
     const avgLng = allPts.reduce((s, p) => s + p[1], 0) / allPts.length;
@@ -296,17 +297,12 @@ async function renderLeafletMap(withPos, sfPoints = [], park = null) {
         .addTo(map);
     }
 
-    // Parking marker — blue pill with square-parking icon; click opens info
-    if (park) {
-      L.circleMarker([park.lat, park.lng], {
-        radius: 16, color: '#ffffff', weight: 3, fillColor: '#003660', fillOpacity: 1
-      })
-        .bindTooltip(icon('square-parking', { size: 18, stroke: 2.5 }), {
-          permanent: true, direction: 'center', className: 'map-label map-label-park'
-        })
-        .bindPopup(pointPopupHtml(park), { offset: [0, -8] })
-        .addTo(map);
-    }
+    // Intressepunkter — parkering, sekretariat, toaletter, egna punkter.
+    // Gemensam ritning (places.js) så nålarna ser likadana ut på alla kartor.
+    drawPlaces(L, map, places, {
+      iconHtml: (n) => icon(n, { size: 18, stroke: 2.5 }),
+      onPopup: (p) => pointPopupHtml({ title: placeKind(p.kind).label, name: p.name, note: p.note, lat: p.lat, lng: p.lng })
+    });
 
     if (allPts.length > 1) {
       map.fitBounds(L.latLngBounds(allPts).pad(0.2));
@@ -425,8 +421,8 @@ function render() {
     } else {
       const withPos = controls.filter(c => c.lat && c.lng);
       const sfPoints = startFinishPoints(comp);
-      const park = parkingPoint(comp);
-      if (withPos.length || sfPoints.length || park) renderLeafletMap(withPos, sfPoints, park);
+      const places = compPlaces(comp);
+      if (withPos.length || sfPoints.length || places.length) renderLeafletMap(withPos, sfPoints, places);
     }
   }
 }
@@ -799,17 +795,18 @@ function renderPodiumStep(row, rank, cls) {
 function renderMap() {
   const withPos = controls.filter(c => c.lat && c.lng);
   const sf = startFinishPoints(comp);
-  const park = parkingPoint(comp);
-  if (!withPos.length && !sf.length) return '';
-  // Notes for the special points (parking, start, finish). Only render the
+  const places = compPlaces(comp);
+  if (!withPos.length && !sf.length && !places.length) return '';
+  // Notes for the special points (start, finish, places). Only render the
   // section if at least one of them has a non-empty note.
-  const notedPoints = [park, ...sf].filter(p => p && (p.note || '').trim());
+  const notedPoints = [...sf, ...places.map(p => ({ ...p, title: placeKind(p.kind).label }))]
+    .filter(p => p && (p.note || '').trim());
   const notesBlock = notedPoints.length ? `
     <div class="map-notes">
       ${notedPoints.map(p => `
         <div class="map-note">
           <div class="map-note-head">
-            <span class="badge ${p.kind === 'parking' ? 'badge-blue' : 'badge-orange'}">${escapeHtml(p.title)}</span>
+            <span class="badge ${p.colorHex ? 'badge-blue' : 'badge-orange'}">${escapeHtml(p.title)}</span>
             ${p.name ? `<strong>${escapeHtml(p.name)}</strong>` : ''}
           </div>
           <p>${escapeHtml(p.note)}</p>
@@ -820,8 +817,8 @@ function renderMap() {
 
   return `
     <div class="pub-section-head"><h2 class="t-h2">Karta</h2><span class="muted">${controlsPublic()
-      ? `${withPos.length} kontroller${sf.length ? ' · start/mål' : ''}${park ? ' · parkering' : ''}`
-      : `tävlingsområde${sf.length ? ' · start/mål' : ''}${park ? ' · parkering' : ''}`}</span></div>
+      ? `${withPos.length} kontroller${sf.length ? ' · start/mål' : ''}${places.length ? ` · ${places.length} plats${places.length === 1 ? '' : 'er'}` : ''}`
+      : `tävlingsområde${sf.length ? ' · start/mål' : ''}${places.length ? ` · ${places.length} plats${places.length === 1 ? '' : 'er'}` : ''}`}</span></div>
     <div class="map-card">
       <div id="pub-map"></div>
       <div class="foot">

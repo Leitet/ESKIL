@@ -13,7 +13,7 @@ import {
 import { courseLegs, drawCourseOnMap, addCourseChip, legLatLngs, courseEtaCalibrated, patrolFinishEtaMs, fmtDist, fmtMin, competitionArea } from './course.js';
 import {
   escapeHtml, publicManagement, patrolStartTime, patrolStartDateTime,
-  startFinishPoints, parkingPoint, startTimeSettings,
+  startFinishPoints, startTimeSettings,
   effectiveIntervalSec as effectiveIntervalSecValue,
   wireOverlayClose, allowedAvdelningar,
   controlsAutoReleased, controlsReleaseTime
@@ -23,6 +23,7 @@ import { icon } from './icons.js';
 import { bindHaptic, bindTap, lockScroll, unlockScroll } from './haptic.js';
 import { updateBroadcast } from './broadcast.js';
 import { patrolHighlights } from './highlights.js';
+import { compPlaces, placeKind, drawPlaces } from './places.js';
 
 const root = document.getElementById('root');
 const modeBtn = document.getElementById('mode-toggle');
@@ -318,14 +319,14 @@ function renderInfoBody() {
   const kanStarta = mayConfirmStart();
   const generalInfo = (comp.generalInfo || '').trim();
   const mgmt = publicManagement(comp);
-  const park = parkingPoint(comp);
+  const places = compPlaces(comp);
   const sf = startFinishPoints(comp);
   const start = sf.find(p => p.kind === 'start' || p.kind === 'startfinish');
   const maxMin = Number(comp.startTimes?.maxTimeMinutes) || 0;
 
-  const vagCard = (label, sub, kind, ikon) => `
+  const vagCard = (label, sub, kind, ikon, farg) => `
     <div class="start-ctrl start-ctrl-sf" data-sf="${escapeHtml(kind)}">
-      <div class="start-ctrl-no sf-no">${ikon}</div>
+      <div class="start-ctrl-no sf-no"${farg ? ` style="background:${farg};color:#fff;"` : ''}>${ikon}</div>
       <div class="start-ctrl-body">
         <div class="start-ctrl-name">${escapeHtml(label)}</div>
         <div class="start-ctrl-sub">${escapeHtml(sub || 'Tryck för karta och koordinater')}</div>
@@ -347,10 +348,10 @@ function renderInfoBody() {
       </p>
     </div>
 
-    ${(park || start) ? `
+    ${(places.length || start) ? `
       <h2 class="start-info-h">Så tar ni er till starten</h2>
       <div class="start-ctrl-list">
-        ${park ? vagCard('Parkering', park.name, 'parking', icon('square-parking', { size: 20, stroke: 2.5 })) : ''}
+        ${places.map(pl => vagCard(pl.name, placeKind(pl.kind).label, 'place:' + pl.id, icon(pl.icon, { size: 20, stroke: 2.5 }), pl.colorHex)).join('')}
         ${start ? vagCard(start.kind === 'startfinish' ? 'Start / Mål' : 'Start', start.name, 'start', escapeHtml(start.label)) : ''}
       </div>` : ''}
 
@@ -616,25 +617,24 @@ function renderList() {
   const sf = startFinishPoints(comp);
   const sfStart = sf.find(p => p.kind === 'start' || p.kind === 'startfinish');
   const sfFinish = sf.find(p => p.kind === 'finish');
-  const park = parkingPoint(comp);
+  const places = compPlaces(comp);
 
-  const pseudoCard = (label, p, extraClass = 'start-ctrl-sf', noClass = 'sf-no') => {
-    const isPark = p.kind === 'parking';
-    return `
-      <div class="start-ctrl ${extraClass}" data-sf="${p.kind}">
-        <div class="start-ctrl-no ${noClass}">${isPark ? icon('square-parking', { size: 20, stroke: 2.5 }) : escapeHtml(p.label)}</div>
+  const pseudoCard = (label, sub, kindAttr, badge, farg) => `
+      <div class="start-ctrl start-ctrl-sf" data-sf="${escapeHtml(kindAttr)}">
+        <div class="start-ctrl-no sf-no"${farg ? ` style="background:${farg};color:#fff;"` : ''}>${badge}</div>
         <div class="start-ctrl-body">
           <div class="start-ctrl-name">${escapeHtml(label)}</div>
-          <div class="start-ctrl-sub">${escapeHtml(p.name || '')}</div>
+          <div class="start-ctrl-sub">${escapeHtml(sub || '')}</div>
         </div>
-      </div>
-    `;
-  };
+      </div>`;
 
   const showSf = filter === 'alla';
-  const parkingRow = (showSf && park) ? pseudoCard('Parkering', park, 'start-ctrl-park', 'park-no') : '';
-  const startRow = (showSf && sfStart) ? pseudoCard(sfStart.kind === 'startfinish' ? 'Start / Mål' : 'Start', sfStart) : '';
-  const finishRow = (showSf && sfFinish) ? pseudoCard('Mål', sfFinish) : '';
+  const parkingRow = showSf
+    ? places.map(pl => pseudoCard(pl.name, placeKind(pl.kind).label, 'place:' + pl.id,
+        icon(pl.icon, { size: 20, stroke: 2.5 }), pl.colorHex)).join('')
+    : '';
+  const startRow = (showSf && sfStart) ? pseudoCard(sfStart.kind === 'startfinish' ? 'Start / Mål' : 'Start', sfStart.name, 'start', escapeHtml(sfStart.label)) : '';
+  const finishRow = (showSf && sfFinish) ? pseudoCard('Mål', sfFinish.name, 'finish', escapeHtml(sfFinish.label)) : '';
 
   const ctrlRows = rows.map(c => {
     const done = isDone(c.id);
@@ -743,8 +743,8 @@ async function renderOverviewMap(withPos) {
     overviewMapMode = mode;
 
     const sfPoints = startFinishPoints(comp);
-    const park = parkingPoint(comp);
-    const anchor = (mode === 'full' ? ordered[0] : null) || sfPoints[0] || park || ordered[0];
+    const mapPlaces = compPlaces(comp);
+    const anchor = (mode === 'full' ? ordered[0] : null) || sfPoints[0] || mapPlaces[0] || ordered[0];
     if (!anchor) return;
 
     overviewMap = L.map(currentHost, { zoomControl: true, scrollWheelZoom: false })
@@ -785,20 +785,9 @@ async function renderOverviewMap(withPos) {
         .addTo(overviewMap);
     }
 
-    // Parking marker — blue pill with the Lucide square-parking icon
-    if (park) {
-      L.circleMarker([park.lat, park.lng], {
-        radius: 16,
-        color: '#ffffff',
-        weight: 3,
-        fillColor: '#003660',
-        fillOpacity: 1
-      })
-        .bindTooltip(icon('square-parking', { size: 18, stroke: 2.5 }), {
-          permanent: true, direction: 'center',
-          className: 'start-map-label start-map-label-park'
-        })
-        .addTo(overviewMap);
+    // Intressepunkter — gemensam ritning (places.js).
+    for (const m of drawPlaces(L, overviewMap, mapPlaces, { iconHtml: (n) => icon(n, { size: 18, stroke: 2.5 }) })) {
+      m.getTooltip()?.getElement()?.classList.add('start-map-label', 'start-map-label-place');
     }
 
     // Fit bounds covering all markers incl. start/finish + parking
@@ -808,7 +797,7 @@ async function renderOverviewMap(withPos) {
       if (hull) allPts.push(...hull);
     }
     for (const p of sfPoints) allPts.push([p.lat, p.lng]);
-    if (park) allPts.push([park.lat, park.lng]);
+    for (const pl of mapPlaces) allPts.push([pl.lat, pl.lng]);
     if (allPts.length > 1) {
       overviewMap.fitBounds(L.latLngBounds(allPts).pad(0.25));
     }
@@ -1127,15 +1116,18 @@ function formatDistance(m) {
 // --- Start/finish/parking detail sheet ---
 function openStartFinishSheet(kind) {
   let p;
-  if (kind === 'parking') {
-    p = parkingPoint(comp);
+  if (String(kind).startsWith('place:')) {
+    const pl = compPlaces(comp).find(x => x.id === String(kind).slice(6));
+    p = pl ? { ...pl, label: '', title: placeKind(pl.kind).label } : null;
   } else if (kind === 'finish') {
     p = startFinishPoints(comp).find(x => x.kind === 'finish');
   } else {
     p = startFinishPoints(comp).find(x => x.kind === 'start' || x.kind === 'startfinish');
   }
   if (!p) return;
-  const isParking = kind === 'parking';
+  // En intressepunkt ritas i sin egen färg och symbol; start/mål har sin
+  // fasta gula look på alla kartor.
+  const isPlace = String(kind).startsWith('place:');
 
   const overlay = document.createElement('div');
   overlay.className = 'sheet-overlay';
@@ -1182,7 +1174,7 @@ function openStartFinishSheet(kind) {
     // isn't on the course). Före positionssläppet ritas INGEN bankontext —
     // benen avslöjar kontrollernas platser.
     let litBounds = null;
-    if (!isParking && positionsVisible()) {
+    if (!isPlace && positionsVisible()) {
       const { nodes, legs } = courseLegs(comp, controls, track);
       const litLegs = new Set();
       const firstOut = legs.find(l => l.from.key === '__start');
@@ -1225,15 +1217,15 @@ function openStartFinishSheet(kind) {
 
     L.circleMarker([p.lat, p.lng], {
       radius: 16,
-      color: isParking ? '#ffffff' : '#003660',
+      color: isPlace ? '#ffffff' : '#003660',
       weight: 3,
-      fillColor: isParking ? '#003660' : '#E2E000',
+      fillColor: isPlace ? (p.colorHex || '#003660') : '#E2E000',
       fillOpacity: 1
     })
-      .bindTooltip(isParking ? icon('square-parking', { size: 18, stroke: 2.5 }) : p.label, {
+      .bindTooltip(isPlace ? icon(p.icon || 'map-pin', { size: 18, stroke: 2.5 }) : p.label, {
         permanent: true,
         direction: 'center',
-        className: 'start-map-label ' + (isParking ? 'start-map-label-park' : 'start-map-label-sf')
+        className: 'start-map-label ' + (isPlace ? 'start-map-label-place' : 'start-map-label-sf')
       })
       .addTo(map);
     if (litBounds && litBounds.isValid()) map.fitBounds(litBounds.pad(0.3));

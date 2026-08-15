@@ -471,8 +471,10 @@ export function startFinishPoints(comp) {
   return [{ ...start, kind: 'startfinish', label: 'S/M', title: 'Start / Mål' }];
 }
 
-// Resolve the competition's parking location, if configured. Returns a
-// point-like object compatible with the start/finish shape used on maps.
+// Legacy: parkeringen som eget fält på tävlingen, från tiden före platslistan.
+// Vyerna använder compPlaces() i places.js — den tar med den här formen som en
+// plats så gamla tävlingar behåller sin parkering. Behålls för backupfiler och
+// äldre exporter; ta inte bort utan att kontrollera dem.
 export function parkingPoint(comp) {
   const p = comp?.parking;
   if (!p?.enabled) return null;

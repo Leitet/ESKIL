@@ -1,16 +1,18 @@
 import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import {
   getCompetition, watchControls, createControl, updateControl, deleteControl,
-  updateControlNumbers, setCompetitionUsers, getControlMeta, migrateControlMeta
+  updateControlNumbers, setCompetitionUsers, getControlMeta, migrateControlMeta,
+  updateCompetition
 } from '../store.js';
 import {
-  AVDELNINGAR, allowedAvdelningar, escapeHtml, toast, confirmDialog, withBusy, startFinishPoints, parkingPoint,
+  AVDELNINGAR, allowedAvdelningar, escapeHtml, toast, confirmDialog, withBusy, startFinishPoints,
   isCompAdminUser, normEmail
 } from '../utils.js';
 import { navigate } from '../router.js';
 import { initMapPicker } from '../mappicker.js';
 import { icon } from '../icons.js';
 import { help } from '../help.js';
+import { openPlaceModal } from '../place-modal.js';
 import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
 
 // Lazy-load SortableJS (also used by patrols.js).
@@ -84,30 +86,39 @@ export async function renderControls(app, user, cid) {
     const sfPoints = startFinishPoints(comp);
     const sfStart = sfPoints.find(p => p.kind === 'start' || p.kind === 'startfinish');
     const sfFinish = sfPoints.find(p => p.kind === 'finish');
-    const park = parkingPoint(comp);
+    const sfMode = comp.startFinish?.mode === 'separate' ? 'separate' : 'same';
 
     const tbl = wrap.querySelector('#tbl');
-    const pseudoRowHtml = (label, p, colCount, pillStyle) => {
-      const isPark = p.kind === 'parking';
-      const pillContent = isPark ? icon('square-parking', { size: 14, stroke: 2.5 }) : escapeHtml(p.label);
-      return `
-      <tr class="sf-row ${isPark ? 'park-row' : ''}">
+    // Start och mål är banans ändpunkter, inte kontroller — de har inga poäng
+    // och ingen rapportsida. Men de hör hemma HÄR, i banans lista, och inte i
+    // en inställningsflik: det är här man bygger banan.
+    const pseudoRowHtml = (label, p, colCount, which) => `
+      <tr class="sf-row">
         <td colspan="${colCount}">
           <div style="display:flex;align-items:center;gap:var(--sp-3);">
-            <span class="badge" style="${pillStyle}display:inline-flex;align-items:center;gap:6px;">${pillContent}</span>
-            <strong>${escapeHtml(label)}</strong>
+            <span class="badge" style="background:#E2E000;color:#003660;font-weight:800;display:inline-flex;align-items:center;gap:6px;">${escapeHtml(p.label)}</span>
+            <strong>${escapeHtml(label)}</strong>${help('comp.startFinish')}
             ${p.name ? `<span class="muted t-sm">· ${escapeHtml(p.name)}</span>` : ''}
             ${Number.isFinite(p.lat) ? `<span class="muted t-sm mono">${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}</span>` : ''}
             <span class="spacer"></span>
-            ${isAdmin ? '<span class="muted t-sm">Redigera via Tävlingsinställningar</span>' : ''}
+            ${isAdmin ? `<button class="btn btn-ghost btn-sm" data-edit-sf="${which}">Ändra</button>` : ''}
           </div>
         </td>
       </tr>`;
-    };
-    const sfPill = 'background:#E2E000;color:#003660;font-weight:800;';
-    const parkPill = 'background:#003660;color:#ffffff;font-weight:900;';
 
-    if (!rows.length && !sfPoints.length && !park) {
+    const emptySfRow = (colCount) => `
+      <tr class="sf-row">
+        <td colspan="${colCount}">
+          <div style="display:flex;align-items:center;gap:var(--sp-3);">
+            <span class="badge badge-gray" style="display:inline-flex;align-items:center;gap:6px;">S/M</span>
+            <span class="muted">Ingen start- och målplats satt</span>${help('comp.startFinish')}
+            <span class="spacer"></span>
+            <button class="btn btn-secondary btn-sm" data-edit-sf="start">Sätt start och mål</button>
+          </div>
+        </td>
+      </tr>`;
+
+    if (!rows.length && !sfPoints.length) {
       tbl.innerHTML = `<div class="empty">
         <h3>Inga kontroller</h3>
         <p>${isAdmin ? 'Skapa din första kontroll.' : 'Inga kontroller har skapats än.'}</p>
@@ -133,8 +144,15 @@ export async function renderControls(app, user, cid) {
             </tr>
           </thead>
           <tbody id="ctrl-body">
-            ${park ? pseudoRowHtml('Parkering', park, COL_COUNT, parkPill) : ''}
-            ${sfStart ? pseudoRowHtml(sfStart.kind === 'startfinish' ? 'Start / Mål' : 'Start', sfStart, COL_COUNT, sfPill) : ''}
+            ${sfStart ? pseudoRowHtml(sfStart.kind === 'startfinish' ? 'Start / Mål' : 'Start', sfStart, COL_COUNT, 'start')
+              : (isAdmin ? emptySfRow(COL_COUNT) : '')}
+            ${isAdmin && sfStart && sfMode === 'same' ? `
+              <tr class="sf-row"><td colspan="${COL_COUNT}">
+                <div style="display:flex;align-items:center;gap:var(--sp-3);">
+                  <span style="width:1px;"></span>
+                  <span class="muted t-sm">Start och mål på samma plats.</span>
+                  <button class="btn btn-ghost btn-sm" data-split-sf>Målet ligger någon annanstans</button>
+                </div></td></tr>` : ''}
             ${rows.map(r => `
               <tr data-id="${r.id}">
                 ${dragEnabled ? `<td class="drag-col" aria-label="Dra för att ändra ordning">${icon('grip-vertical', { size: 18, class: 'drag-handle' })}</td>` : ''}
@@ -152,13 +170,34 @@ export async function renderControls(app, user, cid) {
                 </td>
               </tr>
             `).join('')}
-            ${sfFinish ? pseudoRowHtml('Mål', sfFinish, COL_COUNT, sfPill) : ''}
+            ${sfFinish ? pseudoRowHtml('Mål', sfFinish, COL_COUNT, 'finish')
+              : (isAdmin && sfStart && sfMode === 'separate' ? `
+                <tr class="sf-row"><td colspan="${COL_COUNT}">
+                  <div style="display:flex;align-items:center;gap:var(--sp-3);">
+                    <span class="badge badge-gray">M</span><span class="muted">Målplats saknas</span>
+                    <span class="spacer"></span>
+                    <button class="btn btn-secondary btn-sm" data-edit-sf="finish">Sätt mål</button>
+                  </div></td></tr>` : '')}
           </tbody>
         </table>
       </div>
       ${dragEnabled && rows.length > 1 ? '<p class="muted t-sm mt-2">Dra kontroller för att ändra ordning. Numren räknas om 1…N efter släpp. QR-länkar påverkas inte.</p>' : ''}
       ${!dragEnabled && isAdmin ? '<p class="muted t-sm mt-2">Sortera på Nr stigande för att kunna dra och släppa.</p>' : ''}
     `;
+
+    // Start/mål-redigering direkt i banans lista.
+    tbl.querySelectorAll('[data-edit-sf]').forEach(btn => btn.addEventListener('click', () => {
+      openStartFinishModal(btn.dataset.editSf);
+    }));
+    // Dela upp start och mål. Läget lagras i comp.startFinish.mode och styr
+    // banans sista ben — därför en uttrycklig handling, inte en dold flagga.
+    tbl.querySelector('[data-split-sf]')?.addEventListener('click', async () => {
+      const nytt = { ...(comp.startFinish || {}), mode: 'separate' };
+      await updateCompetition(cid, { startFinish: nytt });
+      comp.startFinish = nytt;
+      render();
+      openStartFinishModal('finish');
+    });
 
     tbl.querySelectorAll('th.sortable').forEach(thEl => {
       thEl.addEventListener('click', () => {
@@ -194,6 +233,52 @@ export async function renderControls(app, user, cid) {
       });
     }
   };
+
+  // Start och mål lagras som förut i comp.startFinish — ETA-motorn,
+  // spårdragningen och stationssidan hänger på den formen. Det som flyttat
+  // hit är REDIGERINGEN: banan byggs där banan visas.
+  async function openStartFinishModal(which) {
+    const sf = comp.startFinish || {};
+    const separat = sf.mode === 'separate';
+    const isFinish = which === 'finish';
+    const nuv = isFinish
+      ? (sf.finish || {})
+      : (sf.start || (Number.isFinite(sf.lat) ? { name: sf.name, lat: sf.lat, lng: sf.lng } : {}));
+
+    await openPlaceModal({
+      title: isFinish ? 'Målplats' : (separat ? 'Startplats' : 'Start- och målplats'),
+      value: nuv,
+      namePlaceholder: isFinish ? 'Ex. Målgång vid parkeringen' : 'Ex. Lindsdals scoutgård',
+      onSave: async (v) => {
+        const nytt = {
+          ...sf,
+          enabled: true,
+          mode: sf.mode === 'separate' ? 'separate' : 'same',
+          [isFinish ? 'finish' : 'start']: { name: v.name, note: v.note, lat: v.lat, lng: v.lng }
+        };
+        // Gamla platta formen (sf.lat/sf.lng) ersätts när något sparas om.
+        delete nytt.lat; delete nytt.lng; delete nytt.name;
+        await updateCompetition(cid, { startFinish: nytt });
+        comp.startFinish = nytt;
+        toast(isFinish ? 'Målplats sparad' : 'Startplats sparad', 'success');
+        render();
+      },
+      onDelete: (nuv.lat != null || Number.isFinite(nuv.lat)) ? async () => {
+        if (!(await confirmDialog(
+          isFinish
+            ? 'Ta bort målplatsen? Banan får då samma start och mål.'
+            : 'Ta bort start- och målplatsen? Spårets ändpunkter försvinner och ETA räknas bara mellan kontrollerna.',
+          { okLabel: 'Ta bort', danger: true }))) return;
+        const nytt = isFinish
+          ? { ...sf, mode: 'same', finish: null }
+          : { ...sf, enabled: false };
+        await updateCompetition(cid, { startFinish: nytt });
+        comp.startFinish = nytt;
+        toast('Borttagen');
+        render();
+      } : null
+    });
+  }
 
   if (isAdmin) {
     wrap.querySelector('#new').addEventListener('click', () => {

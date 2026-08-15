@@ -137,6 +137,22 @@ new request and the requester on the decision.
   `etaDwellMinutes` (ETA station time override, default 15);
   `startTimes.maxTimeMinutes` (maxtid countdown on the startkort);
   `district` (scoutdistrikt — see below).
+- **Platser och banans ändpunkter är två olika saker.**
+  `comp.startFinish` (start/mål) är BANDATA: `courseLegs` bygger `__start`/
+  `__mal`-noderna ur den, ETA räknar första och sista benet från dem och
+  stationssidan checkar av mot dem. Den redigeras därför i KONTROLLISTAN
+  (`views/controls.js` → `openStartFinishModal`), inte i inställningarna, och
+  har en fast gul look på alla kartor.
+  `comp.places[]` (`public/js/places.js`) är ren utmärkning: parkering,
+  sekretariat, toaletter, egna punkter — var och en med sort, Lucide-symbol
+  och en färg ur `PALETTE`. Redigeras under Inställningar → Platser. Läs dem
+  ALLTID via `compPlaces(comp)`: den normaliserar okända värden i stället för
+  att låta nålen tyst försvinna, och tar med den gamla `comp.parking` som en
+  plats så äldre tävlingar behåller sin parkering (`parkingPoint` i utils.js
+  är kvar bara för backupfiler). Rita dem via `drawPlaces()` — fyra kartor
+  ritar dem och de ska se likadana ut på alla.
+  Symbolnamnen måste finnas i `icons.js`; det testas (`hasIcon`), för en
+  symbol som saknas renderar tomt och upptäcks annars först i skogen.
 - **Scoutdistrikt.** `public/js/districts.js` holds Scouterna's 26 districts
   plus `annat`. Every competition carries a `district` id: it is REQUIRED in
   the request form, settable in the super-admin create modal, and editable

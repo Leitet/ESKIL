@@ -13,6 +13,8 @@ import {
   patrolStartDateTime, normSlug, isValidSlug, suggestSlug,
   effectiveIntervalSec, swishAppUrl, swishQrString
 } from '../public/js/utils.js';
+import { hasIcon } from '../public/js/icons.js';
+import { PLACE_KINDS, PLACE_ICONS, PALETTE, placeColorHex, normPlace, compPlaces, placeToStorage } from '../public/js/places.js';
 import { patrolHighlights, controlRank, totalRank } from '../public/js/highlights.js';
 import { DISTRICTS, districtById, districtShort, districtName, districtHue, normDistrict } from '../public/js/districts.js';
 
@@ -444,5 +446,76 @@ describe('Höjdpunkter på startkortet', () => {
       const t = texts({ startMs: 0, endMs: slut });
       assert.ok(!t.some(x => x.includes('på banan')), `${slut} ms gav: ${t.join(' | ')}`);
     }
+  });
+});
+
+describe('Intressepunkter', () => {
+  test('varje symbol finns faktiskt i icons.js', () => {
+    // Det här är felet som annars upptäcks först ute i skogen: en kartnål
+    // som renderar tomt för att symbolnamnet inte finns.
+    for (const namn of PLACE_ICONS) assert.ok(hasIcon(namn), `symbolen saknas: ${namn}`);
+    for (const k of PLACE_KINDS) assert.ok(hasIcon(k.icon), `${k.id} pekar på symbolen ${k.icon}`);
+  });
+
+  test('varje förvald sort har en färg ur paletten', () => {
+    const färger = new Set(PALETTE.map(c => c.id));
+    for (const k of PLACE_KINDS) assert.ok(färger.has(k.color), `${k.id}: ${k.color}`);
+    const ids = PLACE_KINDS.map(k => k.id);
+    assert.equal(new Set(ids).size, ids.length, 'dubblerade sorter');
+    assert.equal(new Set(PLACE_ICONS).size, PLACE_ICONS.length, 'dubblerade symboler');
+  });
+
+  test('okända värden faller tillbaka i stället för att försvinna', () => {
+    // En plats som inte går att rita skulle tyst trilla av kartan.
+    const p = normPlace({ id: 'x', kind: 'hittepa', icon: 'hittepa', color: 'hittepa', lat: 58, lng: 15 });
+    assert.equal(p.kind, 'annat');
+    assert.ok(PLACE_ICONS.includes(p.icon));
+    assert.ok(p.colorHex.startsWith('#'));
+    assert.equal(p.name, 'Egen plats', 'namnlös plats får sortens namn');
+  });
+
+  test('sortens symbol och färg används när inget eget valts', () => {
+    const p = normPlace({ id: 'a', kind: 'toalett', lat: 58, lng: 15 });
+    assert.equal(p.icon, 'toilet');
+    assert.equal(p.colorHex, placeColorHex('lila'));
+  });
+
+  test('platser utan position ritas inte', () => {
+    const comp = { places: [
+      { id: 'a', kind: 'toalett', lat: 58, lng: 15 },
+      { id: 'b', kind: 'vatten' },                       // ingen position
+      { id: 'c', kind: 'mat', lat: 'x', lng: 'y' }       // skräp
+    ] };
+    assert.deepEqual(compPlaces(comp).map(p => p.id), ['a']);
+  });
+
+  test('gammal comp.parking följer med som plats', () => {
+    // Tävlingar som aldrig sparats om ska inte tappa sin parkering.
+    const comp = { parking: { enabled: true, name: 'Grusplanen', lat: 58, lng: 15, note: 'Parkera högst upp' } };
+    const [p] = compPlaces(comp);
+    assert.equal(p.kind, 'parkering');
+    assert.equal(p.name, 'Grusplanen');
+    assert.equal(p.note, 'Parkera högst upp');
+    assert.equal(p.icon, 'square-parking');
+  });
+
+  test('men ritas inte två gånger när den flyttats in i listan', () => {
+    const comp = {
+      parking: { enabled: true, name: 'Gammal', lat: 58, lng: 15 },
+      places: [{ id: 'ny', kind: 'parkering', name: 'Ny', lat: 58.1, lng: 15.1 }]
+    };
+    const ps = compPlaces(comp);
+    assert.equal(ps.filter(p => p.kind === 'parkering').length, 1);
+    assert.equal(ps[0].name, 'Ny');
+  });
+
+  test('avstängd gammal parkering tas inte med', () => {
+    assert.deepEqual(compPlaces({ parking: { enabled: false, lat: 58, lng: 15 } }), []);
+  });
+
+  test('lagringsformen bär inga härledda fält', () => {
+    const s = placeToStorage({ id: 'a', kind: 'vatten', name: 'Kranen', lat: 58, lng: 15 });
+    assert.deepEqual(Object.keys(s).sort(), ['color', 'icon', 'id', 'kind', 'lat', 'lng', 'name']);
+    assert.equal(s.colorHex, undefined, 'colorHex är en vy-detalj, inte data');
   });
 });

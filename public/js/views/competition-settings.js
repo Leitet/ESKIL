@@ -26,6 +26,8 @@ import { createManagementForm } from '../managementform.js';
 import { icon } from '../icons.js';
 import { help } from '../help.js';
 import { DISTRICTS, normDistrict } from '../districts.js';
+import { compPlaces, placeKind, placeToStorage } from '../places.js';
+import { openPlaceModal } from '../place-modal.js';
 import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
 import { navigate } from '../router.js';
 import { initMapPicker } from '../mappicker.js';
@@ -34,7 +36,7 @@ const TABS = [
   { key: 'basic',      label: 'Grund'           },
   { key: 'rules',      label: 'Regler & info'   },
   { key: 'anmalan',    label: 'Anmälan'         },
-  { key: 'startfinish',label: 'Start/Mål'       },
+  { key: 'platser',   label: 'Platser'         },
   { key: 'management', label: 'Tävlingsledning' },
   { key: 'members',    label: 'Användare'       }
 ];
@@ -108,7 +110,7 @@ export async function renderCompetitionSettings(app, user, cid) {
     if (activeTab === 'basic')       body.appendChild(renderBasicTab(comp, cid, refresh, isDemoReadOnly, isSuperAdmin, user));
     if (activeTab === 'rules')       body.appendChild(renderRulesTab(comp, cid, refresh, isDemoReadOnly));
     if (activeTab === 'anmalan')     body.appendChild(renderAnmalanTab(comp, cid, refresh, isDemoReadOnly));
-    if (activeTab === 'startfinish') body.appendChild(renderStartFinishTab(comp, cid, refresh, isDemoReadOnly));
+    if (activeTab === 'platser')     body.appendChild(renderPlacesTab(comp, cid, refresh, isDemoReadOnly));
     if (activeTab === 'management')  body.appendChild(renderManagementTab(comp, cid, refresh, isDemoReadOnly));
     if (activeTab === 'members')     body.appendChild(renderMembersTab(comp, cid, user, refresh));
   };
@@ -1086,216 +1088,93 @@ function renderAnmalanTab(comp, cid, refresh, readOnly) {
   return host;
 }
 
-function renderStartFinishTab(comp, cid, refresh, readOnly) {
+// Platser — allt som ska pekas ut på kartan UTOM banans ändpunkter.
+//
+// Start och mål bor i kontrollistan: de är bandata (ETA-motorn räknar ben från
+// dem, spåret hänger på dem), inte utmärkning. Här finns parkeringen och
+// resten — sekretariat, toaletter, vatten, egna punkter med egen symbol och
+// färg.
+function renderPlacesTab(comp, cid, refresh, readOnly) {
   const host = document.createElement('div');
-  const sf = comp.startFinish || {};
-  const mode = sf.mode === 'separate' ? 'separate' : 'same';
-  const start = sf.start || (Number.isFinite(sf.lat) ? { name: sf.name, lat: sf.lat, lng: sf.lng } : {});
-  const finish = sf.finish || {};
-  const parking = comp.parking || {};
 
-  const card = section('Start- och målplats', `
-    <form class="field-group" ${readOnly ? 'inert' : ''}>
-      <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
-        <input type="checkbox" id="sf-enabled" ${sf.enabled ? 'checked' : ''} style="margin-top:4px;">
-        <span>
-          <strong>Aktivera start- och målplats</strong>
-          <div class="field-hint" style="margin-top:2px;">Visas som specialkort i kontrollistan och som markör på kartan. Normalt samma plats; annars två olika.</div>
-        </span>
-      </label>
+  const spara = async (lista) => {
+    await updateCompetition(cid, { places: lista.map(placeToStorage) });
+    await refresh();
+  };
 
-      <div id="sf-fields" style="display:${sf.enabled ? 'block' : 'none'};">
-        <div class="row wrap mt-4" style="gap:var(--sp-4);">
-          <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
-            <input type="radio" name="sf-mode" value="same" ${mode === 'same' ? 'checked' : ''}>
-            Samma plats (normalt)
-          </label>
-          <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
-            <input type="radio" name="sf-mode" value="separate" ${mode === 'separate' ? 'checked' : ''}>
-            Olika platser
-          </label>
-        </div>
-
-        <div class="card mt-4" style="padding:var(--sp-4);background:var(--bg-muted);box-shadow:none;">
-          <strong style="font-size:13px;display:block;margin-bottom:var(--sp-3);" id="sf-start-heading">${mode === 'separate' ? 'Start' : 'Start / Mål'}</strong>
-          <label class="field" for="sf-start-name">Namn</label>
-          <input class="input" id="sf-start-name" value="${escapeHtml(start.name || '')}" placeholder="Ex. Lindsdals scoutgård">
-          <div class="field-hint mt-3">Klicka på kartan för att placera. Markören kan dras för att finjustera.</div>
-          <div id="sf-start-map" style="height:280px;width:100%;border-radius:var(--r-md);border:1.5px solid var(--border-strong);background:var(--bg-muted);"></div>
-          <div class="row mt-3" style="gap:var(--sp-3);align-items:center;flex-wrap:wrap;">
-            <button type="button" class="btn btn-ghost btn-sm" id="sf-start-gps">${icon('locate', { size: 16 })} Använd min plats</button>
-            <span class="muted t-sm" id="sf-start-coord">${Number.isFinite(start.lat) ? `${start.lat.toFixed(5)}, ${start.lng.toFixed(5)}` : 'Ingen position vald'}</span>
-          </div>
-          <input type="hidden" id="sf-start-lat" value="${start.lat ?? ''}">
-          <input type="hidden" id="sf-start-lng" value="${start.lng ?? ''}">
-          <label class="field mt-3" for="sf-start-note">Notering (visas på publika sidan)</label>
-          <textarea class="textarea" id="sf-start-note" placeholder="T.ex. parkeringsinstruktioner, samlingstid, incheckning…">${escapeHtml(start.note || '')}</textarea>
-        </div>
-
-        <div class="card mt-3" id="sf-finish-block" style="padding:var(--sp-4);background:var(--bg-muted);box-shadow:none;display:${mode === 'separate' ? 'block' : 'none'};">
-          <strong style="font-size:13px;display:block;margin-bottom:var(--sp-3);">Mål</strong>
-          <label class="field" for="sf-finish-name">Namn</label>
-          <input class="input" id="sf-finish-name" value="${escapeHtml(finish.name || '')}" placeholder="Ex. Målgång vid parkeringen">
-          <div class="field-hint mt-3">Klicka på kartan för att placera mål.</div>
-          <div id="sf-finish-map" style="height:280px;width:100%;border-radius:var(--r-md);border:1.5px solid var(--border-strong);background:var(--bg-muted);"></div>
-          <div class="row mt-3" style="gap:var(--sp-3);align-items:center;flex-wrap:wrap;">
-            <button type="button" class="btn btn-ghost btn-sm" id="sf-finish-gps">${icon('locate', { size: 16 })} Använd min plats</button>
-            <span class="muted t-sm" id="sf-finish-coord">${Number.isFinite(finish.lat) ? `${finish.lat.toFixed(5)}, ${finish.lng.toFixed(5)}` : 'Ingen position vald'}</span>
-          </div>
-          <input type="hidden" id="sf-finish-lat" value="${finish.lat ?? ''}">
-          <input type="hidden" id="sf-finish-lng" value="${finish.lng ?? ''}">
-          <label class="field mt-3" for="sf-finish-note">Notering (visas på publika sidan)</label>
-          <textarea class="textarea" id="sf-finish-note" placeholder="T.ex. målgångsinstruktioner, utcheckning…">${escapeHtml(finish.note || '')}</textarea>
-        </div>
-      </div>
-    </form>
-    ${readOnly ? '' : saveRow('Spara start/mål')}
-  `, { help: 'comp.startFinish' });
+  const card = section('Platser på kartan', `
+    <p class="muted t-sm" style="margin-top:-4px;">Visas på tävlingssidan, startkorten och i Läget. Parkering, sekretariat och toaletter är det folk letar efter först — men lägg gärna till egna punkter också.</p>
+    <div id="pl-list"></div>
+    ${readOnly ? '' : `<div class="btn-row mt-3"><button class="btn btn-secondary btn-sm" id="pl-add">${icon('plus', { size: 15 })} Lägg till plats</button></div>`}
+  `, { help: 'comp.places' });
   host.appendChild(card);
 
-  // --- Parking card (separate save row) ------------------------------------
-  const parkingCard = section('Parkering', `
-    <form class="field-group" ${readOnly ? 'inert' : ''}>
-      <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
-        <input type="checkbox" id="pk-enabled" ${parking.enabled ? 'checked' : ''} style="margin-top:4px;">
-        <span>
-          <strong>Aktivera parkeringsplats</strong>
-          <div class="field-hint" style="margin-top:2px;">Visas som en blå P-markör på kartan (separat från start/mål) och som specialkort i kontrollistan.</div>
+  const list = card.querySelector('#pl-list');
+
+  function draw() {
+    const platser = compPlaces(comp);
+    if (!platser.length) {
+      list.innerHTML = `<div class="empty" style="padding:var(--sp-5);">
+        <p class="muted" style="margin:0;">Inga platser utsatta än.</p></div>`;
+      return;
+    }
+    list.innerHTML = platser.map((p, i) => `
+      <button type="button" class="place-row" data-i="${i}" ${readOnly ? 'disabled' : ''}>
+        <span class="place-dot" style="background:${p.colorHex};">${icon(p.icon, { size: 18 })}</span>
+        <span class="place-body">
+          <span class="place-name">${escapeHtml(p.name)}</span>
+          <span class="muted t-sm" style="display:block;">${escapeHtml(placeKind(p.kind).label)}${p.note ? ' · ' + escapeHtml(p.note) : ''}</span>
         </span>
-      </label>
-      <div id="pk-fields" style="display:${parking.enabled ? 'block' : 'none'};" class="field-group">
-        <div>
-          <label class="field" for="pk-name">Namn</label>
-          <input class="input" id="pk-name" value="${escapeHtml(parking.name || '')}" placeholder="Ex. Grusparkeringen vid scoutgården">
-        </div>
-        <div class="field-hint">Klicka på kartan för att placera parkeringen.</div>
-        <div id="pk-map" style="height:280px;width:100%;border-radius:var(--r-md);border:1.5px solid var(--border-strong);background:var(--bg-muted);"></div>
-        <div class="row mt-3" style="gap:var(--sp-3);align-items:center;flex-wrap:wrap;">
-          <button type="button" class="btn btn-ghost btn-sm" id="pk-gps">${icon('locate', { size: 16 })} Använd min plats</button>
-          <span class="muted t-sm" id="pk-coord">${Number.isFinite(parking.lat) ? `${parking.lat.toFixed(5)}, ${parking.lng.toFixed(5)}` : 'Ingen position vald'}</span>
-        </div>
-        <input type="hidden" id="pk-lat" value="${parking.lat ?? ''}">
-        <input type="hidden" id="pk-lng" value="${parking.lng ?? ''}">
-        <label class="field mt-3" for="pk-note">Notering (visas på publika sidan)</label>
-        <textarea class="textarea" id="pk-note" placeholder="T.ex. 'Parkera högst upp, ej framför lokalen'">${escapeHtml(parking.note || '')}</textarea>
-      </div>
-    </form>
-    ${readOnly ? '' : saveRow('Spara parkering')}
-  `, { help: 'comp.parking' });
-  host.appendChild(parkingCard);
+        <span class="muted t-sm mono">${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}</span>
+      </button>
+    `).join('');
 
-  const sfEnabled = card.querySelector('#sf-enabled');
-  const sfFields = card.querySelector('#sf-fields');
-  const sfFinishBlock = card.querySelector('#sf-finish-block');
-  const sfStartHeading = card.querySelector('#sf-start-heading');
-  sfEnabled.addEventListener('change', () => {
-    sfFields.style.display = sfEnabled.checked ? 'block' : 'none';
-    if (sfEnabled.checked) {
-      // Map mis-sizes when it was hidden at init; nudge on reveal.
-      startPicker?.invalidateSize();
-      finishPicker?.invalidateSize();
-    }
-  });
-  const applyMode = () => {
-    const m = card.querySelector('input[name="sf-mode"]:checked').value;
-    sfFinishBlock.style.display = m === 'separate' ? 'block' : 'none';
-    sfStartHeading.textContent = m === 'separate' ? 'Start' : 'Start / Mål';
-    if (m === 'separate') finishPicker?.invalidateSize();
-  };
-  card.querySelectorAll('input[name="sf-mode"]').forEach(r => r.addEventListener('change', applyMode));
+    list.querySelectorAll('[data-i]').forEach(btn => btn.addEventListener('click', () => {
+      const i = Number(btn.dataset.i);
+      const platser = compPlaces(comp);
+      openPlaceModal({
+        title: 'Redigera plats',
+        value: platser[i],
+        fields: { kind: true, look: true },
+        namePlaceholder: 'Ex. Grusparkeringen vid scoutgården',
+        onSave: async (v) => {
+          const nya = platser.map((p, j) => j === i ? { ...p, ...v } : p);
+          await spara(nya);
+          toast('Platsen sparad', 'success');
+        },
+        onDelete: async () => {
+          if (!(await confirmDialog(`Ta bort "${platser[i].name}" från kartan?`, { okLabel: 'Ta bort', danger: true }))) return;
+          await spara(platser.filter((_, j) => j !== i));
+          toast('Platsen borttagen');
+        }
+      });
+    }));
+  }
+  draw();
 
-  // --- Map pickers (start + finish) ----------------------------------------
-  let startPicker = null, finishPicker = null, parkingPicker = null;
-  const updateCoord = (host, prefix, lat, lng) => {
-    host.querySelector(`#${prefix}-lat`).value = String(lat);
-    host.querySelector(`#${prefix}-lng`).value = String(lng);
-    host.querySelector(`#${prefix}-coord`).textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-    host.querySelector(`#${prefix}-coord`).classList.remove('muted');
-  };
-  (async () => {
-    try {
-      startPicker = await initMapPicker({
-        container: card.querySelector('#sf-start-map'),
-        lat: start.lat, lng: start.lng,
-        onChange: ({ lat, lng }) => updateCoord(card, 'sf-start', lat, lng)
-      });
-      card.querySelector('#sf-start-gps').addEventListener('click', async () => {
-        try { await startPicker.useGeolocation(); }
-        catch (e) { toast('Kunde inte hämta plats: ' + e.message, 'error'); }
-      });
-      finishPicker = await initMapPicker({
-        container: card.querySelector('#sf-finish-map'),
-        lat: finish.lat, lng: finish.lng,
-        onChange: ({ lat, lng }) => updateCoord(card, 'sf-finish', lat, lng)
-      });
-      card.querySelector('#sf-finish-gps').addEventListener('click', async () => {
-        try { await finishPicker.useGeolocation(); }
-        catch (e) { toast('Kunde inte hämta plats: ' + e.message, 'error'); }
-      });
-    } catch (e) {
-      console.warn('Map picker failed:', e);
-    }
-  })();
-
-  // --- Parking card wiring -------------------------------------------------
-  const pkEnabled = parkingCard.querySelector('#pk-enabled');
-  const pkFields = parkingCard.querySelector('#pk-fields');
-  pkEnabled.addEventListener('change', () => {
-    pkFields.style.display = pkEnabled.checked ? 'block' : 'none';
-    if (pkEnabled.checked) parkingPicker?.invalidateSize();
-  });
-  (async () => {
-    try {
-      parkingPicker = await initMapPicker({
-        container: parkingCard.querySelector('#pk-map'),
-        lat: parking.lat, lng: parking.lng,
-        onChange: ({ lat, lng }) => updateCoord(parkingCard, 'pk', lat, lng)
-      });
-      parkingCard.querySelector('#pk-gps').addEventListener('click', async () => {
-        try { await parkingPicker.useGeolocation(); }
-        catch (e) { toast('Kunde inte hämta plats: ' + e.message, 'error'); }
-      });
-    } catch (e) { console.warn('Parking picker failed:', e); }
-  })();
-
-  wireSave(parkingCard, async () => {
-    const num = (sel) => parkingCard.querySelector(sel).value ? Number(parkingCard.querySelector(sel).value) : null;
-    await updateCompetition(cid, {
-      parking: {
-        enabled: pkEnabled.checked,
-        name: parkingCard.querySelector('#pk-name').value.trim(),
-        lat: num('#pk-lat'),
-        lng: num('#pk-lng'),
-        note: parkingCard.querySelector('#pk-note').value.trim()
+  card.querySelector('#pl-add')?.addEventListener('click', () => {
+    openPlaceModal({
+      title: 'Ny plats',
+      value: { kind: 'parkering' },
+      fields: { kind: true, look: true },
+      namePlaceholder: 'Ex. Grusparkeringen vid scoutgården',
+      onSave: async (v) => {
+        // Id:t behöver bara vara unikt inom tävlingen — listan är kort och
+        // ordningen är den arrangören lagt den i.
+        const nytt = { ...v, id: 'p' + Math.random().toString(36).slice(2, 9) };
+        await spara([...compPlaces(comp), nytt]);
+        toast('Platsen tillagd', 'success');
       }
     });
-    await refresh();
   });
 
-  wireSave(card, async () => {
-    const m = card.querySelector('input[name="sf-mode"]:checked').value;
-    const num = (sel) => card.querySelector(sel).value ? Number(card.querySelector(sel).value) : null;
-    const data = {
-      enabled: sfEnabled.checked,
-      mode: m,
-      start: {
-        name: card.querySelector('#sf-start-name').value.trim(),
-        lat: num('#sf-start-lat'),
-        lng: num('#sf-start-lng'),
-        note: card.querySelector('#sf-start-note').value.trim()
-      }
-    };
-    if (m === 'separate') {
-      data.finish = {
-        name: card.querySelector('#sf-finish-name').value.trim(),
-        lat: num('#sf-finish-lat'),
-        lng: num('#sf-finish-lng'),
-        note: card.querySelector('#sf-finish-note').value.trim()
-      };
-    }
-    await updateCompetition(cid, { startFinish: data });
-    await refresh();
-  });
+  // Genväg tillbaka till banan — start/mål hör hemma där, men det är hit man
+  // går när man tänker "platser".
+  const genvag = section('Start och mål', `
+    <p class="muted t-sm" style="margin-top:-4px;">Banans start- och målplats sätts i kontrollistan, tillsammans med resten av banan. Normalt samma plats; går det att välja två olika gör du det där.</p>
+    <div class="btn-row"><a class="btn btn-secondary btn-sm" href="/app/c/${escapeHtml(cid)}/controls" data-link>Öppna kontrollistan</a></div>
+  `);
+  host.appendChild(genvag);
 
   return host;
 }

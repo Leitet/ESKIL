@@ -838,3 +838,17 @@ a.pub-brand:hover { opacity: 0.85; }
   animation: ga-nu-pulse 1s ease-in-out infinite;
 }
 @keyframes ga-nu-pulse { 50% { opacity: 0.4; } }
+
+/* Intressepunkter — samma nålform som parkeringen hade. Bakgrunden är
+   genomskinlig: färgen sitter på cirkeln under (se drawPlaces i places.js),
+   så etiketten bara bär symbolen. */
+.map-label-place {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: #ffffff !important;
+  padding: 0 !important;
+  line-height: 0;
+  min-width: 0;
+}
+.map-label-place svg { display: block; }

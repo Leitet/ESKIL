@@ -15,6 +15,7 @@ import {
   updateCompetition, updateControl, setPatrolUtgatt
 } from '../store.js';
 import { deleteField } from '../firebase.js';
+import { compPlaces, placeKind, drawPlaces } from '../places.js';
 import { courseLegs, drawCourseOnMap, courseEtaCalibrated, patrolFinishEtaMs } from '../course.js';
 import {
   escapeHtml, toast, copyToClipboard, formatTime, patrolStartTime, patrolStartDateTime, avdShort,
@@ -606,7 +607,18 @@ export async function renderLaget(app, user, cid) {
           .addTo(mapInstance);
         markers.set(c.id, m);
       }
-      mapInstance.fitBounds(L.latLngBounds(withPos.map(c => [c.lat, c.lng])).pad(0.2));
+      // Intressepunkter — sekretariatet och första hjälpen är precis det man
+      // vill kunna peka på när något händer i skogen.
+      const platser = compPlaces(comp);
+      drawPlaces(L, mapInstance, platser, {
+        iconHtml: (n) => icon(n, { size: 17, stroke: 2.5 }),
+        onPopup: (pl) => `<strong>${escapeHtml(pl.name)}</strong><br><span class="muted">${escapeHtml(placeKind(pl.kind).label)}</span>${pl.note ? `<br>${escapeHtml(pl.note)}` : ''}`
+      }).forEach(m => m.getTooltip()?.getElement()?.classList.add('map-label-place'));
+
+      mapInstance.fitBounds(L.latLngBounds([
+        ...withPos.map(c => [c.lat, c.lng]),
+        ...platser.map(pl => [pl.lat, pl.lng])
+      ]).pad(0.2));
       renderStats();
     } catch (e) {
       console.warn('Läget-kartan kunde inte laddas', e);
