@@ -51,6 +51,18 @@ Email extension). Production domain: https://eskilscout.se.
   but must never link to, or leak, secret URLs. The router fires its
   route-change hook BEFORE the view handler (title reset depends on this).
 
+- **Manuella startkort (`generateManualStartPdf` i `pdf.js`)** — pappersvarianten
+  för patruller utan mobil. A4 LIGGANDE, vikt på mitten till A5: sida 1 hela
+  kartan, sida 2 halv information + halvt poängkort. Kartan kommer från
+  `courseMapDataUrl`, som väljer zoom efter innehållet (`fitZoom`, testad) och
+  **roterar bilden 90°** när banan är avlång — då fyller den papperet och
+  kortet skriver ut att man ska vrida det. Kartan renderas EN gång per
+  massutskrift; 30 patruller ska inte bli 30 tile-omgångar.
+  Poängkortet MÅSTE respektera `anonymousControls`: är den på skrivs inga
+  kontrollnamn ut, bara nummer och en skrivrad. Kortet bärs hela dagen.
+  Radhöjden har medvetet INGET golv — ett golv gör att rader ritas utanför
+  sidan och försvinner tyst när banan har många kontroller.
+
 ## Directory map
 
 See `README.md` for the layout — every file there is load-bearing.

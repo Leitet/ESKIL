@@ -14,6 +14,7 @@ import {
   effectiveIntervalSec, swishAppUrl, swishQrString
 } from '../public/js/utils.js';
 import { hasIcon } from '../public/js/icons.js';
+import { fitZoom } from '../public/js/pdf.js';
 import {
   PLACE_KINDS, PLACE_ICONS, PALETTE, placeColorHex, normPlace, compPlaces, placeToStorage, coursePlaces
 } from '../public/js/places.js';
@@ -593,5 +594,51 @@ describe('Platser som ingår i banan', () => {
     const tidig = { ...MAT, id: 'tidig', name: 'Tidigt', courseAfter: 0 };
     assert.deepEqual(coursePlaces(comp([sen, MAT, tidig])).map(p => p.name),
       ['Tidigt', 'Matplatsen', 'Sent']);
+  });
+});
+
+describe('Bankartans zoomval (utskrift)', () => {
+  const pt = (lat, lng) => ({ lat, lng });
+  // ~2 km bana kring Linköping.
+  const BANA = [pt(58.380, 15.600), pt(58.398, 15.640)];
+
+  test('samma bana ger högre zoom i en större bild', () => {
+    const liten = fitZoom(BANA, 600, 400);
+    const stor = fitZoom(BANA, 1900, 1328);
+    assert.ok(stor > liten, `${liten} → ${stor}`);
+  });
+
+  test('en större bana ger lägre zoom', () => {
+    const vid = [pt(58.30, 15.40), pt(58.50, 15.90)];
+    assert.ok(fitZoom(vid, 1900, 1328) < fitZoom(BANA, 1900, 1328));
+  });
+
+  test('banan får plats i bilden med marginal', () => {
+    // Regressionsvakten: väljs zoomen en nivå för högt hamnar ytterkontrollen
+    // utanför papperet, och den upptäcks först när kartan är utskriven.
+    const W = 1900, H = 1328, PAD = 0.12;
+    const z = fitZoom(BANA, W, H);
+    const värld = (p, zz) => {
+      const n = Math.pow(2, zz);
+      const x = (p.lng + 180) / 360 * n * 256;
+      const r = p.lat * Math.PI / 180;
+      const y = (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n * 256;
+      return { x, y };
+    };
+    const w = BANA.map(p => värld(p, z));
+    const spanX = Math.max(...w.map(q => q.x)) - Math.min(...w.map(q => q.x));
+    const spanY = Math.max(...w.map(q => q.y)) - Math.min(...w.map(q => q.y));
+    assert.ok(spanX <= W * (1 - PAD * 2), `bredden spiller: ${spanX} > ${W * (1 - PAD * 2)}`);
+    assert.ok(spanY <= H * (1 - PAD * 2), `höjden spiller: ${spanY} > ${H * (1 - PAD * 2)}`);
+  });
+
+  test('en enda punkt ger en rimlig närzoom', () => {
+    assert.equal(fitZoom([pt(58.4, 15.6)], 1900, 1328), 15);
+  });
+
+  test('en bana som spänner över halva landet klarar sig utan att låsa sig', () => {
+    const orimlig = [pt(55.5, 12.9), pt(67.8, 20.3)];
+    const z = fitZoom(orimlig, 1900, 1328);
+    assert.ok(z >= 3 && z <= 17, `zoom utanför skalan: ${z}`);
   });
 });

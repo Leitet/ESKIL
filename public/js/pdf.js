@@ -4,8 +4,8 @@
 //
 // jsPDF and qrcodejs are loaded lazily from CDN on first use.
 
-import { reportUrl, startUrl, allInstructionGroups, publicManagement } from './utils.js';
-import { legStub } from './course.js';
+import { reportUrl, startUrl, allInstructionGroups, publicManagement, patrolStartTime } from './utils.js';
+import { legStub, courseLegs } from './course.js';
 
 let jsPDFReady = null;
 let qrReady = null;
@@ -201,6 +201,196 @@ async function staticMapDataUrl(lat, lng, { zoom = 16, widthTiles = 3, heightTil
   } catch {
     return null; // tainted (shouldn't happen since tiles are CORS-ok)
   }
+}
+
+// ===========================================================================
+// BANKARTA FÖR UTSKRIFT
+// Till skillnad från kontrollernas kartor (en punkt, fast tilrutnät) ska den
+// här visa HELA banan så stor som möjligt. Zoomen väljs alltså av innehållet,
+// inte tvärtom: högsta zoom där allt fortfarande får plats.
+//
+// Renderas i tryckupplösning (~150 dpi över en A4-sida) och är dyr i tiles —
+// därför genereras den EN gång och återanvänds för alla patruller i en
+// massutskrift.
+// ===========================================================================
+
+const TILE_PX = 256;
+
+const lonLatToWorld = (lat, lng, zoom) => {
+  const t = lonLatToTileFloat(lat, lng, zoom);
+  return { x: t.x * TILE_PX, y: t.y * TILE_PX };
+};
+
+// Högsta zoom där punkterna ryms i wPx × hPx med marginal. `pad` är andelen
+// av bilden som lämnas som luft runt banan — utan den hamnar ytterkontrollerna
+// i kanten och nålarna klipps.
+export function fitZoom(pts, wPx, hPx, { minZoom = 3, maxZoom = 17, pad = 0.12 } = {}) {
+  if (pts.length < 2) return 15;
+  const usableW = wPx * (1 - pad * 2), usableH = hPx * (1 - pad * 2);
+  for (let z = maxZoom; z >= minZoom; z--) {
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const p of pts) {
+      const w = lonLatToWorld(p.lat, p.lng, z);
+      minX = Math.min(minX, w.x); maxX = Math.max(maxX, w.x);
+      minY = Math.min(minY, w.y); maxY = Math.max(maxY, w.y);
+    }
+    if (maxX - minX <= usableW && maxY - minY <= usableH) return z;
+  }
+  return minZoom;
+}
+
+/**
+ * Hela banan som en PNG-data-URI.
+ * @param comp, controls, track  samma indata som kartorna i appen
+ * @param places   normaliserade platser (compPlaces) — parkering och toaletter
+ *                 är precis vad man vill ha på ett papper
+ * @param wPx/hPx  bildens pixelmått (sätt efter utskriftsytan)
+ * @returns { url, rotated } — `rotated` betyder att kartan är lagd på högkant
+ *          för att fylla papperet; kortet skriver då ut att man ska vrida det.
+ *          null när inget går att rita.
+ */
+export async function courseMapDataUrl(comp, controls, track, places = [], { wPx = 1800, hPx = 1240 } = {}) {
+  const { nodes, legs } = courseLegs(comp, controls, track);
+  // Alla punkter som ska rymmas: nodernas, spårets ritade punkter och
+  // platserna. En parkering en bit bort ska inte hamna utanför bilden.
+  const pts = [
+    ...nodes.map(n => ({ lat: n.lat, lng: n.lng })),
+    ...legs.flatMap(l => l.wps),
+    ...places.map(p => ({ lat: p.lat, lng: p.lng }))
+  ].filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+  if (!pts.length) return null;
+
+  // En avlång bana i en liggande bild lämnar halva papperet tomt. Passar
+  // banan bättre på högkant ritar vi den så och roterar bilden 90° — man
+  // vrider papperet i stället, precis som med vilken karta som helst, och
+  // banan får hela ytan. Förhållandet är zoom-oberoende, så vilken zoom som
+  // helst duger för att mäta det.
+  const spanAt = (z) => {
+    let a = Infinity, b = -Infinity, c = Infinity, d = -Infinity;
+    for (const q of pts) {
+      const w = lonLatToWorld(q.lat, q.lng, z);
+      a = Math.min(a, w.x); b = Math.max(b, w.x);
+      c = Math.min(c, w.y); d = Math.max(d, w.y);
+    }
+    return { x: Math.max(1, b - a), y: Math.max(1, d - c) };
+  };
+  const span = spanAt(12);
+  const missfit = (aspekt) => Math.abs(Math.log((span.x / span.y) / aspekt));
+  const rotera = missfit(wPx / hPx) > missfit(hPx / wPx);
+  const cw = rotera ? hPx : wPx;
+  const ch = rotera ? wPx : hPx;
+
+  const zoom = fitZoom(pts, cw, ch);
+  // Bildens mitt = mitten av innehållets utsträckning, inte medelvärdet:
+  // en enstaka avlägsen punkt ska inte dra kartan ur balans.
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const p of pts) {
+    const w = lonLatToWorld(p.lat, p.lng, zoom);
+    minX = Math.min(minX, w.x); maxX = Math.max(maxX, w.x);
+    minY = Math.min(minY, w.y); maxY = Math.max(maxY, w.y);
+  }
+  const centerX = (minX + maxX) / 2, centerY = (minY + maxY) / 2;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = cw; canvas.height = ch;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#e8eef4';
+  ctx.fillRect(0, 0, cw, ch);
+
+  // Världspixel -> bildpixel
+  const toPx = (p) => {
+    const w = lonLatToWorld(p.lat, p.lng, zoom);
+    return { px: cw / 2 + (w.x - centerX), py: ch / 2 + (w.y - centerY) };
+  };
+
+  // Tiles: alla som skär bilden.
+  const originX = centerX - cw / 2, originY = centerY - ch / 2;
+  const firstTx = Math.floor(originX / TILE_PX), lastTx = Math.floor((originX + cw) / TILE_PX);
+  const firstTy = Math.floor(originY / TILE_PX), lastTy = Math.floor((originY + ch) / TILE_PX);
+  const n = Math.pow(2, zoom);
+  const jobs = [];
+  for (let ty = firstTy; ty <= lastTy; ty++) {
+    for (let tx = firstTx; tx <= lastTx; tx++) {
+      if (ty < 0 || ty >= n) continue;
+      const wrapTx = ((tx % n) + n) % n;                 // världen är rund
+      const dx = tx * TILE_PX - originX, dy = ty * TILE_PX - originY;
+      jobs.push(loadImage(`https://tile.openstreetmap.org/${zoom}/${wrapTx}/${ty}.png`)
+        .then(img => ctx.drawImage(img, dx, dy))
+        .catch(() => { /* saknad ruta lämnas grå */ }));
+    }
+  }
+  await Promise.all(jobs);
+
+  // --- Spåret ---
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  for (const leg of legs) {
+    const path = [leg.from, ...leg.wps, leg.to].map(toPx);
+    if (path.length < 2) continue;
+    // Vit kontur under linjen: utan den försvinner spåret i skog och vägar
+    // när kartan skrivs ut i gråskala.
+    for (const [w, col, dash] of [[11, 'rgba(255,255,255,.9)', []], [6, ORANGE, leg.drawn ? [] : [16, 12]]]) {
+      ctx.beginPath();
+      ctx.setLineDash(dash);
+      ctx.lineWidth = w;
+      ctx.strokeStyle = col;
+      path.forEach((q, i) => i ? ctx.lineTo(q.px, q.py) : ctx.moveTo(q.px, q.py));
+      ctx.stroke();
+    }
+  }
+  ctx.setLineDash([]);
+
+  // --- Platser: färgad prick + namn ---
+  ctx.textBaseline = 'middle';
+  for (const pl of places) {
+    const { px, py } = toPx(pl);
+    ctx.beginPath();
+    ctx.arc(px, py, 13, 0, Math.PI * 2);
+    ctx.fillStyle = pl.colorHex || '#5A6672';
+    ctx.fill();
+    ctx.lineWidth = 3.5; ctx.strokeStyle = '#ffffff'; ctx.stroke();
+    ctx.font = '600 20px Helvetica, Arial, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(255,255,255,.95)';
+    ctx.strokeText(pl.name, px + 19, py);
+    ctx.fillStyle = '#1c1c1c';
+    ctx.fillText(pl.name, px + 19, py);
+  }
+
+  // --- Noder ---
+  ctx.textAlign = 'center';
+  for (const nd of nodes) {
+    if (nd.kind === 'place') continue;                   // ritad ovan
+    const { px, py } = toPx(nd);
+    const isCtrl = nd.kind === 'control';
+    ctx.beginPath();
+    ctx.arc(px, py, isCtrl ? 21 : 24, 0, Math.PI * 2);
+    ctx.fillStyle = isCtrl ? BLUE : YELLOW;
+    ctx.fill();
+    ctx.lineWidth = 4; ctx.strokeStyle = '#ffffff'; ctx.stroke();
+    ctx.font = `800 ${isCtrl ? 24 : 20}px Helvetica, Arial, sans-serif`;
+    ctx.fillStyle = isCtrl ? '#ffffff' : BLUE;
+    ctx.fillText(nd.label, px, py + 1);
+  }
+
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'bottom';
+  ctx.font = 'bold 18px sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,.85)';
+  ctx.fillRect(cw - 210, ch - 30, 210, 30);
+  ctx.fillStyle = '#333';
+  ctx.fillText('© OpenStreetMap', cw - 10, ch - 8);
+
+  try {
+    if (!rotera) return { url: canvas.toDataURL('image/jpeg', 0.86), rotated: false };
+    // Rotera 90° medurs in i den efterfrågade formen.
+    const ut = document.createElement('canvas');
+    ut.width = wPx; ut.height = hPx;
+    const uctx = ut.getContext('2d');
+    uctx.translate(wPx, 0);
+    uctx.rotate(Math.PI / 2);
+    uctx.drawImage(canvas, 0, 0);
+    return { url: ut.toDataURL('image/jpeg', 0.86), rotated: true };
+  } catch { return null; }
 }
 
 export const BLUE   = '#003660';
@@ -798,6 +988,361 @@ export async function downloadStartPdf(comp, patrol) {
   const pdf = await generateStartPdf(comp, patrol);
   const safe = (patrol.name || 'patrull').replace(/[^\w\-åäöÅÄÖ]+/g, '_');
   pdf.save(`startkort-${patrol.number ?? ''}-${safe}.pdf`);
+}
+
+// ===========================================================================
+// MANUELLT STARTKORT — för patruller utan mobil.
+//
+// A4 liggande, avsett att vikas på mitten till A5. Utskrivet dubbelsidigt ger
+// det ett A5-häfte: kartan invikt (vik ut för att navigera), information och
+// poängkort utåt (att fylla i vid kontrollerna).
+//
+//   Sida 1   hela A4 = bankartan, så stor som papperet tillåter
+//   Sida 2   vänster halva = information, höger halva = poängkort
+//
+// ANONYMA KONTROLLER: när comp.anonymousControls är på får poängkortet INTE
+// avslöja kontrollernas namn — patrullen bär kortet hela dagen, och namnet
+// säger vad uppgiften handlar om. Då blir namnkolumnen en skrivrad i stället.
+// ===========================================================================
+
+const A4L = { W: 297, H: 210 };
+const FOLD_X = A4L.W / 2;
+
+function drawFoldLine(pdf) {
+  pdf.setDrawColor('#c8d2dc');
+  pdf.setLineWidth(0.2);
+  pdf.setLineDashPattern([2, 2], 0);
+  pdf.line(FOLD_X, 0, FOLD_X, A4L.H);
+  pdf.setLineDashPattern([], 0);
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(6);
+  pdf.setTextColor('#9fb0c0');
+  pdf.text('VIK HÄR', FOLD_X - 1, A4L.H / 2, { angle: 90, align: 'center' });
+}
+
+// Vänstra halvan på sida 2: allt patrullen behöver veta utan telefon.
+function drawManualInfo(pdf, comp, patrol, places, startTid, maxMin) {
+  const L = 12, R = FOLD_X - 10, w = R - L;
+  let y = 16;
+
+  pdf.setFillColor(BLUE);
+  pdf.rect(0, 0, FOLD_X, 26, 'F');
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(13);
+  pdf.setTextColor('#ffffff');
+  pdf.text(String(comp.shortName || comp.name || 'Tävling'), L, 13);
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(8);
+  pdf.setTextColor('#a7bccf');
+  pdf.text([comp.year, comp.date, comp.location].filter(Boolean).join('  ·  '), L, 20);
+  y = 36;
+
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(19);
+  pdf.setTextColor('#282727');
+  pdf.text(`#${patrol.number ?? ''}  ${patrol.name || ''}`, L, y);
+  y += 6;
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(9.5);
+  pdf.setTextColor('#6b7684');
+  pdf.text([patrol.avdelning, patrol.kar, patrol.antal ? `${patrol.antal} deltagare` : null]
+    .filter(Boolean).join('  ·  '), L, y);
+  y += 10;
+
+  // Starttid — den viktigaste raden på hela kortet.
+  if (startTid) {
+    pdf.setFillColor('#eef3f8');
+    pdf.rect(L, y - 5, w, 14, 'F');
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(9);
+    pdf.setTextColor(ORANGE);
+    pdf.text('STARTTID', L + 3, y + 1);
+    pdf.setFontSize(16);
+    pdf.setTextColor('#282727');
+    pdf.text(startTid, L + 32, y + 2.5);
+    if (maxMin > 0) {
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(8.5);
+      pdf.setTextColor('#6b7684');
+      const h = Math.floor(maxMin / 60), m = maxMin % 60;
+      pdf.text(`Maxtid ${[h ? h + ' h' : '', m ? m + ' min' : ''].filter(Boolean).join(' ')}`, L + 62, y + 2.5);
+    }
+    y += 16;
+  }
+
+  const rubrik = (t) => {
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(8);
+    pdf.setTextColor(ORANGE);
+    pdf.text(t.toUpperCase(), L, y);
+    y += 4.5;
+  };
+  const brodtext = (t, size = 9) => {
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(size);
+    pdf.setTextColor('#282727');
+    const lines = pdf.splitTextToSize(String(t), w);
+    pdf.text(lines, L, y);
+    y += lines.length * (size * 0.42) + 3;
+  };
+
+  const vagen = places.filter(p => !p.inCourse);
+  if (vagen.length) {
+    rubrik('Hitta till starten');
+    for (const pl of vagen.slice(0, 5)) {
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(9);
+      pdf.setTextColor('#282727');
+      pdf.text(pl.name, L, y);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor('#6b7684');
+      pdf.text(`${pl.lat.toFixed(5)}, ${pl.lng.toFixed(5)}`, R, y, { align: 'right' });
+      y += 4.6;
+    }
+    y += 2;
+  }
+
+  const mgmt = publicManagement(comp).filter(r => r.phone || r.name);
+  if (mgmt.length) {
+    rubrik('Tävlingsledning');
+    for (const r of mgmt.slice(0, 6)) {
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9);
+      pdf.setTextColor('#6b7684');
+      pdf.text(r.label, L, y);
+      pdf.setTextColor('#282727');
+      pdf.text([r.name, r.phone].filter(Boolean).join('  ·  '), L + 34, y);
+      y += 4.6;
+    }
+    y += 2;
+  }
+
+  const info = String(comp.generalInfo || '').trim();
+  if (info && y < 150) {
+    rubrik('Allmän information');
+    brodtext(info.slice(0, 700), 8.5);
+  }
+
+  // Nödraden sist och alltid — den ska sitta där ögat landar.
+  pdf.setFillColor('#fdecec');
+  pdf.rect(L, A4L.H - 26, w, 12, 'F');
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(9);
+  pdf.setTextColor('#c8102e');
+  pdf.text('Vid olycka: ring 112 först — sedan tävlingsledningen.', L + 3, A4L.H - 18.5);
+
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(6.5);
+  pdf.setTextColor('#a7bccf');
+  pdf.text('ESKIL — manuellt startkort', L, A4L.H - 8);
+}
+
+// Högra halvan: poängkortet patrullen fyller i vid varje kontroll.
+function drawScoreCard(pdf, comp, patrol, controls, coursePlaceNodes) {
+  const L = FOLD_X + 10, R = A4L.W - 12, w = R - L;
+  const anonym = comp.anonymousControls !== false;
+
+  pdf.setFillColor(BLUE);
+  pdf.rect(FOLD_X, 0, FOLD_X, 26, 'F');
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(13);
+  pdf.setTextColor('#ffffff');
+  pdf.text('POÄNGKORT', L, 13);
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(8);
+  pdf.setTextColor('#a7bccf');
+  pdf.text(`#${patrol.number ?? ''}  ${patrol.name || ''}`, L, 20);
+
+  // Raderna: kontroller i nummerordning, med banplatser inflätade så kortet
+  // följer samma ordning som kartan.
+  const rader = [];
+  const efter = new Map();
+  for (const nd of coursePlaceNodes) {
+    const k = nd.afterNummer ?? -1;
+    if (!efter.has(k)) efter.set(k, []);
+    efter.get(k).push(nd);
+  }
+  (efter.get(0) || []).forEach(nd => rader.push({ plats: nd }));
+  for (const c of controls) {
+    rader.push({ ctrl: c });
+    (efter.get(Number(c.nummer)) || []).forEach(nd => rader.push({ plats: nd }));
+  }
+
+  const top = 34, bottom = A4L.H - 40;
+  // INGET golv på radhöjden. Ett golv får raderna att rita utanför sidan när
+  // banan har många kontroller — och då försvinner de sista tyst, vilket är
+  // det värsta ett poängkort kan göra. Hellre trångt än ofullständigt; taket
+  // håller raderna luftiga när kontrollerna är få.
+  const rowH = Math.min(11, (bottom - top - 8) / Math.max(1, rader.length));
+  const fs = Math.max(5.5, Math.min(10, rowH * 0.82));
+
+  // Kolumner: nr, namn/skrivrad, poäng, extra, sign
+  const cNr = L + 6, cNamn = L + 13, cPo = R - 46, cEx = R - 30, cSi = R - 14;
+
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(7);
+  pdf.setTextColor('#6b7684');
+  pdf.text('NR', cNr, top - 3, { align: 'center' });
+  pdf.text(anonym ? 'KONTROLL' : 'KONTROLL', cNamn, top - 3);
+  pdf.text('POÄNG', cPo, top - 3, { align: 'center' });
+  pdf.text('EXTRA', cEx, top - 3, { align: 'center' });
+  pdf.text('SIGN', cSi, top - 3, { align: 'center' });
+  pdf.setDrawColor('#003660');
+  pdf.setLineWidth(0.4);
+  pdf.line(L, top - 1, R, top - 1);
+
+  let y = top;
+  pdf.setLineWidth(0.15);
+  for (const rad of rader) {
+    const mitt = y + rowH / 2 + fs * 0.12;
+    if (rad.plats) {
+      // Banplats: ingen poängruta — den ger inga poäng och ska inte se ut
+      // som en kontroll man kan glömma att fylla i.
+      pdf.setFillColor('#f3f6f9');
+      pdf.rect(L, y, w, rowH, 'F');
+      pdf.setFont('helvetica', 'italic');
+      pdf.setFontSize(fs - 0.5);
+      pdf.setTextColor('#6b7684');
+      pdf.text(rad.plats.title || 'Plats', cNamn, mitt);
+    } else {
+      const c = rad.ctrl;
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(fs);
+      pdf.setTextColor('#282727');
+      pdf.text(String(c.nummer ?? '?'), cNr, mitt, { align: 'center' });
+      pdf.setFont('helvetica', 'normal');
+      if (anonym) {
+        // Skrivrad i stället för namn: kontrollanten fyller i, kortet
+        // avslöjar ingenting i förväg.
+        pdf.setDrawColor('#dbe3ea');
+        pdf.line(cNamn, mitt + 1.2, cPo - 12, mitt + 1.2);
+      } else {
+        pdf.setTextColor('#282727');
+        pdf.text(pdf.splitTextToSize(c.name || '', cPo - 14 - cNamn)[0] || '', cNamn, mitt);
+        if (Number.isFinite(Number(c.maxPoang))) {
+          pdf.setTextColor('#9fb0c0');
+          pdf.setFontSize(fs - 1.5);
+          pdf.text(`max ${c.maxPoang}`, cPo - 13, mitt, { align: 'right' });
+        }
+      }
+      // Ifyllnadsrutor
+      pdf.setDrawColor('#b9c6d2');
+      pdf.setLineWidth(0.25);
+      const boxH = Math.max(2.4, rowH - 1.6);
+      for (const cx of [cPo, cEx, cSi]) pdf.rect(cx - 7, y + (rowH - boxH) / 2, 14, boxH);
+      pdf.setLineWidth(0.15);
+    }
+    pdf.setDrawColor('#e6ecf2');
+    pdf.line(L, y + rowH, R, y + rowH);
+    y += rowH;
+  }
+
+  // Summering + start/mål-tider
+  const fy = Math.min(y + 8, A4L.H - 32);
+  pdf.setDrawColor('#003660');
+  pdf.setLineWidth(0.4);
+  pdf.line(L, fy - 4, R, fy - 4);
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(9);
+  pdf.setTextColor('#282727');
+  pdf.text('SUMMA', L, fy + 2);
+  pdf.setDrawColor('#b9c6d2');
+  pdf.setLineWidth(0.3);
+  pdf.rect(cPo - 7, fy - 3, 14, 8);
+  pdf.rect(cEx - 7, fy - 3, 14, 8);
+
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(8);
+  pdf.setTextColor('#6b7684');
+  const ty = fy + 14;
+  pdf.text('Start kl', L, ty);
+  pdf.line(L + 14, ty + 0.8, L + 40, ty + 0.8);
+  pdf.text('Mål kl', L + 46, ty);
+  pdf.line(L + 58, ty + 0.8, L + 84, ty + 0.8);
+
+  pdf.setFontSize(6.5);
+  pdf.setTextColor('#a7bccf');
+  pdf.text('Lämnas till sekretariatet vid målgång.', L, A4L.H - 8);
+}
+
+/**
+ * @param mapUrl  förrenderad bankarta (courseMapDataUrl) — skickas in så en
+ *                massutskrift kan återanvända samma bild för alla patruller
+ *                i stället för att hämta tiles per patrull.
+ */
+export async function generateManualStartPdf(comp, patrol, controls, opts = {}) {
+  await ensureLibs();
+  const { mapUrl = null, mapRotated = false, places = [], coursePlaceNodes = [], startTid = null, pdf: existing = null } = opts;
+  // eslint-disable-next-line no-undef
+  const { jsPDF } = window.jspdf;
+  const pdf = existing || new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
+  if (existing) pdf.addPage('a4', 'landscape');
+
+  // --- Sida 1: kartan, så stor papperet tillåter ---
+  if (mapUrl) {
+    pdf.addImage(mapUrl, 'JPEG', 4, 4, A4L.W - 8, A4L.H - 8);
+  } else {
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(11);
+    pdf.setTextColor('#6b7684');
+    pdf.text('Ingen karta kunde ritas — kontrollerna saknar positioner.', A4L.W / 2, A4L.H / 2, { align: 'center' });
+  }
+  // Identitetsbricka: ett löst blad ska gå att lägga tillbaka i rätt hög.
+  pdf.setFillColor('#ffffff');
+  pdf.rect(4, A4L.H - 14, mapRotated ? 130 : 86, 10, 'F');
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(9);
+  pdf.setTextColor(BLUE);
+  const bricka = `#${patrol.number ?? ''} ${patrol.name || ''}`;
+  pdf.text(bricka, 7, A4L.H - 7);
+  if (mapRotated) {
+    // Kartan är lagd på högkant för att banan ska fylla papperet — säg det,
+    // annars ser den bara ut att ligga fel.
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(7.5);
+    pdf.setTextColor('#6b7684');
+    pdf.text('Vrid papperet för att läsa kartan', 7 + pdf.getTextWidth(bricka) + 5, A4L.H - 7);
+  }
+  drawFoldLine(pdf);
+
+  // --- Sida 2: information + poängkort ---
+  pdf.addPage('a4', 'landscape');
+  drawManualInfo(pdf, comp, patrol, places, startTid,
+    Number(comp.startTimes?.maxTimeMinutes) || 0);
+  drawScoreCard(pdf, comp, patrol, controls, coursePlaceNodes);
+  drawFoldLine(pdf);
+
+  return pdf;
+}
+
+// Ett kort, eller alla patrullers i EN fil. Kartan renderas en gång: den
+// kostar ~50 kartrutor, och 30 patruller ska inte bli 1500 hämtningar.
+export async function downloadManualStartPdf(comp, patrols, controls, track, places = []) {
+  await ensureLibs();
+  const lista = Array.isArray(patrols) ? patrols : [patrols];
+  const ordered = [...(controls || [])]
+    .filter(c => Number.isFinite(Number(c.nummer)))
+    .sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0));
+
+  const karta = await courseMapDataUrl(comp, controls, track, places, { wPx: 1900, hPx: 1328 });
+
+  // Banplatserna som rader i poängkortet, med kontrollnumret de följer.
+  const coursePlaceNodes = places
+    .filter(pl => pl.inCourse)
+    .map(pl => ({ title: pl.name, afterNummer: pl.courseAfter }));
+
+  let pdf = null;
+  for (const patrol of lista) {
+    pdf = await generateManualStartPdf(comp, patrol, ordered, {
+      mapUrl: karta?.url || null, mapRotated: !!karta?.rotated, places, coursePlaceNodes,
+      startTid: patrolStartTime(comp, patrol, lista.length > 1 ? lista.length : null),
+      pdf
+    });
+  }
+  const namn = lista.length === 1
+    ? `manuellt-startkort-${lista[0].number ?? ''}-${(lista[0].name || 'patrull').replace(/[^\w\-åäöÅÄÖ]+/g, '_')}.pdf`
+    : `manuella-startkort-${(comp.shortName || 'tavling').replace(/[^\w\-åäöÅÄÖ]+/g, '_')}.pdf`;
+  pdf.save(namn);
 }
 
 // ===========================================================================

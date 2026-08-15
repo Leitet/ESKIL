@@ -1,7 +1,7 @@
 import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import {
   getCompetition, watchPatrols, createPatrol, updatePatrol, deletePatrol,
-  updatePatrolOrders, getPatrolMeta, migratePatrolMeta
+  updatePatrolOrders, getPatrolMeta, migratePatrolMeta, listControls, getTrack
 } from '../store.js';
 import {
   allowedAvdelningar, escapeHtml, toast, confirmDialog, withBusy, startUrl,
@@ -9,9 +9,10 @@ import {
   wireOverlayClose,
   isCompAdminUser
 } from '../utils.js';
-import { renderQrToImg, downloadStartPdf } from '../pdf.js';
+import { renderQrToImg, downloadStartPdf, downloadManualStartPdf } from '../pdf.js';
 import { icon } from '../icons.js';
 import { help } from '../help.js';
+import { compPlaces } from '../places.js';
 import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
 
 let unsub = null;
@@ -66,6 +67,7 @@ export async function renderPatrols(app, user, cid) {
       </div>
       <div class="btn-row">
         <a class="btn btn-ghost btn-sm" href="/s/${encodeURIComponent(comp.slug || cid)}/test" target="_blank" rel="noopener">${icon('external', { size: 14 })} Testa startkort</a>
+        ${isAdmin ? `<button class="btn btn-secondary btn-sm" id="manual-all">${icon('file-text', { size: 14 })} Manuella startkort ${help('comp.manualStartkort')}</button>` : ''}
         ${isAdmin ? '<button class="btn btn-primary" id="new">+ Ny patrull</button>' : ''}
       </div>
     </div>
@@ -222,6 +224,20 @@ export async function renderPatrols(app, user, cid) {
   wrap.querySelector('#avd').addEventListener('change', e => { state.filter = e.target.value; render(); });
   if (isAdmin) {
     wrap.querySelector('#new').addEventListener('click', () => openPatrolModal(cid, comp, null, state.rows.length, onPatrolSaved));
+    // Massutskrift: en fil, två sidor per patrull. Kartan hämtas en gång.
+    const manualBtn = wrap.querySelector('#manual-all');
+    manualBtn.addEventListener('click', () => withBusy(manualBtn, 'Ritar kartan…', async () => {
+      const patruller = [...state.rows].sort((a, b) => (a.startOrder ?? 0) - (b.startOrder ?? 0));
+      if (!patruller.length) { toast('Inga patruller att skriva ut.', 'error'); return; }
+      try {
+        const [controls, track] = await Promise.all([listControls(cid), getTrack(cid).catch(() => null)]);
+        await downloadManualStartPdf({ id: cid, ...comp }, patruller, controls, track, compPlaces(comp));
+        toast(`${patruller.length} manuella startkort skapade`, 'success');
+      } catch (e) {
+        console.error(e);
+        toast('Kunde inte skapa PDF: ' + e.message, 'error');
+      }
+    }));
   }
 
   registerViewCleanup(() => {
@@ -293,7 +309,8 @@ async function openStartCardModal(cid, patrol, startScreenAvailable = false) {
           <button class="btn btn-secondary btn-sm" id="copy">Kopiera</button>
         </div>
         <div class="btn-row mt-4">
-          <button class="btn btn-primary" id="pdf">${icon('download', { size: 16 })} Ladda ner PDF</button>
+          <button class="btn btn-primary" id="pdf">${icon('download', { size: 16 })} QR-blad (PDF)</button>
+          <button class="btn btn-secondary" id="manual-pdf">${icon('file-text', { size: 16 })} Manuellt startkort</button>
           <a class="btn btn-ghost" href="${url}" target="_blank" rel="noopener">Öppna startkort</a>
           ${startScreenAvailable ? `<a class="btn btn-secondary" href="/app/c/${cid}/startscreen" target="_blank" rel="noopener">Startskärm</a>` : ''}
         </div>
@@ -319,6 +336,19 @@ async function openStartCardModal(cid, patrol, startScreenAvailable = false) {
     await copyToClipboard(url);
     toast('Länk kopierad', 'success');
   });
+
+  // Manuellt startkort — för patruller utan mobil. A4 som viks till A5.
+  const manBtn = overlay.querySelector('#manual-pdf');
+  manBtn.addEventListener('click', () => withBusy(manBtn, 'Ritar kartan…', async () => {
+    try {
+      const comp = await getCompetition(cid);
+      const [controls, track] = await Promise.all([listControls(cid), getTrack(cid).catch(() => null)]);
+      await downloadManualStartPdf({ id: cid, ...comp }, patrol, controls, track, compPlaces(comp));
+    } catch (e) {
+      console.error(e);
+      toast('Kunde inte skapa PDF: ' + e.message, 'error');
+    }
+  }));
 
   const pdfBtn = overlay.querySelector('#pdf');
   pdfBtn.addEventListener('click', () => withBusy(pdfBtn, 'Skapar PDF…', async () => {

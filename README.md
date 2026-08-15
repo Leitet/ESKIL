@@ -91,6 +91,14 @@ att köra gratis på Spark-planen.
   på 4 kontroller!", full pott, extrapoäng, tid på banan. Jämförelser mot
   andra patruller visas bara när poängen är publicerade, och en dålig
   placering skrivs aldrig ut (`js/highlights.js`).
+- **Manuella startkort** (Patruller-fliken, och per patrull i startkorts-
+  dialogen) — pappersstartkort i PDF för patruller utan mobil. A4 liggande som
+  viks på mitten till A5: hela ena sidan är bankartan (zoomen väljs efter
+  banan, och kartan läggs på högkant när banan är avlång så den fyller
+  papperet), andra sidan har information på ena halvan och ett ifyllbart
+  poängkort på den andra. Skrivs banan ut med anonyma kontroller får
+  poängkortet skrivrader i stället för kontrollnamn. Massutskriften gör alla
+  patruller i en fil och ritar kartan en enda gång.
 - **Spårdragning** (flik "Spår") — rita spåret mellan kontrollerna på en stor
   karta (växla karta/satellit, fullskärmsläge). Bensekvensen härleds ur
   kontrollernas nummerordning (start → 1 → 2 → … → mål när start/mål är
