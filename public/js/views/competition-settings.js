@@ -1329,6 +1329,31 @@ function renderMembersTab(comp, cid, user, refresh) {
       listControls(cid).then(cs => attachControlMeta(cid, cs)).catch(() => [])
     ]);
 
+    // Administratörer kommer från TVÅ håll: legacy-uid:n i `admins` (skaparen)
+    // och e-postlistan `adminEmails` (inbjudna). Samma person kan stå i båda —
+    // t.ex. den som fick tävlingen via en godkänd förfrågan, som blir skapare
+    // OCH inbjuden. Slå ihop dem på e-post så listan visar personer, inte
+    // poster; "Ta bort" städar båda ställena i en och samma skrivning.
+    const adminRows = [];
+    const adminByKey = new Map();
+    const addAdminRow = (key, patch) => {
+      let row = adminByKey.get(key);
+      if (!row) { row = { uid: null, email: null, label: key }; adminByKey.set(key, row); adminRows.push(row); }
+      Object.assign(row, patch);
+      return row;
+    };
+    (comp.admins || []).forEach((uid, i) => {
+      const email = normEmail(legacyAdminEmails[i] || '');
+      addAdminRow(email || `uid:${uid}`, { uid, ...(email ? { email } : {}), label: email || uid });
+    });
+    (comp.adminEmails || []).forEach(e => {
+      const email = normEmail(e);
+      if (email) addAdminRow(email, { email, label: e });
+    });
+    adminRows.forEach(r => {
+      r.isMe = (r.email && r.email === myEmail) || (r.uid && r.uid === user.uid);
+    });
+
     // Kontrollansvariga överblick: email -> { name, controls: [nr] }
     const ansvariga = new Map();
     for (const c of [...controls].sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0))) {
@@ -1348,17 +1373,15 @@ function renderMembersTab(comp, cid, user, refresh) {
           <p class="muted t-sm" style="margin:4px 0 0;">Tappar du åtkomsten på tävlingsdagen (mobil i sjön, dött batteri) kan ingen annan administrera tävlingen. Lägg till minst en reservadmin nedan.</p>
         </div>` : ''}
       <div class="mt-4">
-        <h4 class="t-over">Administratörer (${(comp.admins || []).length + (comp.adminEmails || []).length})</h4>
+        <h4 class="t-over">Administratörer (${adminRows.length})</h4>
         <ul class="muted t-sm" style="padding-left:16px;margin:6px 0 10px;">
-          ${legacyAdminEmails.map((e, i) => `<li>
-            ${escapeHtml(e || comp.admins[i])}
-            ${comp.admins[i] !== user.uid ? `<button class="btn btn-ghost btn-sm" style="color:var(--utm-pink);margin-left:8px;" data-remove-admin="${comp.admins[i]}">Ta bort</button>` : '<span class="muted">(du)</span>'}
+          ${adminRows.map((r, i) => `<li>
+            ${escapeHtml(r.label)}
+            ${r.isMe
+              ? '<span class="muted">(du)</span>'
+              : `<button class="btn btn-ghost btn-sm" style="color:var(--utm-pink);margin-left:8px;" data-remove-admin-row="${i}">Ta bort</button>`}
           </li>`).join('')}
-          ${(comp.adminEmails || []).map(e => `<li>
-            ${escapeHtml(e)}
-            ${normEmail(e) !== myEmail ? `<button class="btn btn-ghost btn-sm" style="color:var(--utm-pink);margin-left:8px;" data-remove-admin-email="${escapeHtml(e)}">Ta bort</button>` : '<span class="muted">(du)</span>'}
-          </li>`).join('')}
-          ${!(comp.admins || []).length && !(comp.adminEmails || []).length ? '<li>—</li>' : ''}
+          ${adminRows.length ? '' : '<li>—</li>'}
         </ul>
         <div class="row">
           <input class="input" type="email" placeholder="e-post@exempel.se" id="new-admin-email" style="max-width:320px;">
@@ -1439,18 +1462,16 @@ function renderMembersTab(comp, cid, user, refresh) {
       } catch (e) { toast('Fel: ' + e.message, 'error'); }
     }));
 
-    body.querySelectorAll('[data-remove-admin]').forEach(b => b.addEventListener('click', async () => {
-      if (!(await confirmDialog('Ta bort denna administratör?'))) return;
-      const uid = b.dataset.removeAdmin;
-      const next = (comp.admins || []).filter(x => x !== uid);
-      try { await updateCompetition(cid, { admins: next }); await refresh(); toast('Borttagen'); }
-      catch (e) { toast(e.message, 'error'); }
-    }));
-    body.querySelectorAll('[data-remove-admin-email]').forEach(b => b.addEventListener('click', async () => {
-      if (!(await confirmDialog('Ta bort denna administratör?'))) return;
-      const email = normEmail(b.dataset.removeAdminEmail);
-      const next = (comp.adminEmails || []).filter(x => normEmail(x) !== email);
-      try { await updateCompetition(cid, { adminEmails: next }); await refresh(); toast('Borttagen'); }
+    // En rad = en person. Tas hen bort ska både uid-posten och e-postposten
+    // gå, annars är personen kvar som admin via det andra spåret.
+    body.querySelectorAll('[data-remove-admin-row]').forEach(b => b.addEventListener('click', async () => {
+      const row = adminRows[Number(b.dataset.removeAdminRow)];
+      if (!row) return;
+      if (!(await confirmDialog(`Ta bort ${row.label} som administratör?`))) return;
+      const patch = {};
+      if (row.uid) patch.admins = (comp.admins || []).filter(x => x !== row.uid);
+      if (row.email) patch.adminEmails = (comp.adminEmails || []).filter(x => normEmail(x) !== row.email);
+      try { await updateCompetition(cid, patch); await refresh(); toast('Borttagen'); }
       catch (e) { toast(e.message, 'error'); }
     }));
     body.querySelectorAll('[data-remove-user]').forEach(b => b.addEventListener('click', async () => {
