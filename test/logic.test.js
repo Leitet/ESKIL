@@ -172,6 +172,25 @@ describe('ETA — kalibrering mot verkliga mellantider', () => {
     assert.equal(cal.byKey.c3.samples, 0, 'saknar föregående rapport → inget sampel');
   });
 
+  test('kalibrering dubbelräknar inte tid före en banplats', () => {
+    // Bana: c1 → Matplats (inCourse efter c1) → c2 → c3. Benet som börjar vid
+    // platsen kan inte mätas (platsen rapporterar inget); att ankra det mot
+    // starttiden skulle ge kumulativ tid som huvudloopen adderar som ett
+    // inkrement → hela banan före platsen räknas två gånger.
+    const comp = { ...COMP, places: [{ id: 'mp', name: 'Mat', kind: 'mat',
+      lat: 58.0045, lng: 15.0, inCourse: true, courseAfter: 1, dwellMinutes: 15 }] };
+    // Alla tre patruller: c1 ~12 min efter start, c2 ~35 min efter start.
+    const s = scores([
+      ['c1', 'p1', at(9, 12)], ['c1', 'p2', at(9, 22)], ['c1', 'p3', at(9, 32)],
+      ['c2', 'p1', at(9, 35)], ['c2', 'p2', at(9, 45)], ['c2', 'p3', at(9, 55)]
+    ]);
+    const cal = courseEtaCalibrated(comp, CONTROLS, null, s, PATROLS, NOW);
+    assert.ok(cal.byKey['place:mp'], 'platsen ska vara en nod i banan');
+    assert.equal(cal.byKey.c1.calibrated, true, 'c1 (före platsen) kalibreras som vanligt');
+    assert.equal(cal.byKey.c2.calibrated, false,
+      'c2-benet börjar vid platsen → modellen, inte en kumulativ-från-start-kalibrering');
+  });
+
   test('ordningen i score-listan spelar ingen roll', () => {
     const rows = scores([
       ['c1', 'p1', at(9, 20)], ['c1', 'p2', at(9, 30)], ['c1', 'p3', at(9, 40)]

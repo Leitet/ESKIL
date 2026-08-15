@@ -211,6 +211,12 @@ export function courseEtaCalibrated(comp, controls, track, scores = [], patrols 
   // alltid dataartefakter (kvarvarande synkklumpar, klockfel) — de får inte
   // fånga medianen.
   const observedSeg = (node, prev, capMin) => {
+    // Ett ben som börjar vid en banplats går inte att kalibrera: platsen
+    // rapporterar inget, och att då ankra mot starttiden ger den KUMULATIVA
+    // tiden från start — som huvudloopen felaktigt skulle addera som ett
+    // inkrement ovanpå ett cum som redan passerat platsen (dubbelräkning av
+    // hela banan före platsen). Låt modellen (gång + stationstid) gälla där.
+    if (prev && prev.kind === 'place') return { obsMin: null, samples: 0 };
     const deltas = [];
     for (const [pid, reps] of repByPatrol) {
       const here = reps.get(node.key);
