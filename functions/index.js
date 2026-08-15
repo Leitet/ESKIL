@@ -27,7 +27,25 @@ const { renderReceiptPdfBase64 } = require('./receipt-pdf');
 admin.initializeApp();
 const db = admin.firestore();
 
-setGlobalOptions({ region: 'europe-west1', maxInstances: 10 });
+// enforceAppCheck: SECURITY.md/CLAUDE.md säger att App Check är framtvingad på
+// Cloud Functions sedan 2026-08-13, men koden satte aldrig flaggan — de fyra
+// callables (requestLoginLink, deleteMyAccount, resendManageLink, sendFeedback)
+// accepterade alltså tokenlösa direktanrop och stod bara på per-adress-strypning
+// + mail-kvoterna. Här stängs det: ett anrop utan giltig reCAPTCHA-token nekas
+// innan handlern körs. Gäller callable/HTTPS; dokument-triggarna (mailköandet)
+// ignorerar flaggan.
+//
+// BARA i produktion: functions-emulatorn framtvingar faktiskt flaggan (verifierat
+// — tokenlöst anrop ger 401), och klienten hoppar över App Check-init på
+// localhost, så global enforcement skulle bryta ALL lokal callable-utveckling
+// (kontaktformulär, inloggningslänk, radera konto). FUNCTIONS_EMULATOR är satt
+// bara i emulatorn; vid deploy är den osatt → framtvingas i prod. Klienten
+// mintar redan token i prod (Firestore är redan framtvingad där).
+setGlobalOptions({
+  region: 'europe-west1',
+  maxInstances: 10,
+  enforceAppCheck: process.env.FUNCTIONS_EMULATOR !== 'true'
+});
 
 const APP_URL = 'https://eskilscout.se';
 const MAIL_COLLECTION = 'mail';
