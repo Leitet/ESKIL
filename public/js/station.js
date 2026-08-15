@@ -10,7 +10,7 @@ import {
   getCompetition, getStation, listPatrols, watchPassages, watchSelfPassages, setPassage,
   listControls, getTrack
 } from './store.js';
-import { escapeHtml, toast, confirmDialog, patrolStartTime, patrolStartDateTime, avdShort } from './utils.js';
+import { escapeHtml, toast, confirmDialog, patrolStartTime, patrolStartDateTime, avdShort, patrolLabel } from './utils.js';
 import { bindTap } from './haptic.js';
 import { updateBroadcast } from './broadcast.js';
 import { courseEtaCalibrated, patrolFinishEtaMs } from './course.js';
@@ -333,7 +333,7 @@ function patrolBtn(p) {
   return `
     <button type="button" class="patrol-btn ${checked ? 'reported' : ''} ${lateMin > 0 || overdueMin >= 10 ? 'st-late' : ''} ${p.utgatt ? 'st-utgatt' : ''}" data-patrol="${escapeHtml(p.id)}">
       <span style="font-size:12px;color:var(--r-fg-muted);">#${p.number ?? '—'} · <span class="dot ${avdShort(p.avdelning)}"></span>${escapeHtml(p.avdelning || '')}</span>
-      <strong style="display:block;">${escapeHtml(p.name || '')}</strong>
+      <strong style="display:block;">${escapeHtml(patrolLabel(p))}</strong>
       <span style="font-size:13px;">${sub}</span>
     </button>
   `;

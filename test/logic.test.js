@@ -11,7 +11,7 @@ import {
 } from '../public/js/course.js';
 import {
   patrolStartDateTime, normSlug, isValidSlug, suggestSlug,
-  effectiveIntervalSec, swishAppUrl, swishQrString
+  effectiveIntervalSec, swishAppUrl, swishQrString, patrolLabel
 } from '../public/js/utils.js';
 import { hasIcon } from '../public/js/icons.js';
 import { fitView, niceScale } from '../public/js/pdf.js';
@@ -707,5 +707,28 @@ describe('Skalstocken på den utskrivna kartan', () => {
   test('långa sträckor visas i kilometer', () => {
     assert.equal(niceScale(20, 300).etikett, '5 km');
     assert.equal(niceScale(1.5, 300).etikett, '200 m');
+  });
+});
+
+describe('Patrullens etikett', () => {
+  test('namn och kår sätts ihop på överenskommen form', () => {
+    assert.equal(patrolLabel({ name: 'Rävarna', kar: 'Lindsdals Scoutkår' }),
+      'Rävarna (Lindsdals Scoutkår)');
+  });
+
+  test('utan kår står bara namnet — ingen tom parentes', () => {
+    for (const p of [{ name: 'Rävarna' }, { name: 'Rävarna', kar: '' }, { name: 'Rävarna', kar: '   ' }])
+      assert.equal(patrolLabel(p), 'Rävarna');
+  });
+
+  test('utan namn faller den tillbaka på kåren i stället för tomt', () => {
+    assert.equal(patrolLabel({ kar: 'Lindsdals Scoutkår' }), 'Lindsdals Scoutkår');
+    assert.equal(patrolLabel({}), '');
+    assert.equal(patrolLabel(null), '');
+  });
+
+  test('blanksteg runt om städas bort', () => {
+    assert.equal(patrolLabel({ name: '  Rävarna ', kar: ' Lindsdals Scoutkår  ' }),
+      'Rävarna (Lindsdals Scoutkår)');
   });
 });

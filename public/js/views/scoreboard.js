@@ -1,7 +1,7 @@
 import { layout, setTopbarCompetition } from '../app.js';
 import { getCompetition, listPatrols, listControls, listAllScores, updateControl, updateCompetition, getTrack, listRegistrations, attachControlMeta } from '../store.js';
 import { downloadResultsPdf, downloadResultsCsv, attachTrackStats } from '../results-export.js';
-import { allowedAvdelningar, escapeHtml, rankPatrols, rankKarer, RANKING_RULES_TEXT, utslagRows, isNumSet, toast, withBusy, isCompAdminUser } from '../utils.js';
+import { allowedAvdelningar, escapeHtml, rankPatrols, rankKarer, RANKING_RULES_TEXT, utslagRows, isNumSet, toast, withBusy, isCompAdminUser, patrolLabel } from '../utils.js';
 import { icon } from '../icons.js';
 import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
 
@@ -206,7 +206,7 @@ export async function renderScoreboard(app, user, cid) {
                 <td><a class="row-link" href="/app/c/${cid}/controls/${m.control.id}" data-link>${escapeHtml(m.control.name || '—')}</a></td>
                 <td>${m.control.telefon ? `<a class="mono t-sm" href="tel:${escapeHtml(m.control.telefon)}" style="color:var(--scout-blue);text-decoration:none;white-space:nowrap;">${escapeHtml(m.control.telefon)}</a>` : '<span class="muted">—</span>'}</td>
                 <td class="num" style="font-weight:700;color:var(--avent-orange);">${m.patrols.length}</td>
-                <td class="t-sm">${m.patrols.map(p => `#${p.number ?? '?'} ${escapeHtml(p.name || '')}`).join(', ')}</td>
+                <td class="t-sm">${m.patrols.map(p => `#${p.number ?? '?'} ${escapeHtml(patrolLabel(p))}`).join(', ')}</td>
               </tr>`).join('')}
           </tbody>
         </table></div>

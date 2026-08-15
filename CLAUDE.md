@@ -61,6 +61,12 @@ Email extension). Production domain: https://eskilscout.se.
   på baksidan av föregående. Verifierat genom att leta upp sidfoten
   "Sida 1 · Placering" per sida i den färdiga filen — och mutationsverifierat
   (utan utfyllnad blir startsidorna 1, 6, 11, 16).
+- **Patrullens etikett är `patrolLabel()` i utils.js**: `Rävarna (Lindsdals
+  Scoutkår)`. Används där patrullen visas som EN etikett — Läget,
+  stationssidan, reservprotokollet, delade placeringar — eftersom flera kårer
+  döper sina patruller likadant och de vyerna saknar kårkolumn. Används INTE
+  där kåren redan står i en egen kolumn eller underrad (admin-patrullistan,
+  /t, prisutdelningen, startskärmen); där blir den bara dubblerad.
 - **Manuella startkort (`generateManualStartPdf` i `pdf.js`)** — pappersvarianten
   för patruller utan mobil. A4 LIGGANDE, vikt på mitten till A5: sida 1 hela
   kartan, sida 2 halv information + halvt poängkort. Kartan kommer från

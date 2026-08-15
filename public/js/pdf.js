@@ -4,7 +4,9 @@
 //
 // jsPDF and qrcodejs are loaded lazily from CDN on first use.
 
-import { reportUrl, startUrl, allInstructionGroups, publicManagement, patrolStartTime } from './utils.js';
+import {
+  reportUrl, startUrl, allInstructionGroups, publicManagement, patrolStartTime, patrolLabel
+} from './utils.js';
 import { legStub, courseLegs } from './course.js';
 
 let jsPDFReady = null;
@@ -967,7 +969,7 @@ function drawControlProtocolPage(pdf, comp, control, patrols = []) {
     pdf.setLineWidth(0.25);
     pdf.line(15, ty + 3, 195, ty + 3);
     pdf.text(String(p.number ?? ''), x.num + 1, ty);
-    pdf.text(String(p.name || '').slice(0, 34), x.name, ty);
+    pdf.text(patrolLabel(p).slice(0, 46), x.name, ty);
     pdf.text(String(p.avdelning || '').slice(0, 16), x.avd, ty);
     ty += 8.4;
     if (ty > H - 22) { footer(); pdf.addPage(); drawBannerSlim(pdf, W, comp); ty = 44; tabellhuvud(); }

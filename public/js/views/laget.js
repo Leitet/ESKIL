@@ -18,7 +18,7 @@ import { deleteField } from '../firebase.js';
 import { compPlaces, placeKind, drawPlaces } from '../places.js';
 import { courseLegs, drawCourseOnMap, courseEtaCalibrated, patrolFinishEtaMs } from '../course.js';
 import {
-  escapeHtml, toast, copyToClipboard, formatTime, patrolStartTime, patrolStartDateTime, avdShort,
+  escapeHtml, toast, copyToClipboard, formatTime, patrolStartTime, patrolStartDateTime, avdShort, patrolLabel,
   isCompAdminUser, withBusy, confirmDialog, promptDialog
 } from '../utils.js';
 import { ensureLeaflet } from '../leaflet.js';
@@ -508,7 +508,7 @@ export async function renderLaget(app, user, cid) {
               : (!pp.finishAt ? ` <button class="btn btn-ghost btn-sm" data-set-utgatt="${escapeHtml(p.id)}" title="Markera patrullen som utgått (DNF)">Utgått…</button>` : ''));
             return `<tr style="${pp.warn ? 'background:#fdf0f6;' : ''}${pp.utgatt ? 'opacity:.6;' : ''}">
               <td class="num">${p.number ?? ''}</td>
-              <td><strong>${escapeHtml(p.name || '')}</strong> <span class="muted t-sm"><span class="dot ${avdShort(p.avdelning)}"></span>${escapeHtml(p.avdelning || '')}</span></td>
+              <td><strong>${escapeHtml(patrolLabel(p))}</strong> <span class="muted t-sm"><span class="dot ${avdShort(p.avdelning)}"></span>${escapeHtml(p.avdelning || '')}</span></td>
               <td>${status}${undoFinish}${dnfBtn}</td>
               <td class="t-sm">${pp.startAt
                 ? formatTime(pp.startAt) + (pp.selfStarted

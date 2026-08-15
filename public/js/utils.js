@@ -494,6 +494,23 @@ export function parkingPoint(comp) {
 // startOrder × effectiveInterval. Pass `totalPatrols` for range mode so the
 // derived interval is correct. Anchored on the wall clock (not comp.date) so
 // demos + countdowns work on any day.
+// Patrullens namn i den form som gäller överallt där den visas som EN etikett:
+//
+//   Rävarna (Lindsdals Scoutkår)
+//
+// Flera kårer döper gärna sina patruller likadant, och i sekretariatets vyer
+// under tävlingsdagen finns ingen kårkolumn att jämföra med. Utan kåren går
+// två "Rävarna" inte att skilja åt när det är bråttom.
+//
+// Används INTE där kåren redan står bredvid i en egen kolumn eller underrad —
+// då blir den bara dubblerad.
+export function patrolLabel(patrol) {
+  const namn = String(patrol?.name || '').trim();
+  const kar = String(patrol?.kar || '').trim();
+  if (!namn) return kar || '';
+  return kar ? `${namn} (${kar})` : namn;
+}
+
 export function patrolStartDateTime(comp, patrol, today = new Date(), totalPatrols = null) {
   const s = startTimeSettings(comp);
   if (!s.enabled) return null;
