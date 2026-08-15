@@ -95,6 +95,14 @@ export async function flushQueue(cid, ctrlId, syncOne, { onSynced, timeoutMs = 6
   const synced = [];
   const failed = [];
   for (const item of items) {
+    // `items` är en ögonblicksbild från flushens start. Har en direktsparning
+    // (report.js) eller en nyare rapport hunnit ersätta eller ta bort just den
+    // här posten sedan dess, får den INTE skickas: en förlegad poäng som landar
+    // efter en färsk rättelse skriver över den (setDoc är ovillkorlig). Läs om
+    // den aktuella kön och matcha på (patrolId, queuedAt) precis före sändning.
+    const stillQueued = load(cid, ctrlId)
+      .some(x => x.patrolId === item.patrolId && x.queuedAt === item.queuedAt);
+    if (!stillQueued) continue;
     try {
       await withTimeout(syncOne(item), timeoutMs);
       removeFromQueue(cid, ctrlId, item.patrolId, item.queuedAt);

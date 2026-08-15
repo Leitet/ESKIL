@@ -831,3 +831,79 @@ describe('Extremfallet: noll poäng och sist', () => {
     assert.equal(hjälte({ points: 0, rank: null, legs: [] }, { placering: true, poang: true }), null);
   });
 });
+
+import { enqueue, listQueue, removeFromQueue, flushQueue, isPermanentError } from '../public/js/offline-queue.js';
+
+// Node har ingen fungerande localStorage i testmiljön (setItem kastar).
+// offline-queue sväljer felet tyst, så utan en shim blir kön alltid tom och
+// testet mäter ingenting. Ge oss en i minnet.
+{
+  let ok = false;
+  try { localStorage.setItem('__probe', '1'); ok = localStorage.getItem('__probe') === '1'; localStorage.removeItem('__probe'); } catch {}
+  if (!ok) {
+    const store = new Map();
+    globalThis.localStorage = {
+      getItem: k => (store.has(k) ? store.get(k) : null),
+      setItem: (k, v) => store.set(k, String(v)),
+      removeItem: k => store.delete(k)
+    };
+  }
+}
+
+describe('Offline-kön: förlegad flush får inte skriva över en rättelse', () => {
+  const CID = 'testcomp', CTRL = 'testctrl';
+  const rensa = () => {
+    for (const p of ['A', 'P']) removeFromQueue(CID, CTRL, p);
+    // säkra tomt
+    listQueue(CID, CTRL).forEach(x => removeFromQueue(CID, CTRL, x.patrolId, x.queuedAt));
+  };
+
+  test('en post som ersatts under en pågående flush skickas inte', async () => {
+    rensa();
+    enqueue(CID, CTRL, { patrolId: 'A', poang: 1 });
+    enqueue(CID, CTRL, { patrolId: 'P', poang: 5 });   // gammal poäng
+    const gammalP = listQueue(CID, CTRL).find(x => x.patrolId === 'P').queuedAt;
+
+    const skickade = [];
+    // syncOne: när A synkas (första posten, "långsam"), simulera att en
+    // direktsparning rättar P till 8 och tar bort den gamla kö-posten —
+    // exakt kapplöpningen: färsk skrivning, sedan förlegad snapshot.
+    const syncOne = async (item) => {
+      skickade.push({ patrolId: item.patrolId, poang: item.poang });
+      if (item.patrolId === 'A') {
+        // Direktsparningen sker sekunder efter den ursprungliga köningen i
+        // verkligheten; en liten fördröjning här ger ett distinkt queuedAt
+        // (Date.now har ms-upplösning) precis som på riktigt.
+        await new Promise(r => setTimeout(r, 3));
+        removeFromQueue(CID, CTRL, 'P');                 // direktsparningens städning
+        enqueue(CID, CTRL, { patrolId: 'P', poang: 8 }); // nyare rapport i kön
+      }
+    };
+
+    const { synced } = await flushQueue(CID, CTRL, syncOne, { timeoutMs: 1000 });
+
+    // Den förlegade P(5) skickades ALDRIG.
+    assert.ok(!skickade.some(s => s.patrolId === 'P' && s.poang === 5),
+      'förlegad P(5) skickades — skulle skrivit över rättelsen');
+    assert.ok(skickade.some(s => s.patrolId === 'A'), 'A skulle synkats');
+    // Den nyare P(8) ligger kvar i kön för nästa flush.
+    const kvar = listQueue(CID, CTRL).filter(x => x.patrolId === 'P');
+    assert.equal(kvar.length, 1, 'nyare P ska ligga kvar i kön');
+    assert.equal(kvar[0].poang, 8, 'det är den nyare poängen som ligger kvar');
+    assert.notEqual(kvar[0].queuedAt, gammalP, 'och det är inte den gamla posten');
+    rensa();
+  });
+
+  test('permanenta fel plockas ur kön, transienta stoppar flushen', async () => {
+    rensa();
+    enqueue(CID, CTRL, { patrolId: 'A', poang: 1 });
+    const { synced, failed } = await flushQueue(CID, CTRL,
+      async () => { const e = new Error('stängd'); e.code = 'permission-denied'; throw e; },
+      { timeoutMs: 1000 });
+    assert.equal(failed.length, 1, 'permanent fel rapporteras som failed');
+    assert.equal(listQueue(CID, CTRL).length, 0, 'och plockas ur kön');
+    assert.ok(isPermanentError({ code: 'permission-denied' }));
+    assert.ok(!isPermanentError({ code: 'unavailable' }));
+    rensa();
+  });
+});
