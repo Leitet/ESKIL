@@ -1,7 +1,7 @@
 // Super-admin: inkorgen för meddelanden från kontaktformuläret på /kontakt.
 //
 // Svaret skrivs HÄR, inte i mailklienten. Notismailet till super-admins har
-// därför inget Reply-To: en Cloud Function (onFeedbackReplyCreated) skickar
+// därför inget Reply-To: en Cloud Function (onFeedbackMessageCreated) skickar
 // svaret som mail FRÅN ESKIL, så att ingen super-admins privata adress hamnar
 // i inkorgen hos en utomstående.
 //

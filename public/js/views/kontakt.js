@@ -224,6 +224,13 @@ export function renderKontaktArende(app, fbId) {
 
   function rita() {
     if (tråd === null && ritad) return;   // snapshoten hann inte, behåll vyn
+    // Ett stängt eller borttaget ärende ska inte längre skyltas som pågående
+    // på formulärsidan — då pekar "Öppna ärendet" på en återvändsgränd.
+    if (!tråd || tråd.status === 'stangd') {
+      try {
+        if (localStorage.getItem(SENASTE) === fbId) localStorage.removeItem(SENASTE);
+      } catch { /* privat läge */ }
+    }
     if (!tråd) {
       body.innerHTML = `
         <div class="empty">
