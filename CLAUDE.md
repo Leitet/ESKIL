@@ -51,6 +51,16 @@ Email extension). Production domain: https://eskilscout.se.
   but must never link to, or leak, secret URLs. The router fires its
   route-change hook BEFORE the view handler (title reset depends on this).
 
+- **Kontrollens PDF är hela paketet.** `generateControlPdf` ger placering
+  (karta + QR), instruktioner, nödinfo (kontrollens EGNA koordinater + telefon
+  till ledning och grannkontroller) och reservprotokoll. `generateFieldPackPdf`
+  är bara alla kontrollers sådana paket i en fil — den har ingen egen layout
+  längre. Varje kontroll MÅSTE börja på en udda sida (`behöverUtfyllnad` +
+  `drawBlankFillerPage`): bunten skrivs ut dubbelsidigt och rivs isär till
+  kontrollernas pärmar, och utan utfyllnaden hamnar en kontrolls första sida
+  på baksidan av föregående. Verifierat genom att leta upp sidfoten
+  "Sida 1 · Placering" per sida i den färdiga filen — och mutationsverifierat
+  (utan utfyllnad blir startsidorna 1, 6, 11, 16).
 - **Manuella startkort (`generateManualStartPdf` i `pdf.js`)** — pappersvarianten
   för patruller utan mobil. A4 LIGGANDE, vikt på mitten till A5: sida 1 hela
   kartan, sida 2 halv information + halvt poängkort. Kartan kommer från

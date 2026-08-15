@@ -577,7 +577,9 @@ export function busyButton(btn, label = 'Sparar…') {
   const original = btn.innerHTML;
   btn.disabled = true;
   btn.dataset.busy = '1';
-  btn.innerHTML = `<span class="spinner" aria-hidden="true"></span><span>${label}</span>`;
+  // .busy-label så en långkörande åtgärd kan skriva ut sitt läge i knappen
+  // i stället för att bara låta spinnaren snurra.
+  btn.innerHTML = `<span class="spinner" aria-hidden="true"></span><span class="busy-label">${label}</span>`;
   return () => {
     btn.disabled = false;
     delete btn.dataset.busy;

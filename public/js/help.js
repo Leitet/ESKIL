@@ -126,6 +126,20 @@ export const HELP = {
     ]
   },
 
+  'comp.faltpaket': {
+    title: 'Fältpaket — alla kontroller',
+    body: [
+      'Samtliga kontrollers kompletta PDF:er i en enda fil. Varje kontroll bidrar med samma sidor som när du laddar ner den enskilt: placering med karta och QR-kod, instruktioner till kontrollanten, nödinfo med kontrollens egna koordinater och telefonnummer till ledning och grannkontroller, samt ett reservprotokoll att fylla i för hand.',
+      'Skriv ut hela bunten dubbelsidigt och riv isär den till kontrollernas pärmar — varje kontroll börjar på en ny framsida, så inget paket kan råka börja på baksidan av föregående.'
+    ],
+    faq: [
+      { q: 'Varför är vissa sidor tomma?', a: 'De skjuts in när en kontroll råkar sluta på en framsida. Utan dem hade nästa kontroll börjat på baksidan av den föregående, och den som river isär bunten hade fått halva paket.' },
+      { q: 'Behöver kontrollanterna något mer?', a: 'Nej, paketet är tänkt att räcka i sig: kartan visar var kontrollen ligger, QR-koden öppnar rapporteringen, och nödinfon står på papper om telefonen dör.' },
+      { q: 'Varför tar det en stund?', a: 'Varje kontroll får sin egen karta. Knappen räknar upp vilken kontroll den håller på med.' },
+      { q: 'Reservprotokollet är tomt', a: 'Då finns inga patruller registrerade än. Skriv ut igen när startlistan är klar, så står patrullerna med.' }
+    ]
+  },
+
   'comp.manualStartkort': {
     title: 'Manuella startkort',
     body: [

@@ -223,7 +223,13 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
         const allScores = await listAllScores(cid).catch(() => null);
         etaWindow = controlEtaWindow(comp, allControls, track, patrols, ctrlId, new Date(), allScores);
       } catch { /* bonus */ }
-      await downloadControlPdf({ id: cid, ...comp }, { ...control, id: ctrlId }, { legIn, legOut, etaWindow });
+      // Kontrollens PDF är hela paketet: placering, instruktioner, nödinfo
+      // och reservprotokoll — det som lämnas över till kontrollanten.
+      const { internalManagement } = await import('../utils.js');
+      await downloadControlPdf({ id: cid, ...comp }, { ...control, id: ctrlId }, {
+        legIn, legOut, etaWindow,
+        patrols, mgmt: internalManagement(comp), allControls
+      });
     } catch (e) {
       console.error(e);
       toast('Kunde inte skapa PDF: ' + e.message, 'error');

@@ -616,7 +616,10 @@ function drawBannerWithTitle(pdf, W, comp, control) {
   pdf.text(parts.join('   ·   ') || '—', textX, 60);
 }
 
-export async function generateControlPdf(comp, control, { legIn = null, legOut = null, etaWindow = null } = {}) {
+export async function generateControlPdf(comp, control, {
+  legIn = null, legOut = null, etaWindow = null,
+  patrols = [], mgmt = [], allControls = [], pdf: existing = null
+} = {}) {
   await ensureLibs();
   const url = reportUrl(comp.id, control.id);
   // Course stubs on the map: gray dashed = patrols arrive from there, orange
@@ -637,7 +640,8 @@ export async function generateControlPdf(comp, control, { legIn = null, legOut =
 
   // eslint-disable-next-line no-undef
   const { jsPDF } = window.jspdf;
-  const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
+  const pdf = existing || new jsPDF({ unit: 'mm', format: 'a4' });
+  if (existing) pdf.addPage();
   const W = 210, H = 297;
 
   // ==========================================================================
@@ -844,7 +848,131 @@ export async function generateControlPdf(comp, control, { legIn = null, legOut =
   pdf.text('ESKIL — scouttävlingssystem', 15, H - 10);
   pdf.text(new Date().toLocaleDateString('sv-SE'), W - 15, H - 10, { align: 'right' });
 
+  // ==========================================================================
+  // Nödinfo och reservprotokoll — pappersdelen av kontrollens paket. Låg
+  // tidigare i ett separat "fältpaket"; nu följer den med varje kontroll, så
+  // det som lämnas över till kontrollanten är komplett i sig.
+  // ==========================================================================
+  drawControlEmergencyPage(pdf, comp, control, { mgmt, allControls });
+  drawControlProtocolPage(pdf, comp, control, patrols);
+
   return pdf;
+}
+
+// Nödinfo för EN kontroll. Koordinaterna står här, inte "se annan sida" —
+// det är den här sidan man river loss och sätter i kontrollens pärm.
+function drawControlEmergencyPage(pdf, comp, control, { mgmt = [], allControls = [] } = {}) {
+  const W = 210, H = 297;
+  pdf.addPage();
+  drawBannerSlim(pdf, W, comp);
+  const footer = () => {
+    pdf.setTextColor('#a7bccf');
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(8);
+    pdf.text('ESKIL — nödinfo & kontakter', 15, H - 10);
+    pdf.text(`Kontroll ${control.nummer ?? '?'}`, W - 15, H - 10, { align: 'right' });
+  };
+
+  pdf.setFont('helvetica', 'bold'); pdf.setFontSize(20); pdf.setTextColor(BLUE);
+  pdf.text(`${control.nummer ?? ''}. ${control.name || ''}`, 15, 46, { maxWidth: W - 30 });
+
+  let y = 60;
+  const heading = (t) => {
+    if (y > H - 40) { footer(); pdf.addPage(); drawBannerSlim(pdf, W, comp); y = 44; }
+    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(12); pdf.setTextColor(ORANGE);
+    pdf.text(t, 15, y); y += 7;
+  };
+  const line = (t, opts = {}) => {
+    if (y > H - 24) { footer(); pdf.addPage(); drawBannerSlim(pdf, W, comp); y = 44; }
+    pdf.setFont('helvetica', opts.bold ? 'bold' : 'normal');
+    pdf.setFontSize(opts.size || 10.5);
+    pdf.setTextColor(opts.color || '#282727');
+    const rows = pdf.splitTextToSize(t, W - 30);
+    pdf.text(rows, 15, y);
+    y += rows.length * 5.2 + (opts.gap ?? 1.5);
+  };
+
+  pdf.setFillColor('#fdecec');
+  pdf.rect(15, y - 6, W - 30, 26, 'F');
+  pdf.setFont('helvetica', 'bold'); pdf.setFontSize(13); pdf.setTextColor('#c8102e');
+  pdf.text('VID NÖDLÄGE: RING 112', 20, y + 2);
+  pdf.setFont('helvetica', 'normal'); pdf.setFontSize(10); pdf.setTextColor('#282727');
+  const koord = Number.isFinite(control.lat)
+    ? `${control.lat.toFixed(5)}, ${control.lng.toFixed(5)}`
+    : 'position ej satt';
+  pdf.text(`Ange scouttävling, kontroll ${control.nummer ?? '?'} och koordinaterna: ${koord}`, 20, y + 10);
+  pdf.text('Meddela därefter tävlingsledningen.', 20, y + 15.5);
+  y += 32;
+
+  if (mgmt.length) {
+    heading('TÄVLINGSLEDNING');
+    for (const r of mgmt) {
+      line(`${r.label || 'Roll'}: ${r.name || '—'}${r.phone ? '  ·  ' + r.phone : ''}${r.email ? '  ·  ' + r.email : ''}`);
+    }
+    y += 4;
+  }
+
+  const andra = (allControls || []).filter(c => c.id !== control.id);
+  if (andra.length) {
+    heading('ÖVRIGA KONTROLLER');
+    for (const c of andra) line(`${c.nummer ?? '?'}. ${c.name || '—'}: ${c.telefon || '—'}`);
+    y += 4;
+  }
+
+  if ((comp.generalInfo || '').trim()) {
+    heading('ALLMÄN INFORMATION');
+    line(comp.generalInfo.trim());
+  }
+  footer();
+}
+
+// Reservprotokoll: papperslivlinan när tekniken dör.
+function drawControlProtocolPage(pdf, comp, control, patrols = []) {
+  const W = 210, H = 297;
+  const pats = [...patrols].sort((a, b) => (a.number ?? 0) - (b.number ?? 0));
+  pdf.addPage();
+  drawBannerSlim(pdf, W, comp);
+  const footer = () => {
+    pdf.setTextColor('#a7bccf');
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(8);
+    pdf.text('ESKIL — reservprotokoll (fylls i för hand)', 15, H - 10);
+    pdf.text(`Kontroll ${control.nummer ?? '?'}`, W - 15, H - 10, { align: 'right' });
+  };
+
+  pdf.setFont('helvetica', 'bold'); pdf.setFontSize(15); pdf.setTextColor(BLUE);
+  pdf.text(`Reservprotokoll — kontroll ${control.nummer ?? '?'} · ${control.name || ''}`, 15, 42);
+  pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9.5); pdf.setTextColor('#8a8a8a');
+  pdf.text(`Max ${control.maxPoang ?? 0} p · Min ${control.minPoang ?? 0} p${control.extraPoang ? ` · Extra max ${control.extraPoang} p` : ''}${control.utslag && control.utslagFraga ? ' · Utslagsfråga: ' + control.utslagFraga : ''}`, 15, 48);
+  pdf.text('Fyll i för hand om rapporteringen inte fungerar — lämna protokollet till sekretariatet efter tävlingen.', 15, 53);
+
+  const x = { num: 15, name: 27, avd: 95, poang: 130, extra: 150, utslag: 168, sign: 188 };
+  let ty = 62;
+  const tabellhuvud = () => {
+    pdf.setFillColor('#f0f4f8');
+    pdf.rect(15, ty - 5, 180, 8, 'F');
+    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(9); pdf.setTextColor(BLUE);
+    pdf.text('#', x.num + 1, ty); pdf.text('Patrull', x.name, ty); pdf.text('Avdelning', x.avd, ty);
+    pdf.text('Poäng', x.poang, ty); pdf.text('Extra', x.extra, ty); pdf.text('Utslag', x.utslag, ty); pdf.text('Sign', x.sign, ty);
+    ty += 6;
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9.5); pdf.setTextColor('#282727');
+  };
+  tabellhuvud();
+  if (!pats.length) {
+    pdf.setFont('helvetica', 'italic'); pdf.setTextColor('#8a8a8a');
+    pdf.text('Inga patruller registrerade än — skriv ut igen när startlistan är klar.', 15, ty + 4);
+  }
+  for (const p of pats) {
+    pdf.setDrawColor('#d8dee5');
+    pdf.setLineWidth(0.25);
+    pdf.line(15, ty + 3, 195, ty + 3);
+    pdf.text(String(p.number ?? ''), x.num + 1, ty);
+    pdf.text(String(p.name || '').slice(0, 34), x.name, ty);
+    pdf.text(String(p.avdelning || '').slice(0, 16), x.avd, ty);
+    ty += 8.4;
+    if (ty > H - 22) { footer(); pdf.addPage(); drawBannerSlim(pdf, W, comp); ty = 44; tabellhuvud(); }
+  }
+  footer();
 }
 
 export async function downloadControlPdf(comp, control, courseCtx = {}) {
@@ -854,111 +982,51 @@ export async function downloadControlPdf(comp, control, courseCtx = {}) {
 }
 
 // ===========================================================================
-// FÄLTPAKET — ett samlat dokument för pärmen: kontakter & nödinfo först,
-// sedan ett reservprotokoll per kontroll att fylla i för hand om tekniken
-// dör. Skrivs ut före tävlingen och läggs i sekretariatets/kontrollernas
-// pärmar som papperslivlina.
+// FÄLTPAKET — alla kontrollers KOMPLETTA paket i en enda fil att skriva ut.
+// Varje kontroll bidrar med samma sidor som dess egen PDF: placering med
+// karta och QR, instruktioner, nödinfo och reservprotokoll.
+//
+// Varje kontroll måste börja på en UDDA sida. Skrivs bunten ut dubbelsidigt
+// hamnar annars en kontrolls första sida på baksidan av föregående kontrolls
+// sista — och den som river isär bunten till kontrollernas pärmar får
+// halva paket. En blank sida skjuts därför in när det behövs.
 // ===========================================================================
-export async function generateFieldPackPdf(comp, controls, patrols, mgmt = []) {
+
+// Sant när nästa sida skulle bli en jämn sida — dvs. en baksida.
+const behöverUtfyllnad = (pdf) => pdf.getNumberOfPages() % 2 === 1;
+
+function drawBlankFillerPage(pdf) {
+  pdf.addPage();
+  pdf.setFont('helvetica', 'italic');
+  pdf.setFontSize(8);
+  pdf.setTextColor('#c8d2dc');
+  pdf.text('Denna sida är avsiktligt tom — nästa kontroll börjar på en ny framsida.', 105, 148, { align: 'center' });
+}
+
+export async function generateFieldPackPdf(comp, controls, patrols, mgmt = [], { onProgress = null, track = null } = {}) {
   await ensureLibs();
-  // eslint-disable-next-line no-undef
-  const { jsPDF } = window.jspdf;
-  const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
-  const W = 210, H = 297;
   const ordered = [...controls].sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0));
-  const pats = [...patrols].sort((a, b) => (a.number ?? 0) - (b.number ?? 0));
-  const footer = () => {
-    pdf.setTextColor('#a7bccf');
-    pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(8);
-    pdf.text('ESKIL — fältpaket (reservrutin på papper)', 15, H - 10);
-    pdf.text(new Date().toLocaleDateString('sv-SE'), W - 15, H - 10, { align: 'right' });
-  };
+  // Banans ben ger kartorna sin "väg in / väg ut"-kontext, precis som när en
+  // enskild kontroll skrivs ut från sin egen sida.
+  const { nodes, legs } = courseLegs(comp, ordered, track);
 
-  // --- Sida 1: kontakter & nödinfo ---
-  drawBannerSlim(pdf, W, comp);
-  let y = 44;
-  const heading = (t) => {
-    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(12); pdf.setTextColor(ORANGE);
-    pdf.text(t, 15, y); y += 7;
-  };
-  const line = (t, opts = {}) => {
-    pdf.setFont('helvetica', opts.bold ? 'bold' : 'normal');
-    pdf.setFontSize(opts.size || 10.5);
-    pdf.setTextColor(opts.color || '#282727');
-    const rows = pdf.splitTextToSize(t, W - 30);
-    pdf.text(rows, 15, y);
-    y += rows.length * 5.2 + (opts.gap ?? 1.5);
-  };
-
-  heading('VID NÖDLÄGE');
-  line('Ring 112. Ange att ni är på scouttävling, kontrollens nummer och koordinaterna som står på kontrollens PDF.', { bold: true });
-  y += 4;
-
-  if (mgmt.length) {
-    heading('TÄVLINGSLEDNING');
-    for (const r of mgmt) {
-      line(`${r.label || 'Roll'}: ${r.name || '—'}${r.phone ? ' · ' + r.phone : ''}${r.email ? ' · ' + r.email : ''}`);
-    }
-    y += 4;
+  let pdf = null;
+  for (const [i, c] of ordered.entries()) {
+    onProgress?.(i + 1, ordered.length);
+    if (pdf && behöverUtfyllnad(pdf)) drawBlankFillerPage(pdf);
+    const idx = nodes.findIndex(n => n.key === c.id);
+    pdf = await generateControlPdf(comp, c, {
+      legIn: idx > 0 ? legs[idx - 1] : null,
+      legOut: idx >= 0 && idx < legs.length ? legs[idx] : null,
+      patrols, mgmt, allControls: ordered, pdf
+    });
   }
-
-  const withPhone = ordered.filter(c => c.telefon);
-  if (withPhone.length || ordered.length) {
-    heading('KONTROLLERNAS TELEFONNUMMER');
-    for (const c of ordered) {
-      line(`${c.nummer ?? '?'}. ${c.name || '—'}: ${c.telefon || '—'}`);
-      if (y > H - 30) { footer(); pdf.addPage(); y = 20; }
-    }
-    y += 4;
-  }
-
-  if ((comp.generalInfo || '').trim()) {
-    if (y > H - 60) { footer(); pdf.addPage(); y = 20; }
-    heading('ALLMÄN INFORMATION');
-    line(comp.generalInfo.trim());
-  }
-  footer();
-
-  // --- Reservprotokoll: en sida per kontroll ---
-  for (const c of ordered) {
-    pdf.addPage();
-    drawBannerSlim(pdf, W, comp);
-    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(15); pdf.setTextColor(BLUE);
-    pdf.text(`Reservprotokoll — kontroll ${c.nummer ?? '?'} · ${c.name || ''}`, 15, 42);
-    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9.5); pdf.setTextColor('#8a8a8a');
-    pdf.text(`Max ${c.maxPoang ?? 0} p · Min ${c.minPoang ?? 0} p${c.extraPoang ? ` · Extra max ${c.extraPoang} p` : ''}${c.utslag && c.utslagFraga ? ' · Utslagsfråga: ' + c.utslagFraga : ''}`, 15, 48);
-    pdf.text('Fyll i för hand om rapporteringen inte fungerar — lämna protokollet till sekretariatet efter tävlingen.', 15, 53);
-
-    // Tabellhuvud
-    const x = { num: 15, name: 27, avd: 95, poang: 130, extra: 150, utslag: 168, sign: 188, end: 195 };
-    let ty = 62;
-    pdf.setFillColor('#f0f4f8');
-    pdf.rect(15, ty - 5, 180, 8, 'F');
-    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(9); pdf.setTextColor(BLUE);
-    pdf.text('#', x.num + 1, ty); pdf.text('Patrull', x.name, ty); pdf.text('Avdelning', x.avd, ty);
-    pdf.text('Poäng', x.poang, ty); pdf.text('Extra', x.extra, ty); pdf.text('Utslag', x.utslag, ty); pdf.text('Sign', x.sign, ty);
-    ty += 6;
-    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9.5); pdf.setTextColor('#282727');
-    for (const p of pats) {
-      pdf.setDrawColor('#d8dee5');
-      pdf.setLineWidth(0.25);
-      pdf.line(15, ty + 3, 195, ty + 3);
-      pdf.text(String(p.number ?? ''), x.num + 1, ty);
-      pdf.text(String(p.name || '').slice(0, 34), x.name, ty);
-      pdf.text(String(p.avdelning || '').slice(0, 16), x.avd, ty);
-      ty += 8.4;
-      if (ty > H - 22) { footer(); pdf.addPage(); ty = 24; }
-    }
-    // Vertikala kolumnlinjer (lätta) på sista sidan av kontrollen
-    footer();
-  }
-
   return pdf;
 }
 
-export async function downloadFieldPackPdf(comp, controls, patrols, mgmt) {
-  const pdf = await generateFieldPackPdf(comp, controls, patrols, mgmt);
+export async function downloadFieldPackPdf(comp, controls, patrols, mgmt, opts = {}) {
+  const pdf = await generateFieldPackPdf(comp, controls, patrols, mgmt, opts);
+  if (!pdf) throw new Error('Inga kontroller att skriva ut.');
   pdf.save(`faltpaket-${(comp.shortName || 'tavling').toLowerCase().replace(/[^\wåäö-]+/gi, '-')}${comp.year ? '-' + comp.year : ''}.pdf`);
 }
 

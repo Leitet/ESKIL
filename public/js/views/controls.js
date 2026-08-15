@@ -59,7 +59,7 @@ export async function renderControls(app, user, cid) {
         <h1 class="t-d2">Kontroller</h1>
       </div>
       <div class="btn-row">
-        <button class="btn btn-ghost btn-sm" id="field-pack" title="Kontakter, nödinfo och ett reservprotokoll per kontroll — pappersreserven om tekniken dör">Fältpaket (PDF)</button>
+        <button class="btn btn-ghost btn-sm" id="field-pack" title="Alla kontrollers kompletta PDF:er i en fil — placering, instruktioner, nödinfo och reservprotokoll. Varje kontroll börjar på en ny framsida.">Fältpaket — alla kontroller (PDF)</button>${help('comp.faltpaket')}
         ${isAdmin ? `
           <button class="btn btn-ghost btn-sm" id="open-all">Öppna alla</button>
           <button class="btn btn-ghost btn-sm" id="close-all">Stäng alla</button>
@@ -314,17 +314,28 @@ export async function renderControls(app, user, cid) {
     wrap.querySelector('#close-all').addEventListener('click', bulkSetOpen(false));
   }
 
-  // Fältpaketet: kontakter + nödinfo + reservprotokoll per kontroll. Telefon
-  // ligger i private/meta — mergeMeta har redan fyllt på state.rows.
-  wrap.querySelector('#field-pack').addEventListener('click', (e) => withBusy(e.currentTarget, 'Skapar PDF…', async () => {
-    try {
-      const [{ downloadFieldPackPdf }, { listPatrols }, { internalManagement }] = await Promise.all([
-        import('../pdf.js'), import('../store.js'), import('../utils.js')
-      ]);
-      const patrols = await listPatrols(cid);
-      await downloadFieldPackPdf(comp, state.rows, patrols, internalManagement(comp));
-    } catch (err) { console.error(err); toast('Kunde inte skapa PDF: ' + err.message, 'error'); }
-  }));
+  // Fältpaketet: varje kontrolls KOMPLETTA PDF, i en fil att skriva ut och
+  // riva isär till kontrollernas pärmar. Telefonnumren ligger i private/meta
+  // — mergeMeta har redan fyllt på state.rows.
+  wrap.querySelector('#field-pack').addEventListener('click', (e) => {
+    const btn = e.currentTarget;
+    withBusy(btn, 'Skapar fältpaket…', async () => {
+      try {
+        const [{ downloadFieldPackPdf }, { listPatrols, getTrack }, { internalManagement }] = await Promise.all([
+          import('../pdf.js'), import('../store.js'), import('../utils.js')
+        ]);
+        const [patrols, track] = await Promise.all([listPatrols(cid), getTrack(cid).catch(() => null)]);
+        // Paketet ritar en karta per kontroll — det tar tid, så säg var vi är
+        // i stället för att låta knappen stå och snurra.
+        const label = btn.querySelector('.busy-label') || btn;
+        await downloadFieldPackPdf(comp, state.rows, patrols, internalManagement(comp), {
+          track,
+          onProgress: (i, n) => { label.textContent = `Kontroll ${i} av ${n}…`; }
+        });
+        toast('Fältpaketet skapat', 'success');
+      } catch (err) { console.error(err); toast('Kunde inte skapa PDF: ' + err.message, 'error'); }
+    });
+  });
 
   registerViewCleanup(() => {
     if (unsub) { unsub(); unsub = null; }

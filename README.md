@@ -24,8 +24,13 @@ att köra gratis på Spark-planen.
   (publikt endast när poängen är publicerade).
 - **Kontrollens rapportsida** (`/k/<cid>/<ctrlId>`) — ingen inloggning, hemlig
   URL, mobiloptimerad, **nattläge**.
-- **PDF + QR-kod** — varje kontroll kan skrivas ut med info och en skanbar QR
-  som öppnar rapportsidan.
+- **Kontrollens PDF** — hela paketet som lämnas över till kontrollanten:
+  placering med karta och skanbar QR till rapportsidan, instruktioner, nödinfo
+  med kontrollens egna koordinater och telefonnummer till ledning och
+  grannkontroller, samt ett reservprotokoll att fylla i för hand.
+  **Fältpaketet** (knapp i kontrollistan) är samtliga kontrollers paket i en
+  fil: skriv ut dubbelsidigt och riv isär till kontrollernas pärmar. Varje
+  kontroll börjar på en ny framsida — blanka sidor skjuts in där det behövs.
 - **Magic-link-inloggning** med långa sessioner (Firebase Auth `browserLocalPersistence`).
 - **Publik startsida** (`/`) — promotar ESKIL och listar tävlingar öppna för
   anmälan, pågående/kommande och avslutade tävlingar med resultat, plus
