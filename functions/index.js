@@ -243,6 +243,94 @@ exports.requestLoginLink = onCall(async (req) => {
   return { ok: true };
 });
 
+// --- Tävlingsförfrågningar ----------------------------------------------------
+// Vanliga användare kan inte skapa tävlingar (firestore.rules) utan skickar en
+// förfrågan. Här går mailen: ny förfrågan → alla super-admins; beslut →
+// sökanden med super-adminens svar. Super-admins hämtas ur users-kollektionen
+// via admin-SDK:n (bypassar rules).
+
+async function superAdminEmails() {
+  const snap = await db.collection('users').where('role', '==', 'super-admin').get();
+  return snap.docs.map(d => (d.data().email || '').trim()).filter(Boolean);
+}
+
+const REQ_COMP = { shortName: 'Tävlingsförfrågan', organizer: 'ESKIL' };
+
+exports.onCompetitionRequestCreated = onDocumentCreated('competitionRequests/{reqId}', async (event) => {
+  const r = event.data && event.data.data();
+  if (!r || r.status !== 'vantar') return;
+
+  const to = await superAdminEmails();
+  if (!to.length) { logger.warn('Ingen super-admin att mejla om tävlingsförfrågan'); return; }
+  // Självbetjäningsvektor (vem som helst inloggad kan skapa en förfrågan) —
+  // håll den innanför den globala mail-kvoten.
+  if (!(await reserveMail('mail', to.length))) {
+    logger.warn('Daily mail cap reached — hoppar över förfrågningsmail');
+    return;
+  }
+
+  const body = `
+    <p><strong>${esc(r.requestedByEmail || 'En användare')}</strong> har begärt att få skapa en ny tävling i ESKIL.</p>
+    <p style="font-size:17px;font-weight:bold;margin:18px 0 4px;">${esc(r.name)}</p>
+    ${r.date ? `<p style="margin:0 0 8px;">Datum: ${esc(r.date)}</p>` : ''}
+    ${r.description ? `<p style="margin:0 0 8px;">${esc(r.description)}</p>` : ''}
+    ${r.message ? `<p style="border-left:3px solid #d2dde8;padding-left:12px;color:#56544f;">${esc(r.message)}</p>` : ''}
+    <p>Godkänner du förfrågan skapas tävlingen direkt med sökanden som administratör.
+    Nekar du skapas ingen tävling — i båda fallen kan du skicka med ett svar.</p>
+    ${button(`${APP_URL}/app/admin/requests`, 'Granska förfrågan')}
+  `;
+  await queueMail({
+    to,
+    ...(r.requestedByEmail ? { replyTo: r.requestedByEmail } : {}),
+    message: {
+      subject: `Tävlingsförfrågan: ${r.name}`,
+      html: layout(REQ_COMP, body, 'Svar på mailet går till den som begärde tävlingen.'),
+      text: `${r.requestedByEmail} har begärt en ny tävling: ${r.name}. Granska: ${APP_URL}/app/admin/requests`
+    }
+  });
+  logger.info(`Förfrågningsmail köat till ${to.length} super-admin(s)`);
+});
+
+exports.onCompetitionRequestDecided = onDocumentUpdated('competitionRequests/{reqId}', async (event) => {
+  const before = event.data && event.data.before.data();
+  const after = event.data && event.data.after.data();
+  if (!before || !after) return;
+  // Bara övergången väntar → beslut ska mejla (inte varje senare redigering).
+  if (before.status !== 'vantar' || after.status === 'vantar') return;
+  if (!after.requestedByEmail) return;
+  if (!(await reserveMail('mail', 1))) {
+    logger.warn('Daily mail cap reached — hoppar över beslutsmail');
+    return;
+  }
+
+  const approved = after.status === 'godkand';
+  const body = approved ? `
+    <p>Hej!</p>
+    <p>Din förfrågan om tävlingen <strong>${esc(after.name)}</strong> är godkänd — tävlingen är skapad
+    och du är administratör för den. Nu kan du fylla i resten: patruller, kontroller, anmälan och allt annat.</p>
+    ${after.decisionMessage ? `<p style="border-left:3px solid #d2dde8;padding-left:12px;color:#56544f;">${esc(after.decisionMessage)}</p>` : ''}
+    ${button(after.competitionId ? `${APP_URL}/app/c/${after.competitionId}` : `${APP_URL}/app`, 'Öppna tävlingen')}
+  ` : `
+    <p>Hej!</p>
+    <p>Din förfrågan om tävlingen <strong>${esc(after.name)}</strong> har tyvärr inte godkänts,
+    och någon tävling har därför inte skapats.</p>
+    ${after.decisionMessage ? `<p style="border-left:3px solid #d2dde8;padding-left:12px;color:#56544f;">${esc(after.decisionMessage)}</p>` : ''}
+    <p>Har du frågor går det bra att svara på det här mailet.</p>
+  `;
+  await queueMail({
+    to: [after.requestedByEmail],
+    ...(after.decidedBy ? { replyTo: after.decidedBy } : {}),
+    message: {
+      subject: approved ? `Godkänd: ${after.name}` : `Svar på din tävlingsförfrågan: ${after.name}`,
+      html: layout(REQ_COMP, body, after.decidedBy ? 'Svar på mailet går till ESKIL:s administratör.' : undefined),
+      text: approved
+        ? `Din förfrågan om ${after.name} är godkänd. Öppna tävlingen: ${APP_URL}/app`
+        : `Din förfrågan om ${after.name} godkändes inte. ${after.decisionMessage || ''}`
+    }
+  });
+  logger.info(`Beslutsmail köat till ${after.requestedByEmail} (${after.status})`);
+});
+
 // --- Självbetjäning: skicka ändringslänken igen --------------------------------
 // Kårledare som tappat bekräftelsemailet begär om sin ändringslänk från
 // anmälningssidan. Svaret är ALLTID neutralt ok — det får aldrig gå att

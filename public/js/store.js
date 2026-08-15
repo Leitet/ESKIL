@@ -86,6 +86,78 @@ async function readAccess(cid) {
   } catch { return null; } // not a member — denied read is expected
 }
 
+// --- Tävlingsförfrågningar ---------------------------------------------------
+// Vanliga användare skapar inte tävlingar själva (rules tillåter det bara för
+// super-admin, plus årgångskopiering av en tävling man redan administrerar).
+// I stället skickas en förfrågan som en super-admin godkänner eller nekar;
+// godkännandet skapar tävlingen med sökanden som admin. Cloud Functions
+// mailar super-admins vid ny förfrågan och sökanden vid beslut.
+
+export async function createCompetitionRequest({ name, description, date, message }, user) {
+  const ref = doc(collection(db, 'competitionRequests'));
+  await setDoc(ref, {
+    name: String(name || '').trim().slice(0, 120),
+    description: String(description || '').trim().slice(0, 2000),
+    date: date || null,
+    message: String(message || '').trim().slice(0, 2000),
+    requestedBy: user.uid,
+    requestedByEmail: String(user.email || '').trim().toLowerCase(),
+    status: 'vantar',
+    createdAt: new Date().toISOString()
+  });
+  return ref.id;
+}
+
+// Sökandens egna förfrågningar. Frågan MÅSTE vara begränsad på requestedBy —
+// regeln validerar per dokument och nekar en obegränsad list.
+export async function listMyCompetitionRequests(user) {
+  const snap = await getDocs(query(
+    collection(db, 'competitionRequests'), where('requestedBy', '==', user.uid)));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+// Alla förfrågningar (super-admin).
+export async function listCompetitionRequests() {
+  const snap = await getDocs(collection(db, 'competitionRequests'));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+export async function deleteCompetitionRequest(reqId) {
+  await deleteDoc(doc(db, 'competitionRequests', reqId));
+}
+
+// Godkänn: skapa tävlingen med SÖKANDEN som admin (både uid och e-post, så
+// rättigheten gäller direkt och överlever ett uid-byte), och stämpla
+// förfrågan med beslutet — den uppdateringen är det Cloud Functionen
+// reagerar på när svarsmailet ska gå iväg.
+export async function approveCompetitionRequest(req, decisionMessage, decidedByEmail) {
+  const cid = await createCompetition({
+    name: req.name,
+    shortName: req.name.slice(0, 24),
+    description: req.description || '',
+    date: req.date || null,
+    year: req.date ? Number(String(req.date).slice(0, 4)) || null : new Date().getFullYear(),
+    adminEmails: [req.requestedByEmail]
+  }, { uid: req.requestedBy, email: req.requestedByEmail });
+  await updateDoc(doc(db, 'competitionRequests', req.id), {
+    status: 'godkand',
+    competitionId: cid,
+    decisionMessage: String(decisionMessage || '').trim(),
+    decidedAt: new Date().toISOString(),
+    decidedBy: decidedByEmail || ''
+  });
+  return cid;
+}
+
+export async function denyCompetitionRequest(reqId, decisionMessage, decidedByEmail) {
+  await updateDoc(doc(db, 'competitionRequests', reqId), {
+    status: 'nekad',
+    decisionMessage: String(decisionMessage || '').trim(),
+    decidedAt: new Date().toISOString(),
+    decidedBy: decidedByEmail || ''
+  });
+}
+
 // Alla tävlingar med sina access-dokument inlästa (adminEmails/userEmails/
 // ekonomiEmails ligger i private/access sedan Fas 3c och är RADERADE från det
 // publika dokumentet). Super-admin får läsa alla; för andra faller de

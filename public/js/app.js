@@ -28,6 +28,7 @@ import { renderTrack } from './views/track.js';
 import { renderCeremony } from './views/ceremony.js';
 import { renderSettings } from './views/settings.js';
 import { renderAdminUsers } from './views/admin-users.js';
+import { renderAdminRequests } from './views/admin-requests.js';
 import { renderAdminSystem } from './views/admin-system.js';
 
 const app = document.getElementById('app');
@@ -40,6 +41,7 @@ route('/',             () => renderLanding(app, currentUser));
 route('/app',          () => guard(() => renderHome(app, currentUser)));
 route('/app/settings', () => guard(() => renderSettings(app, currentUser)));
 route('/app/admin/users', () => guard(() => renderAdminUsers(app, currentUser)));
+route('/app/admin/requests', () => guard(() => renderAdminRequests(app, currentUser)));
 route('/app/admin/system', () => guard(() => renderAdminSystem(app, currentUser)));
 route('/app/c/:cid',                          (p) => guard(() => renderCompetition(app, currentUser, p.cid), p.cid));
 route('/app/c/:cid/settings',                 (p) => guard(() => renderCompetitionSettings(app, currentUser, p.cid), p.cid));

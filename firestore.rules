@@ -122,6 +122,50 @@ service cloud.firestore {
         && data.keys().hasOnly(['patrolId','poang','extraPoang','note','reportedAt','clientReportedAt','reporter','utslagGissning','history']);
     }
 
+    // --- Tävlingsförfrågningar
+    // En inloggad användare kan inte skapa en tävling själv (se competitions
+    // create) utan skickar en förfrågan med grunduppgifter + ett meddelande.
+    // Super-admins får listan, godkänner eller nekar med ett svar tillbaka,
+    // och det är godkännandet som skapar tävlingen med sökanden som admin.
+    // En Cloud Function mailar super-admins vid ny förfrågan och sökanden
+    // vid beslut (reagerar på create/update här — klienten rör aldrig /mail).
+    //
+    // Läsning: super-admin ser alla; sökanden ser sina egna (klienten frågar
+    // med where('requestedBy','==',uid), vilket regeln nedan validerar per
+    // dokument — en obegränsad list nekas för alla utom super-admin).
+    match /competitionRequests/{reqId} {
+      allow read: if isSuperAdmin()
+        || (isSignedIn() && resource.data.requestedBy == request.auth.uid);
+
+      allow create: if isSignedIn()
+        && request.resource.data.requestedBy == request.auth.uid
+        && request.resource.data.requestedByEmail == authEmail()
+        && request.resource.data.status == 'vantar'
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 120
+        && request.resource.data.get('description', '') is string
+        && request.resource.data.get('description', '').size() <= 2000
+        && request.resource.data.get('message', '') is string
+        && request.resource.data.get('message', '').size() <= 2000
+        && (request.resource.data.get('date', null) == null
+            || (request.resource.data.date is string && request.resource.data.date.size() <= 10))
+        && request.resource.data.keys().hasOnly([
+             'name', 'description', 'date', 'message',
+             'requestedBy', 'requestedByEmail', 'status', 'createdAt'
+           ]);
+
+      // Beslutet (status/svar/competitionId) sätts bara av super-admin.
+      allow update: if isSuperAdmin();
+
+      // Super-admin städar; sökanden får rensa bort sin egen behandlade
+      // förfrågan (kvittera ett nej) men inte radera en som väntar på svar.
+      allow delete: if isSuperAdmin()
+        || (isSignedIn()
+            && resource.data.requestedBy == request.auth.uid
+            && resource.data.status != 'vantar');
+    }
+
     // --- System config (super-admin only). Operational settings tunable
     // without a deploy (e.g. mail rate-limit caps). Cloud Functions read it
     // via the admin SDK (bypassing rules).
@@ -154,15 +198,20 @@ service cloud.firestore {
     // --- Competitions
     match /competitions/{cid} {
       allow read: if true; // public read of competition meta is OK (names only)
-      // Only super-admin can create demo competitions — regular users creating
-      // one accidentally shouldn't be possible.
-      // MUST read `demo` with .get(): createCompetition sätter inte fältet, och
-      // en direktläsning av en saknad property är ett evaluation ERROR. Rules'
-      // `||` är feltolerant bara när den andra operanden är true — super-admin
-      // slapp därför igenom (error || true) medan varje vanlig användare fick
-      // "insufficient permissions" när de skapade sin första tävling.
-      allow create: if isSignedIn()
-        && (request.resource.data.get('demo', false) != true || isSuperAdmin());
+      // Tävlingar skapas INTE fritt: en vanlig användare skickar en förfrågan
+      // (competitionRequests nedan) som en super-admin godkänner, och det är
+      // super-adminens klient som skapar dokumentet. Undantaget är
+      // årgångskopiering — den som redan är admin på en tävling får kopiera
+      // den till nästa år utan att gå via förfrågan (copiedFrom pekar på
+      // ursprungstävlingen och måste vara en tävling hen administrerar).
+      // OBS: läs alltid optionella fält med .get() — en direktläsning av en
+      // saknad property är ett evaluation ERROR som nekar skrivningen.
+      allow create: if isSuperAdmin()
+        || (isSignedIn()
+            && request.resource.data.get('demo', false) != true
+            && request.resource.data.get('copiedFrom', '') is string
+            && request.resource.data.get('copiedFrom', '') != ''
+            && isCompAdmin(request.resource.data.copiedFrom));
       // Writes on a demo competition are locked to super-admin.
       allow update: if isSuperAdmin()
         || (isCompAdmin(cid) && !compIsDemo(cid));

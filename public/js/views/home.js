@@ -1,8 +1,11 @@
 import { layout } from '../app.js';
-import { listCompetitionsForUser, createCompetition, isSlugTaken } from '../store.js';
+import {
+  listCompetitionsForUser, createCompetition, isSlugTaken,
+  createCompetitionRequest, listMyCompetitionRequests, deleteCompetitionRequest
+} from '../store.js';
 import {
   escapeHtml, formatDate, toast, withBusy, isCompAdminUser, ekonomiFromManagement,
-  normSlug, isValidSlug, suggestSlug
+  normSlug, isValidSlug, suggestSlug, wireOverlayClose
 } from '../utils.js';
 import { createManagementForm } from '../managementform.js';
 import { icon } from '../icons.js';
@@ -33,6 +36,7 @@ import { setDocTitle } from '../nav.js';
 
 export async function renderHome(app, user) {
   setDocTitle('Tävlingar');
+  const isSuper = user.role === 'super-admin';
   const wrap = document.createElement('div');
   wrap.innerHTML = `
     <div class="page-head">
@@ -41,14 +45,35 @@ export async function renderHome(app, user) {
         <h1 class="t-d2">Tävlingar</h1>
       </div>
       <div class="btn-row">
-        <button class="btn btn-primary" id="create">+ Ny tävling</button>
+        <button class="btn btn-primary" id="create">${isSuper ? '+ Ny tävling' : '+ Begär ny tävling'}</button>
       </div>
     </div>
+    <div id="requests"></div>
     <div id="list"></div>
   `;
   layout(wrap);
 
-  wrap.querySelector('#create').addEventListener('click', () => openCreateModal(user));
+  // Super-admin skapar direkt; alla andra skickar en förfrågan som en
+  // super-admin godkänner (rules tillåter inte fri tävlingsskapning).
+  wrap.querySelector('#create').addEventListener('click', () =>
+    isSuper ? openCreateModal(user) : openRequestModal(user, renderMyRequests));
+
+  const reqHost = wrap.querySelector('#requests');
+  const renderMyRequests = async () => {
+    if (isSuper) return; // super-admins ser alla förfrågningar under /app/admin/requests
+    try {
+      const reqs = (await listMyCompetitionRequests(user))
+        .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+      reqHost.innerHTML = reqs.map(r => requestCard(r)).join('');
+      reqHost.querySelectorAll('[data-dismiss]').forEach(b => b.addEventListener('click', async () => {
+        try {
+          await deleteCompetitionRequest(b.dataset.dismiss);
+          renderMyRequests();
+        } catch (e) { toast('Kunde inte ta bort: ' + e.message, 'error'); }
+      }));
+    } catch { reqHost.innerHTML = ''; } // förfrågningar är en bonus, aldrig blockerande
+  };
+  renderMyRequests();
 
   const list = wrap.querySelector('#list');
   list.innerHTML = `<div class="muted">Laddar…</div>`;
@@ -59,7 +84,9 @@ export async function renderHome(app, user) {
       list.innerHTML = `
         <div class="empty">
           <h3>Inga tävlingar än</h3>
-          <p>Skapa din första tävling — t.ex. Älghornsjakten ${new Date().getFullYear()}.</p>
+          <p>${isSuper
+            ? `Skapa din första tävling — t.ex. Älghornsjakten ${new Date().getFullYear()}.`
+            : 'Begär en ny tävling ovan, så granskar ESKIL:s administratör förfrågan och hör av sig via mail. Är du redan inbjuden till en tävling dyker den upp här när inbjudan registrerats.'}</p>
         </div>`;
       return;
     }
@@ -86,6 +113,104 @@ export async function renderHome(app, user) {
     console.error(e);
     list.innerHTML = `<div class="empty"><h3>Kunde inte läsa in tävlingar</h3><p>${escapeHtml(e.message)}</p></div>`;
   }
+}
+
+// Statuskort för sökandens egna förfrågningar på /app.
+function requestCard(r) {
+  const when = r.createdAt ? formatDate(String(r.createdAt).slice(0, 10)) : '';
+  if (r.status === 'godkand') {
+    return `
+      <div class="card mb-4" style="border-left:3px solid var(--spaer-green, #41A62A);">
+        <div class="row wrap" style="justify-content:space-between;gap:var(--sp-3);align-items:center;">
+          <div>
+            <span class="badge badge-green">Godkänd</span>
+            <strong style="margin-left:8px;">${escapeHtml(r.name)}</strong>
+            <div class="muted t-sm" style="margin-top:4px;">Tävlingen är skapad och du är administratör för den.</div>
+            ${r.decisionMessage ? `<div class="t-sm" style="margin-top:6px;"><strong>Svar:</strong> ${escapeHtml(r.decisionMessage)}</div>` : ''}
+          </div>
+          <div class="btn-row">
+            ${r.competitionId ? `<a class="btn btn-secondary btn-sm" href="/app/c/${escapeHtml(r.competitionId)}" data-link>Öppna tävlingen</a>` : ''}
+            <button class="btn btn-ghost btn-sm" data-dismiss="${escapeHtml(r.id)}">Dölj</button>
+          </div>
+        </div>
+      </div>`;
+  }
+  if (r.status === 'nekad') {
+    return `
+      <div class="card mb-4" style="border-left:3px solid var(--utm-pink);">
+        <div class="row wrap" style="justify-content:space-between;gap:var(--sp-3);align-items:center;">
+          <div>
+            <span class="badge badge-pink">Nekad</span>
+            <strong style="margin-left:8px;">${escapeHtml(r.name)}</strong>
+            ${r.decisionMessage
+              ? `<div class="t-sm" style="margin-top:6px;"><strong>Svar från ESKIL:</strong> ${escapeHtml(r.decisionMessage)}</div>`
+              : '<div class="muted t-sm" style="margin-top:4px;">Ingen motivering angavs.</div>'}
+          </div>
+          <button class="btn btn-ghost btn-sm" data-dismiss="${escapeHtml(r.id)}">Dölj</button>
+        </div>
+      </div>`;
+  }
+  return `
+    <div class="card mb-4" style="border-left:3px solid var(--avent-orange);">
+      <span class="badge badge-orange">Väntar på granskning</span>
+      <strong style="margin-left:8px;">${escapeHtml(r.name)}</strong>
+      <div class="muted t-sm" style="margin-top:4px;">Skickad ${escapeHtml(when)} — ESKIL:s administratör granskar din förfrågan och svarar via mail till ${escapeHtml(r.requestedByEmail || '')}.</div>
+    </div>`;
+}
+
+// Förfrågan om ny tävling — det lilla formuläret för vanliga användare.
+function openRequestModal(user, onDone) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:520px;">
+      <div class="modal-head"><h3>Begär en ny tävling</h3></div>
+      <div class="modal-body field-group">
+        <p class="muted t-sm" style="margin-top:0;">ESKIL:s administratör granskar förfrågan och svarar via mail.
+        Blir den godkänd skapas tävlingen med dig som administratör — då fyller du i resten själv.</p>
+        <div>
+          <label class="field" for="rq-name">Tävlingens namn</label>
+          <input class="input" id="rq-name" required placeholder="Ex. Älghornsjakten ${new Date().getFullYear() + 1}">
+        </div>
+        <div>
+          <label class="field" for="rq-date">Datum (om det är bestämt)</label>
+          <input class="input" id="rq-date" type="date">
+        </div>
+        <div>
+          <label class="field" for="rq-desc">Kort beskrivning</label>
+          <textarea class="textarea" id="rq-desc" rows="2" placeholder="Vilken kår arrangerar, ungefär hur många patruller…"></textarea>
+        </div>
+        <div>
+          <label class="field" for="rq-msg">Meddelande till ESKIL:s administratör</label>
+          <textarea class="textarea" id="rq-msg" rows="3" placeholder="Berätta kort vem du är och varför ni vill använda ESKIL."></textarea>
+        </div>
+        <p class="t-sm muted" style="margin:0;">Skickas från ${escapeHtml(user.email || '')}.</p>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" id="rq-cancel">Avbryt</button>
+        <button class="btn btn-primary" id="rq-send">Skicka förfrågan</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  wireOverlayClose(overlay, close);
+  overlay.querySelector('#rq-cancel').addEventListener('click', close);
+  setTimeout(() => overlay.querySelector('#rq-name').focus(), 30);
+  overlay.querySelector('#rq-send').addEventListener('click', (e) => withBusy(e.currentTarget, 'Skickar…', async () => {
+    const name = overlay.querySelector('#rq-name').value.trim();
+    if (!name) { toast('Ange ett namn på tävlingen.', 'error'); return; }
+    try {
+      await createCompetitionRequest({
+        name,
+        date: overlay.querySelector('#rq-date').value || null,
+        description: overlay.querySelector('#rq-desc').value,
+        message: overlay.querySelector('#rq-msg').value
+      }, user);
+      close();
+      toast('Förfrågan skickad — du får svar via mail', 'success');
+      onDone?.();
+    } catch (err) { toast('Kunde inte skicka: ' + err.message, 'error'); }
+  }));
 }
 
 function openCreateModal(user) {

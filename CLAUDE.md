@@ -66,6 +66,18 @@ See `README.md` for the layout — every file there is load-bearing.
   Never change a slug after creation — printed QR codes and references
   depend on it.
 
+## Who may create a competition
+
+Not everyone. A signed-in user CANNOT create a competition directly — the
+rules allow `competitions` create only for super-admins, plus one exception:
+årgångskopiering, where `copiedFrom` must point at a competition the creator
+already administers. Everyone else files a request in `competitionRequests`
+(name, date, description, message; `status: vantar|godkand|nekad`, only
+super-admins may set the decision). Approving from `/app/admin/requests`
+CREATES the competition with the requester as admin (uid + email) and stamps
+the request; denying creates nothing. Cloud Functions mail super-admins on a
+new request and the requester on the decision.
+
 ## Firestore rules model
 
 - `users/{uid}` — a user's own doc.

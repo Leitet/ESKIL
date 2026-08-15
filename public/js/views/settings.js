@@ -60,6 +60,14 @@ export async function renderSettings(app, user) {
           </div>
           <span class="muted t-sm">Öppna ${icon('arrow-right', { size: 14 })}</span>
         </a>
+        <a class="card" style="text-decoration:none;color:inherit;display:flex;align-items:center;justify-content:space-between;gap:var(--sp-4);" href="/app/admin/requests" data-link>
+          <div>
+            <div class="t-over" style="color:var(--avent-orange);">Tävlingsförfrågningar</div>
+            <h3 class="t-h4" style="margin:4px 0 0;color:var(--scout-blue);">Godkänn nya tävlingar <span id="req-badge"></span></h3>
+            <p class="muted t-sm" style="margin:4px 0 0;">Användare skapar inte tävlingar själva — de begär, du godkänner eller nekar.</p>
+          </div>
+          <span class="muted t-sm">Öppna ${icon('arrow-right', { size: 14 })}</span>
+        </a>
       </div>
     ` : ''}
 
@@ -74,4 +82,16 @@ export async function renderSettings(app, user) {
         <span class="muted t-sm">Öppna inställningar ${icon('arrow-right', { size: 14 })}</span>
       </a>`).join('')}</div>` : '<div class="empty"><h3>Inga tävlingar att administrera</h3></div>'}
   `;
+
+  // Antal väntande tävlingsförfrågningar — så super-adminen ser att något
+  // ligger och väntar utan att öppna sidan.
+  if (user.role === 'super-admin') {
+    import('../store.js').then(({ listCompetitionRequests }) => listCompetitionRequests())
+      .then(reqs => {
+        const n = reqs.filter(r => r.status === 'vantar').length;
+        const badge = wrap.querySelector('#req-badge');
+        if (badge && n) badge.outerHTML = `<span class="badge badge-orange">${n} väntar</span>`;
+      })
+      .catch(() => { /* badgen är en bonus */ });
+  }
 }
