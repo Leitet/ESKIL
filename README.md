@@ -97,8 +97,11 @@ att köra gratis på Spark-planen.
   banan, och kartan läggs på högkant när banan är avlång så den fyller
   papperet), andra sidan har information på ena halvan och ett ifyllbart
   poängkort på den andra. Skrivs banan ut med anonyma kontroller får
-  poängkortet skrivrader i stället för kontrollnamn. Massutskriften gör alla
-  patruller i en fil och ritar kartan en enda gång.
+  poängkortet skrivrader i stället för kontrollnamn. Två varianter:
+  **tomma reservkort** (utan namn och starttid — sekretariatet fyller i för
+  hand; normalfallet när tävlingen kör digitalt och bara enstaka patruller
+  saknar mobil) eller **ett kort per patrull** med allt ifyllt. Båda i en fil,
+  och kartan ritas en enda gång.
 - **Spårdragning** (flik "Spår") — rita spåret mellan kontrollerna på en stor
   karta (växla karta/satellit, fullskärmsläge). Bensekvensen härleds ur
   kontrollernas nummerordning (start → 1 → 2 → … → mål när start/mål är

@@ -1023,7 +1023,19 @@ function drawFoldLine(pdf) {
 // Vänstra halvan på sida 2: allt patrullen behöver veta utan telefon.
 function drawManualInfo(pdf, comp, patrol, places, startTid, maxMin) {
   const L = 12, R = FOLD_X - 10, w = R - L;
+  const tomt = !patrol;                 // reservkort: fylls i för hand
   let y = 16;
+
+  // Skrivrad med etikett — reservkortens motsvarighet till en tryckt uppgift.
+  const skrivrad = (etikett, x, bredd, yy) => {
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(7.5);
+    pdf.setTextColor('#9fb0c0');
+    pdf.text(etikett.toUpperCase(), x, yy - 4.5);
+    pdf.setDrawColor('#b9c6d2');
+    pdf.setLineWidth(0.3);
+    pdf.line(x, yy, x + bredd, yy);
+  };
 
   pdf.setFillColor(BLUE);
   pdf.rect(0, 0, FOLD_X, 26, 'F');
@@ -1037,20 +1049,49 @@ function drawManualInfo(pdf, comp, patrol, places, startTid, maxMin) {
   pdf.text([comp.year, comp.date, comp.location].filter(Boolean).join('  ·  '), L, 20);
   y = 36;
 
-  pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(19);
-  pdf.setTextColor('#282727');
-  pdf.text(`#${patrol.number ?? ''}  ${patrol.name || ''}`, L, y);
-  y += 6;
-  pdf.setFont('helvetica', 'normal');
-  pdf.setFontSize(9.5);
-  pdf.setTextColor('#6b7684');
-  pdf.text([patrol.avdelning, patrol.kar, patrol.antal ? `${patrol.antal} deltagare` : null]
-    .filter(Boolean).join('  ·  '), L, y);
-  y += 10;
+  if (tomt) {
+    skrivrad('Patrull', L, 22, y);
+    skrivrad('Namn', L + 26, w - 26, y);
+    y += 12;
+    skrivrad('Avdelning', L, 40, y);
+    skrivrad('Kår', L + 44, w - 44, y);
+    y += 12;
+  } else {
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(19);
+    pdf.setTextColor('#282727');
+    pdf.text(`#${patrol.number ?? ''}  ${patrol.name || ''}`, L, y);
+    y += 6;
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(9.5);
+    pdf.setTextColor('#6b7684');
+    pdf.text([patrol.avdelning, patrol.kar, patrol.antal ? `${patrol.antal} deltagare` : null]
+      .filter(Boolean).join('  ·  '), L, y);
+    y += 10;
+  }
 
-  // Starttid — den viktigaste raden på hela kortet.
-  if (startTid) {
+  // Starttid — den viktigaste raden på hela kortet. På reservkortet är den
+  // en ruta att skriva i: kortet delas ut i stunden och tiden är inte känd
+  // när det trycks.
+  if (tomt) {
+    pdf.setFillColor('#eef3f8');
+    pdf.rect(L, y - 5, w, 14, 'F');
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(9);
+    pdf.setTextColor(ORANGE);
+    pdf.text('STARTTID', L + 3, y + 1);
+    pdf.setDrawColor('#9fb0c0');
+    pdf.setLineWidth(0.4);
+    pdf.line(L + 32, y + 3.5, L + 74, y + 3.5);
+    if (maxMin > 0) {
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(8.5);
+      pdf.setTextColor('#6b7684');
+      const h = Math.floor(maxMin / 60), m = maxMin % 60;
+      pdf.text(`Maxtid ${[h ? h + ' h' : '', m ? m + ' min' : ''].filter(Boolean).join(' ')}`, L + 80, y + 2.5);
+    }
+    y += 16;
+  } else if (startTid) {
     pdf.setFillColor('#eef3f8');
     pdf.rect(L, y - 5, w, 14, 'F');
     pdf.setFont('helvetica', 'bold');
@@ -1148,10 +1189,22 @@ function drawScoreCard(pdf, comp, patrol, controls, coursePlaceNodes) {
   pdf.setFontSize(13);
   pdf.setTextColor('#ffffff');
   pdf.text('POÄNGKORT', L, 13);
-  pdf.setFont('helvetica', 'normal');
-  pdf.setFontSize(8);
-  pdf.setTextColor('#a7bccf');
-  pdf.text(`#${patrol.number ?? ''}  ${patrol.name || ''}`, L, 20);
+  if (patrol) {
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(8);
+    pdf.setTextColor('#a7bccf');
+    pdf.text(`#${patrol.number ?? ''}  ${patrol.name || ''}`, L, 20);
+  } else {
+    // Reservkortets poänghalva måste också gå att identifiera — den lämnas
+    // in separat vid målgång.
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(7.5);
+    pdf.setTextColor('#a7bccf');
+    pdf.text('PATRULL', L, 17);
+    pdf.setDrawColor('#7d99b3');
+    pdf.setLineWidth(0.3);
+    pdf.line(L + 22, 20, R, 20);
+  }
 
   // Raderna: kontroller i nummerordning, med banplatser inflätade så kortet
   // följer samma ordning som kartan.
@@ -1289,19 +1342,31 @@ export async function generateManualStartPdf(comp, patrol, controls, opts = {}) 
   }
   // Identitetsbricka: ett löst blad ska gå att lägga tillbaka i rätt hög.
   pdf.setFillColor('#ffffff');
-  pdf.rect(4, A4L.H - 14, mapRotated ? 130 : 86, 10, 'F');
+  pdf.rect(4, A4L.H - 14, mapRotated ? (patrol ? 130 : 140) : 86, 10, 'F');
   pdf.setFont('helvetica', 'bold');
   pdf.setFontSize(9);
   pdf.setTextColor(BLUE);
-  const bricka = `#${patrol.number ?? ''} ${patrol.name || ''}`;
-  pdf.text(bricka, 7, A4L.H - 7);
+  // `slut` är där identitetsdelen tar slut — vrid-texten börjar efter den,
+  // annars skriver de över varandra på reservkortets skrivrad.
+  let slut;
+  if (patrol) {
+    const bricka = `#${patrol.number ?? ''} ${patrol.name || ''}`;
+    pdf.text(bricka, 7, A4L.H - 7);
+    slut = 7 + pdf.getTextWidth(bricka);
+  } else {
+    pdf.text('Patrull:', 7, A4L.H - 7);
+    pdf.setDrawColor('#7d99b3');
+    pdf.setLineWidth(0.3);
+    slut = 78;
+    pdf.line(7 + pdf.getTextWidth('Patrull:') + 3, A4L.H - 6, slut, A4L.H - 6);
+  }
   if (mapRotated) {
     // Kartan är lagd på högkant för att banan ska fylla papperet — säg det,
     // annars ser den bara ut att ligga fel.
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(7.5);
     pdf.setTextColor('#6b7684');
-    pdf.text('Vrid papperet för att läsa kartan', 7 + pdf.getTextWidth(bricka) + 5, A4L.H - 7);
+    pdf.text('Vrid papperet för att läsa kartan', slut + 6, A4L.H - 7);
   }
   drawFoldLine(pdf);
 
@@ -1317,9 +1382,17 @@ export async function generateManualStartPdf(comp, patrol, controls, opts = {}) 
 
 // Ett kort, eller alla patrullers i EN fil. Kartan renderas en gång: den
 // kostar ~50 kartrutor, och 30 patruller ska inte bli 1500 hämtningar.
+/**
+ * @param patrols  en patrull, en lista patruller, eller ANTALET tomma
+ *                 reservkort (ett tal). Reservkorten har inga namn och ingen
+ *                 starttid — sekretariatet fyller i för hand när ett behövs.
+ */
 export async function downloadManualStartPdf(comp, patrols, controls, track, places = []) {
   await ensureLibs();
-  const lista = Array.isArray(patrols) ? patrols : [patrols];
+  const reserv = typeof patrols === 'number';
+  const lista = reserv
+    ? Array.from({ length: Math.max(1, Math.min(50, Math.round(patrols))) }, () => null)
+    : (Array.isArray(patrols) ? patrols : [patrols]);
   const ordered = [...(controls || [])]
     .filter(c => Number.isFinite(Number(c.nummer)))
     .sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0));
@@ -1335,13 +1408,16 @@ export async function downloadManualStartPdf(comp, patrols, controls, track, pla
   for (const patrol of lista) {
     pdf = await generateManualStartPdf(comp, patrol, ordered, {
       mapUrl: karta?.url || null, mapRotated: !!karta?.rotated, places, coursePlaceNodes,
-      startTid: patrolStartTime(comp, patrol, lista.length > 1 ? lista.length : null),
+      startTid: patrol ? patrolStartTime(comp, patrol, lista.length > 1 ? lista.length : null) : null,
       pdf
     });
   }
-  const namn = lista.length === 1
-    ? `manuellt-startkort-${lista[0].number ?? ''}-${(lista[0].name || 'patrull').replace(/[^\w\-åäöÅÄÖ]+/g, '_')}.pdf`
-    : `manuella-startkort-${(comp.shortName || 'tavling').replace(/[^\w\-åäöÅÄÖ]+/g, '_')}.pdf`;
+  const tavling = (comp.shortName || 'tavling').replace(/[^\w\-åäöÅÄÖ]+/g, '_');
+  const namn = reserv
+    ? `reservkort-${tavling}.pdf`
+    : (lista.length === 1
+      ? `manuellt-startkort-${lista[0].number ?? ''}-${(lista[0].name || 'patrull').replace(/[^\w\-åäöÅÄÖ]+/g, '_')}.pdf`
+      : `manuella-startkort-${tavling}.pdf`);
   pdf.save(namn);
 }
 

@@ -226,20 +226,8 @@ export async function renderPatrols(app, user, cid) {
   wrap.querySelector('#avd').addEventListener('change', e => { state.filter = e.target.value; render(); });
   if (isAdmin) {
     wrap.querySelector('#new').addEventListener('click', () => openPatrolModal(cid, comp, null, state.rows.length, onPatrolSaved));
-    // Massutskrift: en fil, två sidor per patrull. Kartan hämtas en gång.
-    const manualBtn = wrap.querySelector('#manual-all');
-    manualBtn.addEventListener('click', () => withBusy(manualBtn, 'Ritar kartan…', async () => {
-      const patruller = [...state.rows].sort((a, b) => (a.startOrder ?? 0) - (b.startOrder ?? 0));
-      if (!patruller.length) { toast('Inga patruller att skriva ut.', 'error'); return; }
-      try {
-        const [controls, track] = await Promise.all([listControls(cid), getTrack(cid).catch(() => null)]);
-        await downloadManualStartPdf({ id: cid, ...comp }, patruller, controls, track, compPlaces(comp));
-        toast(`${patruller.length} manuella startkort skapade`, 'success');
-      } catch (e) {
-        console.error(e);
-        toast('Kunde inte skapa PDF: ' + e.message, 'error');
-      }
-    }));
+    wrap.querySelector('#manual-all').addEventListener('click',
+      () => openManualPdfModal(cid, comp, state.rows));
   }
 
   registerViewCleanup(() => {
@@ -362,6 +350,72 @@ async function openStartCardModal(cid, patrol, startScreenAvailable = false) {
       toast('Kunde inte skapa PDF: ' + e.message, 'error');
     }
   }));
+}
+
+// Två sätt att använda samma kort: namngivna åt alla patruller, eller tomma
+// reservkort. Det senare är normalfallet när tävlingen kör digitalt — då
+// behövs bara några få, och att skriva ut specade kort åt alla är slöseri.
+function openManualPdfModal(cid, comp, rows) {
+  const patruller = [...rows].sort((a, b) => (a.startOrder ?? 0) - (b.startOrder ?? 0));
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:520px;">
+      <div class="modal-head">
+        <h3>Manuella startkort</h3>
+        <button class="icon-btn" id="x" aria-label="Stäng">${icon('x')}</button>
+      </div>
+      <div class="modal-body field-group">
+        <p class="muted t-sm" style="margin-top:0;">Pappersstartkort för patruller utan mobil. A4 som viks på mitten till A5 — karta på ena sidan, information och poängkort på den andra. Skriv ut dubbelsidigt.</p>
+
+        <div class="card" style="padding:var(--sp-4);box-shadow:none;border:1.5px solid var(--border);">
+          <strong>Tomma reservkort</strong>
+          <div class="field-hint" style="margin-top:2px;">Utan patrullnamn och starttid — sekretariatet fyller i för hand när ett behövs. Lämpligt när tävlingen kör digitalt och bara några enstaka patruller saknar mobil.</div>
+          <div class="row mt-3" style="gap:var(--sp-3);align-items:flex-end;">
+            <div style="max-width:110px;">
+              <label class="field" for="mp-antal">Antal</label>
+              <input class="input" type="number" id="mp-antal" min="1" max="50" value="10">
+            </div>
+            <button class="btn btn-primary" id="mp-blank">${icon('download', { size: 16 })} Skapa reservkort</button>
+          </div>
+        </div>
+
+        <div class="card" style="padding:var(--sp-4);box-shadow:none;border:1.5px solid var(--border);">
+          <strong>Ett kort per patrull</strong>
+          <div class="field-hint" style="margin-top:2px;">Namn, kår och starttid ifyllda i förväg. ${patruller.length} ${patruller.length === 1 ? 'patrull' : 'patruller'} i startordning, i en fil.</div>
+          <div class="btn-row mt-3">
+            <button class="btn btn-secondary" id="mp-alla" ${patruller.length ? '' : 'disabled'}>${icon('download', { size: 16 })} Skapa åt alla patruller</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-foot"><button class="btn btn-ghost" id="close">Stäng</button></div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  wireOverlayClose(overlay, close);
+  overlay.querySelector('#x').onclick = close;
+  overlay.querySelector('#close').onclick = close;
+
+  const skapa = (btn, vad, klartText) => withBusy(btn, 'Ritar kartan…', async () => {
+    try {
+      const [controls, track] = await Promise.all([listControls(cid), getTrack(cid).catch(() => null)]);
+      await downloadManualStartPdf({ id: cid, ...comp }, vad, controls, track, compPlaces(comp));
+      toast(klartText, 'success');
+      close();
+    } catch (e) {
+      console.error(e);
+      toast('Kunde inte skapa PDF: ' + e.message, 'error');
+    }
+  });
+
+  const blankBtn = overlay.querySelector('#mp-blank');
+  blankBtn.addEventListener('click', () => {
+    const n = Math.max(1, Math.min(50, Number(overlay.querySelector('#mp-antal').value) || 10));
+    skapa(blankBtn, n, `${n} reservkort skapade`);
+  });
+  const allaBtn = overlay.querySelector('#mp-alla');
+  allaBtn?.addEventListener('click', () =>
+    skapa(allaBtn, patruller, `${patruller.length} startkort skapade`));
 }
 
 function openPatrolModal(cid, comp, patrol, fallbackOrder = null, onSaved = null) {

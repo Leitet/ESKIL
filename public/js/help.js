@@ -131,10 +131,12 @@ export const HELP = {
     body: [
       'Ett pappersstartkort för patruller som inte har mobil. A4 liggande, avsett att vikas på mitten till A5: hela ena sidan är bankartan, och den andra sidan har information på ena halvan och ett ifyllbart poängkort på den andra.',
       'Skriv ut dubbelsidigt och vik längs den streckade linjen. Kartan hamnar invikt — vik ut för att navigera — och poängkortet utåt, där det ska fyllas i vid varje kontroll.',
-      'Knappen här skapar en fil med alla patrullers kort i startordning. Vill du bara ha en patrull finns samma knapp i patrullens startkortsdialog.'
+      'Två sätt att använda dem. Kör tävlingen digitalt behövs oftast bara några enstaka — skriv då ut TOMMA reservkort utan namn och starttid, som sekretariatet fyller i för hand när en patrull dyker upp utan mobil. Är det tvärtom, att många saknar telefon, skriver du ut ett kort per patrull med namn, kår och starttid ifyllda.',
+      'Vill du bara ha en enskild patrulls kort finns samma knapp i patrullens startkortsdialog.'
     ],
     warn: 'Är "Anonyma kontroller" påslaget skrivs INGA kontrollnamn ut — poängkortet får en skrivrad i stället, som kontrollanten fyller i på plats. Kortet bärs hela dagen, och namnet skulle avslöja vad uppgiften handlar om.',
     faq: [
+      { q: 'Hur många reservkort ska jag ta?', a: 'Räkna med några fler än ni tror behövs — de kostar bara papper, och en patrull utan kort på startlinjen kostar tid. Tio är ett rimligt utgångsläge på en normalstor tävling.' },
       { q: 'Banplatser då?', a: 'Matplatser och rastplatser som ingår i spåret står med i poängkortet som gråa rader utan poängrutor, i rätt ordning — de ger inga poäng men patrullen ser var de kommer.' },
       { q: 'Kartan ser tom ut', a: 'Då saknar kontrollerna positioner. Sätt dem under Kontroller, så ritas banan ut. Har du ritat ett spår följer kartan det; annars dras sträckorna som streckad fågelväg.' }
     ]

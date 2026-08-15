@@ -58,6 +58,9 @@ Email extension). Production domain: https://eskilscout.se.
   **roterar bilden 90°** när banan är avlång — då fyller den papperet och
   kortet skriver ut att man ska vrida det. Kartan renderas EN gång per
   massutskrift; 30 patruller ska inte bli 30 tile-omgångar.
+  `patrol = null` ger ett TOMT reservkort: namn, kår och starttid blir
+  skrivrader. `downloadManualStartPdf` tar ett TAL i patrols-argumentet för
+  att göra N sådana.
   Poängkortet MÅSTE respektera `anonymousControls`: är den på skrivs inga
   kontrollnamn ut, bara nummer och en skrivrad. Kortet bärs hela dagen.
   Radhöjden har medvetet INGET golv — ett golv gör att rader ritas utanför
