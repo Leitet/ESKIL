@@ -159,6 +159,25 @@ new request and the requester on the decision.
   away extends from the end. Don't put it back to plain nearest-segment: on a
   curved leg the nearest segment ties on the bend and points landed BEFORE
   the previous one. Regression-tested in `test/logic.test.js`.
+- `.../selfStarts/{patrolId}` — **självbekräftad start**. With `comp.selfStart`
+  the patrol presses "Bekräfta start" on its own startkort instead of being
+  checked out by a start marshal. Own collection because the startkort does
+  NOT know the station id (secret — whoever has it can check anyone in or
+  out). Anonymous **create only**, never update: a confirmed start must not be
+  movable by anyone who got hold of the link; undo is admin-only (the button
+  sits in Läget, and the station page says so). Rules also require the patrol
+  to exist and the timestamp to sit within −12 h…+2 min of `request.time`;
+  that the start can't be confirmed BEFORE the patrol's own start time is a
+  UI-level guard — rules can't compute startOrder × interval.
+  Läget and `station.js` merge these with the station's passages into one
+  picture (a marshal's check-out wins over a self-confirmation); every other
+  consumer just reads `passages`.
+  The startkort has three phases (`cardPhase()` in `start.js`): `info` before
+  confirmation (competition info + how to reach the start, NO course — see
+  `positionsVisible()`), `tavling`, and `summering` once the course is done.
+  Summering renders `patrolHighlights()` from `public/js/highlights.js`:
+  positive only, by design — a last place is never printed, and comparisons
+  are gated on `publicScores`. Logic tested in `test/logic.test.js`.
 - `.../stations/{stationId}/passages/{patrolId}` — start/finish check-outs
   (`startAt`/`finishAt` timestamps), doc id IS the patrolId. Anonymous clients
   may only touch `patrolId`/`startAt`/`finishAt` (affectedKeys guard); station

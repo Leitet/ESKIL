@@ -10,7 +10,7 @@
 
 import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import {
-  getCompetition, listPatrols, listStations, createStation, watchPassages,
+  getCompetition, listPatrols, listStations, createStation, watchPassages, watchSelfStarts, clearSelfStart,
   watchControls, watchScoresForControl, getTrack, getControlMeta,
   updateCompetition, updateControl, setPatrolUtgatt
 } from '../store.js';
@@ -56,7 +56,24 @@ export async function renderLaget(app, user, cid) {
 
   let patrols = [];
   let controls = [];
-  let passages = {};   // patrolId -> { startAt, finishAt }
+  // Två källor till "har startat": startstationens utcheckning och
+  // patrullens egen bekräftelse på startkortet. De hålls isär i råform och
+  // slås ihop till EN bild — resten av vyn ska inte behöva veta vilken det
+  // var (utom i tabellen, där det märks ut).
+  let stationPassages = {};
+  let selfStarts = {};
+  let passages = {};   // patrolId -> { startAt, finishAt, selfStarted? }
+
+  const mergePassages = () => {
+    passages = {};
+    for (const [pid, row] of Object.entries(stationPassages)) passages[pid] = { ...row };
+    for (const [pid, row] of Object.entries(selfStarts)) {
+      const cur = passages[pid] || (passages[pid] = {});
+      // Stationens utcheckning väger tyngre: en funktionär som prickat av
+      // patrullen har sett dem gå.
+      if (!cur.startAt && row.startAt) { cur.startAt = row.startAt; cur.selfStarted = true; }
+    }
+  };
   let scoresByCtrl = {}; // ctrlId -> [{patrolId, reportedAt}]
   let station = null;
   let track = null;
@@ -209,12 +226,21 @@ export async function renderLaget(app, user, cid) {
   const subscribePassages = () => {
     if (!station) return;
     unsubs.push(watchPassages(cid, station.id, rows => {
-      passages = {};
-      rows.forEach(p => { passages[p.id] = p; });
+      stationPassages = {};
+      rows.forEach(p => { stationPassages[p.id] = p; });
+      mergePassages();
       renderStats();
     }));
   };
   subscribePassages();
+
+  // Självbekräftade starter finns även när tävlingen saknar startstation.
+  unsubs.push(watchSelfStarts(cid, rows => {
+    selfStarts = {};
+    rows.forEach(r => { selfStarts[r.id] = r; });
+    mergePassages();
+    renderStats();
+  }));
 
   const ctrlMetaById = {};
   async function mergeControlMeta(rows) {
@@ -291,7 +317,7 @@ export async function renderLaget(app, user, cid) {
       const lateStartMin = plannedAt ? Math.floor((now - plannedAt) / 60000) : 0;
       const lateStart = !utgatt && !started && lateStartMin >= 3;
       return {
-        patrol: p, startAt, finishAt, reports, position, lastReport, lastSeen,
+        patrol: p, startAt, finishAt, selfStarted: !!pass.selfStarted, reports, position, lastReport, lastSeen,
         started, active, silentMin, lateStart, lateStartMin, utgatt,
         warn: !utgatt && ((active && silentMin != null && silentMin >= WARN_SILENT_MIN) || (!started && lateStartMin >= 3))
       };
@@ -453,7 +479,11 @@ export async function renderLaget(app, user, cid) {
               <td class="num">${p.number ?? ''}</td>
               <td><strong>${escapeHtml(p.name || '')}</strong> <span class="muted t-sm"><span class="dot ${avdShort(p.avdelning)}"></span>${escapeHtml(p.avdelning || '')}</span></td>
               <td>${status}${dnfBtn}</td>
-              <td class="t-sm">${pp.startAt ? formatTime(pp.startAt) : (planned ? `<span class="muted">plan ${escapeHtml(planned)}</span>` : '—')}</td>
+              <td class="t-sm">${pp.startAt
+                ? formatTime(pp.startAt) + (pp.selfStarted
+                    ? ` <span class="muted" title="Patrullen bekräftade själv på sitt startkort">·&nbsp;själv</span>${isAdmin ? ` <button class="btn btn-ghost btn-sm" data-undo-selfstart="${escapeHtml(p.id)}" title="Ta bort patrullens egen startbekräftelse">Ångra</button>` : ''}`
+                    : '')
+                : (planned ? `<span class="muted">plan ${escapeHtml(planned)}</span>` : '—')}</td>
               <td class="num">${pp.reports.length}/${controls.length || '—'}</td>
               <td class="t-sm">${pp.finishEtaMs
                 ? (pp.finishEtaMs < now.getTime() - 60000
@@ -495,6 +525,21 @@ export async function renderLaget(app, user, cid) {
         delete p.utgatt; // patrols hämtas inte live — spegla lokalt
         toast(`${p.name} är åter i tävlingen`, 'success');
         renderStats();
+      } catch (e) { toast('Fel: ' + e.message, 'error'); }
+    }));
+
+    // Startstationen kan inte ångra en självbekräftad start (den ligger i
+    // patrullens egen collection, anonymt bara skrivbar en gång) — det är
+    // därför den knappen finns här.
+    wrap.querySelectorAll('[data-undo-selfstart]').forEach(btn => btn.addEventListener('click', async () => {
+      const p = patrols.find(x => x.id === btn.dataset.undoSelfstart);
+      if (!p) return;
+      if (!(await confirmDialog(
+        `Ta bort ${p.name || 'patrullens'} egen startbekräftelse? De kan då bekräfta igen på sitt startkort.`,
+        { okLabel: 'Ta bort', danger: true }))) return;
+      try {
+        await clearSelfStart(cid, p.id);
+        toast('Startbekräftelsen borttagen');
       } catch (e) { toast('Fel: ' + e.message, 'error'); }
     }));
 

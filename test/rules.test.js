@@ -253,6 +253,70 @@ describe('Meddelanden och kvittenser', () => {
   });
 });
 
+describe('Självbekräftad start', () => {
+  const path = (cid, pid) => `competitions/${cid}/selfStarts/${pid}`;
+  const SS = uniq('selfstart');   // egen tävling: flaggan är avstängd på CID
+
+  before(async () => {
+    await seed(`competitions/${SS}`, { name: 'Med självstart', selfStart: true, demo: false, closed: false });
+    await seed(`competitions/${SS}/patrols/${PATROL}`, { name: 'Rävarna', number: 1 });
+  });
+  after(async () => {
+    for (const p of [path(SS, PATROL), `competitions/${SS}/patrols/${PATROL}`, `competitions/${SS}`])
+      await remove(p, 'owner');
+    await remove(path(CID, PATROL), 'owner');
+  });
+
+  test('patrullen får bekräfta sin egen start', async () => {
+    allow(await write(path(SS, PATROL), { patrolId: PATROL, startAt: new Date() }, null),
+      'anonym startbekräftelse');
+  });
+
+  test('EN GÅNG: en bekräftad start kan inte flyttas i efterhand', async () => {
+    // Startkortslänken är hemligheten, men den kan spridas i patrullen. En
+    // start som går att skriva om är inget facit för tävlingsledningen.
+    deny(await write(path(SS, PATROL), { patrolId: PATROL, startAt: new Date() }, null),
+      'skriva om befintlig start');
+  });
+
+  test('påhittad patrull nekas', async () => {
+    deny(await write(path(SS, 'finns-inte'), { patrolId: 'finns-inte', startAt: new Date() }, null),
+      'start för patrull som inte finns');
+  });
+
+  test('dokument-id måste vara patrullens id', async () => {
+    deny(await write(path(SS, 'fel-id'), { patrolId: PATROL, startAt: new Date() }, null),
+      'start på fel doc-id');
+  });
+
+  test('okända fält nekas', async () => {
+    deny(await write(path(SS, PATROL), { patrolId: PATROL, startAt: new Date(), poang: 99 }, null),
+      'extra fält');
+  });
+
+  test('orimliga tider nekas', async () => {
+    const P2 = uniq('p2');
+    await seed(`competitions/${SS}/patrols/${P2}`, { name: 'Ugglorna', number: 2 });
+    deny(await write(path(SS, P2), { patrolId: P2, startAt: new Date(Date.now() + 3600e3) }, null),
+      'start en timme fram');
+    deny(await write(path(SS, P2), { patrolId: P2, startAt: new Date(Date.now() - 24 * 3600e3) }, null),
+      'start ett dygn bak');
+    for (const p of [path(SS, P2), `competitions/${SS}/patrols/${P2}`]) await remove(p, 'owner');
+  });
+
+  test('avstängd funktion nekar bekräftelse', async () => {
+    // CID saknar selfStart-flaggan helt — och ett SAKNAT fält får inte vara
+    // ett evaluation error (fällan som stoppat produktionen två gånger).
+    deny(await write(path(CID, PATROL), { patrolId: PATROL, startAt: new Date() }, null),
+      'start på tävling utan självstart');
+  });
+
+  test('starter är publikt läsbara (Läget och startkortet behöver dem)', async () => {
+    assert.equal((await list(`competitions/${SS}/selfStarts`, null)).ok, true,
+      'anonym läsning av starter');
+  });
+});
+
 describe('Behörighetsdata (PII)', () => {
   test('access-dokumentet är inte anonymt läsbart', async () => {
     assert.equal((await read(`competitions/${CID}/private/access`, null)).ok, false,

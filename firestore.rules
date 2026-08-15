@@ -319,6 +319,33 @@ service cloud.firestore {
         allow write: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
       }
 
+      // Självbekräftad start — patrullen trycker "Bekräfta start" på sitt
+      // startkort (/s/<cid>/<patrolId>) i stället för att checkas ut av en
+      // startfunktionär. Egen collection eftersom startkortet INTE känner
+      // till stations-id:t (det är hemligt, och den som har det kan checka
+      // in/ut alla patruller). Läget och stationssidan slår ihop de här med
+      // stationens passages.
+      //
+      // Skriv EN gång och bara en: en start får inte flyttas i efterhand av
+      // någon som råkat få tag i startkortslänken. Ångra är en admin-åtgärd.
+      // Tidsfönstret hindrar uppenbart påhittade tider; att starten inte får
+      // bekräftas FÖRE patrullens starttid vaktas i gränssnittet — reglerna
+      // kan inte räkna fram startordning × intervall.
+      match /selfStarts/{patrolId} {
+        allow read: if true;
+        allow create: if isCompAdmin(cid) || (
+             !compIsDemo(cid) && !compClosed(cid)
+          && compData(cid).get('selfStart', false) == true
+          && request.resource.data.keys().hasOnly(['patrolId', 'startAt'])
+          && request.resource.data.patrolId == patrolId
+          && exists(/databases/$(database)/documents/competitions/$(cid)/patrols/$(patrolId))
+          && request.resource.data.startAt is timestamp
+          && request.resource.data.startAt <= request.time + duration.value(2, 'm')
+          && request.resource.data.startAt >= request.time - duration.value(12, 'h')
+        );
+        allow update, delete: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
+      }
+
       // Start/Mål-station — the station doc ID is the secret in the station
       // URL (/m/<cid>/<stationId>), same trust model as reporter links. The
       // station crew checks patrols out at start and in at mål; passages hold

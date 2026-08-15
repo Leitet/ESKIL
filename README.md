@@ -71,6 +71,19 @@ att köra gratis på Spark-planen.
   Läget) för funktionärerna vid start och mål: checka ut patruller vid start
   och in vid målgång med ett tryck, ångra med bekräftelse. Ingen inloggning.
   In-/utcheckningarna ger Läget dess start-/måldata.
+- **Startkortet** (`/s/<cid>/<patrolId>`) — patrullens egen sida: karta,
+  kontroller, poäng och ETA, live-uppdaterad. Med **"Patrullerna bekräftar
+  start själva"** (Inställningar → Regler & info) blir kortet ett förlopp i
+  tre lägen: före start visas bara tävlingsinformation, tävlingsledningens
+  kontaktuppgifter och vägen till starten — knappen "Bekräfta start" finns men
+  är släckt tills patrullens starttid passerats och tänds då grön. Först efter
+  bekräftelsen öppnas kartan och kontrollerna, och maxtiden börjar räknas ned
+  från den verkliga starten. Bekräftelsen syns i Läget och på stationssidan
+  som en utcheckning (märkt "själv"; bara admin kan ångra den). När banan är
+  avklarad byter kortet till en summering med positiva höjdpunkter — "Topp 3
+  på 4 kontroller!", full pott, extrapoäng, tid på banan. Jämförelser mot
+  andra patruller visas bara när poängen är publicerade, och en dålig
+  placering skrivs aldrig ut (`js/highlights.js`).
 - **Spårdragning** (flik "Spår") — rita spåret mellan kontrollerna på en stor
   karta (växla karta/satellit, fullskärmsläge). Bensekvensen härleds ur
   kontrollernas nummerordning (start → 1 → 2 → … → mål när start/mål är
@@ -319,6 +332,7 @@ public/
     station.js          # Start/Mål-stationen (m.html) logik
     course.js           # Delad spårlogik (bensekvens, distans/tid, kartritning)
     districts.js        # Scouternas 26 distrikt + "annat" (gruppering av tävlingar)
+    highlights.js       # Positiva höjdpunkter på startkortet efter målgång
     utils.js            # Hjälpare (inkl. prisberäkning + Swish-QR-payload)
     views/              # En fil per vy (login, home, competition, patrols, ...)
 

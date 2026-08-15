@@ -349,7 +349,7 @@ export async function copyCompetition(cid, { name, shortName, year, date }, user
   if (Array.isArray(src.avdelningar) && src.avdelningar.length) data.avdelningar = src.avdelningar;
   for (const k of ['startTimes', 'startFinish', 'parking', 'management',
                    'publicScores', 'publicControls', 'autoReleaseControls',
-                   'anonymousControls', 'autoCloseControls']) {
+                   'anonymousControls', 'autoCloseControls', 'selfStart']) {
     if (src[k] !== undefined) data[k] = src[k];
   }
   if (src.registration) {
@@ -1011,6 +1011,38 @@ export function watchPassages(cid, stationId, cb) {
     { includeMetadataChanges: true },
     snap => cb(snap.docs.map(d => ({ id: d.id, _pending: d.metadata.hasPendingWrites, ...d.data() })))
   );
+}
+
+// --- Självbekräftad start -----------------------------------------------------
+// Patrullen trycker "Bekräfta start" på sitt startkort. Egen collection: kortet
+// känner inte till stations-id:t (hemligt). Läget och stationssidan slår ihop
+// dessa med stationens passages så bilden blir en och samma.
+
+export function watchSelfStarts(cid, cb) {
+  return onSnapshot(
+    collection(db, 'competitions', cid, 'selfStarts'),
+    snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+  );
+}
+
+export async function listSelfStarts(cid) {
+  const snap = await getDocs(collection(db, 'competitions', cid, 'selfStarts'));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+// Klienttid, inte serverTimestamp — samma skäl som stationens utcheckning:
+// en bekräftelse som synkas när nätet kommer tillbaka ska bära ögonblicket
+// då knappen trycktes. Reglerna tillåter bara CREATE, så en start som redan
+// finns kastar — det är meningen och anroparen ska svälja det.
+export async function confirmSelfStart(cid, patrolId) {
+  await setDoc(
+    doc(db, 'competitions', cid, 'selfStarts', patrolId),
+    { patrolId, startAt: Timestamp.fromDate(new Date()) }
+  );
+}
+
+export async function clearSelfStart(cid, patrolId) {
+  await deleteDoc(doc(db, 'competitions', cid, 'selfStarts', patrolId));
 }
 
 // field: 'startAt' | 'finishAt'. value=true stamps now, value=false clears.

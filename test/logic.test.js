@@ -13,6 +13,7 @@ import {
   patrolStartDateTime, normSlug, isValidSlug, suggestSlug,
   effectiveIntervalSec, swishAppUrl, swishQrString
 } from '../public/js/utils.js';
+import { patrolHighlights, controlRank, totalRank } from '../public/js/highlights.js';
 import { DISTRICTS, districtById, districtShort, districtName, districtHue, normDistrict } from '../public/js/districts.js';
 
 // Tre kontroller på rad med ~1 km mellan sig.
@@ -349,5 +350,90 @@ describe('Spårritning — var en ny punkt hamnar', () => {
     // Klicket ligger rakt ovanför skarven mellan två raka segment.
     const path = [pt(0, 0), pt(100, 0), pt(200, 0)];
     assert.equal(nearestSegmentIndex(path, pt(100, 40)).index, 1);
+  });
+});
+
+describe('Höjdpunkter på startkortet', () => {
+  // Fyra kontroller, fem patruller. p1 är vår patrull.
+  const CTRLS = [
+    { id: 'k1', nummer: 1, maxPoang: 10 },
+    { id: 'k2', nummer: 2, maxPoang: 10 },
+    { id: 'k3', nummer: 3, maxPoang: 10 },
+    { id: 'k4', nummer: 4, maxPoang: 10 }
+  ];
+  const sc = (pid, poang, extra) => ({ patrolId: pid, poang, ...(extra ? { extraPoang: extra } : {}) });
+  const FIELD = {
+    k1: [sc('p1', 10), sc('p2', 4), sc('p3', 6), sc('p4', 2), sc('p5', 8)],
+    k2: [sc('p1', 9),  sc('p2', 3), sc('p3', 5), sc('p4', 1), sc('p5', 7)],
+    k3: [sc('p1', 2),  sc('p2', 9), sc('p3', 8), sc('p4', 7), sc('p5', 6)],
+    k4: [sc('p1', 7),  sc('p2', 8), sc('p3', 4), sc('p4', 3), sc('p5', 5)]
+  };
+  const run = (o = {}) => patrolHighlights({ patrolId: 'p1', controls: CTRLS, scoresByControl: FIELD, ...o });
+  const texts = (o) => run(o).map(h => h.text);
+
+  test('lyfter topp 3 på enskilda kontroller', () => {
+    // p1 är bäst på k1 och k2, sist på k3, tvåa på k4 → topp 3 på tre.
+    assert.ok(texts().some(t => t === 'Topp 3 på 3 kontroller! Snyggt!'), texts().join(' | '));
+    assert.ok(texts().some(t => t === 'Bäst av alla på 2 kontroller!'));
+  });
+
+  test('säger ingenting om det som gick dåligt', () => {
+    // k3 är patrullens sämsta kontroll (2 av 10, sist i fältet).
+    const alla = texts().join(' ').toLowerCase();
+    for (const ord of ['sämst', 'sist', 'bara', 'tyvärr', 'missad', 'noll', 'k3'])
+      assert.ok(!alla.includes(ord), `höjdpunkterna nämner "${ord}": ${alla}`);
+  });
+
+  test('placeringen visas bara när den är värd att fira', () => {
+    // p1 har 28 p, p2 24, p3 23, p5 26, p4 13 → plats 1.
+    assert.ok(texts().some(t => t.startsWith('Bäst i tävlingen')), texts().join(' | '));
+
+    // Samma fält, men vår patrull är sist: ingen placeringsrad alls.
+    const svag = { patrolId: 'p4', controls: CTRLS, scoresByControl: FIELD };
+    const svagaTexter = patrolHighlights(svag).map(h => h.text);
+    assert.ok(!svagaTexter.some(t => /^Plats |^Bäst i tävlingen/.test(t)),
+      'sista platsen ska inte skrivas ut: ' + svagaTexter.join(' | '));
+    assert.ok(svagaTexter.length > 0, 'men det ska ändå stå något positivt');
+  });
+
+  test('opublicerade poäng döljer alla jämförelser', () => {
+    const t = texts({ showRank: false });
+    assert.ok(!t.some(x => /Topp|Plats|snittet|Bäst av alla|Bäst i tävlingen/.test(x)), t.join(' | '));
+    assert.ok(t.some(x => x === 'Alla 4 kontroller klara!'), 'egna prestationer visas ändå');
+  });
+
+  test('full pott och extrapoäng räknas', () => {
+    const t = patrolHighlights({
+      patrolId: 'p1', controls: CTRLS,
+      scoresByControl: { ...FIELD, k2: [sc('p1', 10, 3), ...FIELD.k2.slice(1)] }
+    }).map(h => h.text);
+    assert.ok(t.some(x => x === 'Full pott på 2 kontroller'), t.join(' | '));
+    assert.ok(t.some(x => x === '3 extrapoäng inhämtade'));
+  });
+
+  test('tunt underlag ger ingen placering', () => {
+    // Två patruller på kontrollen — "topp 3 av 2" betyder ingenting.
+    const tunt = { k1: [sc('p1', 10), sc('p2', 4)] };
+    assert.equal(controlRank('p1', tunt.k1), null);
+    const t = patrolHighlights({ patrolId: 'p1', controls: [CTRLS[0]], scoresByControl: tunt }).map(h => h.text);
+    assert.ok(!t.some(x => /Topp|Bäst av alla/.test(x)), t.join(' | '));
+  });
+
+  test('utan poäng finns inget att lyfta', () => {
+    assert.deepEqual(patrolHighlights({ patrolId: 'okänd', controls: CTRLS, scoresByControl: FIELD }), []);
+  });
+
+  test('noll poäng är ett resultat, inte ett saknat', () => {
+    // Number(null) === 0-fällan: en nollrapport ska räknas som avklarad.
+    const t = patrolHighlights({
+      patrolId: 'p9', controls: [CTRLS[0]],
+      scoresByControl: { k1: [sc('p9', 0), sc('p2', 4), sc('p3', 6), sc('p4', 2)] }
+    }).map(h => h.text);
+    assert.ok(t.length > 0 && t[0].includes('klara'), t.join(' | '));
+  });
+
+  test('tid på banan visas när start och mål är kända', () => {
+    const t = texts({ startMs: 0, endMs: 3 * 3600e3 + 12 * 60e3 });
+    assert.ok(t.some(x => x === '3 h 12 min på banan'), t.join(' | '));
   });
 });

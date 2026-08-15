@@ -6,7 +6,10 @@
 //   - Filter chips + control list with anonymity enforced
 
 import { db, doc, onSnapshot, collection } from './firebase.js';
-import { getCompetition, getCompetitionBySlug, getPatrol, listControls, listPatrols, getTrack } from './store.js';
+import {
+  getCompetition, getCompetitionBySlug, getPatrol, listControls, listPatrols, getTrack,
+  watchSelfStarts, confirmSelfStart
+} from './store.js';
 import { courseLegs, drawCourseOnMap, addCourseChip, legLatLngs, courseEtaCalibrated, patrolFinishEtaMs, fmtDist, fmtMin, competitionArea } from './course.js';
 import {
   escapeHtml, publicManagement, patrolStartTime, patrolStartDateTime,
@@ -19,6 +22,7 @@ import { ensureLeaflet } from './leaflet.js';
 import { icon } from './icons.js';
 import { bindHaptic, bindTap, lockScroll, unlockScroll } from './haptic.js';
 import { updateBroadcast } from './broadcast.js';
+import { patrolHighlights } from './highlights.js';
 
 const root = document.getElementById('root');
 const modeBtn = document.getElementById('mode-toggle');
@@ -69,6 +73,8 @@ let track = null;    // drawn course from the Spår editor (fetched once)
 let scoresForPatrol = {};  // controlId -> score doc (egna patrullens)
 let allScoresByCtrl = {};  // controlId -> score[] — kalibrerar ETA-motorn
 let filter = 'alla';       // 'alla' | 'kvar' | 'klara'
+let selfStartAt = null;    // Date — patrullens egen startbekräftelse
+let confirming = false;    // knappen är tryckt, skrivningen pågår
 
 async function main() {
   const parsed = parsePath();
@@ -117,6 +123,15 @@ async function main() {
     if (s.exists()) { comp = { id: cid, ...s.data() }; updateBroadcast(comp, bctx); render(); }
   });
   updateBroadcast(comp, bctx);
+  // Egen startbekräftelse — live, så knappen slår om även om patrullen
+  // bekräftat på en annan telefon.
+  watchSelfStarts(cid, rows => {
+    const own = rows.find(r => r.id === patrolId);
+    const ts = own?.startAt;
+    selfStartAt = ts ? (typeof ts.toDate === 'function' ? ts.toDate() : new Date(ts)) : null;
+    render();
+  });
+
   const subscribedScoreCtrls = new Set();
   onSnapshot(collection(db, 'competitions', cid, 'controls'), snap => {
     controls = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -143,17 +158,69 @@ async function main() {
 
 function isAnonymous() { return comp?.anonymousControls !== false; }
 
+// --- Startkortets tre lägen ---------------------------------------------------
+//
+// Med `selfStart` påslaget är startkortet inte ett kort utan ett förlopp:
+//
+//   'info'      Före bekräftad start. Bara tävlingsinformation, ledningens
+//               kontaktuppgifter och vägen till starten. Ingen bankarta,
+//               inga kontroller — patrullen ska inte kunna planera banan i
+//               bilen på väg dit.
+//   'tavling'   Normalläget: karta, kontroller, poäng, ETA.
+//   'summering' Banan är avklarad. Positiva höjdpunkter i stället för
+//               kontrollistan.
+//
+// Utan `selfStart` finns bara 'tavling' och 'summering' — kortet beter sig
+// som förut.
+function selfStartEnabled() { return comp?.selfStart === true; }
+
+function selfStarted() { return !!selfStartAt; }
+
+// Knappen tänds när patrullens egen starttid passerats. Saknar tävlingen
+// starttider finns ingenting att vänta på — då är den tänd direkt.
+function mayConfirmStart(now = new Date()) {
+  const dt = patrolStartDateTime(comp, patrol, now, patrols.length);
+  return !dt || now >= dt;
+}
+
+function courseFinished() {
+  const t = totals();
+  return t.total > 0 && t.done >= t.total;
+}
+
+function cardPhase() {
+  if (courseFinished() || comp?.closed) return 'summering';
+  if (selfStartEnabled() && !selfStarted()) return 'info';
+  return 'tavling';
+}
+
+// Startkortet kan inte läsa stationens passages (stations-id:t är hemligt),
+// så patrullens faktiska start är den egna bekräftelsen när den finns —
+// annars den planerade tiden.
+function effectiveStartMs() {
+  if (selfStartAt) return selfStartAt.getTime();
+  const dt = patrolStartDateTime(comp, patrol, new Date(), patrols.length);
+  return dt ? dt.getTime() : null;
+}
+
 // Kontrollernas POSITIONER på startkortet döljs tills de är publika — scouter
 // får startkortslänken dagar i förväg och ska inte kunna rekognosera banan.
 // Samma släpplogik som publika sidan: publicControls-flaggan, eller
 // autosläppet 5 min före första start (controlsAutoReleased). Kontrollanternas
 // /k-sidor berörs inte — de behöver sina positioner för att bygga kontrollen.
 function positionsVisible() {
+  // Med självbekräftad start är banan stängd tills patrullen tryckt på
+  // knappen — det gäller ÖVERALLT på kortet, även i start/mål-bladets
+  // bankontext, inte bara i huvudvyn.
+  if (selfStartEnabled() && !selfStarted()) return false;
   return comp?.publicControls !== false || controlsAutoReleased(comp);
 }
 
 // Text för när platserna dyker upp — visas där kartnålarna skulle varit.
 function releaseText() {
+  if (selfStartEnabled() && !selfStarted()) {
+    return 'Kontrollerna visas när ni bekräftat start.';
+  }
   const t = controlsReleaseTime(comp);
   if (t) {
     const kl = t.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
@@ -240,6 +307,102 @@ function renderEtaLine(t) {
   } catch { return ''; }
 }
 
+// --- Läge 'info': före bekräftad start ----------------------------------------
+// Allt patrullen behöver INNAN de går: hur de tar sig till starten, vad som
+// gäller, vem de ringer. Ingenting om banan.
+function renderInfoBody() {
+  const kanStarta = mayConfirmStart();
+  const generalInfo = (comp.generalInfo || '').trim();
+  const mgmt = publicManagement(comp);
+  const park = parkingPoint(comp);
+  const sf = startFinishPoints(comp);
+  const start = sf.find(p => p.kind === 'start' || p.kind === 'startfinish');
+  const maxMin = Number(comp.startTimes?.maxTimeMinutes) || 0;
+
+  const vagCard = (label, sub, kind, ikon) => `
+    <div class="start-ctrl start-ctrl-sf" data-sf="${escapeHtml(kind)}">
+      <div class="start-ctrl-no sf-no">${ikon}</div>
+      <div class="start-ctrl-body">
+        <div class="start-ctrl-name">${escapeHtml(label)}</div>
+        <div class="start-ctrl-sub">${escapeHtml(sub || 'Tryck för karta och koordinater')}</div>
+      </div>
+      <span class="start-ctrl-status">Visa</span>
+    </div>`;
+
+  return `
+    <div class="start-confirm-wrap">
+      <button type="button" class="start-confirm ${kanStarta ? 'is-ready' : ''}"
+        id="confirm-start" ${kanStarta && !confirming ? '' : 'disabled'}>
+        ${icon(kanStarta ? 'flag' : 'clock', { size: 22 })}
+        <span>${confirming ? 'Bekräftar…' : 'Bekräfta start'}</span>
+      </button>
+      <p class="start-confirm-hint">
+        ${kanStarta
+          ? 'Tryck när ni går ut från starten. Då öppnas kartan och kontrollerna — och tävlingsledningen ser att ni är ute på banan.'
+          : 'Knappen tänds när er starttid är inne. Kartan och kontrollerna visas först när ni bekräftat.'}
+      </p>
+    </div>
+
+    ${(park || start) ? `
+      <h2 class="start-info-h">Så tar ni er till starten</h2>
+      <div class="start-ctrl-list">
+        ${park ? vagCard('Parkering', park.name, 'parking', icon('square-parking', { size: 20, stroke: 2.5 })) : ''}
+        ${start ? vagCard(start.kind === 'startfinish' ? 'Start / Mål' : 'Start', start.name, 'start', escapeHtml(start.label)) : ''}
+      </div>` : ''}
+
+    ${maxMin > 0 ? `
+      <div class="start-eta">${icon('clock', { size: 14 })} Maxtid på banan: ${[Math.floor(maxMin / 60) ? Math.floor(maxMin / 60) + ' h' : '', maxMin % 60 ? (maxMin % 60) + ' min' : ''].filter(Boolean).join(' ')}. Nedräkningen startar när ni bekräftar.</div>
+    ` : ''}
+
+    ${generalInfo ? `
+      <h2 class="start-info-h">Allmän information</h2>
+      <div class="start-info-body">${escapeHtml(generalInfo)}</div>` : ''}
+
+    ${mgmt.length ? `
+      <h2 class="start-info-h">Tävlingsledning</h2>
+      <div class="flip-mgmt start-info-mgmt">
+        ${mgmt.map(r => `
+          <div class="flip-mgmt-row">
+            <div class="flip-mgmt-label">${escapeHtml(r.label)}</div>
+            ${r.name ? `<div class="flip-mgmt-name">${escapeHtml(r.name)}</div>` : ''}
+            ${r.phone ? `<a class="flip-mgmt-contact" href="tel:${escapeHtml(r.phone)}">${icon('phone', { size: 16 })} ${escapeHtml(r.phone)}</a>` : ''}
+            ${r.email ? `<a class="flip-mgmt-contact" href="mailto:${escapeHtml(r.email)}">${icon('mail', { size: 16 })} ${escapeHtml(r.email)}</a>` : ''}
+          </div>
+        `).join('')}
+      </div>` : ''}
+  `;
+}
+
+// --- Läge 'summering': banan avklarad -----------------------------------------
+// Bara det som gick bra (se highlights.js). Kontrollistan står kvar under —
+// det är där patrullen ser sina poäng kontroll för kontroll.
+function renderSummaryBody() {
+  const visaJamforelser = comp?.publicScores !== false;
+  const rapporter = Object.values(scoresForPatrol)
+    .map(s => s?.clientReportedAt ?? s?.reportedAt)
+    .map(v => (v && typeof v.toDate === 'function' ? v.toDate() : v ? new Date(v) : null))
+    .filter(Boolean)
+    .sort((a, b) => b - a);
+  const punkter = patrolHighlights({
+    patrolId: patrol.id,
+    controls,
+    scoresByControl: allScoresByCtrl,
+    showRank: visaJamforelser,
+    startMs: effectiveStartMs(),
+    endMs: rapporter[0] ? rapporter[0].getTime() : null
+  });
+  if (!punkter.length) return '';
+
+  return `
+    <div class="start-summary">
+      <div class="start-summary-head">${icon('party-popper', { size: 20 })} <span>I mål!</span></div>
+      <ul class="start-summary-list">
+        ${punkter.map(h => `<li>${icon(h.icon, { size: 17 })}<span>${escapeHtml(h.text)}</span></li>`).join('')}
+      </ul>
+      ${visaJamforelser ? '' : `<p class="start-summary-foot">Placeringarna visas när tävlingsledningen publicerat resultatet.</p>`}
+    </div>`;
+}
+
 function render() {
   if (!comp || !patrol) return;
 
@@ -248,6 +411,7 @@ function render() {
   const hasBackContent = !!generalInfo || mgmt.length > 0;
 
   const t = totals();
+  const phase = cardPhase();
 
   // Batteri: behåll den levande kartnoden över re-renders (varje poäng-
   // snapshot kör render()). Noden byts in i den nya strukturen efteråt och
@@ -277,7 +441,14 @@ function render() {
               const dt = patrolStartDateTime(comp, patrol, new Date(), patrols.length);
               // Maxtid: nedräkning mot planerad start + maxTimeMinutes.
               const maxMin = Number(comp.startTimes?.maxTimeMinutes) || 0;
-              const deadline = maxMin > 0 && dt ? new Date(dt.getTime() + maxMin * 60000) : null;
+              // Maxtiden räknas från när patrullen FAKTISKT gick. Med
+              // självbekräftad start är det bekräftelsen — annars hade
+              // nedräkningen tickat medan de fortfarande stod i kön.
+              const ankare = selfStartAt || dt;
+              // Banan avklarad → ingen nedräkning kvar att bry sig om.
+              const deadline = maxMin > 0 && ankare && !courseFinished()
+                && !(selfStartEnabled() && !selfStarted())
+                ? new Date(ankare.getTime() + maxMin * 60000) : null;
               return `<div class="start-time-chip" id="start-time-chip" data-start="${dt?.toISOString() || ''}">
                 ${icon('clock', { size: 18 })}
                 <span>Starttid</span>
@@ -314,29 +485,32 @@ function render() {
       </div>
     </div>
 
-    <div class="start-kpis">
-      <div class="start-kpi primary"><div class="kp-label">Poäng</div><div class="kp-value">${t.points}</div></div>
-      <div class="start-kpi"><div class="kp-label">Klara</div><div class="kp-value">${t.done} / ${t.total}</div></div>
-      <div class="start-kpi"><div class="kp-label">Kvar</div><div class="kp-value">${t.total - t.done}</div></div>
-    </div>
-    ${renderEtaLine(t)}
-    ${renderNextControl(t)}
+    ${phase === 'info' ? renderInfoBody() : `
+      ${phase === 'summering' ? renderSummaryBody() : ''}
 
-    ${controls.some(c => c.lat && c.lng) ? `
-      <div class="start-map-wrap">
-        <div class="start-map" id="start-map"></div>
+      <div class="start-kpis">
+        <div class="start-kpi primary"><div class="kp-label">Poäng</div><div class="kp-value">${t.points}</div></div>
+        <div class="start-kpi"><div class="kp-label">Klara</div><div class="kp-value">${t.done} / ${t.total}</div></div>
+        <div class="start-kpi"><div class="kp-label">Kvar</div><div class="kp-value">${t.total - t.done}</div></div>
       </div>
-    ` : ''}
+      ${phase === 'summering' ? '' : renderEtaLine(t) + renderNextControl(t)}
 
-    <div class="start-filter">
-      <button type="button" data-f="alla"  class="${filter === 'alla'  ? 'active' : ''}">Alla · ${t.total}</button>
-      <button type="button" data-f="kvar"  class="${filter === 'kvar'  ? 'active' : ''}">Kvar · ${t.total - t.done}</button>
-      <button type="button" data-f="klara" class="${filter === 'klara' ? 'active' : ''}">Klara · ${t.done}</button>
-    </div>
+      ${controls.some(c => c.lat && c.lng) ? `
+        <div class="start-map-wrap">
+          <div class="start-map" id="start-map"></div>
+        </div>
+      ` : ''}
 
-    <div class="start-ctrl-list">
-      ${renderList()}
-    </div>
+      <div class="start-filter">
+        <button type="button" data-f="alla"  class="${filter === 'alla'  ? 'active' : ''}">Alla · ${t.total}</button>
+        <button type="button" data-f="kvar"  class="${filter === 'kvar'  ? 'active' : ''}">Kvar · ${t.total - t.done}</button>
+        <button type="button" data-f="klara" class="${filter === 'klara' ? 'active' : ''}">Klara · ${t.done}</button>
+      </div>
+
+      <div class="start-ctrl-list">
+        ${renderList()}
+      </div>
+    `}
 
     <p class="r-sub" style="text-align:center;opacity:.55;margin-top:36px;font-size:13px;">
       ESKIL · startkort · live-uppdaterat när poäng rapporteras<br>
@@ -367,6 +541,31 @@ function render() {
 
   // Flip card
   wireFlipCard();
+
+  // Bekräfta start.
+  const confirmBtn = document.getElementById('confirm-start');
+  if (confirmBtn) {
+    bindTap(confirmBtn, async () => {
+      if (confirming || !mayConfirmStart()) return;
+      // Testkortet (/s/<cid>/test) har ingen patrull i databasen — reglerna
+      // skulle neka skrivningen. Låt förhandsvisningen gå vidare ändå, den
+      // finns just för att visa hur kortet beter sig.
+      if (patrol.__test) { selfStartAt = new Date(); render(); return; }
+      confirming = true;
+      render();
+      try {
+        await confirmSelfStart(parsePath().cid, patrol.id);
+        // Snapshoten skriver selfStartAt och renderar om. Offline landar
+        // skrivningen i Firestores lokala kö och slår igenom lokalt direkt —
+        // patrullen ska kunna gå ut i skogen utan täckning.
+      } catch (e) {
+        confirming = false;
+        alert('Kunde inte bekräfta starten: ' + (e?.message || e) +
+              '\n\nGå till startfunktionären så checkar de ut er.');
+        render();
+      }
+    });
+  }
 
   // Overview map — swap the live node back in if we kept one.
   const withPos = controls.filter(c => c.lat && c.lng);
@@ -823,13 +1022,17 @@ function wireStartCountdown() {
   const maxDeadline = maxChip?.dataset.deadline ? new Date(maxChip.dataset.deadline) : null;
 
   let lastPosVisible = positionsVisible();
+  let lastMayStart = mayConfirmStart();
   const tick = () => {
     const now = new Date();
-    // Positionssläppet (5 min före första start) ska slå igenom direkt utan
-    // omladdning — kartan, ETA-raden och kontrollbladen byggs om vid flippen.
+    // Två saker ska slå om av sig själva, utan omladdning: positionssläppet
+    // (5 min före första start) och bekräfta-knappen när patrullens egen
+    // starttid går in. Kortet ligger uppe i fickan medan man väntar.
     const vis = positionsVisible();
-    if (vis !== lastPosVisible) {
+    const may = mayConfirmStart(now);
+    if (vis !== lastPosVisible || may !== lastMayStart) {
       lastPosVisible = vis;
+      lastMayStart = may;
       render();
       return; // render() drar igång en ny wireStartCountdown-tick
     }
@@ -845,7 +1048,7 @@ function wireStartCountdown() {
       out.textContent = `om ${formatRelative(ms)}`;
     }
     if (maxChip && maxDeadline) {
-      const started = now >= startAt;
+      const started = selfStartEnabled() ? selfStarted() : now >= startAt;
       maxChip.hidden = !started;
       if (started) {
         const left = maxDeadline - now;

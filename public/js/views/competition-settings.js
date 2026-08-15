@@ -692,6 +692,16 @@ function renderRulesTab(comp, cid, refresh, readOnly) {
       </div>
 
       <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
+        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
+          <input type="checkbox" id="selfStart" ${comp.selfStart === true ? 'checked' : ''} style="margin-top:4px;">
+          <span>
+            <strong>Patrullerna bekräftar start själva ${help('comp.selfStart')}</strong>
+            <div class="field-hint" style="margin-top:2px;">Startkortet visar bara tävlingsinformation och vägen till starten tills patrullen tryckt "Bekräfta start" — knappen tänds först när deras starttid passerats. Först då visas kartan och kontrollerna. Bekräftelsen syns i Läget precis som en utcheckning från startstationen.</div>
+          </span>
+        </label>
+      </div>
+
+      <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
         <label class="field" for="generalInfo">Allmän information ${help('comp.generalInfo')}</label>
         <textarea class="textarea" id="generalInfo" placeholder="T.ex. akutrutiner, ansvarig vid olycka…" rows="4">${escapeHtml(comp.generalInfo || '')}</textarea>
         <div class="field-hint">Syns under instruktionerna på varje kontrolls rapporteringssida.</div>
@@ -727,6 +737,7 @@ function renderRulesTab(comp, cid, refresh, readOnly) {
         lastStart: card.querySelector('#st-lastStart').value || null,
         maxTimeMinutes: Number(card.querySelector('#st-maxtime').value) || null
       },
+      selfStart: card.querySelector('#selfStart').checked,
       generalInfo: card.querySelector('#generalInfo').value.trim()
     });
     await refresh();

@@ -110,6 +110,22 @@ export const HELP = {
     ]
   },
 
+  'comp.selfStart': {
+    title: 'Patrullerna bekräftar start själva',
+    body: [
+      'Normalt checkas patrullerna ut av en funktionär vid startstationen. Med den här inställningen kan patrullen i stället trycka "Bekräfta start" på sitt eget startkort.',
+      'Startkortet får då tre lägen. Före bekräftelsen visas bara tävlingsinformation, tävlingsledningens kontaktuppgifter och vägen till starten — ingen bankarta och inga kontroller. Knappen finns men är släckt tills patrullens starttid passerats, och tänds då grön. Efter bekräftelsen öppnas kortet: karta, kontroller, poäng och ETA.',
+      'Bekräftelsen landar i Läget precis som en utcheckning från startstationen, så sen-till-start-larmet och ETA:n räknar på patrullens verkliga starttid.'
+    ],
+    warn: 'Startkortslänken är hemligheten. Den som har den kan bekräfta starten — men bara en gång: en bekräftad start går inte att flytta i efterhand. Behöver den ångras gör en administratör det.',
+    faq: [
+      { q: 'Kan de trycka innan starttiden?', a: 'Nej. Knappen är släckt tills patrullens egen starttid passerats. Har tävlingen inga starttider alls är knappen tänd direkt.' },
+      { q: 'Vad händer om de glömmer trycka?', a: 'Kortet står kvar i informationsläget. Startfunktionären kan checka ut dem på stationen som vanligt — de två sätten fungerar sida vid sida och Läget visar båda.' },
+      { q: 'Ersätter det startstationen?', a: 'Det kan det göra på mindre tävlingar. På större är det bekvämt som komplement: patrullen bekräftar själv, funktionären behöver bara pricka av dem som inte gjort det.' },
+      { q: 'Var syns bekräftelsen?', a: 'I Läget, i patrullistan och på startstationens sida — samma kolumn som utcheckningar, märkt så att du ser att patrullen bekräftat själv.' }
+    ]
+  },
+
   'comp.district': {
     title: 'Scoutdistrikt',
     body: [
