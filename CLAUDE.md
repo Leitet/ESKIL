@@ -152,6 +152,13 @@ new request and the requester on the decision.
   `<fromKey>__<toKey>` plus `speedKmh`. The leg sequence itself is derived
   from control number order at render time, never stored. Publicly readable
   (controls already expose all positions); admin-only writes.
+  The editor has an explicit **no-leg-selected** state (`activeIdx === -1`,
+  and it is the default): the map is then inert and renders clean for
+  screenshots. Where a new point lands in the sequence is decided by
+  `waypointInsertIndex` in `course.js` — near the line refines there, farther
+  away extends from the end. Don't put it back to plain nearest-segment: on a
+  curved leg the nearest segment ties on the bend and points landed BEFORE
+  the previous one. Regression-tested in `test/logic.test.js`.
 - `.../stations/{stationId}/passages/{patrolId}` — start/finish check-outs
   (`startAt`/`finishAt` timestamps), doc id IS the patrolId. Anonymous clients
   may only touch `patrolId`/`startAt`/`finishAt` (affectedKeys guard); station

@@ -342,3 +342,45 @@ export function addCourseChip(L, map, legs, speedKmh) {
   chip.addTo(map);
   return chip;
 }
+
+// --- Spårritning: var hör en ny punkt hemma i benets sekvens? ---------------
+//
+// Ligger här (och inte i vyn) för att kunna testas utan karta — det här är
+// logik som gick sönder tyst och gjorde spårritningen svårhanterlig.
+//
+// Avstånd i skärmpixlar från punkten p till sträckan a–b, klippt vid
+// ändpunkterna. Egen implementation för att hålla course.js beroendefri
+// (Leaflet har en motsvarighet, men modulen ska gå att köra i Node).
+export function pointToSegmentDistance(p, a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const len2 = dx * dx + dy * dy;
+  let t = len2 ? ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
+
+// Närmaste segment på en punktkedja. Lika avstånd vinns av det SENARE
+// segmentet — ritningen går framåt, så det är den troligare avsikten.
+export function nearestSegmentIndex(path, click) {
+  let index = 0, dist = Infinity;
+  for (let i = 0; i < path.length - 1; i++) {
+    const d = pointToSegmentDistance(click, path[i], path[i + 1]);
+    if (d <= dist) { dist = d; index = i; }
+  }
+  return { index, dist };
+}
+
+export const REFINE_PX = 24;
+
+// path = benets HELA punktkedja i skärmkoordinater (från, ...punkter, till),
+// click = klickets skärmkoordinat. Returnerar indexet i leg.wps.
+//
+// Ett klick PÅ linjen justerar spåret där det landar. Ett klick bredvid
+// förlänger från slutet. Skillnaden är hela poängen: utan den gick punkten
+// alltid till närmaste segment, och så fort spåret bågade pekade "närmaste
+// segment" bakåt — nästa punkt hamnade två steg tillbaka i sekvensen och
+// linjen hoppade.
+export function waypointInsertIndex(path, click, refinePx = REFINE_PX) {
+  const { index, dist } = nearestSegmentIndex(path, click);
+  return dist <= refinePx ? index : Math.max(0, path.length - 2);
+}

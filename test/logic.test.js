@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 
 import {
   courseEta, courseEtaCalibrated, patrolFinishEtaMs, controlEtaWindow,
+  waypointInsertIndex, nearestSegmentIndex, pointToSegmentDistance,
   DEFAULT_DWELL_MIN, ETA_MIN_SAMPLES, fmtDist, fmtMin
 } from '../public/js/course.js';
 import {
@@ -293,5 +294,60 @@ describe('Scoutdistrikt', () => {
       assert.ok(h >= 0 && h < 360, `${d.id} gav ${h}`);
       assert.equal(h, districtHue(d.id), 'samma id ska ge samma ton');
     }
+  });
+});
+
+describe('Spårritning — var en ny punkt hamnar', () => {
+  const pt = (x, y) => ({ x, y });
+
+  test('avstånd till segment klipps vid ändpunkterna', () => {
+    assert.equal(pointToSegmentDistance(pt(50, 10), pt(0, 0), pt(100, 0)), 10);
+    assert.equal(pointToSegmentDistance(pt(-30, 0), pt(0, 0), pt(100, 0)), 30, 'bakom starten');
+    assert.equal(pointToSegmentDistance(pt(130, 0), pt(0, 0), pt(100, 0)), 30, 'bortom slutet');
+  });
+
+  test('REGRESSION: punkten hamnar inte två steg tillbaka när spåret bågar', () => {
+    // Benet går A(0,0) → B(400,0). Användaren har satt P1 uppe till vänster
+    // och klickar vidare uppåt-höger för att fortsätta bågen.
+    const A = { x: 0, y: 0 }, P1 = { x: 100, y: -200 }, B = { x: 400, y: 0 };
+    const path = [A, P1, B];
+    const klick = { x: 150, y: -300 };
+
+    // Klicket ligger UTANFÖR vinkeln vid P1: det projiceras bortom slutet på
+    // A→P1 och före början på P1→B, så båda segmenten klipps till samma hörn
+    // och hamnar på exakt samma avstånd. Den gamla regeln tog första bästa
+    // minimum och lade därför punkten i segment 0 — alltså FÖRE P1. Spåret
+    // hoppade bakåt. Området där det inträffar är stort så fort spåret bågar.
+    const dA = pointToSegmentDistance(klick, A, P1);
+    const dB = pointToSegmentDistance(klick, P1, B);
+    assert.equal(dA, dB, 'oavgjort — det är här den gamla regeln föll');
+
+    assert.equal(nearestSegmentIndex(path, klick).index, 1, 'oavgjort ska vinnas framåt');
+    assert.equal(waypointInsertIndex(path, klick), 1, 'punkten läggs EFTER P1, inte före');
+  });
+
+  test('klick på linjen justerar spåret där det landar', () => {
+    // Samma båge, men klicket ligger PÅ det första segmentet — då är
+    // avsikten att förfina just där, inte att förlänga.
+    const path = [pt(0, 0), pt(100, -200), pt(400, 0)];
+    assert.equal(waypointInsertIndex(path, pt(50, -100)), 0);
+  });
+
+  test('första punkten på ett orört ben', () => {
+    const path = [pt(0, 0), pt(400, 0)];
+    assert.equal(waypointInsertIndex(path, pt(200, -300)), 0, 'långt bort → sist (= enda)');
+    assert.equal(waypointInsertIndex(path, pt(200, 5)), 0, 'på linjen → i enda segmentet');
+  });
+
+  test('en punkt mitt i en färdig kedja hamnar mellan rätt grannar', () => {
+    // Kedja A—P1—P2—P3—B längs en rak linje; klick nära sträckan P2–P3.
+    const path = [pt(0, 0), pt(100, 0), pt(200, 0), pt(300, 0), pt(400, 0)];
+    assert.equal(waypointInsertIndex(path, pt(250, 8)), 2, 'index i wps: efter P2');
+  });
+
+  test('lika avstånd vinns av det senare segmentet (ritningen går framåt)', () => {
+    // Klicket ligger rakt ovanför skarven mellan två raka segment.
+    const path = [pt(0, 0), pt(100, 0), pt(200, 0)];
+    assert.equal(nearestSegmentIndex(path, pt(100, 40)).index, 1);
   });
 });

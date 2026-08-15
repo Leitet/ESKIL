@@ -10,7 +10,10 @@
 import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import { getCompetition, listControls, getTrack, saveTrack } from '../store.js';
 import { escapeHtml, toast, isCompAdminUser } from '../utils.js';
-import { courseLegs, legPath, legLatLngs, legDistance, fmtDist, fmtMin, DEFAULT_SPEED_KMH } from '../course.js';
+import {
+  courseLegs, legPath, legLatLngs, legDistance, fmtDist, fmtMin,
+  nearestSegmentIndex, waypointInsertIndex, DEFAULT_SPEED_KMH
+} from '../course.js';
 import { ensureLeaflet } from '../leaflet.js';
 import { icon } from '../icons.js';
 import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
@@ -46,7 +49,11 @@ export async function renderTrack(app, user, cid) {
   const { nodes, legs } = courseLegs(comp, controls, stored);
 
   let speedKmh = SPEEDS.includes(stored && stored.speedKmh) ? stored.speedKmh : DEFAULT_SPEED;
-  let activeIdx = 0;
+  // -1 = inget ben valt. Det är UTGÅNGSLÄGET: kartan är då inert (inga
+  // punkthandtag, ingen orange markering, klick gör ingenting) så spåret går
+  // att titta på och skärmdumpa i lugn och ro. Först när ett ben är valt
+  // blir kartan en rityta.
+  let activeIdx = -1;
   let dirty = false;
 
   // --- Layout --------------------------------------------------------------------
@@ -79,8 +86,8 @@ export async function renderTrack(app, user, cid) {
     </div>
     <p class="muted t-sm" style="margin-top:8px;">
       ${canEdit
-        ? 'Välj ett ben i panelen (eller klicka på linjen) och klicka i kartan för att lägga till punkter. Dra punkterna för att justera, dubbelklicka på en punkt för att ta bort den.'
-        : 'Skrivskyddad vy — endast administratörer kan ändra spåret.'}
+        ? 'Välj ett ben i panelen eller klicka på dess linje. Klicka sedan i kartan för att lägga till punkter — nära linjen justeras spåret där du klickar, längre bort förlängs det från slutet. Dra punkter för att flytta, dubbelklicka för att ta bort. Klicka långt utanför benet eller tryck <kbd>Esc</kbd> för att avmarkera.'
+        : 'Skrivskyddad vy — endast administratörer kan ändra spåret. Klicka på ett ben för att lyfta fram det, i kartan utanför för att avmarkera.'}
     </p>`}
   `;
 
@@ -117,25 +124,27 @@ export async function renderTrack(app, user, cid) {
     }).addTo(map);
   });
 
-  // Leg polylines
-  // A double-click fires two click events first (Leaflet quirk) — without a
-  // debounce, double-click-to-zoom would also drop two stray waypoints. So
-  // single clicks insert after a short delay and a dblclick cancels them.
-  let clickTimer = null;
-  const insertDebounced = (leg, latlng) => {
-    clearTimeout(clickTimer);
-    clickTimer = setTimeout(() => insertWaypoint(leg, latlng), 230);
-  };
-  map.on('dblclick', () => clearTimeout(clickTimer));
-
-  const polys = legs.map((leg, i) => {
-    const pl = L.polyline(legPath(leg).map(p => [p.lat, p.lng]), { weight: 4 }).addTo(map);
-    pl.on('click', (e) => {
+  // Leg polylines.
+  // Punkter läggs in DIREKT vid klick — ingen fördröjning. Tidigare väntade
+  // varje klick 230 ms för att kunna ångras av en dubbelklickzoomning, vilket
+  // dels gjorde ritandet trögt, dels svalde den första av två snabba klick.
+  // I stället stängs dubbelklickzoomen av så länge ett ben är valt (se
+  // setActive): dubbelklick i kartan har ingen annan uppgift under ritning,
+  // och zoom finns kvar på hjul, nyp och +/-.
+  const polys = [];
+  const hits = [];                            // osynliga, breda träffytor
+  legs.forEach((leg, i) => {
+    const latlngs = legPath(leg).map(p => [p.lat, p.lng]);
+    polys.push(L.polyline(latlngs, { weight: 4, interactive: false }).addTo(map));
+    // En SVG-linjes klickyta ÄR dess streckbredd — 4 px är i praktiken
+    // pixeljakt. Den här ligger ovanpå, är genomskinlig och tar klicket.
+    const hit = L.polyline(latlngs, { weight: 20, opacity: 0 }).addTo(map);
+    hit.on('click', (e) => {
       L.DomEvent.stop(e);
       if (activeIdx !== i) { setActive(i); return; }
-      if (canEdit) insertDebounced(leg, e.latlng);
+      if (canEdit) insertWaypoint(leg, e.latlng);
     });
-    return pl;
+    hits.push(hit);
   });
 
   let wpMarkers = [];
@@ -151,7 +160,9 @@ export async function renderTrack(app, user, cid) {
 
   function redrawActiveLeg() {
     const leg = legs[activeIdx];
-    polys[activeIdx].setLatLngs(legPath(leg).map(p => [p.lat, p.lng]));
+    const latlngs = legPath(leg).map(p => [p.lat, p.lng]);
+    polys[activeIdx].setLatLngs(latlngs);
+    hits[activeIdx].setLatLngs(latlngs);
     styleLegs();
     drawWaypoints();
     updatePanel();
@@ -160,7 +171,7 @@ export async function renderTrack(app, user, cid) {
   function drawWaypoints() {
     wpMarkers.forEach(m => m.remove());
     wpMarkers = [];
-    if (!canEdit) return;
+    if (!canEdit || activeIdx < 0) return;
     const leg = legs[activeIdx];
     leg.wps.forEach((p, j) => {
       // The visible dot is 14px but the hit area is 26px — a fat-finger
@@ -187,28 +198,48 @@ export async function renderTrack(app, user, cid) {
     });
   }
 
-  // Insert at the nearest segment of the active leg so clicks refine the
-  // path where they land instead of always appending at the end.
+  // Benets punktkedja och klicket i skärmkoordinater — sekvenslogiken är
+  // delad och testad i course.js.
+  const legPixels = (leg) => legPath(leg).map(p => map.latLngToLayerPoint([p.lat, p.lng]));
+  const nearestSegment = (leg, latlng) =>
+    nearestSegmentIndex(legPixels(leg), map.latLngToLayerPoint(latlng));
+
+  // "Utanför benet" måste vara generöst tilltaget: en omväg runt ett kärr
+  // ligger långt från fågelvägen men är fortfarande ritning, inte ett
+  // felklick. Därför krävs BÅDE att klicket ligger utanför benets område
+  // (ändpunkterna + redan ritade punkter, med marginal) OCH en bit från
+  // själva linjen innan vi tolkar det som "klar med benet".
+  function isOutsideLeg(leg, latlng) {
+    const s = map.getSize();
+    const farFromLine = nearestSegment(leg, latlng).dist > Math.max(120, Math.min(s.x, s.y) / 3);
+    return farFromLine && !L.latLngBounds(legLatLngs(leg)).pad(0.35).contains(latlng);
+  }
+
   function insertWaypoint(leg, latlng) {
-    const path = legPath(leg).map(p => map.latLngToLayerPoint([p.lat, p.lng]));
-    const click = map.latLngToLayerPoint(latlng);
-    let best = 0, bestD = Infinity;
-    for (let i = 0; i < path.length - 1; i++) {
-      const d = L.LineUtil.pointToSegmentDistance(click, path[i], path[i + 1]);
-      if (d < bestD) { bestD = d; best = i; }
-    }
-    leg.wps.splice(best, 0, { lat: latlng.lat, lng: latlng.lng });
+    const at = waypointInsertIndex(legPixels(leg), map.latLngToLayerPoint(latlng));
+    leg.wps.splice(at, 0, { lat: latlng.lat, lng: latlng.lng });
     markDirty();
     redrawActiveLeg();
   }
 
   map.on('click', (e) => {
-    if (!canEdit) return;
-    insertDebounced(legs[activeIdx], e.latlng);
+    if (activeIdx < 0) return;                       // inget valt → kartan är inert
+    const leg = legs[activeIdx];
+    // Klick långt utanför benet betyder "jag är klar med det här benet",
+    // inte "lägg en punkt hit ut".
+    if (!canEdit || isOutsideLeg(leg, e.latlng)) { setActive(-1); return; }
+    insertWaypoint(leg, e.latlng);
   });
 
   function setActive(i) {
     activeIdx = i;
+    // Under ritning har dubbelklick i kartan ingen egen uppgift, och zoomen
+    // skulle bara krocka med punktutsättningen.
+    if (canEdit && i >= 0) map.doubleClickZoom.disable();
+    else map.doubleClickZoom.enable();
+    // Där två ben möts vid en kontroll överlappar träffytorna. Det valda
+    // benet ska vinna — annars byter man ben mitt i ritningen.
+    if (i >= 0) hits[i].bringToFront();
     styleLegs();
     drawWaypoints();
     updatePanel();
@@ -222,6 +253,7 @@ export async function renderTrack(app, user, cid) {
   }
 
   function updatePanel() {
+    const active = activeIdx >= 0 ? legs[activeIdx] : null;
     const dists = legs.map(legDist);
     const total = dists.reduce((s, d) => s + d, 0);
     const walk = walkMin(total);
@@ -257,33 +289,40 @@ export async function renderTrack(app, user, cid) {
         `).join('')}
       </div>
 
-      ${canEdit ? `
-        <div class="btn-row" style="margin-top:10px;flex-wrap:wrap;">
-          <button class="btn btn-ghost btn-sm" id="track-undo" ${legs[activeIdx].wps.length ? '' : 'disabled'}>Ångra punkt</button>
-          <button class="btn btn-ghost btn-sm" id="track-clear" ${legs[activeIdx].wps.length ? '' : 'disabled'}>Rensa ben</button>
-          <button class="btn btn-primary btn-sm" id="track-save" ${dirty ? '' : 'disabled'}>Spara spår</button>
-        </div>` : ''}
+      <div class="btn-row" style="margin-top:10px;flex-wrap:wrap;">
+        ${active ? '<button class="btn btn-ghost btn-sm" id="track-deselect">Avmarkera</button>' : ''}
+        ${canEdit ? `
+          <button class="btn btn-ghost btn-sm" id="track-undo" ${active && active.wps.length ? '' : 'disabled'}>Ångra punkt</button>
+          <button class="btn btn-ghost btn-sm" id="track-clear" ${active && active.wps.length ? '' : 'disabled'}>Rensa ben</button>
+          <button class="btn btn-primary btn-sm" id="track-save" ${dirty ? '' : 'disabled'}>Spara spår</button>` : ''}
+      </div>
     `;
 
     panel.querySelectorAll('[data-leg]').forEach(b => {
       b.addEventListener('click', () => {
         const i = Number(b.dataset.leg);
+        // Klick på ett redan valt ben stänger av markeringen — samma knapp,
+        // fram och tillbaka.
+        if (i === activeIdx) { setActive(-1); return; }
         setActive(i);
         map.fitBounds(L.latLngBounds(legPath(legs[i]).map(p => [p.lat, p.lng])), { padding: [70, 70] });
       });
     });
+    panel.querySelector('#track-deselect')?.addEventListener('click', () => setActive(-1));
     panel.querySelector('#track-speed')?.addEventListener('change', (e) => {
       speedKmh = Number(e.target.value) || DEFAULT_SPEED;
       markDirty();
       updatePanel();
     });
     panel.querySelector('#track-undo')?.addEventListener('click', () => {
-      legs[activeIdx].wps.pop();
+      if (!active) return;
+      active.wps.pop();
       markDirty();
       redrawActiveLeg();
     });
     panel.querySelector('#track-clear')?.addEventListener('click', () => {
-      legs[activeIdx].wps = [];
+      if (!active) return;
+      active.wps = [];
       markDirty();
       redrawActiveLeg();
     });
@@ -312,12 +351,20 @@ export async function renderTrack(app, user, cid) {
   const onFs = () => setTimeout(() => map.invalidateSize(), 60);
   document.addEventListener('fullscreenchange', onFs);
 
+  // Esc avmarkerar — snabbaste vägen till en ren karta (skärmdumpar).
+  const onKey = (e) => {
+    if (e.key !== 'Escape' || activeIdx < 0) return;
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '')) return;
+    setActive(-1);
+  };
+  document.addEventListener('keydown', onKey);
+
   // Warn before the tab closes with unsaved drawing.
   const beforeUnload = (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } };
   window.addEventListener('beforeunload', beforeUnload);
 
   registerViewCleanup(() => {
-    clearTimeout(clickTimer);
+    document.removeEventListener('keydown', onKey);
     document.removeEventListener('fullscreenchange', onFs);
     window.removeEventListener('beforeunload', beforeUnload);
     try { map.remove(); } catch {}
