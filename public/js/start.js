@@ -632,6 +632,13 @@ function render() {
       // Snapshoten skriver tillbaka tiden och renderar om. Offline landar
       // skrivningen i Firestores lokala kö och slår igenom lokalt direkt —
       // patrullen ska kunna gå ut i skogen utan täckning.
+      // MEN: snapshoten rör aldrig `confirming` — den måste nollställas här,
+      // annars fastnar den på 'startAt' och släcker "Vi är i mål"-knappen i
+      // summeringen (den ritas med `disabled` när confirming är sann, och
+      // klick-guarden sväljer trycket). Med både selfStart och selfFinish på
+      // kunde patrullen då aldrig egenmarkera målgång.
+      confirming = null;
+      render();
     } catch (e) {
       confirming = null;
       alert((field === 'startAt' ? 'Kunde inte bekräfta starten: ' : 'Kunde inte markera målgången: ')
