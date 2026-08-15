@@ -10,7 +10,7 @@ import { ensureLeaflet } from './leaflet.js';
 import { icon } from './icons.js';
 import { haptic, bindHaptic, bindTap, lockScroll, unlockScroll } from './haptic.js';
 import { updateBroadcast } from './broadcast.js';
-import { mountChat } from './chat.js';
+import { mountMessages } from './chat.js';
 import { enqueue, removeFromQueue, listQueue, isPending, flushQueue, withTimeout, isPermanentError } from './offline-queue.js';
 
 const root = document.getElementById('root');
@@ -813,7 +813,6 @@ async function main() {
     <div id="sync" class="r-sync" hidden></div>
     <div class="r-section" id="avd"></div>
     <div class="r-section" id="plist"></div>
-    <div id="chat"></div>
     <p class="r-sub" style="text-align:center;opacity:.6;margin-top:40px;">
       ESKIL · rapporteringen uppdateras i realtid<br>
       <a href="/t/${escapeHtml(cid)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">Tävlingssidan — startlista &amp; resultat</a>
@@ -823,13 +822,13 @@ async function main() {
   const avd = root.querySelector('#avd');
   const plist = root.querySelector('#plist');
 
-  // Samtal med tävlingsledningen. Kontrollanten står ensam i skogen med en
-  // regel som inte täcker fallet framför sig — det här är vägen att fråga.
+  // Meddelandeikonen: driftmeddelanden OCH samtalet med ledningen i samma
+  // modal. Kontrollanten står ensam i skogen med en regel som inte täcker
+  // fallet framför sig — det här är vägen att fråga.
   chatPanel?.destroy();
-  chatPanel = mountChat(root.querySelector('#chat'), {
+  chatPanel = mountMessages({
     cid, kind: 'kontroll', refId: ctrlId,
-    enabled: comp?.fieldMessaging !== false,
-    title: 'Fråga tävlingsledningen'
+    enabled: comp?.fieldMessaging !== false
   });
 
   sync.el = root.querySelector('#sync');

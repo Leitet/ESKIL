@@ -75,8 +75,15 @@ Email extension). Production domain: https://eskilscout.se.
   ansikten — i Firestore följer den tävlingens gallring. `public/js/photo.js`
   skalar ner till ≤ 400 000 tecken och reglerna vaktar samma tak; håll de två
   i synk. `closeCompetition` och `deleteCompetition` raderar trådarna HELT.
-  UI: `public/js/chat.js` (delad panel på /k och /s, ärver report.css så
-  nattläget håller) och inkorgen i `views/meddelanden.js`.
+  UI: `public/js/chat.js` (`mountMessages`) äger EN ikon och EN modal på /k
+  och /s, och flätar in `broadcast.js`-driftmeddelandena i SAMMA tidslinje som
+  samtalet — för den som står i skogen är det ett flöde av saker ledningen
+  sagt. Klockan (`#eskil-bell`) finns inte längre; broadcast.js exponerar i
+  stället `broadcastFeed()` / `broadcastPendingAcks()` / `ackBroadcast()` /
+  `onBroadcastChange()` och behåller bara bannerstacken och larmen — ett
+  kritiskt meddelande ska synas utan att någon öppnar en modal. Panelen ärver
+  report.css-variablerna så nattläget håller. Ledningens sida: inkorgen i
+  `views/meddelanden.js`.
 - **Patrullens etikett är `patrolLabel()` i utils.js**: `Rävarna (Lindsdals
   Scoutkår)`. Används där patrullen visas som EN etikett — Läget,
   stationssidan, reservprotokollet, delade placeringar — eftersom flera kårer

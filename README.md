@@ -72,6 +72,10 @@ att köra gratis på Spark-planen.
   sekretariatet. Påslaget som standard, går att stänga av under Regler & info.
   Bilder skalas ner i klienten och lagras i meddelandet — hela samtalet
   raderas när tävlingen avslutas.
+  På fältsidorna ligger allt bakom **en meddelandeikon**: driftmeddelandena
+  från ledningen och det egna samtalet i samma tidslinje, i den ordning det
+  kom. Kritiska meddelanden visas fortfarande som banner utan att man behöver
+  öppna något.
 - **Läget** (flik på tävlingen) — sekretariatets tävlingsdagsvy. Live-KPI:er
   (ej startade / ute i skogen / i mål / varningar), karta och tabell med
   **kötryck per kontroll**: kö nu (patruller på väg från föregående kontroll),

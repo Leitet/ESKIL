@@ -53,7 +53,6 @@ let subStarted = false;
 let firstSnapshotDone = false;
 let stylesInjected = false;
 let audioCtx = null;
-let panelOpen = false;
 let legacyLastAt;             // för legacy-larmet (at-ändring)
 
 // --- Lokalt minne (per tävling + identitet) -----------------------------------
@@ -198,75 +197,6 @@ function ensureStyles() {
     html[data-mode="night"] .eb-kritisk { background: #c8102e; color: #ffffff; }
 
     /* Notisklockan — sitter bredvid Nattläge-knappen där den finns. */
-    #eskil-bell {
-      position: absolute; top: 12px; z-index: 60;
-      background: var(--r-card, #fff);
-      border: 1.5px solid var(--r-border, #d8d8d8);
-      color: var(--r-fg, #282727);
-      border-radius: 999px;
-      width: 38px; height: 38px;
-      display: inline-flex; align-items: center; justify-content: center;
-      cursor: pointer; font-size: 17px;
-    }
-    #eskil-bell .eb-badge {
-      position: absolute; top: -5px; right: -5px;
-      min-width: 18px; height: 18px; border-radius: 999px;
-      background: #DA005E; color: #fff;
-      font: 800 11px/18px "Libre Franklin", Helvetica, Arial, sans-serif;
-      text-align: center; padding: 0 4px;
-    }
-    #eskil-bell-panel {
-      position: absolute; z-index: 950;
-      top: 56px; right: 12px;
-      width: min(360px, calc(100vw - 24px));
-      max-height: 60vh; overflow-y: auto;
-      background: var(--r-card, #fff);
-      color: var(--r-fg, #282727);
-      border: 1.5px solid var(--r-border, #d8d8d8);
-      border-radius: 14px;
-      box-shadow: 0 8px 30px rgba(0,0,0,.25);
-      font-family: "Libre Franklin", -apple-system, Helvetica, Arial, sans-serif;
-    }
-    #eskil-bell-panel .ebp-head {
-      padding: 12px 16px 8px; font-weight: 800; font-size: 14px;
-      display: flex; justify-content: space-between; align-items: center;
-    }
-    #eskil-bell-panel .ebp-empty { padding: 8px 16px 16px; font-size: 13.5px; opacity: .7; }
-    #eskil-bell-panel .ebp-row {
-      padding: 10px 16px; border-top: 1px solid var(--r-border, #eee);
-      font-size: 13.5px; line-height: 1.45;
-    }
-    #eskil-bell-panel .ebp-meta { display: flex; gap: 8px; align-items: center; font-size: 11.5px; opacity: .75; margin-bottom: 2px; }
-    #eskil-bell-panel .ebp-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
-    #eskil-bell-panel .ebp-dot.info { background: #003660; }
-    #eskil-bell-panel .ebp-dot.varning { background: #E2B100; }
-    #eskil-bell-panel .ebp-dot.kritisk { background: #DA005E; }
-    #eskil-bell-panel .ebp-status { font-size: 12px; font-weight: 700; margin-top: 3px; }
-    #eskil-bell-panel .ebp-ackbtn {
-      font: inherit; font-size: 12.5px; font-weight: 700;
-      border: 1.5px solid var(--r-border, #d8d8d8); background: none; color: inherit;
-      border-radius: 999px; padding: 3px 12px; cursor: pointer; margin-top: 4px;
-    }
-    #eskil-bell-panel .ebp-notif {
-      padding: 12px 16px; border-top: 1.5px solid var(--r-border, #eee);
-      font-size: 12.5px;
-    }
-    #eskil-bell-panel .ebp-notif button {
-      font: inherit; font-weight: 700; font-size: 12.5px;
-      border: 1.5px solid var(--r-border, #d8d8d8); background: none; color: inherit;
-      border-radius: 999px; padding: 5px 14px; cursor: pointer;
-    }
-    #eskil-bell-panel .eb-hide {
-      border: none; background: none; color: inherit; font: inherit;
-      font-size: 15px; cursor: pointer; opacity: .7; padding: 4px 8px;
-    }
-    /* Lucide-ikoner i löptext ska sitta på baslinjen, inte sväva. */
-    .eb-msg svg, #eskil-bell-panel svg { vertical-align: -2px; }
-    #eskil-bell svg { display: block; }
-    .eb-msg .eb-hide, .eb-msg .eb-ack { display: inline-flex; align-items: center; gap: 6px; }
-    html[data-mode="night"] #eskil-bell, html[data-mode="night"] #eskil-bell-panel {
-      background: #1a0808; border-color: #5c1a1a; color: #ff8a80;
-    }
   `;
   document.head.appendChild(st);
 }
@@ -377,7 +307,7 @@ function render() {
     document.body.style.paddingTop = host.offsetHeight + 'px';
   }
 
-  renderBell(act, local, identity);
+  meddelaLyssnare();
 }
 let lastStackHtml = '';
 
@@ -403,81 +333,65 @@ function doAck(msgId) {
   render();
 }
 
-// --- Klockan ------------------------------------------------------------------
-function renderBell(act, local, identity) {
-  // Bara på sidor med en kvittensidentitet (/k, /s, /m) — startskärmen är en
-  // projektor och behöver ingen klocka.
-  if (!identity) return;
-  let bell = document.getElementById('eskil-bell');
-  if (!bell) {
-    bell = document.createElement('button');
-    bell.id = 'eskil-bell';
-    bell.type = 'button';
-    bell.setAttribute('aria-label', 'Meddelanden från tävlingsledningen');
-    document.body.appendChild(bell);
-    bell.addEventListener('click', () => { panelOpen = !panelOpen; render(); });
-  }
-  // Placering mäts varje render: till VÄNSTER om Nattläge-knappen (mätt, inte
-  // gissad bredd — de får aldrig täcka varandra), och NEDANFÖR bannerstacken
-  // så klockan alltid går att nå även när banners visas.
-  const toggle = document.querySelector('.mode-toggle');
-  bell.style.right = toggle
-    ? Math.round(window.innerWidth - toggle.getBoundingClientRect().left + 10) + 'px'
-    : '12px';
-  const stackH = document.getElementById('eskil-broadcast')?.offsetHeight || 0;
-  const bellTop = stackH + 12;
-  bell.style.top = bellTop + 'px';
-  const needAction = act.filter(m => m.requireAck && m.id !== 'legacy' && !local[m.id]?.ackAt).length;
-  bell.innerHTML = `${icon('bell', { size: 18 })}${needAction ? `<span class="eb-badge">${needAction}</span>` : ''}`;
+// --- Historik ut till meddelandepanelen ---------------------------------------
+// Klockan och dess egen panel är borta. Driftmeddelandena visas i stället i
+// samma tidslinje som samtalet med tävlingsledningen (chat.js) — för den som
+// står i skogen är det ETT flöde av saker ledningen sagt, oavsett om det gick
+// ut till alla eller bara till dem.
+//
+// Bannerstacken och larmen ligger kvar här: ett kritiskt meddelande ska synas
+// utan att någon öppnar en panel.
 
-  let panel = document.getElementById('eskil-bell-panel');
-  if (!panelOpen) { panel?.remove(); return; }
-  if (!panel) {
-    panel = document.createElement('div');
-    panel.id = 'eskil-bell-panel';
-    document.body.appendChild(panel);
-  }
-  panel.style.top = (bellTop + 46) + 'px';
+const lyssnare = new Set();
+function meddelaLyssnare() { for (const f of lyssnare) { try { f(); } catch { /* vyn borta */ } } }
 
-  // Historik: allt vi sett lokalt (textkopior) + aktiva — nyast först.
-  const activeIds = new Set(act.map(m => m.id));
-  const rows = Object.entries(local)
+// Prenumerera på förändringar i driftmeddelandena. Returnerar en avsluta-funktion.
+export function onBroadcastChange(cb) {
+  lyssnare.add(cb);
+  return () => lyssnare.delete(cb);
+}
+
+// Driftmeddelandena som poster i en gemensam tidslinje. Historiken kommer ur
+// det lokala minnet (textkopior), så även avslutade meddelanden finns kvar.
+export function broadcastFeed() {
+  if (!cid) return [];
+  const local = loadLocal();
+  const act = activeMsgs();
+  const aktivaIds = new Set(act.map(m => m.id));
+  return Object.entries(local)
     .filter(([, st]) => st.seenAt && (st.text || '').trim())
-    .sort(([, a], [, b]) => String(b.at || b.seenAt || '').localeCompare(String(a.at || a.seenAt || '')))
-    .slice(0, 20);
-
-  panel.innerHTML = `
-    <div class="ebp-head"><span>Meddelanden</span><button type="button" class="eb-hide" id="ebp-close" aria-label="Stäng">${icon('x', { size: 16 })}</button></div>
-    ${rows.length ? rows.map(([id, st]) => {
+    .map(([id, st]) => {
       const m = act.find(x => x.id === id);
-      const level = LEVELS[st.level] ? st.level : 'info';
-      const needsAck = m?.requireAck && !st.ackAt && id !== 'legacy';
-      return `<div class="ebp-row">
-        <div class="ebp-meta">
-          <span class="ebp-dot ${level}"></span>
-          <span>${LEVELS[level].label}</span>
-          <span>·</span><span>kl ${fmtTime(st.at || st.seenAt)}</span>
-          ${!activeIds.has(id) ? '<span>· avslutat</span>' : ''}
-        </div>
-        <div>${escapeHtml(st.text)}</div>
-        ${st.ackAt ? `<div class="ebp-status">${icon('check', { size: 12 })} Bekräftat ${fmtTime(st.ackAt)}</div>` : ''}
-        ${needsAck ? `<button type="button" class="ebp-ackbtn" data-ack="${escapeHtml(id)}">Bekräfta mottaget</button>` : ''}
-      </div>`;
-    }).join('') : '<div class="ebp-empty">Inga meddelanden ännu. Här samlas allt tävlingsledningen skickar ut.</div>'}
-    ${canNotify() ? `<div class="ebp-notif">${
-      Notification.permission === 'granted'
-        ? `Notiser är aktiva på den här enheten ${icon('check', { size: 13 })}`
-        : Notification.permission === 'denied'
-          ? 'Notiser är blockerade i webbläsarens inställningar.'
-          : '<button type="button" id="ebp-enable-notif">Aktivera notiser på den här enheten</button><div style="opacity:.7;margin-top:6px;">Då syns nya meddelanden även när skärmen visar något annat.</div>'
-    }</div>` : ''}
-  `;
-  panel.querySelector('#ebp-close').addEventListener('click', () => { panelOpen = false; render(); });
-  panel.querySelectorAll('[data-ack]').forEach(b => b.addEventListener('click', () => doAck(b.dataset.ack)));
-  panel.querySelector('#ebp-enable-notif')?.addEventListener('click', async () => {
-    try { await Notification.requestPermission(); } catch { /* äldre callback-API */ }
-    render();
-  });
+      return {
+        id, kind: 'broadcast',
+        level: LEVELS[st.level] ? st.level : 'info',
+        levelLabel: LEVELS[LEVELS[st.level] ? st.level : 'info'].label,
+        text: st.text,
+        at: new Date(st.at || st.seenAt),
+        ackAt: st.ackAt ? new Date(st.ackAt) : null,
+        needsAck: !!(m?.requireAck && !st.ackAt && id !== 'legacy'),
+        avslutat: !aktivaIds.has(id)
+      };
+    });
+}
+
+// Antal driftmeddelanden som väntar på bekräftelse — badgen på ikonen.
+export function broadcastPendingAcks() {
+  if (!cid) return 0;
+  const local = loadLocal();
+  return activeMsgs().filter(m => m.requireAck && m.id !== 'legacy' && !local[m.id]?.ackAt).length;
+}
+
+export function ackBroadcast(id) { doAck(id); }
+
+// Systemnotisernas tillstånd, för panelens "aktivera notiser"-rad.
+export function notificationState() {
+  if (!canNotify()) return null;
+  return Notification.permission;
+}
+export async function requestNotifications() {
+  try { await Notification.requestPermission(); } catch { /* äldre callback-API */ }
+  render();
 }
 
 // --- Prenumeration ------------------------------------------------------------
@@ -519,11 +433,9 @@ function ensureSubscription() {
 export function teardownBroadcast() {
   try { unsubMsgs?.(); } catch { /* redan nere */ }
   unsubMsgs = null; subStarted = false; firstSnapshotDone = false;
-  msgs = []; legacy = null; legacyLastAt = undefined; panelOpen = false;
+  msgs = []; legacy = null; legacyLastAt = undefined;
   cid = null; ctx = null; lastStackHtml = '';
   document.getElementById('eskil-broadcast')?.remove();
-  document.getElementById('eskil-bell')?.remove();
-  document.getElementById('eskil-bell-panel')?.remove();
   document.body.style.removeProperty('padding-top');
 }
 

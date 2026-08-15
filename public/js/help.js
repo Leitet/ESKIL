@@ -178,7 +178,8 @@ export const HELP = {
     body: [
       'En frågepanel längst ner på kontrollernas rapportsidor och patrullernas startkort. De skriver, ni svarar under Meddelanden, och svaret dyker upp direkt hos dem — ingen behöver leta rätt på ett telefonnummer mitt i en tävling.',
       'Bilder går åt båda håll. En kontrollant kan fota lappen som inte stämmer, en patrull kan visa var de står, och ni kan skicka tillbaka en bild som förtydligar.',
-      'Nya frågor visas överst under Meddelanden med en notis medan ni har appen öppen. Har någon i sekretariatet läst en fråga räknas den som läst för alla.'
+      'Nya frågor visas överst under Meddelanden med en notis medan ni har appen öppen. Har någon i sekretariatet läst en fråga räknas den som läst för alla.',
+      'Ute i fältet ligger allt bakom en meddelandeikon: era utskick och det egna samtalet i samma tidslinje, i den ordning det kom. Kritiska utskick syns fortfarande som banner utan att någon behöver öppna något.'
     ],
     warn: 'Bilder från fältet kan visa scouters ansikten. Hela samtalet — text och bilder — raderas när tävlingen avslutas; det finns inget här som sparas som tävlingshistorik.',
     faq: [

@@ -23,7 +23,7 @@ import { icon } from './icons.js';
 import { bindHaptic, bindTap, lockScroll, unlockScroll } from './haptic.js';
 import { updateBroadcast } from './broadcast.js';
 import { patrolHighlights } from './highlights.js';
-import { mountChat } from './chat.js';
+import { mountMessages } from './chat.js';
 import { compPlaces, placeKind, drawPlaces } from './places.js';
 
 const root = document.getElementById('root');
@@ -533,23 +533,21 @@ function render() {
       </div>
     `}
 
-    <div id="chat"></div>
-
     <p class="r-sub" style="text-align:center;opacity:.55;margin-top:36px;font-size:13px;">
       ESKIL · startkort · live-uppdaterat när poäng rapporteras<br>
       <a href="/t/${escapeHtml(parsePath()?.cid || '')}" style="color:inherit;text-decoration:underline;">Tävlingssidan — startlista, karta &amp; resultat</a>
     </p>
   `;
 
-  // Samtal med tävlingsledningen — samma panel som kontrollernas sida.
+  // Meddelandeikonen — samma modal som kontrollernas sida. Monteras EN gång:
+  // startkortet renderar om vid varje poängsnapshot, och en ikon som rivs och
+  // byggs om hela tiden tappar både badge och öppen modal.
   // Testkortet får den inte: /s/<cid>/test har ingen patrull i databasen, så
   // reglerna skulle neka och panelen bara se trasig ut.
-  chatPanel?.destroy();
-  if (!patrol.__test) {
-    chatPanel = mountChat(root.querySelector('#chat'), {
+  if (!chatPanel && !patrol.__test) {
+    chatPanel = mountMessages({
       cid: parsePath().cid, kind: 'patrull', refId: patrol.id,
-      enabled: comp?.fieldMessaging !== false,
-      title: 'Fråga tävlingsledningen'
+      enabled: comp?.fieldMessaging !== false
     });
   }
 
