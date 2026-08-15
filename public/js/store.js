@@ -343,11 +343,17 @@ export async function copyCompetition(cid, { name, shortName, year, date }, user
     demo: false,
     adminEmails: [],
     userEmails: [],
+    // Distriktet måste följa med — annars saknar kopian fältet och faller ur
+    // distriktsgrupperingen på /app (normDistrict tvingar okänt/tomt → 'annat').
+    district: normDistrict(src.district),
     // Årgångskedjan: publika sidan länkar till föregående års tävling.
     copiedFrom: cid
   };
   if (Array.isArray(src.avdelningar) && src.avdelningar.length) data.avdelningar = src.avdelningar;
-  for (const k of ['startTimes', 'startFinish', 'parking', 'management',
+  // 'places' bärs med precis som startFinish och spåret: en plats med
+  // inCourse blir en nod i banan (kostar sin dwell i ETA:n), så att tappa
+  // dem skulle tyst ändra nästa års bana och alla kartnålar.
+  for (const k of ['startTimes', 'startFinish', 'parking', 'places', 'management',
                    'publicScores', 'publicControls', 'autoReleaseControls',
                    'anonymousControls', 'autoCloseControls',
                    'selfStart', 'selfFinish', 'autoFinish', 'fieldMessaging']) {
