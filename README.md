@@ -318,6 +318,7 @@ public/
     anmalan.js          # Anmälningssida (a.html) logik
     station.js          # Start/Mål-stationen (m.html) logik
     course.js           # Delad spårlogik (bensekvens, distans/tid, kartritning)
+    districts.js        # Scouternas 26 distrikt + "annat" (gruppering av tävlingar)
     utils.js            # Hjälpare (inkl. prisberäkning + Swish-QR-payload)
     views/              # En fil per vy (login, home, competition, patrols, ...)
 

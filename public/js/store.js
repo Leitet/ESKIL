@@ -6,6 +6,7 @@ import {
   collection, addDoc, getDocs, onSnapshot, query, where, orderBy,
   serverTimestamp, deleteField, writeBatch, Timestamp
 } from './firebase.js';
+import { normDistrict } from './districts.js';
 
 // --- System config (super-admin) --------------------------------------------
 // A single config/system doc holding operational settings that are useful to
@@ -98,7 +99,7 @@ async function readAccess(cid) {
 // får sökanden dölja en behandlad förfrågan först.
 export const MAX_COMPETITION_REQUESTS = 3;
 
-export async function createCompetitionRequest({ name, description, date, message }, user) {
+export async function createCompetitionRequest({ name, description, date, message, district }, user) {
   const mine = await listMyCompetitionRequests(user);
   const taken = new Set(mine.map(r => r.id));
   const slot = [...Array(MAX_COMPETITION_REQUESTS).keys()]
@@ -116,6 +117,7 @@ export async function createCompetitionRequest({ name, description, date, messag
     description: String(description || '').trim().slice(0, 2000),
     date: date || null,
     message: String(message || '').trim().slice(0, 2000),
+    district: normDistrict(district),
     requestedBy: user.uid,
     requestedByEmail: String(user.email || '').trim().toLowerCase(),
     status: 'vantar',
@@ -153,6 +155,7 @@ export async function approveCompetitionRequest(req, decisionMessage, decidedByE
     description: req.description || '',
     date: req.date || null,
     year: req.date ? Number(String(req.date).slice(0, 4)) || null : new Date().getFullYear(),
+    district: req.district || 'annat',
     // Kortadressen slås fast HÄR — den går inte att ändra sedan (tryckta
     // QR-koder och betalningsreferenser hänger på den).
     ...(slug ? { slug } : {}),

@@ -135,7 +135,16 @@ new request and the requester on the decision.
   `copiedFrom` (årgångskedjan — /t links to the previous year);
   `lastBackupAt` (stamped on every backup/export download);
   `etaDwellMinutes` (ETA station time override, default 15);
-  `startTimes.maxTimeMinutes` (maxtid countdown on the startkort).
+  `startTimes.maxTimeMinutes` (maxtid countdown on the startkort);
+  `district` (scoutdistrikt — see below).
+- **Scoutdistrikt.** `public/js/districts.js` holds Scouterna's 26 districts
+  plus `annat`. Every competition carries a `district` id: it is REQUIRED in
+  the request form, settable in the super-admin create modal, and editable
+  afterwards under settings → Grund. Always write it through
+  `normDistrict()` — an unknown or empty id must land on `annat`, otherwise
+  the competition silently drops out of the grouping on /app. Districts have
+  no official colours (Scouterna's palette belongs to the age groups); the
+  dot next to a district name is a scanability aid derived from the id.
 - `.../private/handover` — överlämningsdokument for next year's ledning
   (free text; members read/admins write via the existing private/{doc}
   rule). copyCompetition carries it over to the new year.

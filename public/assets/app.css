@@ -838,3 +838,15 @@ table.t tr.sf-row.park-row td {
 }
 .msg-chip input { margin: 0; }
 .msg-chip.is-on { border-color: var(--scout-blue); background: var(--scout-blue-100); }
+
+/* Scoutdistrikt — punkten är ett läshjälpmedel, inte officiell märkning
+   (distrikten har ingen egen färgsättning; se districts.js). */
+.district-dot {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  margin-right: 6px; vertical-align: 1px; flex-shrink: 0;
+}
+.district-head {
+  display: flex; align-items: center; gap: 8px;
+  margin: var(--sp-6) 0 var(--sp-3); color: var(--scout-blue);
+}
+.district-head:first-child { margin-top: 0; }

@@ -18,6 +18,7 @@ import {
 } from '../utils.js';
 import { crumbs, setDocTitle } from '../nav.js';
 import { navigate } from '../router.js';
+import { districtDot, districtName } from '../districts.js';
 
 const STATUS = {
   vantar:  { label: 'Väntar', badge: 'badge-orange' },
@@ -70,6 +71,7 @@ export async function renderAdminRequests(app, user) {
 
         <div class="mt-3 t-sm">
           <div><strong>Sökande:</strong> <a href="mailto:${escapeHtml(r.requestedByEmail || '')}">${escapeHtml(r.requestedByEmail || '')}</a></div>
+          <div><strong>Distrikt:</strong> ${districtDot(r.district || 'annat')}${escapeHtml(districtName(r.district) || 'Annat / inget distrikt')}</div>
           ${r.date ? `<div><strong>Datum:</strong> ${escapeHtml(formatDate(r.date))}</div>` : ''}
           ${r.description ? `<div class="mt-2"><strong>Beskrivning:</strong><br>${escapeHtml(r.description)}</div>` : ''}
           ${r.message ? `<div class="mt-2" style="border-left:2px solid var(--border);padding-left:10px;white-space:pre-wrap;">${escapeHtml(r.message)}</div>` : ''}

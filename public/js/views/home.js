@@ -9,6 +9,8 @@ import {
 } from '../utils.js';
 import { createManagementForm } from '../managementform.js';
 import { icon } from '../icons.js';
+import { DISTRICTS, districtShort, districtDot, normDistrict } from '../districts.js';
+import { help } from '../help.js';
 
 // Shared reader for the start/finish form block.
 function readStartFinish(overlay) {
@@ -93,7 +95,7 @@ export async function renderHome(app, user) {
 
     comps.sort((a, b) => (b.year || 0) - (a.year || 0));
 
-    list.innerHTML = `<div class="grid grid-2">${comps.map(c => `
+    const card = (c) => `
       <a class="card" style="text-decoration:none;color:inherit;display:block;" href="/app/c/${c.id}" data-link>
         <div class="row" style="justify-content:space-between;">
           <span class="t-over" style="color:var(--avent-orange);">${escapeHtml(c.shortName || c.name || 'Tävling')}</span>
@@ -102,13 +104,35 @@ export async function renderHome(app, user) {
         <h3 class="t-h3" style="color:var(--scout-blue);margin:6px 0 4px;">${escapeHtml(c.name)}</h3>
         <div class="muted t-sm">${c.date ? formatDate(c.date) : 'Datum saknas'} · ${escapeHtml(c.location || 'Plats saknas')}</div>
         <div class="mt-4 row" style="gap:6px;">
+          ${c.district ? `<span class="badge badge-gray">${districtDot(c.district)}${escapeHtml(districtShort(c.district))}</span>` : ''}
           ${c.demo ? '<span class="badge badge-orange">Demo</span>' : `<span class="badge badge-gray">${(c.admins || []).length + (c.adminEmails || []).length} admin</span>`}
           ${isCompAdminUser(c, user) && user.role !== 'super-admin' ? '<span class="badge badge-green">Admin</span>' : ''}
           ${c.closed ? '<span class="badge badge-gray">Avslutad</span>' : ''}
           ${c.demo && user.role !== 'super-admin' ? '<span class="badge badge-gray">Läsbart</span>' : ''}
         </div>
-      </a>
-    `).join('')}</div>`;
+      </a>`;
+
+    // Gruppera per distrikt först när det finns mer än ett — annars är
+    // rubrikerna bara brus för en kår som kör en enda tävling.
+    const groups = new Map();
+    for (const c of comps) {
+      const key = c.district || 'annat';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(c);
+    }
+    if (groups.size <= 1) {
+      list.innerHTML = `<div class="grid grid-2">${comps.map(card).join('')}</div>`;
+    } else {
+      // Distrikt i bokstavsordning, "Annat" sist.
+      const order = [...groups.keys()].sort((a, b) =>
+        (a === 'annat') - (b === 'annat') || districtShort(a).localeCompare(districtShort(b), 'sv'));
+      list.innerHTML = order.map(key => `
+        <h2 class="t-h3 district-head">${districtDot(key)}${escapeHtml(districtShort(key) || 'Utan distrikt')}
+          <span class="muted t-sm" style="font-weight:400;">${groups.get(key).length} tävling${groups.get(key).length === 1 ? '' : 'ar'}</span>
+        </h2>
+        <div class="grid grid-2">${groups.get(key).map(card).join('')}</div>
+      `).join('');
+    }
   } catch (e) {
     console.error(e);
     list.innerHTML = `<div class="empty"><h3>Kunde inte läsa in tävlingar</h3><p>${escapeHtml(e.message)}</p></div>`;
@@ -173,6 +197,14 @@ function openRequestModal(user, onDone) {
           <input class="input" id="rq-name" required placeholder="Ex. Älghornsjakten ${new Date().getFullYear() + 1}">
         </div>
         <div>
+          <label class="field" for="rq-district">Scoutdistrikt ${help('comp.district')}</label>
+          <select class="select" id="rq-district" required>
+            <option value="" selected disabled>Välj distrikt…</option>
+            ${DISTRICTS.map(d => `<option value="${escapeHtml(d.id)}">${escapeHtml(d.name)}</option>`).join('')}
+          </select>
+          <div class="field-hint">Vilket distrikt tävlingen hör till. Välj "Annat" om kåren står utanför distrikt eller arrangerar tillsammans med andra.</div>
+        </div>
+        <div>
           <label class="field" for="rq-date">Datum (om det är bestämt)</label>
           <input class="input" id="rq-date" type="date">
         </div>
@@ -199,9 +231,12 @@ function openRequestModal(user, onDone) {
   overlay.querySelector('#rq-send').addEventListener('click', (e) => withBusy(e.currentTarget, 'Skickar…', async () => {
     const name = overlay.querySelector('#rq-name').value.trim();
     if (!name) { toast('Ange ett namn på tävlingen.', 'error'); return; }
+    const district = overlay.querySelector('#rq-district').value;
+    if (!district) { toast('Välj vilket scoutdistrikt tävlingen hör till.', 'error'); return; }
     try {
       await createCompetitionRequest({
         name,
+        district,
         date: overlay.querySelector('#rq-date').value || null,
         description: overlay.querySelector('#rq-desc').value,
         message: overlay.querySelector('#rq-msg').value
@@ -255,6 +290,12 @@ function openCreateModal(user) {
           <div>
             <label class="field" for="organizer">Arrangör</label>
             <input class="input" id="organizer" placeholder="Ex. Lindsdals Scoutkår">
+          </div>
+          <div>
+            <label class="field" for="cd-district">Scoutdistrikt ${help('comp.district')}</label>
+            <select class="select" id="cd-district">
+              ${DISTRICTS.map(d => `<option value="${escapeHtml(d.id)}" ${d.id === 'annat' ? 'selected' : ''}>${escapeHtml(d.name)}</option>`).join('')}
+            </select>
           </div>
           <div>
             <label class="field" for="description">Beskrivning</label>
@@ -474,6 +515,7 @@ function openCreateModal(user) {
         date: overlay.querySelector('#date').value || null,
         location: overlay.querySelector('#location').value.trim(),
         organizer: overlay.querySelector('#organizer').value.trim(),
+        district: normDistrict(overlay.querySelector('#cd-district').value),
         description: overlay.querySelector('#description').value.trim(),
         generalInfo: overlay.querySelector('#generalInfo').value.trim(),
         anonymousControls: overlay.querySelector('#anonymousControls').checked,

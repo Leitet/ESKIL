@@ -142,6 +142,7 @@ describe('Tävlingsförfrågningar', () => {
   const reqPath = (uid, slot) => `competitionRequests/${uid}-${slot}`;
   const body = (u, extra = {}) => ({
     name: 'Vårruset', description: '', date: null, message: 'Hej',
+    district: 'dacke',
     requestedBy: u.uid, requestedByEmail: u.email, status: 'vantar',
     createdAt: new Date().toISOString(), ...extra
   });
@@ -185,6 +186,11 @@ describe('Tävlingsförfrågningar', () => {
   test('super-admin beslutar', async () => {
     allow(await write(reqPath(USER.uid, 0), { status: 'nekad', decisionMessage: 'Nej' },
       SUPER, { merge: true }), 'super-admin nekar');
+  });
+
+  test('distrikt krävs', async () => {
+    const utan = body(OTHER); delete utan.district;
+    deny(await write(reqPath(OTHER.uid, 1), utan, OTHER), 'förfrågan utan distrikt');
   });
 
   test('sökanden ser bara sina egna', async () => {

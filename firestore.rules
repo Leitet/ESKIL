@@ -155,8 +155,11 @@ service cloud.firestore {
         && request.resource.data.get('message', '').size() <= 2000
         && (request.resource.data.get('date', null) == null
             || (request.resource.data.date is string && request.resource.data.date.size() <= 10))
+        && request.resource.data.district is string
+        && request.resource.data.district.size() > 0
+        && request.resource.data.district.size() <= 40
         && request.resource.data.keys().hasOnly([
-             'name', 'description', 'date', 'message',
+             'name', 'description', 'date', 'message', 'district',
              'requestedBy', 'requestedByEmail', 'status', 'createdAt'
            ]);
 

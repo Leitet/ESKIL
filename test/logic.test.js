@@ -12,6 +12,7 @@ import {
   patrolStartDateTime, normSlug, isValidSlug, suggestSlug,
   effectiveIntervalSec, swishAppUrl, swishQrString
 } from '../public/js/utils.js';
+import { DISTRICTS, districtById, districtShort, districtName, districtHue, normDistrict } from '../public/js/districts.js';
 
 // Tre kontroller på rad med ~1 km mellan sig.
 const CONTROLS = [
@@ -245,5 +246,52 @@ describe('Formatering', () => {
   test('tid', () => {
     assert.equal(fmtMin(45), '45 min');
     assert.equal(fmtMin(184), '3 h 04 min');
+  });
+});
+
+describe('Scoutdistrikt', () => {
+  test('listan har unika id:n och namn', () => {
+    const ids = DISTRICTS.map(d => d.id);
+    assert.equal(new Set(ids).size, ids.length, 'dubblerade id:n');
+    const namn = DISTRICTS.map(d => d.name);
+    assert.equal(new Set(namn).size, namn.length, 'dubblerade namn');
+  });
+
+  test('Scouternas 26 distrikt plus "annat"', () => {
+    assert.equal(DISTRICTS.length, 27);
+    assert.equal(DISTRICTS.filter(d => d.other).length, 1);
+    assert.equal(DISTRICTS[DISTRICTS.length - 1].id, 'annat', '"annat" ligger sist');
+  });
+
+  test('kända distrikt går att slå upp', () => {
+    assert.equal(districtName('dacke'), 'Dacke Scoutdistrikt');
+    assert.equal(districtShort('dacke'), 'Dacke');
+    assert.equal(districtShort('orebro'), 'Örebro Län', 'prefixet Scouterna kapas');
+    assert.equal(districtShort('annat'), 'Annat');
+  });
+
+  test('okänt id ger tomt i stället för att krascha', () => {
+    assert.equal(districtById('finns-inte'), null);
+    assert.equal(districtShort('finns-inte'), '');
+    assert.equal(districtName(undefined), '');
+  });
+
+  test('okänt eller tomt distrikt normaliseras till "annat"', () => {
+    // En select utan matchande option ger "" — det får inte sparas rakt av,
+    // då faller tävlingen ur grupperingen utan synlig orsak.
+    assert.equal(normDistrict(''), 'annat');
+    assert.equal(normDistrict(null), 'annat');
+    assert.equal(normDistrict(undefined), 'annat');
+    assert.equal(normDistrict('sodra-skane'), 'annat', 'nästan rätt id är fel id');
+    assert.equal(normDistrict('sodraskane'), 'sodraskane');
+    assert.equal(normDistrict('dacke'), 'dacke');
+  });
+
+  test('färgtonen är stabil och inom gradskalan', () => {
+    for (const d of DISTRICTS) {
+      const h = districtHue(d.id);
+      assert.ok(h >= 0 && h < 360, `${d.id} gav ${h}`);
+      assert.equal(h, districtHue(d.id), 'samma id ska ge samma ton');
+    }
   });
 });

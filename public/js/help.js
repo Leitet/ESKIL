@@ -110,6 +110,18 @@ export const HELP = {
     ]
   },
 
+  'comp.district': {
+    title: 'Scoutdistrikt',
+    body: [
+      'Distriktet tävlingen hör till. Det används för att gruppera tävlingar i listan — när ESKIL rymmer många tävlingar blir det snabbt svårt att hitta rätt utan den indelningen.',
+      'Listan följer Scouternas 26 distrikt. Välj "Annat / inget distrikt" om kåren står utanför distriktsindelningen, om tävlingen arrangeras tillsammans med andra förbund, eller om den helt enkelt inte hör hemma i något av dem.'
+    ],
+    faq: [
+      { q: 'Kan jag ändra distrikt senare?', a: 'Ja. Till skillnad från kortadressen är distriktet fritt att ändra här under Grund.' },
+      { q: 'Vårt distrikt saknas i listan', a: 'Distrikt slås ihop och byter namn ibland. Välj "Annat" tills vidare och hör av dig, så uppdateras listan.' }
+    ]
+  },
+
   'comp.avdelningar': {
     title: 'Avdelningar',
     body: [

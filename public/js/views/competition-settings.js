@@ -25,6 +25,7 @@ import {
 import { createManagementForm } from '../managementform.js';
 import { icon } from '../icons.js';
 import { help } from '../help.js';
+import { DISTRICTS, normDistrict } from '../districts.js';
 import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
 import { navigate } from '../router.js';
 import { initMapPicker } from '../mappicker.js';
@@ -185,6 +186,12 @@ function renderBasicTab(comp, cid, refresh, readOnly, isSuperAdmin, user) {
         </div>
       </div>
       <div>
+        <label class="field" for="district">Scoutdistrikt ${help('comp.district')}</label>
+        <select class="select" id="district">
+          ${DISTRICTS.map(d => `<option value="${escapeHtml(d.id)}" ${(comp.district || 'annat') === d.id ? 'selected' : ''}>${escapeHtml(d.name)}</option>`).join('')}
+        </select>
+      </div>
+      <div>
         <label class="field" for="organizer">Arrangör</label>
         <input class="input" id="organizer" value="${escapeHtml(comp.organizer || '')}">
       </div>
@@ -269,6 +276,7 @@ function renderBasicTab(comp, cid, refresh, readOnly, isSuperAdmin, user) {
       date: card.querySelector('#date').value || null,
       location: card.querySelector('#location').value.trim(),
       organizer: card.querySelector('#organizer').value.trim(),
+      district: normDistrict(card.querySelector('#district').value),
       description: card.querySelector('#description').value.trim(),
       avdelningar
     });
