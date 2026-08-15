@@ -52,6 +52,13 @@ De var den **egentliga** fixen för de oautentiserade skriv-/kvot-vektorerna
    (`requestLoginLink` loggar `app: VALID`) fungerar; overifierad trafik
    (bottar/direkta REST-anrop) blockeras. Site key är publik; secret key i
    Firebase-konsolen. Vid problem: App Check → APIs → un-enforce.
+   **Firestore framtvingas via konsolen; callables framtvingas i KODEN** —
+   `enforceAppCheck` i `setGlobalOptions` (prod-only, gatad på
+   `FUNCTIONS_EMULATOR` så lokal utveckling inte bryts). En tidigare granskning
+   visade att flaggan aldrig var satt, så de fyra callables (requestLoginLink,
+   deleteMyAccount, resendManageLink, sendFeedback) i praktiken accepterade
+   tokenlösa anrop. Nu stängt. Rulla tillbaka genom att ta bort `enforceAppCheck`
+   ur `setGlobalOptions` och deploya om functions om ett äkta anrop skulle nekas.
 2. **GCP Budget & Alerts** — ✅ satt (2026-08-13), larm mot kostnads-DoS.
 3. **Brevo:** dagsvolym övervakas i dashboarden; functions-dagskvoterna
    (`reserveMail`) är det primära skyddet.

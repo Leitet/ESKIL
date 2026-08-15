@@ -249,6 +249,16 @@ mutationsverifierade i `test/rules.test.js`.
   passed (ETA engine, Läget) must prefer `clientReportedAt` — offline batch
   syncs make `reportedAt` lie by hours. adjustScore deliberately preserves
   the original times: a correction is not a passage.
+  **Offline-kön (`offline-queue.js`)**: `flushQueue` läser om varje kö-post ur
+  localStorage och matchar på `(patrolId, queuedAt)` PRECIS före sändning —
+  ta inte bort det. Utan omläsningen kan en förlegad snapshot-post skickas
+  EFTER en färsk direktsparning och (ovillkorlig setDoc) skriva över
+  rättelsen; `syncInFlight` serialiserar bara flush mot flush, inte mot
+  direktsparningen. Rapportsidans spara/offline/borttag-bekräftelse måste
+  toasta EFTER `close()` (aldrig före): rtoast lämnar över till bladets
+  notisrad så länge bladet är öppet, och den försvinner med bladet — en
+  kontrollant i skogen får då ingen kvittens. Borttagning wrappas i
+  `withTimeout` precis som spara (offline resolvar aldrig).
 - `.../messages/{msgId}` — driftmeddelanden v2 (the Meddelanden tab):
   `{text, level: info|varning|kritisk, at, target: {kontroller, patruller},
   requireAck, active}`. Publicly readable (field pages are anonymous — the
