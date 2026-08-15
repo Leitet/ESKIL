@@ -94,7 +94,7 @@ export const HELP = {
     faq: [
       { q: 'Vad är en bra kortadress?', a: 'Kort och läsbar — initialer plus tvåsiffrigt år, som ah26. Den ska gå att läsa upp i telefon och skriva rätt utan att stava.' },
       { q: 'Varför föreslås AG26 och inte AH26 för Älghornsjakten?', a: 'Referensalfabetet utesluter bokstäver som lätt förväxlas i handskrift (bland annat I, L och O), så förslaget hoppar över L:et. Du kan skriva över förslaget med vad du vill.' },
-      { q: 'Vad händer om två tävlingar vill ha samma?', a: 'Det går inte. Systemet kontrollerar mot både befintliga kortadresser och interna tävlings-id:n innan tävlingen skapas.' }
+      { q: 'Vad händer om två tävlingar vill ha samma?', a: 'Det går inte. Är kortadressen upptagen sägs det till direkt, innan tävlingen skapas — du får välja en annan.' }
     ]
   },
 
@@ -135,9 +135,8 @@ export const HELP = {
     ],
     warn: 'Är "Anonyma kontroller" påslaget skrivs INGA kontrollnamn ut — poängkortet får en skrivrad i stället, som kontrollanten fyller i på plats. Kortet bärs hela dagen, och namnet skulle avslöja vad uppgiften handlar om.',
     faq: [
-      { q: 'Vad kostar det att skapa alla på en gång?', a: 'Kartan ritas en gång och återanvänds för alla patruller — 30 kort hämtar alltså inte 30 kartor. Det tar några sekunder första gången.' },
       { q: 'Banplatser då?', a: 'Matplatser och rastplatser som ingår i spåret står med i poängkortet som gråa rader utan poängrutor, i rätt ordning — de ger inga poäng men patrullen ser var de kommer.' },
-      { q: 'Kartan ser tom ut', a: 'Då saknar kontrollerna positioner. Sätt dem under Kontroller, så ritas banan ut. Ett ritat spår används automatiskt; utan spår dras benen som streckad fågelväg.' }
+      { q: 'Kartan ser tom ut', a: 'Då saknar kontrollerna positioner. Sätt dem under Kontroller, så ritas banan ut. Har du ritat ett spår följer kartan det; annars dras sträckorna som streckad fågelväg.' }
     ]
   },
 
@@ -149,11 +148,11 @@ export const HELP = {
       'En plats kan också ingå i banan. Kryssa i "Ingår i spåret" så vävs den in mellan kontrollerna — Start → 1 → 2 → 3 → Matplats → 4 — och spåret dras dit.'
     ],
     faq: [
-      { q: 'Vad gör "Ingår i spåret"?', a: 'Platsen blir en punkt i banan. Väljer du att den passeras efter kontroll 3 blir sekvensen Start → 1 → 2 → 3 → Matplats → 4, och spårdragningen får två ben i stället för ett. Platsen ger fortfarande inga poäng och räknas aldrig som en avklarad kontroll.' },
+      { q: 'Vad gör "Ingår i spåret"?', a: 'Platsen blir en punkt i banan. Väljer du att den passeras efter kontroll 3 blir ordningen Start → 1 → 2 → 3 → Matplats → 4, och du drar spåret dit i två steg i stället för ett. Platsen ger fortfarande inga poäng och räknas aldrig som en avklarad kontroll.' },
       { q: 'Vad är "Tid på platsen"?', a: 'Hur länge patrullen står still där — lunchen tar den tid arrangören planerat, och vi gissar inte åt dig. Tiden räknas in i banans totaltid och i ETA:n som sekretariatet planerar prisutdelningen efter. Lämna tomt om man bara passerar.' },
       { q: 'Jag har redan ritat spåret — vad händer?', a: 'Benet som platsen läggs in i delas i två. Punkterna du ritat på det gamla benet följer inte med, så den biten blir streckad igen och får ritas om. Resten av spåret är orört.' },
-      { q: 'Var sätter jag start och mål?', a: 'I kontrollistan, tillsammans med resten av banan. De är banans ändpunkter — ETA:n räknar ben från dem och spåret hänger på dem — så de hör hemma där banan byggs, inte här.' },
-      { q: 'Var tog parkeringsinställningen vägen?', a: 'Den är en plats som alla andra nu. Parkeringar som redan var utsatta ligger kvar och ritas som förut; nästa gång du sparar flyttar den in i listan.' },
+      { q: 'Var sätter jag start och mål?', a: 'I kontrollistan, tillsammans med resten av banan. Start och mål är banans ändpunkter, så de hör hemma där du bygger banan — inte bland platserna på kartan.' },
+      { q: 'Var tog parkeringsinställningen vägen?', a: 'Parkeringen är en plats som alla andra nu, och finns i listan här. Har du redan satt ut en ligger den kvar på kartorna precis som förut.' },
       { q: 'Syns platserna innan tävlingsdagen?', a: 'Ja. Till skillnad från kontrollerna är de inte hemliga — de är till för att folk ska hitta.' }
     ]
   },
@@ -174,12 +173,12 @@ export const HELP = {
     title: 'Registrera målgång automatiskt',
     body: [
       'Patrullen räknas som i mål så snart alla kontroller är rapporterade. Tiden som används är sista rapportens — alltså när kontrollanten tryckte, inte när den synkades.',
-      'Ingen tid skrivs till databasen: målgången härleds ur poängen. Prickar en funktionär in patrullen, eller markerar de sig själva, väger den riktiga tiden alltid tyngre. Läget märker de härledda med "auto" så du ser skillnad på sett och antaget.'
+      'Prickar en funktionär in patrullen, eller markerar de sig själva, väger den tiden alltid tyngre. Läget märker de automatiska med "auto" så du ser skillnad på sett och antaget.'
     ],
     warn: 'Slå bara på detta när sista kontrollen ÄR målet. Ligger målet en promenad bort visar Läget patrullen som hemma medan de fortfarande går — och det är den listan sekretariatet använder för att veta vem som är kvar ute i skogen.',
     faq: [
       { q: 'Kan jag kombinera med de andra sätten?', a: 'Ja. En funktionärs incheckning och patrullens egen markering slår alltid den automatiska — den fyller bara i luckorna.' },
-      { q: 'Vad händer om en poäng rättas efteråt?', a: 'Målgången räknas om, eftersom den härleds ur poängen. Rättningar behåller dessutom ursprungstiden — en korrigering flyttar alltså inte målgången.' }
+      { q: 'Vad händer om en poäng rättas efteråt?', a: 'Målgången följer med. En rättning i efterhand behåller den ursprungliga tiden, så patrullens måltid flyttar sig inte för att någon justerar en poäng.' }
     ]
   },
 
@@ -531,12 +530,20 @@ export const HELP = {
 
 // --- Knapp och modal ----------------------------------------------------------
 
-export function help(id) {
+export function help(id, { badge = false } = {}) {
   if (!HELP[id]) {
     console.warn('[help] okänt hjälp-id:', id);
     return '';
   }
-  return `<button type="button" class="help-btn" data-help="${escapeHtml(id)}" aria-label="Mer om ${escapeHtml(HELP[id].title)}" title="Mer om ${escapeHtml(HELP[id].title)}">${icon('help', { size: 15 })}</button>`;
+  const t = escapeHtml(HELP[id].title);
+  return `<button type="button" class="help-btn${badge ? ' is-badge' : ''}" data-help="${escapeHtml(id)}" aria-label="Mer om ${t}" title="Mer om ${t}">${icon('help', { size: badge ? 13 : 15 })}</button>`;
+}
+
+// Hjälpknappen som en liten bricka i knappens övre högra hörn. En <button>
+// får inte ligga inuti en annan — webbläsaren lyfter ut den och den hamnar
+// bredvid — så knappen och brickan blir syskon i en positionerad behållare.
+export function helpOnButton(buttonHtml, id) {
+  return `<span class="help-anchor">${buttonHtml}${help(id, { badge: true })}</span>`;
 }
 
 function render(entry) {

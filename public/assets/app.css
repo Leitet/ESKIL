@@ -902,3 +902,16 @@ table.t tr.sf-row.park-row td {
 /* Bakgrundskontext i kartväljaren — befintliga kontroller och platser,
    dämpade så de inte konkurrerar med punkten man håller på att sätta. */
 .map-label-ctx { opacity: 0.6; }
+
+/* Hjälpbricka på en knapp — sitter i knappens övre högra hörn i stället för
+   att flyta bredvid den. (En <button> kan inte ligga inuti en annan knapp;
+   därför en positionerad behållare med två syskon.) */
+.help-anchor { position: relative; display: inline-flex; }
+.help-btn.is-badge {
+  position: absolute; top: -7px; right: -7px;
+  width: 20px; height: 20px; margin: 0; vertical-align: 0;
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.10);
+}
+.help-btn.is-badge:hover { background: var(--scout-blue-100); border-color: var(--scout-blue); }

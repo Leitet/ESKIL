@@ -11,7 +11,7 @@ import {
 } from '../utils.js';
 import { renderQrToImg, downloadStartPdf, downloadManualStartPdf } from '../pdf.js';
 import { icon } from '../icons.js';
-import { help } from '../help.js';
+import { help, helpOnButton } from '../help.js';
 import { compPlaces } from '../places.js';
 import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
 
@@ -67,7 +67,9 @@ export async function renderPatrols(app, user, cid) {
       </div>
       <div class="btn-row">
         <a class="btn btn-ghost btn-sm" href="/s/${encodeURIComponent(comp.slug || cid)}/test" target="_blank" rel="noopener">${icon('external', { size: 14 })} Testa startkort</a>
-        ${isAdmin ? `<button class="btn btn-secondary btn-sm" id="manual-all">${icon('file-text', { size: 14 })} Manuella startkort ${help('comp.manualStartkort')}</button>` : ''}
+        ${isAdmin ? helpOnButton(
+          `<button class="btn btn-secondary btn-sm" id="manual-all">${icon('file-text', { size: 14 })} Manuella startkort</button>`,
+          'comp.manualStartkort') : ''}
         ${isAdmin ? '<button class="btn btn-primary" id="new">+ Ny patrull</button>' : ''}
       </div>
     </div>
