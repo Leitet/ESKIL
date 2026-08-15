@@ -11,6 +11,13 @@ tre: **åtgärdat & driftsatt**, **manuella konsolsteg som återstår** och
   gstatic/jsdelivr/unpkg/cdnjs; inga inline-script (läge-boot och
   SW-registrering ligger i `/js/mode-boot.js` respektive `/js/sw-register.js`).
   `frame-ancestors 'none'` skyddar mot clickjacking.
+  `img-src` släpper bara in self, `data:` och karttjänsterna — Leaflets egna
+  bilder ligger därför inte på CDN:et: markörernas PNG:er är självhostade i
+  `public/assets/leaflet/` (`L.Icon.Default.imagePath` sätts i `leaflet.js`)
+  och lagerkontrollens ikon ersätts med en inbäddad Lucide-symbol i samma fil.
+  Lägger du till en Leaflet-kontroll som hämtar bilder: kontrollera konsolen i
+  en FÄRSK flik (buffern behåller gamla fel) och lös det på samma sätt —
+  vidga aldrig `img-src`.
 - **X-Robots-Tag noindex** på `/k`, `/s`, `/m`, `/a` (hemliga länkar
   indexeras aldrig).
 - **Firestore-regler, fälthärdning:**
