@@ -765,3 +765,80 @@ html[data-mode="night"] .r-done-banner.has-pending { background: #4a0a20; border
   color: var(--r-fg-muted);
   font-style: italic;
 }
+
+/* --- Samtal med tävlingsledningen (chat.js) --------------------------------
+   Alla färger kommer från fältsidornas variabler, så nattlägets röda palett
+   gäller här också utan egna regler. */
+.chat { margin: 22px 0 8px; }
+.chat-toggle {
+  width: 100%;
+  display: flex; align-items: center; gap: 10px;
+  padding: 13px 15px;
+  border: 1.5px solid var(--r-border);
+  border-radius: 14px;
+  background: var(--r-card);
+  color: var(--r-fg);
+  font-size: 15.5px; font-weight: 700;
+  cursor: pointer;
+}
+.chat-toggle.has-unread { border-color: var(--r-primary); }
+.chat-toggle-text { flex: 1; text-align: left; }
+.chat-chev { color: var(--r-fg-muted); font-size: 13px; }
+.chat-badge {
+  min-width: 22px; height: 22px; padding: 0 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  /* display slår ut hidden-attributet om man inte säger till — badgen syntes
+     som en "0"-prick även när den var markerad som dold. */
+  border-radius: 999px;
+  background: var(--r-primary); color: #fff;
+  font-size: 12px; font-weight: 800;
+}
+.chat-body {
+  border: 1.5px solid var(--r-border); border-top: 0;
+  border-radius: 0 0 14px 14px;
+  margin: -14px 6px 0;
+  padding: 18px 12px 12px;
+  background: var(--r-card);
+}
+.chat-log { max-height: 46vh; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.chat-empty { color: var(--r-fg-muted); font-size: 14px; margin: 6px 2px; }
+.chat-msg { max-width: 88%; border-radius: 14px; padding: 9px 12px; }
+.chat-mine { align-self: flex-end; background: var(--r-chip-bg); color: var(--r-chip-fg); }
+.chat-theirs { align-self: flex-start; background: var(--r-bg-soft); color: var(--r-fg); border: 1px solid var(--r-border); }
+.chat-text { font-size: 15px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+.chat-meta { margin-top: 4px; font-size: 11.5px; opacity: 0.7; }
+.chat-img {
+  display: block; width: 100%; max-width: 260px;
+  border-radius: 10px; margin-bottom: 6px;
+}
+.chat-attach { position: relative; margin: 10px 0 0; width: max-content; }
+.chat-attach img { display: block; max-width: 150px; border-radius: 10px; border: 1.5px solid var(--r-border); }
+.chat-attach-x {
+  position: absolute; top: -8px; right: -8px;
+  width: 26px; height: 26px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1.5px solid var(--r-border); border-radius: 50%;
+  background: var(--r-card); color: var(--r-fg); cursor: pointer;
+}
+.chat-compose { margin-top: 12px; }
+.chat-input {
+  width: 100%; box-sizing: border-box;
+  padding: 11px 12px;
+  border: 1.5px solid var(--r-border); border-radius: 12px;
+  background: var(--r-bg); color: var(--r-fg);
+  font: inherit; font-size: 15px; resize: vertical;
+}
+.chat-actions { display: flex; gap: 10px; margin-top: 10px; }
+.chat-photo, .chat-send {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 11px 16px; border-radius: 12px;
+  font-size: 15px; font-weight: 700; cursor: pointer;
+}
+.chat-photo { border: 1.5px solid var(--r-border); background: var(--r-bg); color: var(--r-fg); }
+.chat-send { flex: 1; border: 0; background: var(--r-primary); color: #fff; }
+.chat-send:disabled { opacity: 0.6; }
+.chat-hint { margin: 10px 2px 0; font-size: 12.5px; color: var(--r-fg-muted); line-height: 1.45; }
+
+/* Ett explicit display-värde vinner över [hidden]. Alla dolda element i
+   samtalspanelen måste därför sägas upp uttryckligen. */
+.chat-badge[hidden], .chat-attach[hidden], .chat-body[hidden] { display: none; }

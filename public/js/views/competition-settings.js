@@ -711,6 +711,14 @@ function renderRulesTab(comp, cid, refresh, readOnly) {
         </label>
 
         <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin-top:var(--sp-3);">
+          <input type="checkbox" id="fieldMessaging" ${comp.fieldMessaging !== false ? 'checked' : ''} style="margin-top:4px;">
+          <span>
+            <strong>Kontroller och patruller kan skriva till er ${help('comp.fieldMessaging')}</strong>
+            <div class="field-hint" style="margin-top:2px;">En frågepanel på rapportsidorna och startkorten. De kan skicka text och foton; ni svarar under Meddelanden och svaret dyker upp direkt hos dem.</div>
+          </span>
+        </label>
+
+        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin-top:var(--sp-3);">
           <input type="checkbox" id="autoFinish" ${comp.autoFinish === true ? 'checked' : ''} style="margin-top:4px;">
           <span>
             <strong>Registrera målgång automatiskt vid sista kontrollen ${help('comp.autoFinish')}</strong>
@@ -756,6 +764,7 @@ function renderRulesTab(comp, cid, refresh, readOnly) {
         maxTimeMinutes: Number(card.querySelector('#st-maxtime').value) || null
       },
       selfStart: card.querySelector('#selfStart').checked,
+      fieldMessaging: card.querySelector('#fieldMessaging').checked,
       selfFinish: card.querySelector('#selfFinish').checked,
       autoFinish: card.querySelector('#autoFinish').checked,
       generalInfo: card.querySelector('#generalInfo').value.trim()

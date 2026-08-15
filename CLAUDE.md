@@ -61,6 +61,22 @@ Email extension). Production domain: https://eskilscout.se.
   på baksidan av föregående. Verifierat genom att leta upp sidfoten
   "Sida 1 · Placering" per sida i den färdiga filen — och mutationsverifierat
   (utan utfyllnad blir startsidorna 1, 6, 11, 16).
+- `.../threads/{kind-refId}/messages/{msgId}` — **samtal fält ↔ ledning**
+  (`comp.fieldMessaging`, PÅ som standard, så regeln läser
+  `.get('fieldMessaging', true)`). Tråd-id:t är deterministiskt
+  (`kontroll-<ctrlId>` / `patrull-<patrolId>`), så att känna till det ÄR att
+  hålla den hemliga fältlänken; `list` är member-only så id:n inte kan räknas
+  upp. Anonymt får `from` bara vara `'falt'` — ett falskt "från ledningen"
+  skulle kunna få en kontrollant att göra fel på riktigt. Fältet får heller
+  inte röra `ledningReadAt` (då kunde en inkommen fråga gömmas). Allt tre är
+  mutationsverifierat.
+  **Bilder ligger i meddelandet som data-URL**, inte i Cloud Storage:
+  projektet har ingen bucket, och en bild från skogen kan visa scouters
+  ansikten — i Firestore följer den tävlingens gallring. `public/js/photo.js`
+  skalar ner till ≤ 400 000 tecken och reglerna vaktar samma tak; håll de två
+  i synk. `closeCompetition` och `deleteCompetition` raderar trådarna HELT.
+  UI: `public/js/chat.js` (delad panel på /k och /s, ärver report.css så
+  nattläget håller) och inkorgen i `views/meddelanden.js`.
 - **Patrullens etikett är `patrolLabel()` i utils.js**: `Rävarna (Lindsdals
   Scoutkår)`. Används där patrullen visas som EN etikett — Läget,
   stationssidan, reservprotokollet, delade placeringar — eftersom flera kårer

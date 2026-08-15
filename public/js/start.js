@@ -23,6 +23,7 @@ import { icon } from './icons.js';
 import { bindHaptic, bindTap, lockScroll, unlockScroll } from './haptic.js';
 import { updateBroadcast } from './broadcast.js';
 import { patrolHighlights } from './highlights.js';
+import { mountChat } from './chat.js';
 import { compPlaces, placeKind, drawPlaces } from './places.js';
 
 const root = document.getElementById('root');
@@ -77,6 +78,7 @@ let filter = 'alla';       // 'alla' | 'kvar' | 'klara'
 let selfStartAt = null;    // Date — patrullens egen startbekräftelse
 let selfFinishAt = null;   // Date — patrullens egen målmarkering
 let confirming = null;     // 'startAt' | 'finishAt' medan skrivningen pågår
+let chatPanel = null;      // samtalspanelen mot tävlingsledningen
 
 async function main() {
   const parsed = parsePath();
@@ -531,11 +533,25 @@ function render() {
       </div>
     `}
 
+    <div id="chat"></div>
+
     <p class="r-sub" style="text-align:center;opacity:.55;margin-top:36px;font-size:13px;">
       ESKIL · startkort · live-uppdaterat när poäng rapporteras<br>
       <a href="/t/${escapeHtml(parsePath()?.cid || '')}" style="color:inherit;text-decoration:underline;">Tävlingssidan — startlista, karta &amp; resultat</a>
     </p>
   `;
+
+  // Samtal med tävlingsledningen — samma panel som kontrollernas sida.
+  // Testkortet får den inte: /s/<cid>/test har ingen patrull i databasen, så
+  // reglerna skulle neka och panelen bara se trasig ut.
+  chatPanel?.destroy();
+  if (!patrol.__test) {
+    chatPanel = mountChat(root.querySelector('#chat'), {
+      cid: parsePath().cid, kind: 'patrull', refId: patrol.id,
+      enabled: comp?.fieldMessaging !== false,
+      title: 'Fråga tävlingsledningen'
+    });
+  }
 
   // Wire filter
   root.querySelectorAll('.start-filter button').forEach(b => {

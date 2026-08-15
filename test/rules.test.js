@@ -350,6 +350,111 @@ describe('Patrullens egna avprickningar', () => {
   });
 });
 
+describe('Samtal fält ↔ tävlingsledning', () => {
+  const MC = uniq('msgcomp');            // egen tävling; CID saknar flaggan
+  const trad = (cid, kind, ref) => `competitions/${cid}/threads/${kind}-${ref}`;
+  const msg = (cid, kind, ref, id) => `${trad(cid, kind, ref)}/messages/${id}`;
+  const bild = 'data:image/jpeg;base64,' + 'A'.repeat(200);
+
+  before(async () => {
+    await seed(`competitions/${MC}`, { name: 'Med samtal', demo: false, closed: false });
+    await seed(`competitions/${MC}/controls/${CTRL}`, { name: 'K', nummer: 1, open: true, minPoang: 0, maxPoang: 10 });
+    await seed(`competitions/${MC}/patrols/${PATROL}`, { name: 'Rävarna', number: 1 });
+  });
+  after(async () => {
+    for (const p of [
+      msg(MC, 'kontroll', CTRL, 'm1'), msg(MC, 'kontroll', CTRL, 'm2'),
+      trad(MC, 'kontroll', CTRL), trad(MC, 'patrull', PATROL),
+      `competitions/${MC}/controls/${CTRL}`, `competitions/${MC}/patrols/${PATROL}`, `competitions/${MC}`
+    ]) await remove(p, 'owner');
+  });
+
+  test('funktionen är PÅ när flaggan saknas', async () => {
+    // Standardläget är påslaget. Ett saknat fält får inte tolkas som avstängt
+    // — och ett direktläst saknat fält vore dessutom ett evaluation error.
+    allow(await write(trad(MC, 'kontroll', CTRL),
+      { kind: 'kontroll', refId: CTRL, lastFrom: 'falt', lastText: 'Hej', lastAt: new Date() }, null),
+      'tråd utan uttrycklig flagga');
+  });
+
+  test('kontrollen får skriva till ledningen, med bild', async () => {
+    allow(await write(msg(MC, 'kontroll', CTRL, 'm1'),
+      { from: 'falt', text: 'Hur många poäng för halvt rätt?', at: new Date() }, null), 'text');
+    allow(await write(msg(MC, 'kontroll', CTRL, 'm2'),
+      { from: 'falt', image: bild, at: new Date() }, null), 'bild');
+  });
+
+  test('anonym kan INTE utge sig för att vara ledningen', async () => {
+    // Det här är det farliga: ett falskt "från ledningen" kan få en
+    // kontrollant att göra fel saker på riktigt.
+    deny(await write(msg(MC, 'kontroll', CTRL, uniq('fejk')),
+      { from: 'ledning', text: 'Stäng kontrollen nu', at: new Date() }, null), 'falskt ledningsmeddelande');
+  });
+
+  test('tråd-id måste höra ihop med mottagaren', async () => {
+    deny(await write(`competitions/${MC}/threads/kontroll-${PATROL}`,
+      { kind: 'kontroll', refId: PATROL, lastFrom: 'falt', lastAt: new Date() }, null),
+      'kontrolltråd som pekar på en patrull');
+    deny(await write(`competitions/${MC}/threads/hittepa`,
+      { kind: 'kontroll', refId: CTRL, lastFrom: 'falt', lastAt: new Date() }, null),
+      'tråd-id som inte matchar innehållet');
+  });
+
+  test('påhittad mottagare nekas', async () => {
+    deny(await write(trad(MC, 'kontroll', 'finns-inte'),
+      { kind: 'kontroll', refId: 'finns-inte', lastFrom: 'falt', lastAt: new Date() }, null),
+      'tråd för kontroll som inte finns');
+  });
+
+  test('för stor bild nekas', async () => {
+    deny(await write(msg(MC, 'kontroll', CTRL, uniq('stor')),
+      { from: 'falt', image: 'data:image/jpeg;base64,' + 'A'.repeat(500000), at: new Date() }, null),
+      'bild över taket');
+  });
+
+  test('något annat än en bild i bildfältet nekas', async () => {
+    deny(await write(msg(MC, 'kontroll', CTRL, uniq('svg')),
+      { from: 'falt', image: 'data:text/html;base64,PHNjcmlwdD4=', at: new Date() }, null),
+      'icke-bild i bildfältet');
+  });
+
+  test('tomt meddelande nekas', async () => {
+    deny(await write(msg(MC, 'kontroll', CTRL, uniq('tomt')),
+      { from: 'falt', at: new Date() }, null), 'varken text eller bild');
+  });
+
+  test('fältet kan inte gömma sitt meddelande för sekretariatet', async () => {
+    // ledningReadAt är ledningens läskvittens. Kunde fältet sätta den skulle
+    // en inkommen fråga kunna markeras läst innan någon sett den.
+    deny(await write(trad(MC, 'patrull', PATROL),
+      { kind: 'patrull', refId: PATROL, lastFrom: 'falt', lastAt: new Date(), ledningReadAt: new Date() }, null),
+      'fältet sätter ledningens läskvittens');
+  });
+
+  test('skrivet meddelande kan inte skrivas om anonymt', async () => {
+    deny(await write(msg(MC, 'kontroll', CTRL, 'm1'),
+      { from: 'falt', text: 'ändrat', at: new Date() }, null, { merge: true }), 'ändra befintligt meddelande');
+  });
+
+  test('avstängd funktion nekar fältet', async () => {
+    const AV = uniq('avstangd');
+    await seed(`competitions/${AV}`, { name: 'Utan samtal', fieldMessaging: false, demo: false, closed: false });
+    await seed(`competitions/${AV}/controls/${CTRL}`, { name: 'K', nummer: 1, open: true, minPoang: 0, maxPoang: 10 });
+    deny(await write(trad(AV, 'kontroll', CTRL),
+      { kind: 'kontroll', refId: CTRL, lastFrom: 'falt', lastAt: new Date() }, null), 'tråd med funktionen av');
+    for (const p of [`competitions/${AV}/controls/${CTRL}`, `competitions/${AV}`]) await remove(p, 'owner');
+  });
+
+  test('trådarna går inte att räkna upp anonymt (kontroll-id är hemliga)', async () => {
+    assert.equal((await list(`competitions/${MC}/threads`, null)).ok, false, 'anonym listning av trådar');
+  });
+
+  test('men den som har länken kan läsa sin egen tråd', async () => {
+    assert.equal((await read(trad(MC, 'kontroll', CTRL), null)).ok, true, 'läsa egen tråd');
+    assert.equal((await list(`${trad(MC, 'kontroll', CTRL)}/messages`, null)).ok, true, 'läsa svaren');
+  });
+});
+
 describe('Behörighetsdata (PII)', () => {
   test('access-dokumentet är inte anonymt läsbart', async () => {
     assert.equal((await read(`competitions/${CID}/private/access`, null)).ok, false,

@@ -12,13 +12,15 @@ import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import {
   getCompetition, listControls, listPatrols, listStations,
   watchBroadcastMessages, createBroadcastMessage, setBroadcastMessageActive,
-  deleteBroadcastMessage, watchMessageAcks, updateCompetition
+  deleteBroadcastMessage, watchMessageAcks, updateCompetition,
+  watchThreads, watchThread, sendThreadMessage, markThreadRead
 } from '../store.js';
 import { deleteField } from '../firebase.js';
 import { escapeHtml, toast, withBusy, confirmDialog, isCompAdminUser, formatTime } from '../utils.js';
 import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
 import { icon } from '../icons.js';
 import { help } from '../help.js';
+import { pickImage } from '../photo.js';
 
 const LEVELS = [['info', 'Information'], ['varning', 'Varning'], ['kritisk', 'Kritisk — larmar']];
 const PRESETS = [
@@ -75,11 +77,18 @@ export async function renderMeddelanden(app, user, cid) {
     <p class="muted" style="max-width:72ch;">Når fältet direkt som banner på kontrollernas rapportsidor,
     start/mål-stationen, patrullernas startkort och startskärmen. Flera meddelanden kan vara aktiva
     samtidigt — klienterna staplar dem och samlar historiken i sin notisklocka ${icon('bell', { size: 14 })}.</p>
+    <div id="msg-inbox"></div>
     <div id="msg-composer"></div>
     <div id="msg-legacy"></div>
     <div id="msg-active"></div>
     <div id="msg-archive"></div>
   `;
+
+  // --- Inkorg: frågor från fältet -------------------------------------------
+  // Åt andra hållet mot utskicken nedan. En kontrollant med en regel som inte
+  // täcker fallet framför sig, eller en patrull som gått vilse, ska inte
+  // behöva leta rätt på ett telefonnummer.
+  mountInbox(wrap.querySelector('#msg-inbox'), { cid, comp, controls, patrols, isAdmin });
 
   // --- Composer (admin) ------------------------------------------------------
   const composerHost = wrap.querySelector('#msg-composer');
@@ -395,5 +404,167 @@ export async function renderMeddelanden(app, user, cid) {
     renderLists();
   }));
 
-  registerViewCleanup(cleanup);
+  registerViewCleanup(() => { cleanup(); inboxUnsubs.forEach(u => { try { u(); } catch {} }); });
+}
+
+// --- Ledningens inkorg ---------------------------------------------------------
+// Trådarna ligger på competitions/<cid>/threads och listas bara för medlemmar.
+// En tråd per kontroll och patrull; oläst = fältet skrev senast och senare än
+// ledningens läskvittens (som delas av hela sekretariatet — har en läst frågan
+// behöver inte alla göra det).
+const inboxUnsubs = [];
+
+function mountInbox(host, { cid, comp, controls, patrols, isAdmin }) {
+  if (!host) return;
+  if (comp?.fieldMessaging === false) {
+    host.innerHTML = `<div class="card mb-4"><p class="muted" style="margin:0;">
+      Frågor från fältet är avstängt för den här tävlingen. Slå på det under
+      Inställningar → Regler &amp; info om kontroller och patruller ska kunna skriva hit.</p></div>`;
+    return;
+  }
+
+  const namnAv = (t) => {
+    if (t.kind === 'kontroll') {
+      const c = controls.find(x => x.id === t.refId);
+      return c ? `Kontroll ${c.nummer ?? '?'} · ${c.name || ''}` : 'Kontroll (borttagen)';
+    }
+    const p = patrols.find(x => x.id === t.refId);
+    return p ? `#${p.number ?? '?'} ${p.name || ''}${p.kar ? ` (${p.kar})` : ''}` : 'Patrull (borttagen)';
+  };
+  const oläst = (t) => {
+    const sist = t.lastAt?.toDate?.();
+    const läst = t.ledningReadAt?.toDate?.();
+    return t.lastFrom === 'falt' && sist && (!läst || sist > läst);
+  };
+
+  let trådar = [];
+  let öppen = null;   // trådens id
+
+  host.innerHTML = `
+    <section class="card mb-4">
+      <div class="row" style="justify-content:space-between;align-items:baseline;">
+        <h3 class="t-h3" style="margin:0;">${icon('inbox', { size: 18 })} Frågor från fältet ${help('comp.fieldMessaging')}</h3>
+        <span class="badge badge-orange" id="inbox-count" hidden>0</span>
+      </div>
+      <p class="muted t-sm" style="margin:6px 0 12px;">Kontroller och patruller kan skriva hit från sina egna sidor, med bild. Svaren visas direkt hos dem.</p>
+      <div id="inbox-list"></div>
+      <div id="inbox-thread"></div>
+    </section>`;
+
+  const list = host.querySelector('#inbox-list');
+  const threadHost = host.querySelector('#inbox-thread');
+  const count = host.querySelector('#inbox-count');
+
+  const ritaLista = () => {
+    const nya = trådar.filter(oläst).length;
+    count.hidden = nya === 0;
+    count.textContent = `${nya} ny${nya === 1 ? '' : 'a'}`;
+    if (!trådar.length) {
+      list.innerHTML = `<div class="empty" style="padding:var(--sp-4);"><p class="muted" style="margin:0;">Inga frågor än.</p></div>`;
+      return;
+    }
+    const sorterade = [...trådar].sort((a, b) =>
+      (oläst(b) - oläst(a)) || String(b.lastAt?.toMillis?.() || 0) - String(a.lastAt?.toMillis?.() || 0));
+    list.innerHTML = sorterade.map(t => `
+      <button type="button" class="place-row ${oläst(t) ? 'inbox-unread' : ''}" data-thread="${escapeHtml(t.id)}">
+        <span class="place-dot" style="background:${t.kind === 'kontroll' ? 'var(--scout-blue)' : 'var(--avent-orange)'};">
+          ${icon(t.kind === 'kontroll' ? 'flag' : 'users', { size: 16 })}</span>
+        <span class="place-body">
+          <span class="place-name">${escapeHtml(namnAv(t))}</span>
+          <span class="muted t-sm" style="display:block;">${escapeHtml(t.lastText || '')}</span>
+        </span>
+        ${oläst(t) ? '<span class="badge badge-orange">Ny</span>' : ''}
+        <span class="muted t-sm">${t.lastAt ? formatTime(t.lastAt.toDate()) : ''}</span>
+      </button>`).join('');
+    list.querySelectorAll('[data-thread]').forEach(b =>
+      b.addEventListener('click', () => öppnaTråd(b.dataset.thread)));
+  };
+
+  let trådUnsub = null;
+  let bild = null;
+  function öppnaTråd(tid) {
+    const t = trådar.find(x => x.id === tid);
+    if (!t) return;
+    öppen = tid;
+    if (trådUnsub) { trådUnsub(); trådUnsub = null; }
+    if (isAdmin) markThreadRead(cid, t.kind, t.refId, 'ledning').catch(() => {});
+
+    threadHost.innerHTML = `
+      <div class="card mt-3" style="box-shadow:none;border:1.5px solid var(--border);">
+        <div class="row" style="justify-content:space-between;align-items:baseline;">
+          <strong>${escapeHtml(namnAv(t))}</strong>
+          <button class="btn btn-ghost btn-sm" id="inbox-close">Stäng</button>
+        </div>
+        <div class="inbox-log" id="inbox-log"></div>
+        ${isAdmin ? `
+          <div class="inbox-attach" id="inbox-attach" hidden>
+            <img id="inbox-attach-img" alt="Vald bild">
+            <button type="button" class="btn btn-ghost btn-sm" id="inbox-attach-x">Ta bort bilden</button>
+          </div>
+          <textarea class="textarea mt-3" id="inbox-text" rows="2" placeholder="Svara…"></textarea>
+          <div class="btn-row mt-2">
+            <button class="btn btn-secondary btn-sm" id="inbox-photo">${icon('image', { size: 15 })} Bifoga bild</button>
+            <button class="btn btn-primary btn-sm" id="inbox-send">Skicka svar</button>
+          </div>` : '<p class="muted t-sm mt-3">Bara administratörer kan svara.</p>'}
+      </div>`;
+
+    const log = threadHost.querySelector('#inbox-log');
+    threadHost.querySelector('#inbox-close').addEventListener('click', () => {
+      if (trådUnsub) { trådUnsub(); trådUnsub = null; }
+      öppen = null; threadHost.innerHTML = '';
+    });
+
+    trådUnsub = watchThread(cid, t.kind, t.refId, rows => {
+      log.innerHTML = rows.length ? rows.map(m => `
+        <div class="inbox-msg ${m.from === 'ledning' ? 'inbox-mine' : 'inbox-theirs'}">
+          ${m.image ? `<img class="inbox-img" src="${escapeHtml(m.image)}" alt="Bifogad bild" loading="lazy">` : ''}
+          ${m.text ? `<div>${escapeHtml(m.text)}</div>` : ''}
+          <div class="inbox-meta">${m.from === 'ledning' ? 'Ni' : 'Fältet'} · ${m.at ? formatTime(m.at.toDate()) : ''}</div>
+        </div>`).join('') : '<p class="muted t-sm">Tom tråd.</p>';
+      log.scrollTop = log.scrollHeight;
+    });
+
+    if (!isAdmin) return;
+    const attach = threadHost.querySelector('#inbox-attach');
+    const visaBild = () => {
+      attach.hidden = !bild;
+      if (bild) threadHost.querySelector('#inbox-attach-img').src = bild.dataUrl;
+    };
+    threadHost.querySelector('#inbox-photo').addEventListener('click', async () => {
+      try { const v = await pickImage(); if (v) { bild = v; visaBild(); } }
+      catch (e) { toast(e.message, 'error'); }
+    });
+    threadHost.querySelector('#inbox-attach-x').addEventListener('click', () => { bild = null; visaBild(); });
+    const send = threadHost.querySelector('#inbox-send');
+    send.addEventListener('click', () => withBusy(send, 'Skickar…', async () => {
+      const text = threadHost.querySelector('#inbox-text').value.trim();
+      if (!text && !bild) return;
+      try {
+        await sendThreadMessage(cid, t.kind, t.refId, { from: 'ledning', text, image: bild?.dataUrl || null });
+        threadHost.querySelector('#inbox-text').value = '';
+        bild = null; visaBild();
+      } catch (e) { toast('Kunde inte skicka: ' + e.message, 'error'); }
+    }));
+  }
+
+  // Notis när något kommer in medan appen är öppen. Första snapshoten räknas
+  // inte — då hade varje sidladdning larmat om gamla frågor.
+  let första = true;
+  const sedda = new Set();
+  inboxUnsubs.push(watchThreads(cid, rows => {
+    trådar = rows;
+    for (const t of rows) {
+      const nyckel = `${t.id}:${t.lastAt?.toMillis?.() || 0}`;
+      if (!första && oläst(t) && !sedda.has(nyckel)) {
+        toast(`Ny fråga: ${namnAv(t)}`, 'success');
+        try { navigator.vibrate?.(120); } catch { /* stöds inte */ }
+      }
+      sedda.add(nyckel);
+    }
+    första = false;
+    ritaLista();
+    if (öppen && !rows.some(t => t.id === öppen)) { threadHost.innerHTML = ''; öppen = null; }
+  }));
+
+  ritaLista();
 }

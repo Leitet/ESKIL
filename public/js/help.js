@@ -173,6 +173,22 @@ export const HELP = {
     ]
   },
 
+  'comp.fieldMessaging': {
+    title: 'Kontroller och patruller kan skriva till er',
+    body: [
+      'En frågepanel längst ner på kontrollernas rapportsidor och patrullernas startkort. De skriver, ni svarar under Meddelanden, och svaret dyker upp direkt hos dem — ingen behöver leta rätt på ett telefonnummer mitt i en tävling.',
+      'Bilder går åt båda håll. En kontrollant kan fota lappen som inte stämmer, en patrull kan visa var de står, och ni kan skicka tillbaka en bild som förtydligar.',
+      'Nya frågor visas överst under Meddelanden med en notis medan ni har appen öppen. Har någon i sekretariatet läst en fråga räknas den som läst för alla.'
+    ],
+    warn: 'Bilder från fältet kan visa scouters ansikten. Hela samtalet — text och bilder — raderas när tävlingen avslutas; det finns inget här som sparas som tävlingshistorik.',
+    faq: [
+      { q: 'Vem kan skriva?', a: 'Den som har kontrollens rapportlänk eller patrullens startkortslänk — samma hemlighet som redan krävs för att rapportera poäng. Ingen utomstående kan skriva in sig i en tråd.' },
+      { q: 'Kan någon utge sig för att vara oss?', a: 'Nej. Ett meddelande som påstår sig komma från tävlingsledningen kan bara skrivas av en inloggad administratör.' },
+      { q: 'Fungerar det utan täckning?', a: 'Frågan hamnar i kö och går iväg när nätet kommer tillbaka, med tiden den skrevs. Panelen visar "skickar…" tills den gått fram.' },
+      { q: 'Vad händer om vi stänger av det?', a: 'Panelen försvinner från fältsidorna och inga nya frågor kan skickas. Redan skrivna trådar ligger kvar tills tävlingen avslutas.' }
+    ]
+  },
+
   'comp.selfFinish': {
     title: 'Patrullerna markerar sig i mål själva',
     body: [

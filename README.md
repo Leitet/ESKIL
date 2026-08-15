@@ -64,6 +64,14 @@ att köra gratis på Spark-planen.
 - **Avdelningar per tävling** — under Inställningar → Grund väljs vilka
   avdelningar som deltar; endast valda visas i anmälan, patrullformulär och
   poängtabellens filter (`competitions/{cid}.avdelningar`, saknas = alla).
+- **Frågor från fältet** (Meddelanden-fliken) — kontroller och patruller kan
+  skriva till tävlingsledningen direkt från sina egna sidor, med foton åt båda
+  håll: kontrollanten fotar lappen som inte stämmer, ledningen svarar med en
+  bild som förtydligar. Nya frågor hamnar överst under Meddelanden med notis,
+  och svaret dyker upp direkt hos avsändaren. Läsmarkeringen delas av hela
+  sekretariatet. Påslaget som standard, går att stänga av under Regler & info.
+  Bilder skalas ner i klienten och lagras i meddelandet — hela samtalet
+  raderas när tävlingen avslutas.
 - **Läget** (flik på tävlingen) — sekretariatets tävlingsdagsvy. Live-KPI:er
   (ej startade / ute i skogen / i mål / varningar), karta och tabell med
   **kötryck per kontroll**: kö nu (patruller på väg från föregående kontroll),

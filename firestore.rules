@@ -319,6 +319,73 @@ service cloud.firestore {
         allow write: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
       }
 
+      // Samtal fält ↔ tävlingsledning. En tråd per kontroll och per patrull,
+      // med DETERMINISTISKT id: "kontroll-<ctrlId>" / "patrull-<patrolId>".
+      // Att känna till tråd-id:t är alltså detsamma som att hålla den hemliga
+      // fältlänken — samma trustmodell som poängrapportering.
+      //
+      // Bilderna ligger i meddelandet som data-URL, inte i Cloud Storage:
+      // projektet har ingen Storage-bucket, och en bild från skogen kan visa
+      // scouters ansikten. I Firestore följer den tävlingens gallring.
+      // Storleken vaktas HÄR — utan tak kan en anonym sida fylla databasen.
+      match /threads/{threadId} {
+        function faltFar() {
+          return !compIsDemo(cid) && !compClosed(cid)
+            && compData(cid).get('fieldMessaging', true) == true;
+        }
+        function refFinns(kind, refId) {
+          return (kind == 'kontroll' && exists(/databases/$(database)/documents/competitions/$(cid)/controls/$(refId)))
+              || (kind == 'patrull'  && exists(/databases/$(database)/documents/competitions/$(cid)/patrols/$(refId)));
+        }
+
+        allow get: if true;
+        // list bara för medlemmar — annars går kontroll-id:n att räkna upp.
+        allow list: if isCompMember(cid);
+
+        allow create, update: if isCompAdmin(cid) || (
+             faltFar()
+          && request.resource.data.keys().hasOnly(['kind', 'refId', 'lastAt', 'lastFrom', 'lastText', 'faltReadAt', 'ledningReadAt'])
+          && request.resource.data.kind in ['kontroll', 'patrull']
+          && request.resource.data.refId is string
+          && request.resource.data.refId.size() > 0
+          && request.resource.data.refId.size() <= 64
+          && threadId == request.resource.data.kind + '-' + request.resource.data.refId
+          && refFinns(request.resource.data.kind, request.resource.data.refId)
+          && request.resource.data.get('lastFrom', '') == 'falt'
+          // Fältet får aldrig röra ledningens läskvittens — då skulle ett
+          // inkommet meddelande kunna gömmas för sekretariatet.
+          && (resource == null
+              ? !('ledningReadAt' in request.resource.data)
+              : request.resource.data.get('ledningReadAt', null) == resource.data.get('ledningReadAt', null))
+        );
+        allow delete: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
+
+        match /messages/{msgId} {
+          allow read: if true;
+          // Anonymt: BARA från fältet. Ett anonymt meddelande som utger sig
+          // för att komma från ledningen vore ett sätt att lura kontrollanter.
+          allow create: if isCompAdmin(cid) || (
+               faltFar()
+            && request.resource.data.keys().hasOnly(['from', 'text', 'at', 'image'])
+            && request.resource.data.from == 'falt'
+            && request.resource.data.at is timestamp
+            && request.resource.data.at <= request.time + duration.value(2, 'm')
+            && request.resource.data.at >= request.time - duration.value(12, 'h')
+            && (!('text' in request.resource.data)
+                || (request.resource.data.text is string && request.resource.data.text.size() <= 2000))
+            && (!('image' in request.resource.data)
+                || (request.resource.data.image is string
+                    && request.resource.data.image.size() <= 400000
+                    && request.resource.data.image.matches('^data:image/(jpeg|png|webp);base64,.*')))
+            && (('text' in request.resource.data) || ('image' in request.resource.data))
+          );
+          // Skrivet är skrivet — ett samtal med sekretariatet ska inte gå att
+          // skriva om i efterhand. Admin kan rensa.
+          allow update: if isCompAdmin(cid) && !compIsDemo(cid);
+          allow delete: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
+        }
+      }
+
       // Patrullens egna avprickningar — "Bekräfta start" och "Vi är i mål" på
       // startkortet (/s/<cid>/<patrolId>), i stället för en funktionär vid
       // start/mål. Egen collection eftersom startkortet INTE känner till

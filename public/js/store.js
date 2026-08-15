@@ -350,7 +350,7 @@ export async function copyCompetition(cid, { name, shortName, year, date }, user
   for (const k of ['startTimes', 'startFinish', 'parking', 'management',
                    'publicScores', 'publicControls', 'autoReleaseControls',
                    'anonymousControls', 'autoCloseControls',
-                   'selfStart', 'selfFinish', 'autoFinish']) {
+                   'selfStart', 'selfFinish', 'autoFinish', 'fieldMessaging']) {
     if (src[k] !== undefined) data[k] = src[k];
   }
   if (src.registration) {
@@ -498,6 +498,11 @@ export async function closeCompetition(cid) {
     });
     await batch.commit();
   }
+  // Samtalen med fältet raderas HELT, inte gallras: en bild tagen i skogen
+  // kan visa scouters ansikten, och texten kan bära vad som helst från en
+  // stressad kväll. Det finns inget här som är tävlingshistorik.
+  await deleteThreads(cid);
+
   // Strip the tävlingsledning's personal contact details (name/phone/email)
   // from `management` too — the role structure stays, the PII goes. Only
   // admins remain reachable (via adminEmails).
@@ -513,6 +518,18 @@ export async function closeCompetition(cid) {
   await mirrorAccess(cid, { users: [], userEmails: [], ekonomi: [], ekonomiEmails: [] });
 }
 
+// Trådar + deras meddelanden. Firestore raderar aldrig subcollections med
+// föräldern, så meddelandena måste bort först — annars ligger bilderna kvar
+// som föräldralösa dokument.
+export async function deleteThreads(cid) {
+  const trådar = await getDocs(collection(db, 'competitions', cid, 'threads'));
+  for (const t of trådar.docs) {
+    const msgs = await getDocs(collection(db, 'competitions', cid, 'threads', t.id, 'messages'));
+    await deleteRefs(msgs.docs.map(d => d.ref));
+  }
+  await deleteRefs(trådar.docs.map(d => d.ref));
+}
+
 export async function reopenCompetition(cid) {
   await updateDoc(doc(db, 'competitions', cid), { closed: false });
 }
@@ -521,6 +538,7 @@ export async function deleteCompetition(cid) {
   // Firestore never deletes subcollections with their parent, so remove
   // everything that lives under the competition first — otherwise patrols,
   // controls, scores and registrations linger as orphaned documents.
+  await deleteThreads(cid);
   const controlsSnap = await getDocs(collection(db, 'competitions', cid, 'controls'));
   for (const c of controlsSnap.docs) {
     const scores = await getDocs(collection(db, 'competitions', cid, 'controls', c.id, 'scores'));
@@ -1012,6 +1030,67 @@ export function watchPassages(cid, stationId, cb) {
     { includeMetadataChanges: true },
     snap => cb(snap.docs.map(d => ({ id: d.id, _pending: d.metadata.hasPendingWrites, ...d.data() })))
   );
+}
+
+// --- Samtal fält <-> tävlingsledning -------------------------------------------
+// En tråd per kontroll och per patrull, med deterministiskt id så fältsidan
+// hittar sin egen utan att kunna räkna upp andras (se firestore.rules).
+
+export const threadId = (kind, refId) => `${kind}-${refId}`;
+
+export function watchThread(cid, kind, refId, cb) {
+  return onSnapshot(
+    query(collection(db, 'competitions', cid, 'threads', threadId(kind, refId), 'messages'), orderBy('at')),
+    // includeMetadataChanges: ett meddelande skrivet utan täckning ska synas
+    // som "skickar…" tills servern bekräftat, precis som stationens
+    // incheckningar.
+    { includeMetadataChanges: true },
+    snap => cb(snap.docs.map(d => ({ id: d.id, _pending: d.metadata.hasPendingWrites, ...d.data() }))),
+    () => cb([])   // avstängd funktion eller stängd tävling — tyst tom tråd
+  );
+}
+
+export function watchThreadDoc(cid, kind, refId, cb) {
+  return onSnapshot(doc(db, 'competitions', cid, 'threads', threadId(kind, refId)),
+    snap => cb(snap.exists() ? { id: snap.id, ...snap.data() } : null), () => cb(null));
+}
+
+// Alla trådar (ledningens inkorg). Kräver medlemskap — se list-regeln.
+export function watchThreads(cid, cb) {
+  return onSnapshot(collection(db, 'competitions', cid, 'threads'),
+    snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() }))), () => cb([]));
+}
+
+// Skicka ett meddelande. `from` är 'falt' eller 'ledning' — reglerna tillåter
+// bara 'falt' anonymt.
+//
+// Klienttid, inte serverTimestamp: samma skäl som poängrapporterna. Ett
+// meddelande som skrivs offline och synkas senare ska bära ögonblicket det
+// skrevs, annars hamnar samtalet i fel ordning när nätet kommer tillbaka.
+export async function sendThreadMessage(cid, kind, refId, { from, text = '', image = null }) {
+  const tid = threadId(kind, refId);
+  const at = Timestamp.fromDate(new Date());
+  const msg = { from, at };
+  if (text) msg.text = String(text).slice(0, 2000);
+  if (image) msg.image = image;
+  await addDoc(collection(db, 'competitions', cid, 'threads', tid, 'messages'), msg);
+  // Trådhuvudet driver ledningens inkorg. Fältet får inte röra
+  // ledningReadAt (reglerna vaktar det), så oläst-status kan inte gömmas.
+  const huvud = {
+    kind, refId, lastAt: at, lastFrom: from,
+    lastText: text ? String(text).slice(0, 120) : (image ? '[bild]' : '')
+  };
+  if (from === 'falt') huvud.faltReadAt = at;
+  else huvud.ledningReadAt = at;
+  await setDoc(doc(db, 'competitions', cid, 'threads', tid), huvud, { merge: true });
+}
+
+// Läskvittens. Vem som läst styr vilken stämpel som sätts — och reglerna
+// hindrar fältet från att sätta ledningens.
+export async function markThreadRead(cid, kind, refId, who) {
+  await setDoc(doc(db, 'competitions', cid, 'threads', threadId(kind, refId)),
+    { kind, refId, [who === 'ledning' ? 'ledningReadAt' : 'faltReadAt']: Timestamp.fromDate(new Date()) },
+    { merge: true });
 }
 
 // --- Patrullens egna avprickningar -------------------------------------------
