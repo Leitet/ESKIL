@@ -10,9 +10,12 @@
 import { layout } from '../app.js';
 import {
   listCompetitionRequests, approveCompetitionRequest,
-  denyCompetitionRequest, deleteCompetitionRequest
+  denyCompetitionRequest, deleteCompetitionRequest, isSlugTaken
 } from '../store.js';
-import { escapeHtml, formatDate, toast, withBusy, confirmDialog } from '../utils.js';
+import {
+  escapeHtml, formatDate, toast, withBusy, confirmDialog,
+  normSlug, isValidSlug, suggestSlug
+} from '../utils.js';
 import { crumbs, setDocTitle } from '../nav.js';
 import { navigate } from '../router.js';
 
@@ -21,6 +24,17 @@ const STATUS = {
   godkand: { label: 'Godkänd', badge: 'badge-green' },
   nekad:   { label: 'Nekad', badge: 'badge-pink' }
 };
+
+// Sökanden anger bara ett fullständigt namn ("Älghornsjakten 2027"). Kapa till
+// ett kort namn utan årtal — det är det som ger kortadressförslaget (ah27).
+function suggestShort(name) {
+  return String(name || '').replace(/\b(19|20)\d{2}\b/g, '').replace(/\s+/g, ' ').trim().slice(0, 24);
+}
+function yearOf(r) {
+  const fromDate = r.date ? Number(String(r.date).slice(0, 4)) : null;
+  const inName = String(r.name || '').match(/\b(19|20)\d{2}\b/);
+  return fromDate || (inName ? Number(inName[0]) : new Date().getFullYear());
+}
 
 export async function renderAdminRequests(app, user) {
   if (user.role !== 'super-admin') { navigate('/app', true); return; }
@@ -63,7 +77,22 @@ export async function renderAdminRequests(app, user) {
 
         ${pending ? `
           <div class="mt-4" style="border-top:1px solid var(--border);padding-top:var(--sp-3);">
-            <label class="field" for="msg-${escapeHtml(r.id)}">Svar till sökanden (skickas med i mailet)</label>
+            <div class="grid grid-2">
+              <div>
+                <label class="field" for="short-${escapeHtml(r.id)}">Kort namn</label>
+                <input class="input" id="short-${escapeHtml(r.id)}" maxlength="24" value="${escapeHtml(suggestShort(r.name))}">
+                <div class="field-hint">Visas i flikar, badges och mailrubriker.</div>
+              </div>
+              <div>
+                <label class="field" for="slug-${escapeHtml(r.id)}">Kortadress &amp; betalningsprefix</label>
+                <input class="input mono" id="slug-${escapeHtml(r.id)}" maxlength="24" placeholder="ah26"
+                  style="text-transform:lowercase;" value="${escapeHtml(suggestSlug(suggestShort(r.name), yearOf(r)))}">
+                <div class="field-hint">Sidan nås på <strong>eskilscout.se/t/<span data-slug-preview="${escapeHtml(r.id)}">…</span></strong>,
+                referenser blir <strong><span data-ref-preview="${escapeHtml(r.id)}">…</span>-XXXX</strong>.
+                <strong>Sätts nu och kan inte ändras sedan</strong> — tryckta QR-koder hänger på den.</div>
+              </div>
+            </div>
+            <label class="field mt-3" for="msg-${escapeHtml(r.id)}">Svar till sökanden (skickas med i mailet)</label>
             <textarea class="textarea" id="msg-${escapeHtml(r.id)}" rows="2" placeholder="Valfritt vid godkännande — motivera gärna ett nej."></textarea>
             <div class="btn-row mt-3">
               <button class="btn btn-primary btn-sm" data-approve="${escapeHtml(r.id)}">Godkänn och skapa tävlingen</button>
@@ -109,12 +138,43 @@ export async function renderAdminRequests(app, user) {
         </details>` : ''}
     `;
 
+    // Live-förhandsvisning av kortadressen medan super-adminen skriver.
+    wrap.querySelectorAll('[id^="slug-"]').forEach(inp => {
+      const id = inp.id.slice(5);
+      const show = () => {
+        const s = normSlug(inp.value);
+        const p = wrap.querySelector(`[data-slug-preview="${CSS.escape(id)}"]`);
+        const rp = wrap.querySelector(`[data-ref-preview="${CSS.escape(id)}"]`);
+        if (p) p.textContent = s || '…';
+        if (rp) rp.textContent = (s || '…').toUpperCase();
+      };
+      inp.addEventListener('input', show);
+      show();
+    });
+
     wrap.querySelectorAll('[data-approve]').forEach(b => b.addEventListener('click', (e) => withBusy(e.currentTarget, 'Skapar…', async () => {
       const r = reqs.find(x => x.id === b.dataset.approve);
       if (!r) return;
       const msg = wrap.querySelector(`#msg-${CSS.escape(r.id)}`)?.value || '';
+      const shortName = (wrap.querySelector(`#short-${CSS.escape(r.id)}`)?.value || '').trim();
+      const slug = normSlug(wrap.querySelector(`#slug-${CSS.escape(r.id)}`)?.value || '');
+      // Kortadressen är oåterkallelig — validera den HÄR, innan tävlingen
+      // finns. Ett upptaget värde skulle göra /t/<slug> tvetydig.
+      if (!isValidSlug(slug)) {
+        toast('Kortadressen måste vara minst 2 tecken: a–z, 0–9 och bindestreck.', 'error');
+        wrap.querySelector(`#slug-${CSS.escape(r.id)}`)?.focus();
+        return;
+      }
+      if (await isSlugTaken(slug)) {
+        toast(`Kortadressen "${slug}" används redan av en annan tävling.`, 'error');
+        wrap.querySelector(`#slug-${CSS.escape(r.id)}`)?.focus();
+        return;
+      }
+      if (!(await confirmDialog(
+        `Godkänn "${r.name}" med kortadressen /t/${slug}? Kortadressen kan inte ändras efteråt.`,
+        { okLabel: 'Godkänn och skapa', danger: false }))) return;
       try {
-        const cid = await approveCompetitionRequest(r, msg, user.email);
+        const cid = await approveCompetitionRequest(r, msg, user.email, { slug, shortName });
         toast('Tävlingen skapad — sökanden är administratör', 'success');
         navigate(`/app/c/${cid}`);
       } catch (err) { toast('Kunde inte godkänna: ' + err.message, 'error'); }

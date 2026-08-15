@@ -130,13 +130,16 @@ export async function deleteCompetitionRequest(reqId) {
 // rättigheten gäller direkt och överlever ett uid-byte), och stämpla
 // förfrågan med beslutet — den uppdateringen är det Cloud Functionen
 // reagerar på när svarsmailet ska gå iväg.
-export async function approveCompetitionRequest(req, decisionMessage, decidedByEmail) {
+export async function approveCompetitionRequest(req, decisionMessage, decidedByEmail, { slug, shortName } = {}) {
   const cid = await createCompetition({
     name: req.name,
-    shortName: req.name.slice(0, 24),
+    shortName: (shortName || req.name).slice(0, 24),
     description: req.description || '',
     date: req.date || null,
     year: req.date ? Number(String(req.date).slice(0, 4)) || null : new Date().getFullYear(),
+    // Kortadressen slås fast HÄR — den går inte att ändra sedan (tryckta
+    // QR-koder och betalningsreferenser hänger på den).
+    ...(slug ? { slug } : {}),
     adminEmails: [req.requestedByEmail]
   }, { uid: req.requestedBy, email: req.requestedByEmail });
   await updateDoc(doc(db, 'competitionRequests', req.id), {
