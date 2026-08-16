@@ -862,8 +862,18 @@ async function main() {
   // `at` är klient-tid: buffras skrivningen offline och synkar senare bär den
   // ändå den sanna senast-vid-liv-tiden. Fel sväljs — livstecknet är en
   // bonus och får aldrig störa rapporteringen.
+  // Minsta tid mellan två livstecken. Intervallet är 5 min, men
+  // flikväxlingen nedan skickar också — och en kontrollant väcker telefonen
+  // för varje patrull. Utan strypning blir det hundratals skrivningar per
+  // kontroll och dag (mätt: 200 väckningar × 30 kontroller ≈ 44 % av
+  // Firestores dygnskvot bara för hjärtslag). Läget behöver ändå bara veta
+  // "hördes av inom fem minuter" — sekundprecision tillför ingenting.
+  const BEACON_MIN_MS = 60000;
+  let sistaBeacon = 0;
   const skickaLivstecken = async () => {
     if (document.hidden || comp?.demo || !control.open) return;
+    if (Date.now() - sistaBeacon < BEACON_MIN_MS) return;
+    sistaBeacon = Date.now();
     let batteri = null, laddar = null;
     try {
       const b = await navigator.getBattery?.();
