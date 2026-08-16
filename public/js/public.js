@@ -201,7 +201,11 @@ async function boot() {
       subscribedScoreCtrls.add(c.id);
       const u = onSnapshot(
         collection(db, 'competitions', cid, 'controls', c.id, 'scores'),
-        s => { scoresByControl[c.id] = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); }
+        s => {
+          scoresByControl[c.id] = s.docs.map(d => ({ id: d.id, ...d.data() }));
+          notiseraFavoriter(c.id, scoresByControl[c.id]);
+          render();
+        }
       );
       unsubs.push(u);
     }
@@ -323,12 +327,69 @@ function toggleFav(pid) {
   const s = getFavs();
   if (s.has(pid)) s.delete(pid); else s.add(pid);
   try { localStorage.setItem(favKey(), JSON.stringify([...s])); } catch { /* privat läge */ }
+  // Stjärnklicket är den naturliga stunden att fråga om notiser — det är ett
+  // användargest (krav för prompten) och exakt då man börjar följa någon.
+  // Nekat eller stöds inte → stjärnan fungerar precis som förr.
+  if (s.has(pid) && typeof Notification !== 'undefined' && Notification.permission === 'default') {
+    try { Notification.requestPermission().catch(() => {}); } catch { /* äldre callback-API */ }
+  }
   render();
+}
+
+// --- Notiser för favoritpatruller -------------------------------------------
+// Lokalt, utan server: sidan lyssnar redan live på alla poäng, så när en NY
+// avprickning dyker upp för en stjärnmärkt patrull visas en systemnotis.
+// Föräldern ska inte behöva sitta och ladda om — telefonen säger till.
+//
+// Första snapshoten per kontroll seedas TYST: den innehåller alla historiska
+// poäng, och att öppna sidan mitt på dagen ska inte ge trettio notiser.
+// Anonymitets- och poängreglerna är samma som på sidan: en öppen kontroll
+// nämns bara med nummer när anonymousControls är på, och poäng nämns bara
+// när de är publicerade.
+const settScoreKeys = new Set();   // "ctrlId:patrolId" som redan hanterats
+const seedadeCtrls = new Set();    // kontroller vars första snapshot passerat
+const målNotifierade = new Set();  // patruller som redan fått mål-notisen
+function notiseraFavoriter(ctrlId, rows) {
+  const första = !seedadeCtrls.has(ctrlId);
+  if (första) seedadeCtrls.add(ctrlId);
+  const favs = getFavs();
+  const kanNotisa = typeof Notification !== 'undefined' && Notification.permission === 'granted';
+  for (const s of rows) {
+    const key = `${ctrlId}:${s.patrolId}`;
+    if (settScoreKeys.has(key)) continue;
+    settScoreKeys.add(key);
+    if (första || !kanNotisa || !favs.has(s.patrolId)) continue;
+    const patrol = patrols.find(p => p.id === s.patrolId);
+    const control = controls.find(c => c.id === ctrlId);
+    if (!patrol || !control) continue;
+    const anon = comp?.anonymousControls !== false;
+    const namn = (anon && control.open) ? `kontroll ${control.nummer ?? '?'}` : (control.name || `kontroll ${control.nummer ?? '?'}`);
+    const poäng = scoresPublic() ? ` — ${(Number(s.poang) || 0) + (Number(s.extraPoang) || 0)} poäng` : '';
+    try {
+      new Notification(`${patrol.name || 'Er patrull'} · ${comp?.shortName || 'Tävlingen'}`, {
+        body: `Prickade av ${namn}${poäng}`,
+        tag: `eskil-fav-${key}`
+      });
+    } catch { /* notisen är en bonus */ }
+    // Härledd målsignal: alla kontroller rapporterade.
+    if (controls.length > 0 && !målNotifierade.has(s.patrolId)) {
+      const klara = controls.filter(c => (scoresByControl[c.id] || []).some(x => x.patrolId === s.patrolId)).length;
+      if (klara >= controls.length) {
+        målNotifierade.add(s.patrolId);
+        try {
+          new Notification(`${patrol.name || 'Er patrull'} · ${comp?.shortName || 'Tävlingen'}`, {
+            body: 'Alla kontroller klara — på väg mot mål!',
+            tag: `eskil-fav-mal-${s.patrolId}`
+          });
+        } catch { /* notisen är en bonus */ }
+      }
+    }
+  }
 }
 function favStar(pid, favs) {
   return `<button type="button" class="fav-star ${favs.has(pid) ? 'is-on' : ''}" data-fav="${escapeHtml(pid)}"
     aria-label="${favs.has(pid) ? 'Ta bort favorit' : 'Markera som favorit'}"
-    title="${favs.has(pid) ? 'Ta bort favorit' : 'Följ patrullen — hamnar överst i listorna'}">${icon('star', { size: 16 })}</button>`;
+    title="${favs.has(pid) ? 'Ta bort favorit' : 'Följ patrullen — överst i listorna, och en notis när den prickar av en kontroll (om du tillåter notiser)'}">${icon('star', { size: 16 })}</button>`;
 }
 
 function render() {
@@ -1149,6 +1210,32 @@ function openPatrolModal(patrolId) {
   }, { done: 0, poang: 0, extra: 0 });
   const grand = totals.poang + totals.extra;
 
+  // Senast sedd: när den senaste avprickningen faktiskt skedde. För den som
+  // följer hemifrån är ett tyst glapp lätt att läsa som fara — tidsstämpeln
+  // gör tystnaden till information ("de sågs vid kontroll 5 för 20 minuter
+  // sedan"). Passagetid är clientReportedAt, INTE reportedAt: en offline-
+  // batchsynk kan annars påstå att patrullen sågs för en minut sedan fast
+  // trycket skedde för en timme sedan.
+  const tsMs = (v) => {
+    if (!v) return null;
+    const d = typeof v.toDate === 'function' ? v.toDate() : new Date(v);
+    const t = d.getTime();
+    return Number.isFinite(t) ? t : null;
+  };
+  let senast = null;
+  for (const { control, score } of perCtrl) {
+    if (!score) continue;
+    const t = tsMs(score.clientReportedAt) ?? tsMs(score.reportedAt);
+    if (t != null && (!senast || t > senast.t)) senast = { t, control };
+  }
+  const senastText = (() => {
+    if (!senast) return '';
+    const kl = new Date(senast.t).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
+    const min = Math.round((Date.now() - senast.t) / 60000);
+    const sedan = min < 1 ? 'nyss' : min < 60 ? `för ${min} min sedan` : `för ${Math.floor(min / 60)} h ${min % 60} min sedan`;
+    return `Senast sedd vid ${controlName(senast.control)} · ${kl} (${sedan})`;
+  })();
+
   const stime = patrolStartTime(comp, patrol, patrols.length);
 
   const overlay = document.createElement('div');
@@ -1190,6 +1277,8 @@ function openPatrolModal(patrolId) {
           </div>
         ` : ''}
       </div>
+
+      ${senastText ? `<div class="pub-senast">${icon('clock', { size: 14 })} ${escapeHtml(senastText)}</div>` : ''}
 
       ${showScores ? '' : `<p class="pub-modal-hint muted t-sm">Poängen är inte publicerade ännu — en grön bock visar genomförd kontroll.</p>`}
       ${anon ? `<p class="pub-modal-hint muted t-sm">Anonyma kontroller: namn visas först när kontrollen stängts.</p>` : ''}

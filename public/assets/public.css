@@ -852,3 +852,14 @@ a.pub-brand:hover { opacity: 0.85; }
   min-width: 0;
 }
 .map-label-place svg { display: block; }
+
+/* Senast sedd-raden i patrullmodalen — tystnaden som information. */
+.pub-senast {
+  display: flex; align-items: center; gap: 8px;
+  margin: 0 0 var(--sp-3);
+  padding: 10px 14px;
+  background: var(--scout-blue-50);
+  border-radius: var(--r-md);
+  color: var(--scout-blue);
+  font-weight: 600; font-size: 14px;
+}
