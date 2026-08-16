@@ -11,31 +11,23 @@ import { toast, escapeHtml, isCompAdminUser } from './utils.js';
 import { compLabel } from './nav.js';
 
 import { icon } from './icons.js';
+
+// ADMINVYERNA LADDAS FÖRST NÄR DE SKA VISAS. Förut importerades alla nitton
+// statiskt, vilket betydde att den PUBLIKA startsidan drog ner hela
+// administratörsappen — ~40 moduler — innan den ritade en enda pixel. Mätt i
+// produktion: nätet klart efter 3 s, flera enskilda vyfiler över 2 s var, och
+// besökaren såg "Laddar…" hela tiden. En förälder som öppnar tävlingssidan
+// ska inte betala för Läget, spårdragningen och backupvyn.
+//
+// import() cachas av webbläsaren, så en vy hämtas en gång per sidladdning.
+const vy = (fil, namn) => async (...args) => (await import(fil))[namn](...args);
 import { renderLogin } from './views/login.js';
 import { renderLanding } from './views/landing.js';
 import { renderKontakt, renderKontaktArende } from './views/kontakt.js';
-import { renderAdminFeedback } from './views/admin-feedback.js';
-import { renderHome } from './views/home.js';
-import { renderCompetition } from './views/competition.js';
-import { renderCompetitionSettings } from './views/competition-settings.js';
-import { renderStartScreen, teardownStartScreen } from './views/startscreen.js';
-import { renderPatrols } from './views/patrols.js';
-import { renderControls } from './views/controls.js';
-import { renderControlDetail } from './views/control-detail.js';
-import { renderScoreboard } from './views/scoreboard.js';
-import { renderAnmalanAdmin } from './views/anmalan-admin.js';
-import { renderLaget } from './views/laget.js';
-import { renderMeddelanden } from './views/meddelanden.js';
-import { renderTrack } from './views/track.js';
-import { renderCeremony } from './views/ceremony.js';
-import { renderUtskrifter } from './views/utskrifter.js';
-import { renderSettings } from './views/settings.js';
-import { renderAdminUsers } from './views/admin-users.js';
-import { renderAdminRequests } from './views/admin-requests.js';
-import { renderAdminSystem } from './views/admin-system.js';
 
 const app = document.getElementById('app');
 let currentUser = null;
+let startskarmVisad = false;   // styr om startskärmen behöver rivas vid ruttbyte
 
 // Route table — every /app/* route is gated by auth.
 // Root = public landing page (no auth) — promotes ESKIL, lists competitions
@@ -45,25 +37,25 @@ route('/',             () => renderLanding(app, currentUser));
 route('/kontakt',      () => renderKontakt(app, currentUser));
 // Ärendet — id:t är hemligheten, precis som anmälningarnas ändringslänk.
 route('/kontakt/:id',  (p) => renderKontaktArende(app, p.id));
-route('/app',          () => guard(() => renderHome(app, currentUser)));
-route('/app/settings', () => guard(() => renderSettings(app, currentUser)));
-route('/app/admin/users', () => guard(() => renderAdminUsers(app, currentUser)));
-route('/app/admin/requests', () => guard(() => renderAdminRequests(app, currentUser)));
-route('/app/admin/feedback', () => guard(() => renderAdminFeedback(app, currentUser)));
-route('/app/admin/system', () => guard(() => renderAdminSystem(app, currentUser)));
-route('/app/c/:cid',                          (p) => guard(() => renderCompetition(app, currentUser, p.cid), p.cid));
-route('/app/c/:cid/settings',                 (p) => guard(() => renderCompetitionSettings(app, currentUser, p.cid), p.cid));
-route('/app/c/:cid/startscreen',              (p) => guard(() => renderStartScreen(app, currentUser, p.cid), p.cid));
-route('/app/c/:cid/patrols',                  (p) => guard(() => renderPatrols(app, currentUser, p.cid), p.cid));
-route('/app/c/:cid/controls',                 (p) => guard(() => renderControls(app, currentUser, p.cid), p.cid));
-route('/app/c/:cid/controls/:ctrlId',         (p) => guard(() => renderControlDetail(app, currentUser, p.cid, p.ctrlId), p.cid));
-route('/app/c/:cid/scoreboard',               (p) => guard(() => renderScoreboard(app, currentUser, p.cid), p.cid));
-route('/app/c/:cid/anmalan',                  (p) => guard(() => renderAnmalanAdmin(app, currentUser, p.cid), p.cid));
-route('/app/c/:cid/laget',                    (p) => guard(() => renderLaget(app, currentUser, p.cid), p.cid));
-route('/app/c/:cid/meddelanden',              (p) => guard(() => renderMeddelanden(app, currentUser, p.cid), p.cid));
-route('/app/c/:cid/track',                    (p) => guard(() => renderTrack(app, currentUser, p.cid), p.cid));
-route('/app/c/:cid/utskrifter',              (p) => guard(() => renderUtskrifter(app, currentUser, p.cid), p.cid));
-route('/app/c/:cid/ceremony',                 (p) => guard(() => renderCeremony(app, currentUser, p.cid), p.cid));
+route('/app',          () => guard(async () => await vy('./views/home.js', 'renderHome')(app, currentUser)));
+route('/app/settings', () => guard(async () => await vy('./views/settings.js', 'renderSettings')(app, currentUser)));
+route('/app/admin/users', () => guard(async () => await vy('./views/admin-users.js', 'renderAdminUsers')(app, currentUser)));
+route('/app/admin/requests', () => guard(async () => await vy('./views/admin-requests.js', 'renderAdminRequests')(app, currentUser)));
+route('/app/admin/feedback', () => guard(async () => await vy('./views/admin-feedback.js', 'renderAdminFeedback')(app, currentUser)));
+route('/app/admin/system', () => guard(async () => await vy('./views/admin-system.js', 'renderAdminSystem')(app, currentUser)));
+route('/app/c/:cid',                          (p) => guard(async () => await vy('./views/competition.js', 'renderCompetition')(app, currentUser, p.cid), p.cid));
+route('/app/c/:cid/settings',                 (p) => guard(async () => await vy('./views/competition-settings.js', 'renderCompetitionSettings')(app, currentUser, p.cid), p.cid));
+route('/app/c/:cid/startscreen',              (p) => guard(async () => (startskarmVisad = true) && await vy('./views/startscreen.js', 'renderStartScreen')(app, currentUser, p.cid), p.cid));
+route('/app/c/:cid/patrols',                  (p) => guard(async () => await vy('./views/patrols.js', 'renderPatrols')(app, currentUser, p.cid), p.cid));
+route('/app/c/:cid/controls',                 (p) => guard(async () => await vy('./views/controls.js', 'renderControls')(app, currentUser, p.cid), p.cid));
+route('/app/c/:cid/controls/:ctrlId',         (p) => guard(async () => await vy('./views/control-detail.js', 'renderControlDetail')(app, currentUser, p.cid, p.ctrlId), p.cid));
+route('/app/c/:cid/scoreboard',               (p) => guard(async () => await vy('./views/scoreboard.js', 'renderScoreboard')(app, currentUser, p.cid), p.cid));
+route('/app/c/:cid/anmalan',                  (p) => guard(async () => await vy('./views/anmalan-admin.js', 'renderAnmalanAdmin')(app, currentUser, p.cid), p.cid));
+route('/app/c/:cid/laget',                    (p) => guard(async () => await vy('./views/laget.js', 'renderLaget')(app, currentUser, p.cid), p.cid));
+route('/app/c/:cid/meddelanden',              (p) => guard(async () => await vy('./views/meddelanden.js', 'renderMeddelanden')(app, currentUser, p.cid), p.cid));
+route('/app/c/:cid/track',                    (p) => guard(async () => await vy('./views/track.js', 'renderTrack')(app, currentUser, p.cid), p.cid));
+route('/app/c/:cid/utskrifter',              (p) => guard(async () => await vy('./views/utskrifter.js', 'renderUtskrifter')(app, currentUser, p.cid), p.cid));
+route('/app/c/:cid/ceremony',                 (p) => guard(async () => await vy('./views/ceremony.js', 'renderCeremony')(app, currentUser, p.cid), p.cid));
 
 // ---- Per-view cleanup ------------------------------------------------------
 // Views with live subscriptions (watchControls/watchPatrols/watchScores…)
@@ -110,7 +102,12 @@ setRouteChangeHandler(() => {
     if (a.getAttribute('href') === location.pathname) a.classList.add('active');
     else a.classList.remove('active');
   });
-  if (!location.pathname.endsWith('/startscreen')) teardownStartScreen();
+  // Bara om startskärmen faktiskt varit uppe: annars skulle varje ruttbyte
+  // hämta hem modulen vi just gjort oss av med.
+  if (!location.pathname.endsWith('/startscreen') && startskarmVisad) {
+    startskarmVisad = false;
+    import('./views/startscreen.js').then(m => m.teardownStartScreen()).catch(() => {});
+  }
 });
 
 // ---- Topbar --------------------------------------------------------------
@@ -337,6 +334,23 @@ async function runMagicLinkFlow() {
   }
 
   let routerStarted = false;
+
+  // DE PUBLIKA SIDORNA VÄNTAR INTE PÅ AUTH. Förut startade routern först när
+  // onAuthStateChanged svarat, och på en KALL klient tar det sekunder — mätt
+  // i produktion: nätet klart efter 3 s, innehåll först efter 12,8 s, och på
+  // en långsammare enhet 30. Under tiden står "Laddar…" på en sida som inte
+  // behöver ett enda inloggat anrop: rot-sidan, kontaktsidan och ärendet
+  // renderar likadant för en utloggad besökare.
+  //
+  // /app/* väntar fortfarande: guard() skulle annars blinka förbi
+  // inloggningsskärmen för den som faktiskt är inloggad, och den blinkningen
+  // är värre än en halv sekunds väntan.
+  //
+  // Auth-callbacken nedan anropar dispatch() när den kommer, så sidan ritas
+  // om med rätt identitet — knappen "Logga in" byts då mot "Dina tävlingar".
+  const publikVag = /^\/(kontakt(\/|$)|$)/.test(location.pathname);
+  if (publikVag) { routerStarted = true; startRouter(); }
+
   watchAuth(async (fbUser) => {
     if (fbUser) {
       try {
