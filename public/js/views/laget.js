@@ -590,7 +590,7 @@ export async function renderLaget(app, user, cid) {
       <div class="kpi"><div class="k-label">Ej startade</div><div class="k-value">${waiting}</div></div>
       <div class="kpi"><div class="k-label">Ute i skogen</div><div class="k-value">${out}</div></div>
       <div class="kpi"><div class="k-label">I mål</div><div class="k-value">${done}</div></div>
-      <div class="kpi"><div class="k-label">Rapporter senaste 30 min</div><div class="k-value">${recentReports}</div></div>
+      <div class="kpi"><div class="k-label k-label-lang">Rapporter senaste 30 min</div><div class="k-value">${recentReports}</div></div>
       <div class="kpi" style="${warns.length ? 'border-color:var(--utm-pink);' : ''}">
         <div class="k-label" style="${warns.length ? 'color:var(--utm-pink);' : ''}">Varningar</div>
         <div class="k-value" style="${warns.length ? 'color:var(--utm-pink);' : ''}">${warns.length}</div>

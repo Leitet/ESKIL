@@ -128,7 +128,7 @@ body { background: var(--bg-muted); }
   max-width: 640px; margin: 0 auto;
   display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4);
 }
-.anm-pricebar .total .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--fg3); font-weight: 700; }
+.anm-pricebar .total .lbl { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--fg3); font-weight: 700; }
 .anm-pricebar .total .val { font-family: var(--font-display); font-size: 24px; font-weight: 700; color: var(--scout-blue); line-height: 1.1; }
 .anm-pricebar .total .val small { font-size: 14px; font-weight: 600; }
 .anm-price-rows { max-width: 640px; margin: 6px auto 0; font-size: 13px; color: var(--fg2); }
@@ -154,7 +154,7 @@ body { background: var(--bg-muted); }
   background: var(--bg-muted);
 }
 .anm-ref .code { font-family: var(--font-mono); font-weight: 700; font-size: 18px; letter-spacing: .06em; }
-.anm-ref .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--fg3); font-weight: 700; }
+.anm-ref .lbl { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--fg3); font-weight: 700; }
 
 .anm-method {
   border: 1px solid var(--border);
@@ -170,7 +170,7 @@ body { background: var(--bg-muted); }
 }
 .anm-method-head .tag {
   margin-left: auto;
-  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+  font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
   color: var(--fg3);
 }
 .anm-method-body { padding: 0 14px 14px; font-size: 14px; color: var(--fg2); }
@@ -198,7 +198,7 @@ body { background: var(--bg-muted); }
 .anm-payment-row .amt { margin-left: auto; font-family: var(--font-mono); font-weight: 700; }
 .anm-badge {
   display: inline-flex; align-items: center; gap: 5px;
-  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+  font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
   border-radius: 999px; padding: 3px 10px;
 }
 .anm-badge.paid { background: #e3f4dd; color: #2d7a1c; }

@@ -135,7 +135,7 @@ button, a, input, textarea, select, label { touch-action: manipulation; }
   color: var(--r-fg-muted);
   border-radius: 6px;
   padding: 1px 8px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: .04em;
   text-transform: uppercase;
@@ -203,8 +203,8 @@ button, a, input, textarea, select, label { touch-action: manipulation; }
 }
 .flip-inst-group .tag {
   display: inline-block;
-  font-size: 11px; font-weight: 700;
-  text-transform: uppercase; letter-spacing: 0.08em;
+  font-size: 12px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .05em;
   color: var(--r-fg-muted);
   margin-bottom: 8px;
 }
@@ -218,9 +218,9 @@ button, a, input, textarea, select, label { touch-action: manipulation; }
   border-radius: 14px;
 }
 .flip-coords-label {
-  font-size: 11px;
+  font-size: 12px;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: .05em;
   font-weight: 700;
   color: var(--r-fg-muted);
 }
@@ -276,9 +276,9 @@ button, a, input, textarea, select, label { touch-action: manipulation; }
   box-shadow: var(--r-shadow);
 }
 .flip-dist-label {
-  font-size: 11px;
+  font-size: 12px;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: .05em;
   font-weight: 700;
   color: var(--r-fg-muted);
 }
@@ -327,8 +327,8 @@ html[data-mode="night"] .flip-map .leaflet-control-attribution a {
 }
 .flip-placement p { margin: 0; }
 .flip-placement .label {
-  font-size: 11px; font-weight: 700;
-  text-transform: uppercase; letter-spacing: 0.08em;
+  font-size: 12px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .05em;
   color: var(--r-fg-muted);
   margin-bottom: 4px;
 }
@@ -342,8 +342,8 @@ html[data-mode="night"] .flip-map .leaflet-control-attribution a {
   display: flex; flex-direction: column; gap: 4px;
 }
 .flip-mgmt-label {
-  font-size: 11px; font-weight: 700;
-  text-transform: uppercase; letter-spacing: 0.08em;
+  font-size: 12px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .05em;
   color: var(--r-fg-muted);
 }
 .flip-mgmt-name { font-weight: 700; font-size: 16px; color: var(--r-fg); }
@@ -529,7 +529,7 @@ html[data-mode="night"] .sheet-overlay { background: rgba(0,0,0,0.85); }
 }
 .sheet-notice.err { background: var(--r-danger); }
 .sheet-eyebrow {
-  font-size: 11.5px; font-weight: 800; letter-spacing: .09em;
+  font-size: 12px; font-weight: 800; letter-spacing: .05em;
   text-transform: uppercase; color: var(--r-fg-muted); margin-bottom: 2px;
 }
 @keyframes slideUp { from { transform: translateY(100%) } to { transform: translateY(0) } }
@@ -680,7 +680,7 @@ html[data-mode="night"] .r-sync.is-ok      { background: #1a2a10; color: #a7e08a
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   padding: 2px 8px;
   border-radius: 999px;
@@ -697,7 +697,7 @@ html[data-mode="night"] .patrol-btn .p-pending { background: #3a1010; color: #ff
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   padding: 2px 8px;
   border-radius: 999px;
@@ -819,7 +819,7 @@ html[data-mode="night"] .r-done-banner.has-pending { background: #4a0a20; border
 }
 .emb-broadcast .emb-head {
   display: flex; align-items: center; gap: 7px;
-  font-size: 11.5px; font-weight: 700; text-transform: uppercase;
+  font-size: 12px; font-weight: 700; text-transform: uppercase;
   letter-spacing: .06em; opacity: .8; margin-bottom: 4px;
 }
 .emb-head .emb-dot { width: 9px; height: 9px; border-radius: 50%; background: currentColor; }

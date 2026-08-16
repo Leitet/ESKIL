@@ -545,7 +545,11 @@ table.t tr.sf-row.park-row td {
   border-radius: var(--r-lg);
   padding: var(--sp-5);
 }
-.kpi .k-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 700; color: var(--fg3); }
+.kpi .k-label { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; color: var(--fg3); }
+/* Versaler fungerar på en kort etikett men bromsar läsningen av en lång — man
+   tappar ordbilden. Etiketter över ett par ord får därför gemener och en
+   halv grad till. */
+.kpi .k-label.k-label-lang { text-transform: none; letter-spacing: 0; font-size: 12.5px; }
 .kpi .k-value { font-family: var(--font-display); font-weight: 200; font-size: 40px; line-height: 1.1; margin-top: var(--sp-2); color: var(--scout-blue); }
 
 /* Map container */
@@ -801,7 +805,7 @@ table.t tr.sf-row.park-row td {
   padding: 9px 13px; border-radius: 8px; font-size: 13.5px; font-weight: 600;
 }
 .help-banner-label {
-  font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+  font-size: 12px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
   background: rgba(0,0,0,.18); padding: 2px 7px; border-radius: 999px; white-space: nowrap;
 }
 .help-banner-text { flex: 1 1 140px; }
@@ -1007,7 +1011,7 @@ table.t tr.sf-row.park-row td {
 .fb-head-side { display: flex; align-items: center; gap: var(--sp-3); flex-shrink: 0; color: var(--fg3); }
 .fb-meta { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin-bottom: 6px; }
 .fb-kind {
-  font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+  font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
   color: var(--fb-color);
 }
 .fb-from { font-weight: 700; color: var(--scout-blue); }
@@ -1061,7 +1065,7 @@ table.t tr.sf-row.park-row td {
 .fb-reply-in { background: var(--gray-50); border-left-color: var(--upp-blue); }
 .fb-nytt {
   display: inline-block; margin-left: 6px;
-  font-size: 11px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
+  font-size: 12px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
   color: var(--upp-blue);
 }
 
