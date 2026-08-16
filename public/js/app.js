@@ -28,6 +28,7 @@ import { renderLaget } from './views/laget.js';
 import { renderMeddelanden } from './views/meddelanden.js';
 import { renderTrack } from './views/track.js';
 import { renderCeremony } from './views/ceremony.js';
+import { renderUtskrifter } from './views/utskrifter.js';
 import { renderSettings } from './views/settings.js';
 import { renderAdminUsers } from './views/admin-users.js';
 import { renderAdminRequests } from './views/admin-requests.js';
@@ -61,6 +62,7 @@ route('/app/c/:cid/anmalan',                  (p) => guard(() => renderAnmalanAd
 route('/app/c/:cid/laget',                    (p) => guard(() => renderLaget(app, currentUser, p.cid), p.cid));
 route('/app/c/:cid/meddelanden',              (p) => guard(() => renderMeddelanden(app, currentUser, p.cid), p.cid));
 route('/app/c/:cid/track',                    (p) => guard(() => renderTrack(app, currentUser, p.cid), p.cid));
+route('/app/c/:cid/utskrifter',              (p) => guard(() => renderUtskrifter(app, currentUser, p.cid), p.cid));
 route('/app/c/:cid/ceremony',                 (p) => guard(() => renderCeremony(app, currentUser, p.cid), p.cid));
 
 // ---- Per-view cleanup ------------------------------------------------------

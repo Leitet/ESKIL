@@ -550,6 +550,14 @@ export const HELP = {
     warn: 'Kvittenserna rapporteras av fältenheterna utan inloggning. Använd dem som lägesbild — vid kritiska lägen, bekräfta muntligt via telefonlistan i Läget.'
   },
 
+  'utskrift.oversikt': {
+    title: 'Inför tävlingsdagen',
+    body: [
+      'Samlar allt som ska tryckas. Knapparna kör exakt samma utskrifter som finns under Kontroller, Patruller och Poängtabell — det är samma filer, bara samlade.',
+      'Avbockningen sparas bara i den här webbläsaren. Packar ni på två datorer ser ni olika bockar.',
+      'Skriv ut fältkorten DUBBELSIDIGT. Varje kontroll börjar på en udda sida så bunten går att riva isär till en pärm per kontroll.'
+    ]
+  },
   'msg.publikt': {
     title: 'Visa även på tävlingssidan',
     body: [

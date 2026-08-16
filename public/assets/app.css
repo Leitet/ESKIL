@@ -1100,3 +1100,24 @@ table.t tr.sf-row.park-row td {
   border-top: 1px solid var(--border);
   color: var(--utm-pink); font-weight: 600; font-size: 14px;
 }
+
+/* --- Utskriftscentralen --------------------------------------------------- */
+.utskrift-lista { display: flex; flex-direction: column; gap: var(--sp-3); }
+.utskrift-post { display: flex; align-items: flex-start; gap: var(--sp-4); }
+.utskrift-post.is-klar { opacity: .62; }
+.utskrift-post.is-saknas { opacity: .7; }
+.utskrift-bock input { width: 22px; height: 22px; margin: 2px 0 0; cursor: pointer; }
+.utskrift-kropp { flex: 1 1 auto; min-width: 0; }
+.utskrift-kropp h3 { margin: 0 0 4px; }
+.utskrift-antal { color: var(--fg3); margin-top: 6px; }
+.utskrift-knapp { flex: 0 0 auto; align-self: center; }
+.utskrift-checklista { list-style: none; padding: 0; margin: var(--sp-3) 0 0; }
+.utskrift-checklista li { padding: 6px 0; border-bottom: 1px solid var(--border); }
+.utskrift-checklista li:last-child { border-bottom: 0; }
+.utskrift-checklista label { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; font-size: 14px; }
+.utskrift-checklista input { width: 18px; height: 18px; margin: 1px 0 0; flex: none; }
+@media (max-width: 640px) {
+  .utskrift-post { flex-wrap: wrap; }
+  .utskrift-knapp { width: 100%; }
+  .utskrift-knapp .btn { width: 100%; }
+}

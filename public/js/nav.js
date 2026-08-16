@@ -18,7 +18,8 @@ const COMP_TABS = [
   { key: 'controls',   label: 'Kontroller',  path: '/controls' },
   { key: 'track',      label: 'Spår',        path: '/track' },
   { key: 'scoreboard', label: 'Poängtabell', path: '/scoreboard' },
-  { key: 'anmalan',    label: 'Anmälan',     path: '/anmalan' }
+  { key: 'anmalan',    label: 'Anmälan',     path: '/anmalan' },
+  { key: 'utskrifter', label: 'Utskrifter',  path: '/utskrifter' }
 ];
 
 export function compTabs(cid, active, comp, user) {
