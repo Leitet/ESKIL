@@ -936,3 +936,26 @@ html:has(.field-bar) {
   display: flex; flex-direction: column; gap: 10px;
 }
 .sheet-score .sheet-foot .r-btn { margin-top: 0; }
+
+/* Patrullsök på rapportsidan — utanför rutnätet så live-omritningar inte
+   tappar fokus/text. Visas bara när patrullistan är lång nog. */
+.p-sok {
+  display: flex; align-items: center; gap: 10px;
+  padding: 4px 14px;
+  border: 1.5px solid var(--r-border); border-radius: 14px;
+  background: var(--r-card); color: var(--r-fg-muted);
+}
+.p-sok input {
+  flex: 1; min-width: 0;
+  border: 0; background: none; outline: none;
+  font: inherit; color: var(--r-fg);
+  padding: 11px 0;
+}
+.p-sok input::placeholder { color: var(--r-fg-muted); opacity: .8; }
+.p-sok input::-webkit-search-cancel-button { display: none; }
+.p-sok button {
+  border: 0; background: var(--r-chip-bg); color: var(--r-chip-fg);
+  width: 30px; height: 30px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; flex-shrink: 0;
+}

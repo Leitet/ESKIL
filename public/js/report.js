@@ -332,7 +332,8 @@ async function main() {
 
   // --- UI State ---
   const state = {
-    avd: null // selected avdelning filter
+    avd: null, // selected avdelning filter
+    sok: ''    // fritext-filter över patrullrutnätet
   };
 
   // --- ETA: "Patruller väntas ca X–Y" ---
@@ -443,6 +444,17 @@ async function main() {
     scores.forEach(s => { scoreByPatrol[s.patrolId] = s; });
     let rows = patrols;
     if (state.avd) rows = rows.filter(p => p.avdelning === state.avd);
+    // Sök: nummer matchar på prefix ("1" hittar #1, #12, #13), namn och kår på
+    // delsträng. När patruller kommer i klunga ska kontrollanten kunna skriva
+    // "7" eller "räv" i stället för att ögna igenom hela rutnätet — att öppna
+    // fel patrull är en riktig poängmiss.
+    const q = (state.sok || '').trim().toLowerCase();
+    if (q) {
+      rows = rows.filter(p =>
+        String(p.number ?? '').startsWith(q)
+        || (p.name || '').toLowerCase().includes(q)
+        || (p.kar || '').toLowerCase().includes(q));
+    }
     // Non-reported patrols first (start-order within group), reported last.
     // Utgångna (DNF) allra sist — de kommer inte, men går att rapportera om
     // de hann göra kontrollen innan de bröt.
@@ -458,7 +470,7 @@ async function main() {
     if (!rows.length) {
       plist.innerHTML = `
         <div class="r-label">Patruller</div>
-        <div class="r-empty">Inga patruller i vald avdelning.</div>`;
+        <div class="r-empty">${q ? 'Ingen patrull matchar sökningen.' : 'Inga patruller i vald avdelning.'}</div>`;
       return;
     }
 
@@ -793,6 +805,7 @@ async function main() {
     <div id="head"></div>
     <div id="sync" class="r-sync" hidden></div>
     <div class="r-section" id="avd"></div>
+    <div class="r-section" id="psok"></div>
     <div class="r-section" id="plist"></div>
     <p class="r-sub" style="text-align:center;opacity:.6;margin-top:40px;">
       ESKIL · rapporteringen uppdateras i realtid<br>
@@ -813,6 +826,42 @@ async function main() {
   });
 
   sync.el = root.querySelector('#sync');
+
+  // Sökrutan ligger UTANFÖR renderPatrols: rutnätet ritas om på varje
+  // poäng-snapshot, och ett fält inne i det skulle tappa fokus och text mitt
+  // i skrivandet. Visas först när listan är lång nog att behöva sökas i.
+  if (patrols.length >= 9) {
+    const psok = root.querySelector('#psok');
+    psok.innerHTML = `
+      <div class="p-sok">
+        ${icon('search', { size: 17 })}
+        <input type="search" id="p-sok-input" placeholder="Sök nummer, patrull eller kår"
+          autocomplete="off" enterkeyhint="search" aria-label="Sök patrull">
+        <button type="button" id="p-sok-x" aria-label="Rensa sökningen" hidden>${icon('x', { size: 16 })}</button>
+      </div>`;
+    const inp = psok.querySelector('#p-sok-input');
+    const x = psok.querySelector('#p-sok-x');
+    inp.addEventListener('input', () => {
+      state.sok = inp.value;
+      x.hidden = !inp.value;
+      renderPatrols();
+    });
+    x.addEventListener('click', () => {
+      inp.value = ''; state.sok = ''; x.hidden = true;
+      renderPatrols(); inp.focus();
+    });
+  }
+
+  // Håll skärmen tänd så länge sidan är synlig. En ensam kontrollant i regn
+  // ska inte behöva låsa upp med blöta vantar mellan varje patrullklunga —
+  // och en släckt skärm mitt i ett halvifyllt poängblad är hur rapporter
+  // tappas. Låset släpps av webbläsaren när fliken göms; ta det igen när den
+  // syns. Tyst no-op där API:t saknas (äldre Safari) — sidan fungerar som förr.
+  const keepAwake = async () => {
+    try { await navigator.wakeLock?.request('screen'); } catch { /* t.ex. batterisparläge */ }
+  };
+  keepAwake();
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) keepAwake(); });
 
   renderHead();
   renderAvdelningar();
