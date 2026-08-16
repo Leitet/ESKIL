@@ -254,6 +254,37 @@ en läckt länk för att mata ut notismail. Ett skickat meddelande går varken a
 ändra eller radera — det ligger redan i någons inkorg. Alla sju guards är
 mutationsverifierade i `test/rules.test.js`.
 
+## Väder, dagskopia och utskrifter (P2)
+
+- **`vader.js` använder Open-Meteo, inte SMHI.** SMHI:s `pmp3g` — som
+  förbättringslistan pekade på — svarar 404 på varje sökväg inklusive API-roten
+  (verifierat 2026-08-16). MET Norway kräver en identifierande User-Agent, som
+  en webbläsare inte får sätta. Open-Meteo är nyckelfri och CORS-öppen; värden
+  är vitlistad i `firebase.json` (connect-src). Anropet ber uttryckligen om
+  **m/s** — standarden är km/h, och 44 km/h är en normal bris, inte halv storm.
+  Svaret bär LOKAL tid utan zonsuffix när `timezone` anges. `hamtaVader`
+  returnerar null vid ALLA fel och kortet uteblir då helt: en tävlingsdag får
+  aldrig hänga på en utomstående tjänst. Prognosen hämtas EN gång per
+  sidladdning, aldrig från `renderStats` (som kör var 30:e sekund).
+- **`dagskopia.js` är INTE en backup** och får aldrig kallas så i UI:t. Den
+  byggs ur de snapshots Läget redan har (noll extra läsningar) och saknar
+  därför anmälningar, utskick, överlämningsdokument och kontrollernas telefon.
+  Den stämplar ALDRIG `comp.lastBackupAt` — då skulle raderingsskyddet tro att
+  en riktig backup finns. Nyckeln har MINUTupplösning: poängen droppar in en
+  kontroll i taget och varje berikning sparar, så med sekundupplösning fylldes
+  hela det rullande fönstret på nio sekunder. Kopian sparas först när
+  `controls` finns — lyssnarna svarar i olika ordning och en kopia utan
+  kontroller är oanvändbar.
+- **Utskriftscentralen (`views/utskrifter.js`) genererar ingenting eget.** Varje
+  knapp anropar samma funktion som den ursprungliga fliken, så det finns en
+  implementation per dokument. Vyn bygger i ett eget element och lämnar över
+  till `layout()` — skriver man rakt i `app.innerHTML` försvinner topbar,
+  sidmarginaler och sidfot.
+- **`confirmDialog(meddelande, { okLabel, danger })`** tar en STRÄNG först, inte
+  ett optionsobjekt. Fel form ger "[object Object]" i dialogrutan.
+  `.modal-body` har `white-space: pre-wrap` så citerad meddelandetext behåller
+  sina radbrytningar.
+
 ## Backup och radering hänger ihop
 
 Raderingsskyddet KRÄVER en färsk backup, så backupen avgör vad som går att få

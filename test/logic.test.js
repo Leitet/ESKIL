@@ -17,6 +17,7 @@ import {
 } from '../public/js/utils.js';
 import { hasIcon } from '../public/js/icons.js';
 import { tolkaVader, vaderMeddelande, BY_VARNING_MS } from '../public/js/vader.js';
+import { byggDagskopia } from '../public/js/dagskopia.js';
 import { AVD_FÄRG, textPå, accentMotBlått, hjälte } from '../public/js/share-card.js';
 
 // WCAG-kontrast — testets egen räknare, så det inte mäter med samma kod som
@@ -1404,5 +1405,53 @@ describe('tolkaVader', () => {
     const m = vaderMeddelande(tolkaVader(bygg({ kod: [0, 95] }), NU));
     assert.match(m, /Åska väntas från cirka kl 09:00/);
     assert.match(m, /enstaka träd/);
+  });
+});
+
+// --- Dagskopia ------------------------------------------------------------------
+// Byggs ur det Läget redan har. Den viktigaste egenskapen är att den ÄR ÄRLIG
+// om vad den saknar — kallas den backup litar någon på den vid en radering.
+describe('byggDagskopia', () => {
+  const NU = new Date('2026-08-16T13:00:00Z');
+  const ts = (iso) => ({ toDate: () => new Date(iso) });
+  const indata = {
+    comp: { id: 'c1', name: 'Älghornsjakten', shortName: 'ÄHJ', year: 2026, date: '2026-08-16' },
+    patrols: [{ id: 'p1', number: 1, name: 'Rävarna', kar: 'Lindsdals Scoutkår', avdelning: 'Spårare' }],
+    controls: [{ id: 'k1', nummer: 1, name: 'Knopar', open: true, maxPoang: 15 }],
+    scoresByCtrl: { k1: [{ patrolId: 'p1', poang: 12, extraPoang: 3, note: 'Regelbrott',
+                          clientReportedAt: ts('2026-08-16T10:30:00Z'), reportedAt: ts('2026-08-16T12:00:00Z') }] },
+    passages: { p1: { startAt: ts('2026-08-16T08:00:00Z'), finishAt: null, selfStarted: true } },
+    selfPassages: { p1: { startAt: ts('2026-08-16T08:00:00Z') } }
+  };
+
+  test('bär poängen med BÅDA tiderna', () => {
+    const k = byggDagskopia(indata, NU);
+    assert.equal(k.poang.length, 1);
+    // clientReportedAt är tryckögonblicket och reportedAt synktiden — en
+    // offline-synk gör dem timmar isär, och båda behövs för att förstå dagen.
+    assert.equal(k.poang[0].clientReportedAt, '2026-08-16T10:30:00.000Z');
+    assert.equal(k.poang[0].reportedAt, '2026-08-16T12:00:00.000Z');
+    assert.equal(k.poang[0].controlId, 'k1');
+  });
+
+  test('säger uttryckligen vad den INTE innehåller', () => {
+    const k = byggDagskopia(indata, NU);
+    assert.equal(k.sort, 'dagskopia', 'får inte heta backup');
+    assert.ok(k.ofullstandig.includes('anmälningar'));
+    assert.ok(k.ofullstandig.includes('överlämningsdokument'));
+  });
+
+  test('tomma delar kraschar inte', () => {
+    const k = byggDagskopia({ comp: null, patrols: null, controls: null,
+      scoresByCtrl: null, passages: null, selfPassages: null }, NU);
+    assert.deepEqual(k.poang, []);
+    assert.deepEqual(k.patruller, []);
+    assert.equal(k.tavling, null);
+  });
+
+  test('avprickningarnas härkomst följer med', () => {
+    const k = byggDagskopia(indata, NU);
+    assert.equal(k.avprickningar[0].selfStarted, true);
+    assert.equal(k.avprickningar[0].finishAt, null);
   });
 });

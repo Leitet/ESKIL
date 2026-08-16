@@ -23,6 +23,7 @@ import {
 } from '../utils.js';
 import { solnedgang } from '../sol.js';
 import { hamtaVader, vaderMeddelande } from '../vader.js';
+import { byggDagskopia, sparaDagskopia, listaDagskopior, KOPIA_INTERVALL_MS } from '../dagskopia.js';
 import { ensureLeaflet } from '../leaflet.js';
 import { renderQrToImg } from '../pdf.js';
 import { icon } from '../icons.js';
@@ -60,6 +61,8 @@ export async function renderLaget(app, user, cid) {
   let patrols = [];
   let controls = [];
   let vaderHamtat = false;   // prognosen hämtas en gång per sidladdning
+  let sistaKopia = 0;        // strypning: högst en dagskopia per intervall
+  let sistaKopiaPoang = -1;  // ...men alltid när kopian blivit rikare
   // Start och mål kan komma från tre håll: start/mål-stationens av-
   // prickningar, patrullens egna knappar på startkortet, och — om tävlingen
   // slagit på det — en målgång HÄRLEDD ur sista kontrollrapporten. Råformerna
@@ -132,6 +135,7 @@ export async function renderLaget(app, user, cid) {
     <div class="kpi-row" id="kpis"></div>
     <div id="tidslinje"></div>
     <div id="vader"></div>
+    <div id="dagskopia"></div>
 
     <div class="grid" style="grid-template-columns:1fr;gap:var(--sp-6);">
       <div>
@@ -460,6 +464,43 @@ export async function renderLaget(app, user, cid) {
     return `<span class="t-sm mono" style="white-space:nowrap;${farg}" title="${escapeHtml(titel)}">${delar.join(' · ')}</span>`;
   }
 
+  // Kortet säger rakt ut vad kopian INTE innehåller. Kallas den "backup" i
+  // gränssnittet kommer någon att lita på den vid en radering och förlora
+  // anmälningar, utskick och överlämningsdokument.
+  async function ritaDagskopia() {
+    const host = wrap.querySelector('#dagskopia');
+    if (!host) return;
+    let kopior = [];
+    try { kopior = await listaDagskopior(cid); } catch { return; }
+    if (!kopior.length) { host.innerHTML = ''; return; }
+    const senast = kopior[0];
+    const antalPoang = senast.kopia?.poang?.length ?? 0;
+    host.innerHTML = `
+      <div class="card">
+        <h3>${icon('history', { size: 16 })} Dagskopia i den här webbläsaren</h3>
+        <p class="muted t-sm" style="margin:6px 0 0;">
+          Sparas var femte minut medan Läget är öppet, utan extra databasläsningar.
+          Senast ${formatTime(new Date(senast.skapad))} · ${antalPoang} poängrapporter · ${kopior.length} sparade.
+        </p>
+        <p class="muted t-sm" style="margin:6px 0 0;">
+          <strong>Ersätter inte en backup.</strong> Den saknar anmälningar, utskick,
+          överlämningsdokument och kontrollernas telefonnummer — ladda ner en riktig
+          backup under Inställningar innan ni avslutar tävlingen.
+        </p>
+        <button class="btn btn-secondary btn-sm" id="kopia-hamta" style="margin-top:10px;">
+          ${icon('download', { size: 14 })} Ladda ner senaste dagskopian
+        </button>
+      </div>`;
+    host.querySelector('#kopia-hamta')?.addEventListener('click', () => {
+      const blob = new Blob([JSON.stringify(senast.kopia, null, 1)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `dagskopia-${(comp.shortName || 'tavling').toLowerCase()}-${senast.skapad.slice(0, 16).replace(/[:T]/g, '')}.json`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
+  }
+
   // Väderkortet. Åska är kritisk och får en knapp som FÖRIFYLLER ett
   // driftmeddelande — ledningen skickar det själv. Ett automatiskt utskick vid
   // varje prognosryck är precis det som får folk att sluta läsa meddelanden.
@@ -488,11 +529,10 @@ export async function renderLaget(app, user, cid) {
     host.querySelector('#vader-msg')?.addEventListener('click', (e) => withBusy(e.currentTarget, 'Skickar…', async () => {
       const text = vaderMeddelande(v);
       if (!text) return;
-      const ok = await confirmDialog({
-        title: 'Skicka åskvarning till fältet?',
-        body: `Går som KRITISKT meddelande till alla kontroller och alla patrullers startkort — med ljud och vibration.\n\n"${text}"`,
-        confirmLabel: 'Skicka', danger: true
-      });
+      const ok = await confirmDialog(
+        `Skicka som KRITISKT meddelande till alla kontroller och alla patrullers startkort? `
+        + `Det larmar med ljud och vibration.\n\n"${text}"`,
+        { okLabel: 'Skicka varningen', danger: true });
       if (!ok) return;
       try {
         await createBroadcastMessage(cid, {
@@ -530,6 +570,35 @@ export async function renderLaget(app, user, cid) {
         <div class="k-value" style="${warns.length ? 'color:var(--utm-pink);' : ''}">${warns.length}</div>
       </div>
     `;
+
+    // --- Dagskopia -------------------------------------------------------------
+    // Byggs ur de snapshots vyn REDAN har — inga extra Firestore-läsningar.
+    // Se dagskopia.js: detta är en ögonblicksbild, INTE en backup, och den
+    // stämplar därför aldrig comp.lastBackupAt.
+    // Sparas ur renderStats egna kadens i stället för en egen timer: vyn
+    // renderar om vid varje snapshot, så den första kopian tas så fort poängen
+    // faktiskt kommit in. En omedelbar kopia vid sidladdning blev TOM —
+    // kontrollernas poänglyssnare hade inte svarat än — och en tom kopia är
+    // värre än ingen, för kortet påstår att något är sparat.
+    (() => {
+      // Kontrollerna är ryggraden: utan dem är kopian oanvändbar även om
+      // avprickningar hunnit in. Lyssnarna svarar i olika ordning, och de
+      // första sekunderna efter sidladdning har vyn bara delar av bilden.
+      if (!controls.length) return;
+      const kopia = byggDagskopia({
+        comp: { id: cid, ...comp }, patrols, controls,
+        scoresByCtrl, passages, selfPassages
+      });
+      if (!kopia.poang.length && !kopia.avprickningar.length) return;
+      // Strypningen släpper förbi en kopia som blivit RIKARE. Annars låstes
+      // en halvfärdig första kopia in i fem minuter, medan kortet påstod
+      // "0 poängrapporter" fast poängen redan fanns på skärmen.
+      const nu = Date.now();
+      if (kopia.poang.length <= sistaKopiaPoang && nu - sistaKopia < KOPIA_INTERVALL_MS) return;
+      sistaKopia = nu;
+      sistaKopiaPoang = kopia.poang.length;
+      sparaDagskopia(cid, kopia).then(ritaDagskopia).catch(() => { /* privat läge, full disk */ });
+    })();
 
     // --- Väder ---------------------------------------------------------------
     // Åska upptäcks annars genom fönstret, och den som står på en kontroll har
@@ -649,7 +718,8 @@ export async function renderLaget(app, user, cid) {
                     : 'Incheckad av funktionär vid målet'}">I mål ${formatTime(pp.finishAt)}${
                     pp.autoFinished ? ' · auto' : pp.selfFinished ? ' · själv' : ''}</span>`
               : pp.lateStart ? `<span class="badge badge-orange">Sen till start · ${pp.lateStartMin} min</span>`
-              : pp.warn ? `<span class="badge badge-pink">Tyst i ${pp.silentMin} min</span>`
+              : pp.warn ? `<span class="badge badge-pink">Tyst i ${pp.silentMin} min</span>${
+                    isAdmin ? ` <button class="btn btn-ghost btn-sm" data-efterlys="${escapeHtml(p.id)}" title="Fråga kontrollerna om de sett patrullen">Efterlys…</button>` : ''}`
               : pp.active ? '<span class="badge badge-blue">Ute</span>'
               : '<span class="badge badge-gray">Ej startad</span>';
             const undoFinish = (isAdmin && pp.selfFinished)
@@ -698,6 +768,32 @@ export async function renderLaget(app, user, cid) {
         renderStats();
       } catch (e) { toast('Fel: ' + e.message, 'error'); }
     }));
+    // Efterlysning. Går till KONTROLLERNA, aldrig till patrullerna: en patrull
+    // som ser "har ni sett patrull 7?" på sitt eget startkort blir orolig, och
+    // patrull 7 själv skulle läsa att ledningen letar efter dem. Nivån är
+    // varning, inte kritisk — kritisk larmar med ljud och vibration på varje
+    // kontroll, och det ska sparas till åska och avbrott.
+    wrap.querySelectorAll('[data-efterlys]').forEach(btn => btn.addEventListener('click', () => withBusy(btn, 'Skickar…', async () => {
+      const p = patrols.find(x => x.id === btn.dataset.efterlys);
+      if (!p) return;
+      const pp = perPatrol.find(x => x.patrol?.id === p.id);
+      const tyst = pp?.silentMin != null ? ` (tyst i ${pp.silentMin} min)` : '';
+      const text = `Har ni sett ${patrolLabel(p)}, startnummer ${p.number ?? '?'}${tyst}? `
+        + 'Svara i meddelandetråden — även "nej, inte här" hjälper oss.';
+      const ok = await confirmDialog(
+        `Efterlys hos alla ${controls.length} kontroller? Patrullerna får den INTE.\n\n"${text}"`,
+        { okLabel: 'Skicka efterlysning', danger: false });
+      if (!ok) return;
+      try {
+        await createBroadcastMessage(cid, {
+          text, level: 'varning',
+          target: { kontroller: true, patruller: false, publikt: false },
+          requireAck: false
+        });
+        toast('Efterlysningen är skickad till kontrollerna', 'success');
+      } catch (e) { toast('Kunde inte skicka: ' + (e?.message || e), 'error'); }
+    })));
+
     wrap.querySelectorAll('[data-undo-utgatt]').forEach(btn => btn.addEventListener('click', async () => {
       const p = patrols.find(x => x.id === btn.dataset.undoUtgatt);
       if (!p) return;

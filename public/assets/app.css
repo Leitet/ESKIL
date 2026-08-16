@@ -481,7 +481,9 @@ table.t tr.sf-row.park-row td {
   display: flex; justify-content: space-between; align-items: center;
 }
 .modal-head h3 { margin: 0; }
-.modal-body { padding: var(--sp-6); }
+/* pre-wrap: bekräftelsedialoger citerar ofta meddelandetexten som ska skickas,
+   och den har radbrytningar som bär meningen. Enradiga anrop påverkas inte. */
+.modal-body { padding: var(--sp-6); white-space: pre-wrap; }
 .modal-foot {
   padding: var(--sp-4) var(--sp-6);
   border-top: 1px solid var(--border);
