@@ -1047,6 +1047,65 @@ export async function deleteControl(cid, ctrlId) {
   await deleteDoc(doc(db, 'competitions', cid, 'controls', ctrlId));
 }
 
+// --- ETA-kalibreringens läscache -----------------------------------------------
+// MÄTT, inte uppskattat: på en tävling med 30 kontroller och 40 patruller läser
+// rapportsidan 1312 dokument per sidladdning, varav 1200 (91 %) är
+// kalibreringens listAllScores. Firestores gratisnivå ger 50 000 läsningar per
+// dygn — EN laddning per kontroll äter alltså 79 % av dygnskvoten, och två
+// laddningar spränger den. Går kvoten ryker rapporteringen mitt i tävlingen.
+//
+// Persistent cache hjälper inte: getDocs går till servern varje gång även när
+// den är påslagen (verifierat — andra körningen gav 1200 dokument, noll ur
+// cachen). Den tjänar offline-läsning, inte kvot.
+//
+// Cachen bär BARA de tre fält motorn faktiskt läser: patrolId, controlId och
+// passagetiden. Inga poäng, inga noteringar — dels blir den liten, dels ska en
+// kontrollants telefon inte lagra andra patrullers poäng i onödan.
+//
+// Färskheten spelar mindre roll än den ser ut: fönstret räknas om mot klockan
+// vid varje laddning, det är bara benens medianer som är upp till en halvtimme
+// gamla. En median över tre passager rör sig inte snabbt, och rapportsidan
+// rensar cachen så fort kontrollanten sparat en egen poäng.
+//
+// KOSTNADEN ÄR INTE PENGAR. Projektet ligger på Blaze, som debiterar i stället
+// för att neka: 5 laddningar × 30 kontroller är 196 800 läsningar ≈ 0,09 USD
+// för hela tävlingsdagen. Det som gör ont är TIDEN och DATAN — 567 ms blockerad
+// laddning och 177 kB över mobilnätet, på en telefon med en stapel i skogen.
+// Cachen tar bort båda för varje omladdning inom fönstret.
+const ETA_CACHE_MS = 30 * 60000;
+const etaNyckel = (cid) => `eskil-eta-${cid}`;
+
+export async function listAllScoresForEta(cid, controls = null) {
+  try {
+    const rå = localStorage.getItem(etaNyckel(cid));
+    if (rå) {
+      const { at, rader } = JSON.parse(rå);
+      if (Date.now() - at < ETA_CACHE_MS && Array.isArray(rader)) {
+        return rader.map(r => ({ ...r, clientReportedAt: new Date(r.t) }));
+      }
+    }
+  } catch { /* privat läge eller trasig post — läs om */ }
+
+  const alla = await listAllScores(cid, controls);
+  try {
+    localStorage.setItem(etaNyckel(cid), JSON.stringify({
+      at: Date.now(),
+      rader: alla.map(s => ({
+        patrolId: s.patrolId, controlId: s.controlId,
+        t: (s.clientReportedAt ?? s.reportedAt)?.toDate?.().getTime()
+           ?? new Date(s.clientReportedAt ?? s.reportedAt ?? 0).getTime()
+      })).filter(r => r.patrolId && r.controlId && Number.isFinite(r.t))
+    }));
+  } catch { /* full disk — cachen är en bonus */ }
+  return alla;
+}
+
+// Rapportsidan sparar en egen poäng: då är cachen förlegad för just den raden.
+// Billigare att slänga den än att försöka laga den — nästa laddning läser om.
+export function rensaEtaCache(cid) {
+  try { localStorage.removeItem(etaNyckel(cid)); } catch { /* privat läge */ }
+}
+
 // --- Papperskorg ---------------------------------------------------------------
 // deletePatrol och deleteControl var hårda: ett felklick mitt under
 // tävlingsdagen raderade en patrull och allt den rapporterat, spårlöst.

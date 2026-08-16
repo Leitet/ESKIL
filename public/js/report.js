@@ -3,7 +3,7 @@
 // with the URL report (if the control is open).
 
 import { db, doc, onSnapshot } from './firebase.js';
-import { getCompetition, getControl, listPatrols, watchScoresForControl, upsertScore, deleteScore, listControls, getTrack, listAllScores, sendControlBeacon } from './store.js';
+import { getCompetition, getControl, listPatrols, watchScoresForControl, upsertScore, deleteScore, listControls, getTrack, listAllScoresForEta, rensaEtaCache, sendControlBeacon } from './store.js';
 import { AVDELNINGAR, escapeHtml, allInstructionGroups, internalManagement,
   NOTE_CHIPS, harNotering, laggTillNotering, taBortNotering, kapaNotering,
   sparlagesBeslut } from './utils.js';
@@ -346,7 +346,7 @@ async function main() {
         getTrack(cid).catch(() => null),
         // Kalibrering: verkliga mellantider (inkl. köer) skärper fönstret
         // så fort tre patruller passerat ett ben.
-        listAllScores(cid).catch(() => null)
+        listAllScoresForEta(cid).catch(() => null)
       ]);
       const w = controlEtaWindow(comp, allControls, track, patrols, ctrlId, new Date(), allScores);
       if (!w) return;
@@ -835,6 +835,7 @@ async function main() {
     }
     if (synced.length) {
       renderPatrols();
+      rensaEtaCache(cid);
       beaconRefresh?.();
       if (!silent) {
         const names = synced
