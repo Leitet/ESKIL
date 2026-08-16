@@ -101,8 +101,22 @@
       <tr><td>Meddelandehistorik (notisklockan)</td><td>Fältsidorna sparar tävlingsledningens driftmeddelanden lokalt så notisklockan kan visa tidigare mottagna meddelanden och vilka du bekräftat. Bekräftelsen i sig skickas till tävlingsledningen (kontrollens/patrullens nummer och tidpunkt — inga personuppgifter).</td></tr>
       <tr><td>Länk till ditt ärende</td><td>Skickar du in kontaktformuläret sparas ärendets länk i din webbläsare så att du hittar tillbaka till det. Bara adressen — inget innehåll.</td></tr>
       <tr><td>Val i "Dela ert resultat"</td><td>Startkortet kommer ihåg vilken design, vilket format och vilka uppgifter du senast valde till delningsbilden. Bara i din webbläsare.</td></tr>
+      <tr><td>Notiser för favoritpatruller (valfri)</td><td>Väljer du att tillåta notiser på tävlingssidan får du en lokal notis när en stjärnmärkt patrull prickar av en kontroll. Allt sker i din webbläsare — inget skickas till servern.</td></tr>
       <tr><td>Notisbehörighet (valfri)</td><td>Väljer du "Aktivera notiser" i klockan frågar webbläsaren om lov att visa systemnotiser för nya meddelanden. Behörigheten hanteras helt av webbläsaren och kan återkallas där när som helst.</td></tr>
     </table>
+
+    <h2>Kontrollens livstecken och nödposition</h2>
+    <p>Medan en kontrollants rapportsida är öppen skickar den ett litet <strong>livstecken</strong>
+    till tävlingsledningen var femte minut: tidpunkt, telefonens batterinivå och hur många
+    poängrapporter som väntar på täckning. Inga personuppgifter — syftet är att ledningen ska
+    upptäcka en döende kontrolltelefon innan poäng går förlorade. Uppgifterna kan bara läsas av
+    tävlingens funktionärer och raderas med tävlingen.</p>
+    <p>Patrullens startkort har en <strong>"Vi behöver hjälp"-knapp</strong>. Först när patrullen
+    själv trycker på den och bekräftar hämtas telefonens GPS-position och skickas som ett meddelande
+    till tävlingsledningen — samma kanal som övriga fältmeddelanden, med samma gallring. Positionen
+    hämtas aldrig i bakgrunden.</p>
+    <p>Rapportsidan håller skärmen tänd medan den är öppen (Screen Wake Lock) så att kontrollanten
+    slipper låsa upp mellan patrullerna — det innebär ingen datainsamling alls.</p>
 
     <h2>Dela resultatet som bild</h2>
     <p>När patrullen gått i mål kan startkortet skapa en bild av resultatet att lägga upp på

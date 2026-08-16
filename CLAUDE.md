@@ -147,6 +147,23 @@ Email extension). Production domain: https://eskilscout.se.
   Radhöjden har medvetet INGET golv — ett golv gör att rader ritas utanför
   sidan och försvinner tyst när banan har många kontroller.
 
+- **P1-tilläggen (aug 2026, natt-listan):** `startklar.js` (rena förkontroller,
+  visas på översikten), `sol.js` (NOAA-solnedgång för Lägets tidslinje/mörker-
+  larm — teckenfelet +ha ger SOLUPPGÅNGEN, regressionstestat),
+  `controls/{id}/beacon/status` (anonymt hjärtslag från /k var 5:e min:
+  klient-tid/batteri/kö; läsning MEMBER-only, formen mutationsverifierad),
+  hjälp-knappen på /s (GPS via befintlig fälttråd — ingen ny kanal),
+  `confirmHardDelete` i utils (backup + namnbekräftelse före hård radering av
+  tävling/kontroll), betalningsunderlags-PDF (aldrig den hemliga länken),
+  patrullsök + wake lock på /k, favoritnotiser på /t (första snapshoten per
+  kontroll seedas TYST — annars notisstorm vid sidladdning).
+  **Nyp-zoom får inte blockeras** på fältsidorna (WCAG 1.4.4): dblclick-
+  guarden får finnas (oavsiktlig zoom), men gesture*/multi-touch-blockare och
+  user-scalable=no är borttagna med flit — återinför dem inte.
+  **--r-accent-text** är accenten SOM TEXT (AA-kontrast i båda lägena);
+  --r-accent är ytor/linjer. Nattens --r-fg-muted är beräknad till ≥4,5:1 —
+  ögonmåtta inte om den.
+
 ## Directory map
 
 See `README.md` for the layout — every file there is load-bearing.
