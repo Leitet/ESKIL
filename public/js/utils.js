@@ -911,21 +911,27 @@ export function mergeBeacons(docs, nu = Date.now()) {
 
 // --- Snabbnoteringar på rapportsidan -----------------------------------------
 // Kontrollantens fritextfält fylls sällan i: att skriva på en telefon i regn,
-// med vantar, mellan två patruller, kostar för mycket. Chipsen skriver in
-// FÄRDIG SVENSK TEXT i samma fält — noteringen följer med till admin, exporten
-// och reservprotokollet, och där ska det stå läsbar svenska, inte koder.
-// Ordningen är den kontrollanten oftast behöver först.
+// med vantar, mellan två patruller, kostar för mycket.
+//
+// VAR NOTERINGEN SYNS (verifierat, inte antaget): kontrollens detaljvy i admin
+// (member-only) OCH patrullmodalen på den PUBLIKA tävlingssidan. Den går
+// INTE till exporten och INTE till reservprotokollet. Att standardisera
+// etiketterna gör att de publiceras systematiskt bredvid patrullnamn och kår —
+// därför får listan bara innehålla sådant som tål att stå på en anslagstavla.
+// Inget om hälsa, skada eller enskilda scouters uppförande: det hör hemma i
+// fälttråden till ledningen, som är member-only.
+//
+// Etiketterna får ALDRIG innehålla '. ' — det är separatorn i notDelar().
 export const NOTE_CHIPS = [
   'Regelbrott',
   'Sen ankomst',
   'Utrustning saknades',
   'Fick hjälp utifrån',
-  'Skada/olycka',
   'Bra samarbete'
 ];
 
-// Etiketten avgränsas av punkt+mellanslag. Matchningen är på hela ord så att
-// "Skada/olycka" inte råkar tändas av ordet "skada" i en fritext.
+// Etiketten avgränsas av punkt+mellanslag. Matchningen är på hela stycken så
+// att ett ord inne i en fritext inte råkar tända ett chip.
 const notDelar = (text) => String(text || '').split('. ').map(d => d.trim()).filter(Boolean);
 
 export function harNotering(text, etikett) {
@@ -940,6 +946,21 @@ export function laggTillNotering(text, etikett) {
   const kanda = NOTE_CHIPS.filter(t => delar.includes(t) || t === etikett);
   const ovrigt = delar.filter(d => !NOTE_CHIPS.includes(d));
   return [...kanda, ...ovrigt].join('. ');
+}
+
+// Kapar FRITEXTEN, aldrig en etikett. En rak slice(0, 500) hade kapat i
+// fritexten först när chipsen låg först i strängen — och tyst, mitt i ett ord.
+export function kapaNotering(text, max = 500) {
+  const t = String(text || '');
+  if (t.length <= max) return t;
+  const delar = notDelar(t);
+  const kanda = delar.filter(d => NOTE_CHIPS.includes(d));
+  const ovrigt = delar.filter(d => !NOTE_CHIPS.includes(d));
+  const prefix = kanda.join('. ');
+  const kvar = max - prefix.length - (prefix && ovrigt.length ? 2 : 0);
+  if (kvar <= 0) return prefix.slice(0, max);
+  const fritext = ovrigt.join('. ').slice(0, kvar);
+  return [prefix, fritext].filter(Boolean).join('. ');
 }
 
 export function taBortNotering(text, etikett) {

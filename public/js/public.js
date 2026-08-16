@@ -1301,7 +1301,12 @@ function openPatrolModal(patrolId) {
                     ${extra > 0 ? `<span class="extra">+${extra}</span>` : ''}
                   </div>
                 ` : `<div class="pts done-icon">${icon('check', { size: 20, stroke: 3 })}</div>`}
-                ${score.note ? `<div class="note">${escapeHtml(score.note)}</div>` : ''}
+                <!-- Kontrollantens notering visas MEDVETET inte här. Den är
+                     sekretariatets fält (kontrollens detaljvy i admin) och låg
+                     dessutom utanför publicScores-grinden: den publicerades
+                     alltså även när poängen var opublicerade. Med
+                     standardiserade snabbnoteringar hade "Regelbrott" hamnat
+                     bredvid patrullnamn och kår för vem som helst att läsa. -->
               </div>
             `;
           }

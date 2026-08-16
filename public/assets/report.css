@@ -1023,3 +1023,25 @@ html:has(.field-bar) {
 .fira-rubrik { font-size: 18px; font-weight: 800; }
 .fira-under { font-size: 14px; opacity: .9; margin-top: 2px; }
 @media (prefers-reduced-motion: reduce) { .fira { transition: opacity .3s; transform: translate(-50%, 0); } }
+
+/* --- Tangentbords- och skärmläsarstöd på fältsidorna ---------------------- */
+/* Fältsidorna saknade :focus-visible helt, medan admin-sidorna haft det hela
+   tiden. Den som styr med tangentbord, växelkontakt eller Switch Control såg
+   alltså inte var fokus låg — på en sida vars hela syfte är att trycka rätt
+   knapp under tidspress.
+   Ringen ritas i --r-fg, inte i accentfärgen: i nattläget är accenten mörkröd
+   mot mörkröd bakgrund, och en fokusring som inte syns är ingen fokusring. */
+:focus-visible {
+  outline: 3px solid var(--r-fg);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+/* Musklick på en knapp ska inte lämna kvar en ring — bara tangentbordsfokus. */
+:focus:not(:focus-visible) { outline: none; }
+
+/* Skärmläsartext som inte syns visuellt. Används för statusar som annars bara
+   bärs av färg eller placering. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}

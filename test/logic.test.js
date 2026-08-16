@@ -12,7 +12,7 @@ import {
 import {
   patrolStartDateTime, normSlug, isValidSlug, suggestSlug,
   effectiveIntervalSec, swishAppUrl, swishQrString, patrolLabel, linkifyText, isNumSet, mergeBeacons,
-  NOTE_CHIPS, harNotering, laggTillNotering, taBortNotering
+  NOTE_CHIPS, harNotering, laggTillNotering, taBortNotering, kapaNotering
 } from '../public/js/utils.js';
 import { hasIcon } from '../public/js/icons.js';
 import { AVD_FÄRG, textPå, accentMotBlått, hjälte } from '../public/js/share-card.js';
@@ -1186,5 +1186,33 @@ describe('bearingDeg + kompassnamn', () => {
     assert.equal(kompassnamn(359), 'norr', '359° ska runda till norr, inte nordväst');
     assert.equal(kompassnamn(-45), 'nordväst', 'negativa grader ska normaliseras');
     assert.equal(kompassnamn(360), 'norr');
+  });
+});
+
+// Etiketterna publiceras systematiskt bredvid patrullnamn och kår i admin, och
+// låg dessutom på den publika sidan tills det stängdes. Listan måste därför
+// hålla sig till sådant som tål att stå på en anslagstavla.
+describe('snabbnoteringarnas invarianter', () => {
+  test('ingen etikett innehåller separatorn ". "', () => {
+    // En etikett med punkt-mellanslag skulle splittras itu av notDelar() och
+    // aldrig kunna slås av igen.
+    for (const c of NOTE_CHIPS) assert.ok(!c.includes('. '), c);
+  });
+
+  test('inga hälso- eller uppföranderelaterade etiketter', () => {
+    const förbjudet = /skada|olyck|sjuk|allergi|medicin|bråk|mobbn/i;
+    for (const c of NOTE_CHIPS) assert.ok(!förbjudet.test(c), `"${c}" hör hemma i fälttråden, inte i ett fält som visas brett`);
+  });
+
+  test('kapningen tar fritexten, aldrig etiketterna', () => {
+    const lang = laggTillNotering('x'.repeat(600), 'Regelbrott');
+    const kapad = kapaNotering(lang, 500);
+    assert.ok(kapad.length <= 500, 'längd ' + kapad.length);
+    assert.ok(harNotering(kapad, 'Regelbrott'), 'etiketten måste överleva kapningen');
+  });
+
+  test('kort text rörs inte alls', () => {
+    const t = laggTillNotering('Gick fel vid dammen', 'Sen ankomst');
+    assert.equal(kapaNotering(t, 500), t);
   });
 });

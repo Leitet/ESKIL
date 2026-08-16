@@ -283,7 +283,7 @@ function renderNextControl(t) {
     <span class="sn-label">Nästa kontroll</span>
     <span class="sn-name"><span class="sn-no">${next.nummer ?? '?'}</span>${escapeHtml(displayName(next))}</span>
     <span class="sn-go">${positionsVisible() ? 'Visa på kartan →' : 'Mer info →'}</span>
-    <span class="sn-nav" id="sn-nav" hidden></span>
+    <span class="sn-nav" id="sn-nav" role="status" aria-live="polite" hidden></span>
   </button>`;
 }
 
@@ -656,7 +656,7 @@ function render() {
   const keepMapEl = overviewMap ? document.getElementById('start-map') : null;
 
   root.innerHTML = `
-    ${!navigator.onLine ? `<div class="start-offline">Offline — visar senast kända läge. Allt uppdateras automatiskt när nätet är tillbaka.</div>` : ''}
+    ${!navigator.onLine ? `<div class="start-offline" role="status" aria-live="polite">Offline — visar senast kända läge. Allt uppdateras automatiskt när nätet är tillbaka.</div>` : ''}
     <div class="start-head">
       ${patrol.__test ? `<div style="background:#fde5d4;color:#b84a0a;border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:13px;font-weight:700;">TESTLÄGE — så här ser patrullernas startkort ut. Riktiga startkort får patrullens namn och poäng.</div>` : ''}
       <div class="start-eyebrow">${escapeHtml(comp.shortName || 'Tävling')} ${comp.year ? '· ' + comp.year : ''} · STARTKORT</div>

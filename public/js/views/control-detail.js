@@ -365,7 +365,8 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
                 <td class="num"><strong>${s.poang ?? 0}</strong>${s.adjustNote ? ` <span title="Justerad av sekretariatet">${icon('pencil', { size: 11 })}</span>` : ''}${(s.history || []).length ? ` <span class="muted t-sm" title="${(s.history || []).length} tidigare värden — se justeringsloggen på poängtabellen">${icon('history', { size: 11 })}${(s.history || []).length}</span>` : ''}</td>
                 <td class="num">${s.extraPoang ?? 0}</td>
                 <td class="muted t-sm">${formatTime(s.reportedAt)}</td>
-                <td class="muted t-sm">${escapeHtml((s.note || '').slice(0, 40))}</td>
+                <td class="muted t-sm" style="max-width:22ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                  title="${escapeHtml(s.note || '')}">${escapeHtml(s.note || '')}</td>
                 ${isAdmin ? `<td class="actions"><button class="btn btn-ghost btn-sm" data-adjust="${s.id}">Justera</button><button class="btn btn-ghost btn-sm" data-del="${s.id}" style="color:var(--utm-pink);">Radera</button></td>` : ''}
               </tr>`;
             }).join('')}

@@ -5,7 +5,7 @@
 import { db, doc, onSnapshot } from './firebase.js';
 import { getCompetition, getControl, listPatrols, watchScoresForControl, upsertScore, deleteScore, listControls, getTrack, listAllScores, sendControlBeacon } from './store.js';
 import { AVDELNINGAR, escapeHtml, allInstructionGroups, internalManagement,
-  NOTE_CHIPS, harNotering, laggTillNotering, taBortNotering } from './utils.js';
+  NOTE_CHIPS, harNotering, laggTillNotering, taBortNotering, kapaNotering } from './utils.js';
 import { controlEtaWindow } from './course.js';
 import { ensureLeaflet } from './leaflet.js';
 import { icon } from './icons.js';
@@ -261,6 +261,10 @@ function rtoast(msg, kind) {
   if (sheetNotice(msg, kind === 'err' ? 'err' : 'ok')) return;
   const el = document.createElement('div');
   el.className = 'r-toast' + (kind === 'err' ? ' err' : '');
+  // assertive för fel: "kontrollen är stängd" måste bryta igenom, annars
+  // sparar kontrollanten vidare i tron att det gick.
+  el.setAttribute('role', kind === 'err' ? 'alert' : 'status');
+  el.setAttribute('aria-live', kind === 'err' ? 'assertive' : 'polite');
   el.textContent = msg;
   document.body.appendChild(el);
   setTimeout(() => { el.style.opacity = '0'; }, 2400);
@@ -473,7 +477,8 @@ async function main() {
           const s = scoreByPatrol[p.id];
           const pending = isPending(cid, ctrlId, p.id);
           const missingGissning = s && control.utslag && s.utslagGissning == null;
-          return `<button type="button" class="patrol-btn ${s ? 'reported' : ''}" data-id="${p.id}">
+          return `<button type="button" class="patrol-btn ${s ? 'reported' : ''}" data-id="${p.id}"
+            aria-label="${escapeHtml(`#${p.number ?? ''} ${p.name || ''}${p.kar ? ', ' + p.kar : ''}. ${s ? `Rapporterad, ${(Number(s.poang) || 0) + (Number(s.extraPoang) || 0)} poäng` : 'Ej rapporterad'}${pending ? ', väntar på synk' : ''}`)}">
             <div class="p-num">#${p.number ?? '—'}</div>
             <div class="p-name">${escapeHtml(p.name || '—')}</div>
             <div class="p-meta">${escapeHtml(p.kar || '')}${p.utgatt ? ' <span class="p-utgatt">Utgått</span>' : ''}${pending ? ' <span class="p-pending">Väntar på synk</span>' : ''}${missingGissning ? ' <span class="p-missing-guess">Utslagssvar saknas!</span>' : ''}</div>
@@ -527,20 +532,20 @@ async function main() {
         <div class="r-label-inline">Poäng</div>
         <div class="score-stepper">
           <button type="button" class="step-btn" id="minus" aria-label="Minska">${icon('minus', { size: 28 })}</button>
-          <div class="score-display" id="val">
+          <div class="score-display" id="val" role="status" aria-live="polite" aria-atomic="true">
             ${poang}
             <span class="range">max ${maxP} · min ${minP}</span>
           </div>
           <button type="button" class="step-btn" id="plus" aria-label="Öka">${icon('plus', { size: 28 })}</button>
         </div>
         <input type="number" class="r-input" id="poang-input" inputmode="numeric" value="${poang}" min="${minP}" max="${maxP}" step="1">
-        ${maxP > minP ? `<button type="button" class="score-full" id="fullpott">Full pott — ${maxP}${maxE > 0 ? ` + ${maxE} extra` : ''}</button>` : ''}
+        ${maxP > minP ? `<button type="button" class="score-full" id="fullpott" aria-pressed="false">Full pott — ${maxP}${maxE > 0 ? ` + ${maxE} extra` : ''}</button>` : ''}
 
         ${maxE > 0 ? `
           <div style="margin-top:18px;" class="r-label-inline">Extra poäng (max ${maxE})</div>
           <div class="score-stepper">
             <button type="button" class="step-btn" id="eminus" aria-label="Minska extra">${icon('minus', { size: 28 })}</button>
-            <div class="score-display" id="eval">${extra}<span class="range">0 – ${maxE}</span></div>
+            <div class="score-display" id="eval" role="status" aria-live="polite" aria-atomic="true">${extra}<span class="range">0 – ${maxE}</span></div>
             <button type="button" class="step-btn" id="eplus" aria-label="Öka extra">${icon('plus', { size: 28 })}</button>
           </div>` : ''}
 
@@ -553,7 +558,7 @@ async function main() {
 
         <div style="margin-top:18px;" class="r-label-inline">Notering (frivilligt)</div>
         <div class="note-chips">${NOTE_CHIPS.map(t =>
-          `<button type="button" class="note-chip${harNotering(note, t) ? ' active' : ''}" data-chip="${escapeHtml(t)}">${escapeHtml(t)}</button>`
+          `<button type="button" class="note-chip${harNotering(note, t) ? ' active' : ''}" data-chip="${escapeHtml(t)}" aria-pressed="${harNotering(note, t)}">${escapeHtml(t)}</button>`
         ).join('')}</div>
         <textarea class="r-textarea" id="note" placeholder="T.ex. regelavvikelse eller kommentar…">${escapeHtml(note)}</textarea>`,
       footer: `
@@ -611,7 +616,11 @@ async function main() {
     // felaktigt tapp aldrig blir en sparad rapport.
     const fullBtn = overlay.querySelector('#fullpott');
     if (fullBtn) {
-      speglaFull = () => fullBtn.classList.toggle('is-full', poang === maxP && extra === maxE);
+      speglaFull = () => {
+        const full = poang === maxP && extra === maxE;
+        fullBtn.classList.toggle('is-full', full);
+        fullBtn.setAttribute('aria-pressed', String(full));
+      };
       bindTap(fullBtn, () => { setPoang(maxP); setExtra(maxE); });
       inp.addEventListener('input', () => speglaFull());
       speglaFull();
@@ -628,13 +637,18 @@ async function main() {
         noteEl.value = harNotering(noteEl.value, t)
           ? taBortNotering(noteEl.value, t)
           : laggTillNotering(noteEl.value, t);
-        chip.classList.toggle('active', harNotering(noteEl.value, t));
+        const på = harNotering(noteEl.value, t);
+        chip.classList.toggle('active', på);
+        chip.setAttribute('aria-pressed', String(på));
       });
     });
     // Skriver kontrollanten själv ska chipsen följa med.
     noteEl.addEventListener('input', () => {
-      overlay.querySelectorAll('[data-chip]').forEach(c =>
-        c.classList.toggle('active', harNotering(noteEl.value, c.dataset.chip)));
+      overlay.querySelectorAll('[data-chip]').forEach(c => {
+        const på = harNotering(noteEl.value, c.dataset.chip);
+        c.classList.toggle('active', på);
+        c.setAttribute('aria-pressed', String(på));
+      });
     });
 
     const saveBtn = overlay.querySelector('#save');
@@ -646,7 +660,9 @@ async function main() {
       // could race the change event.
       poang = Math.round(Math.max(minP, Math.min(maxP, Number(poang) || 0)));
       extra = Math.round(Math.max(0, Math.min(maxE, Number(extra) || 0)));
-      const noteVal = overlay.querySelector('#note').value.trim().slice(0, 500);
+      const noteRaw = overlay.querySelector('#note').value.trim();
+      const noteVal = kapaNotering(noteRaw, 500);
+      if (noteVal !== noteRaw) rtoast('Noteringen var för lång och kortades.', 'err');
       const gissningRaw = isUtslag ? overlay.querySelector('#gissning-input').value.trim() : '';
       const gissning = gissningRaw !== '' && Number.isFinite(Number(gissningRaw)) ? Number(gissningRaw) : null;
       // Gissningsvakt: en glömd utslagsgissning är oåterkallelig när
@@ -844,7 +860,7 @@ async function main() {
   // --- Layout ---
   root.innerHTML = `
     <div id="head"></div>
-    <div id="sync" class="r-sync" hidden></div>
+    <div id="sync" class="r-sync" role="status" aria-live="polite" hidden></div>
     <div class="r-section" id="avd"></div>
     <div class="r-section" id="psok"></div>
     <div class="r-section" id="plist"></div>

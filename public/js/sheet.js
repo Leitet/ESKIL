@@ -74,7 +74,7 @@ export function openSheet({ title = '', eyebrow = '', body = '', footer = '', on
           <button type="button" class="sheet-close" id="sheet-x" aria-label="Stäng">${icon('x', { size: 22 })}</button>
         </div>` : ''}
       <div class="sheet-body" id="sheet-body">${body}</div>
-      <div class="sheet-notice" hidden></div>
+      <div class="sheet-notice" role="status" aria-live="assertive" hidden></div>
       <div class="sheet-foot" id="sheet-foot" ${footer ? '' : 'hidden'}>${footer}</div>
     </div>`;
   document.body.appendChild(overlay);
