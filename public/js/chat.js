@@ -32,7 +32,7 @@ const tillDatum = (ts) => {
 };
 
 /**
- * @param opts { cid, kind: 'kontroll'|'patrull', refId, enabled }
+ * @param opts { cid, kind: 'kontroll'|'patrull', refId, token, enabled, demo }
  *   `enabled` styr BARA om man kan skriva själv — driftmeddelandenas historik
  *   visas alltid, den är inte en tvåvägsfunktion.
  * @returns { destroy() }
@@ -46,9 +46,15 @@ const tillDatum = (ts) => {
  * En länk utan token är en gammal utskrift; det är därför texten pekar på att
  * be ledningen om en ny.
  */
-export function mountMessages({ cid, kind, refId, token = null, enabled = true } = {}) {
+export function mountMessages({ cid, kind, refId, token = null, enabled = true, demo = false } = {}) {
   const tid = threadIdFor(kind, refId, token);
-  const kanLasa = !!token;
+  // På ett demospår NEKAR reglerna varje trådskrivning (faltFar kräver
+  // !compIsDemo). Utan den här grenen fick besökaren en rå regeldump i bladet
+  // — precis som report.js och station.js redan skyddar sina knappar.
+  const kanSkriva = enabled && !demo;
+  // Läsning fungerar på demospår: reglerna har en egen demo-gren så att hela
+  // samtalet fält↔ledning går att VISA. Det är bara skrivningen som är av.
+  const kanLasa = !!token || demo;
   let samtal = [];
   let tråd = null;
   let bild = null;
@@ -131,7 +137,7 @@ export function mountMessages({ cid, kind, refId, token = null, enabled = true }
 
     // Skickar-bara-läget. Utan token kan sidan inte läsa tråden, och det ska
     // stå rakt ut: annars ser panelen ut som om ledningen aldrig svarar.
-    if (!kanLasa) {
+    if (!kanLasa && !demo) {
       const rad = document.createElement('p');
       rad.className = 'emb-hint emb-readonly';
       // Formuleringen måste stämma med hur man KOM hit. En patrull har oftast
@@ -190,7 +196,7 @@ export function mountMessages({ cid, kind, refId, token = null, enabled = true }
       className: 'sheet-messages',
       body: '<div class="emb-log" id="emb-log"></div>',
       footer: `
-        ${enabled ? `
+        ${kanSkriva ? `
           <div class="emb-compose">
             <div class="emb-attach" id="emb-attach" hidden>
               <img alt="Vald bild">
@@ -203,13 +209,15 @@ export function mountMessages({ cid, kind, refId, token = null, enabled = true }
             </div>
             <p class="emb-hint" id="emb-hint">Tävlingsledningen ser frågan direkt och svarar här.</p>
           </div>` : `
-          <p class="emb-hint emb-readonly">Tävlingsledningen har stängt av möjligheten att skriva hit.</p>`}
+          <p class="emb-hint emb-readonly">${demo
+              ? 'Demospår — meddelanden till tävlingsledningen är avstängda. På en riktig tävling skriver kontrollen och patrullen hit, och svaret kommer i samma vy.'
+              : 'Tävlingsledningen har stängt av möjligheten att skriva hit.'}</p>`}
         <div class="emb-notif" id="emb-notif"></div>`,
       onClose: () => { öppen = false; ark = null; ritaKnapp(); }
     });
     overlay = ark.el;
 
-    if (enabled) {
+    if (kanSkriva) {
       overlay.querySelector('#emb-photo').addEventListener('click', async () => {
         try {
           const v = await pickImage({ camera: true });

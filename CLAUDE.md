@@ -699,6 +699,38 @@ The super-admin email is configured as `SUPER_ADMIN_EMAIL` in
 `store.ensureUser()` creates that user with `role: "super-admin"` on
 first sign-in. Other users get `role: "user"`.
 
+## Demospåret är produktens skyltfönster
+
+`scripts/seed-demo.sh` seedar tävlingen `demospar` (slug `demo`), som ligger i
+produktion och nås KONTOFRITT: `guard()` i app.js installerar en
+`DEMO_VIEWER` så fort routen bär ett cid vars tävling har `demo: true`.
+Två regler styr allt arbete med den:
+
+1. **Ingen yta får svara med ett rättighetsfel.** Reglerna nekar VARJE skrivning
+   på en demotävling (poäng, fältmeddelanden, beacon, station, anmälan,
+   selfPassages, genrep). Varje knapp som leder dit måste därför kortslutas i
+   KLIENTEN med en demotext — mönstret finns i `report.js`, `station.js`,
+   `chat.js` (`demo`-flaggan), `start.js` (nödknappen) och `utskrifter.js`
+   (genrepskortet göms). Ett demo som svarar "PERMISSION_DENIED" är värre än
+   inget demo.
+2. **Läsning är däremot öppen, men BARA för demo.** Fem member-only ytor har en
+   uttrycklig `compIsDemo(cid)`-gren i reglerna så att demot kan VISA dem:
+   kontrollens `private/meta` (telefon + samtalsnyckel), `beacon`
+   (livstecken), `threads` get/list, trådens `messages`, och `registrations`
+   list. Grenarna hänger på flaggan, ALDRIG på ett tävlings-id, och varje gren
+   har ett testpar i `test/rules.test.js`: demo får läsa, en riktig tävling
+   nekas. Mutationsverifierat.
+
+Seedad data måste ankras i MINUTER före seedögonblicket (`iso_min`), aldrig mot
+ett fast datum — Läget pinnar sin demoklocka till senaste tidsstämpeln, så
+ögonblicksbilden håller sig färsk för alltid. `comp.date` sätts till IDAG.
+Två fältformer är ISO-STRÄNGAR och inte timestamps: `messages/{id}.at` och
+`registrations/{id}.createdAt` (vyn kör `.localeCompare` på den senare) — ett
+timestampValue ger "Invalid Date" respektive ett kraschat renderingsanrop.
+Seeda ALDRIG `comp.lastBackupAt` (raderingsskyddet skulle tro att en backup
+finns), aldrig en patrull med `genrep: true`, och aldrig `selfStart`/
+`selfFinish` (knapparna renderas då men skrivningen nekas).
+
 ## Things to avoid
 
 - Don't add a framework (React/Vue/Next). This project is intentionally

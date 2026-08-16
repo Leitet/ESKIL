@@ -748,7 +748,7 @@ function render() {
   if (!chatPanel && !patrol.__test) {
     chatPanel = mountMessages({
       cid, kind: 'patrull', refId: patrol.id, token: samtalsToken,
-      enabled: comp?.fieldMessaging !== false
+      enabled: comp?.fieldMessaging !== false, demo: !!comp?.demo
     });
   }
 
@@ -766,6 +766,16 @@ function render() {
   if (hjalpBtn) hjalpBtn.disabled = sosPagar;
   if (hjalpBtn) bindTap(hjalpBtn, async () => {
     if (sosPagar) return;
+    // Demospår: reglerna nekar trådskrivningen, och felvägen här är en
+    // larmande alert ("Ropet gick INTE fram — ring tävlingsledningen"). Det
+    // är sista texten en besökare ska möta i ett demo. Samma mönster som
+    // report.js och station.js.
+    if (comp?.demo) {
+      alert('Demospår — nödropet är avstängt här.\n\n'
+        + 'På en riktig tävling hämtas er position och skickas direkt till '
+        + 'tävlingsledningen, som ser den med en kartlänk i sin inkorg.');
+      return;
+    }
     if (!confirm('Skicka er position till tävlingsledningen och be om hjälp?')) return;
     sosPagar = true;
     hjalpBtn.disabled = true;

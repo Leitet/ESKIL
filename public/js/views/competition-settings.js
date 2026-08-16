@@ -67,7 +67,14 @@ export async function renderCompetitionSettings(app, user, cid) {
   const isSuperAdmin = user.role === 'super-admin';
   const isAdmin = isSuperAdmin || isCompAdminUser(comp, user);
   if (!isAdmin) {
-    wrap.innerHTML = `<div class="empty"><h3>Inte tillgängligt</h3><p>Bara tävlingsadministratörer kan öppna inställningarna.</p></div>`;
+    // Med bara ett tomt kort blev det här en återvändsgränd: ingen flikrad,
+    // inga smulor, ingen väg tillbaka. Rendera huvudet som alla andra
+    // tävlingssidor så man kan klicka sig vidare.
+    wrap.innerHTML = `
+      ${compHeader(cid, comp, user, { active: 'settings', crumb: 'Inställningar', title: 'Inställningar' })}
+      <div class="empty"><h3>Inte tillgängligt</h3>
+      <p>Bara tävlingens administratörer kan ändra inställningarna.${comp.demo
+        ? ' Demospåret är skrivskyddat — men allt annat går att utforska.' : ''}</p></div>`;
     return;
   }
   const isDemoReadOnly = comp.demo && !isSuperAdmin;

@@ -374,7 +374,10 @@ service cloud.firestore {
         // hemligheten och kontrollen måste vara öppen), hårt formad.
         // Läsning är MEMBER-only: batteri- och könivå är intern drift.
         match /beacon/{beaconDoc} {
-          allow read: if isCompMember(cid);
+          // Demo: livstecken-kolumnen i Läget ("telefonen på kontroll 7 har
+          // 11 % kvar") är en av vyns bästa säljpunkter och bär ingen
+          // persondata — bara batteri, kö och en tidsstämpel.
+          allow read: if isCompMember(cid) || compIsDemo(cid);
           allow write: if !compIsDemo(cid)
             && ctrlData(cid, ctrlId).get('open', false) == true
             && beaconDoc.size() <= 64
@@ -445,7 +448,11 @@ service cloud.firestore {
         // — den ligger i tryckta QR-koder; kunde en ansvarig skriva om den
         // dog kontrollens fältlänk tyst mitt i tävlingen) stay client-immutable.
         match /private/{doc} {
-          allow read: if isCompMember(cid) || isCtrlAnsvarig(cid, ctrlId);
+          // Demo: utan den här grenen står TELEFON-kolumnen tom i Läget, i
+          // kontrollistan och i fältkortens nödinfo, och /k-länken saknar
+          // samtalsnyckel. Demospårets meta bär bara påhittade 070-000-nummer
+          // och example.se-adresser.
+          allow read: if isCompMember(cid) || isCtrlAnsvarig(cid, ctrlId) || compIsDemo(cid);
           allow create: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid))
             || (!compIsDemo(cid) && !compClosed(cid) && isCtrlAnsvarig(cid, ctrlId)
                 && !request.resource.data.keys().hasAny(['welcomed', 'threadToken'])
@@ -528,10 +535,16 @@ service cloud.firestore {
           return threadId.matches('(?s)^(kontroll|patrull)-.*');
         }
 
-        allow get: if isCompMember(cid) || !harledd();
+        // DEMOSPÅRET SER ALLT. En demotävling kan bara skapas av en super-admin
+        // och innehåller uteslutande seedad påhittad data — inga riktiga namn,
+        // adresser eller positioner. Utan den här grenen är hela samtalet
+        // fält↔ledning osynligt i det kontofria demot, och det är en av de
+        // funktioner en scoutkår mest behöver se innan de väljer system.
+        // Grenen hänger på compIsDemo, ALDRIG på ett tävlings-id.
+        allow get: if isCompMember(cid) || compIsDemo(cid) || !harledd();
         // list bara för medlemmar — annars går både kontroll-id:n och tokens
         // att räkna upp.
-        allow list: if isCompMember(cid);
+        allow list: if isCompMember(cid) || compIsDemo(cid);
 
         // Fältet får BARA skapa den härledda tråden. Kunde det skapa en tråd
         // med valfritt id vore tokenformen värdelös — vem som helst kunde lägga
@@ -566,7 +579,7 @@ service cloud.firestore {
           // Samma delning som på huvudet: härledd tråd = member-only, tokentråd
           // = den som håller fältlänken. Det är HÄR nödropen och bilderna
           // ligger, så det är den här raden som stänger läckan.
-          allow read: if isCompMember(cid) || !harledd();
+          allow read: if isCompMember(cid) || compIsDemo(cid) || !harledd();
           // Anonymt: BARA från fältet. Ett anonymt meddelande som utger sig
           // för att komma från ledningen vore ett sätt att lura kontrollanter.
           allow create: if isCompAdmin(cid) || (
@@ -742,7 +755,11 @@ service cloud.firestore {
       // (open/closed dates) is handled in the UI by design.
       match /registrations/{regId} {
         allow get: if true;
-        allow list: if isCompMember(cid);
+        // Demo: Anmälan-fliken var en död återvändsgränd — listan är
+        // member-only, så en demobesökare fick "Kunde inte ladda" rakt i
+        // ansiktet. Samma mönster som stations redan har. Demospårets
+        // anmälningar är påhittade kårer med example.se-adresser.
+        allow list: if isCompMember(cid) || compIsDemo(cid);
         // Anonymous manage-link holders may only touch participant fields.
         // Payment status lives in the admin-only `paidRefs` array (see
         // isPaymentPaid), and the admin stamps reminder*/imported — none of

@@ -42,7 +42,8 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
   // QR-koden en skickar-bara-länk: kontrollanten når ledningen men ser inga
   // svar. Misslyckas mintningen (t.ex. kontrollansvarig utan skrivrätt på
   // metan) byggs länken ändå — den fungerar, bara utan samtalet.
-  if (!control.threadToken) {
+  // Mintning är en skrivning — reglerna nekar den på demospår.
+  if (!control.threadToken && !comp.demo) {
     control.threadToken = await ensureThreadToken(cid, 'kontroll', ctrlId).catch(() => '');
   }
   setTopbarCompetition(cid, comp, user);
@@ -72,9 +73,9 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
         ${control.threadToken ? `<p class="muted t-sm">Sista delen av länken är kontrollens samtalsnyckel. Har funktionären
         en <strong>äldre utskrift utan den</strong> går det fortfarande att rapportera poäng och skicka
         frågor till er — men era svar syns inte i telefonen. Skriv i så fall ut kontrollbladet på nytt.</p>`
-        : `<p class="muted t-sm">Kontrollen saknar ännu en samtalsnyckel, så funktionären kan skicka
+        : (comp.demo ? '' : `<p class="muted t-sm">Kontrollen saknar ännu en samtalsnyckel, så funktionären kan skicka
         frågor till tävlingsledningen men inte se svaren. Nyckeln skapas när en <strong>administratör</strong>
-        öppnar den här sidan eller Utskrifter.</p>`}
+        öppnar den här sidan eller Utskrifter.</p>`)}
         <div id="qr" class="row" style="justify-content:center;padding:16px 0;"></div>
         <label class="field">Länk</label>
         <div class="row">

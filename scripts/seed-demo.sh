@@ -30,6 +30,17 @@ t = datetime.now() - timedelta(minutes=150)
 t = t.replace(minute=(t.minute // 5) * 5, second=0, microsecond=0)
 print(t.strftime("%H:%M"))
 ')
+# Tävlingsdatum = IDAG. Ett fast datum månader bort gjorde att /t:s startlista
+# stod tom och väderkortet pekade fel, mitt i ett lopp som pågick.
+TODAY=$(python3 -c 'from datetime import date; print(date.today().isoformat())')
+# Relativ ISO-tid: "iso_min 45" = 45 minuter FÖRE seedögonblicket. Allt seedat
+# måste ankras så här — Läget pinnar sin demoklocka till senaste tidsstämpeln
+# +5 min, så ögonblicksbilden håller sig färsk för alltid.
+iso_min() {
+  python3 -c "
+from datetime import datetime, timedelta, timezone
+print((datetime.now(timezone.utc) - timedelta(minutes=$1)).strftime('%Y-%m-%dT%H:%M:%SZ'))"
+}
 echo "  firstStart: $FIRST_START (anchored 150 min before now, 10-min interval × 30 patruller)"
 
 write() {
@@ -51,17 +62,23 @@ JSON
 }
 
 # --- Competition document ---------------------------------------------------
+# anonymousControls är AV i demot med flit: med den på ersätts "Hinderbana" och
+# "Bygg en bro" med "Kontroll 6" tills patrullen rapporterat dem, och de namnen
+# är en av de saker som visar vad produkten är till för. Funktionen finns kvar
+# som inställning för den som vill dölja kontrollerna på riktigt.
 write "competitions/$CID" '{
   "name":        {"stringValue":"Demospår"},
   "shortName":   {"stringValue":"Demospår"},
   "year":        {"integerValue":"2026"},
-  "date":        {"stringValue":"2026-05-01"},
+  "date":        {"stringValue":"'"$TODAY"'"},
+  "slug":        {"stringValue":"demo"},
+  "district":    {"stringValue":"dacke"},
   "location":    {"stringValue":"Lindsdal, Kalmar"},
   "organizer":   {"stringValue":"Lindsdals Scoutkår"},
   "description": {"stringValue":"Ett demospår att utforska ESKIL. Tio kontroller i en slinga genom Lindsdal."},
   "generalInfo": {"stringValue":"Detta är ett demospår. Poängrapportering är avstängd."},
   "demo":              {"booleanValue": true},
-  "anonymousControls": {"booleanValue": true},
+  "anonymousControls": {"booleanValue": false},
   "startTimes":        {"mapValue":{"fields":{
     "enabled":         {"booleanValue": true},
     "firstStart":      {"stringValue": "'"$FIRST_START"'"},
@@ -90,7 +107,29 @@ write "competitions/$CID" '{
     {"mapValue":{"fields":{"id":{"stringValue":"banlaggare"},   "label":{"stringValue":"Banläggare"},    "visibility":{"stringValue":"internal"},"name":{"stringValue":"Erik Eriksson"}, "phone":{"stringValue":"070-000 00 03"},"email":{"stringValue":""}}}}
   ]}},
   "admins": {"arrayValue":{"values":[]}},
-  "users":  {"arrayValue":{"values":[]}}
+  "users":  {"arrayValue":{"values":[]}},
+
+  "autoFinish": {"booleanValue": true},
+  "etaDwellMinutes": {"integerValue": "15"},
+
+  "places": {"arrayValue":{"values":[
+    {"mapValue":{"fields":{"id":{"stringValue":"p-sekr"},"kind":{"stringValue":"sekretariat"},"name":{"stringValue":"Sekretariatet"},"icon":{"stringValue":"house"},"color":{"stringValue":"bla"},"lat":{"doubleValue":56.73668},"lng":{"doubleValue":16.27905},"note":{"stringValue":"Anmäl er här vid ankomst. Har ni frågor är det hit ni går."}}}},
+    {"mapValue":{"fields":{"id":{"stringValue":"p-park"},"kind":{"stringValue":"parkering"},"name":{"stringValue":"Grusparkeringen"},"icon":{"stringValue":"square-parking"},"color":{"stringValue":"bla"},"lat":{"doubleValue":56.73632},"lng":{"doubleValue":16.27976},"note":{"stringValue":"Ont om platser — samåk gärna."}}}},
+    {"mapValue":{"fields":{"id":{"stringValue":"p-wc"},"kind":{"stringValue":"toalett"},"name":{"stringValue":"Toaletter"},"icon":{"stringValue":"toilet"},"color":{"stringValue":"lila"},"lat":{"doubleValue":56.73700},"lng":{"doubleValue":16.27950}}}},
+    {"mapValue":{"fields":{"id":{"stringValue":"p-mat"},"kind":{"stringValue":"mat"},"name":{"stringValue":"Matplats vid bäcken"},"icon":{"stringValue":"utensils"},"color":{"stringValue":"orange"},"lat":{"doubleValue":56.74520},"lng":{"doubleValue":16.28200},"note":{"stringValue":"Korv och saft. Alla patruller stannar här."},"inCourse":{"booleanValue":true},"courseAfter":{"integerValue":"5"},"dwellMinutes":{"integerValue":"25"}}}}
+  ]}},
+
+  "registration": {"mapValue":{"fields":{
+    "enabled":  {"booleanValue": true},
+    "info":     {"stringValue":"Demoanmälan — ingenting skickas och ingenting betalas. Klicka runt fritt."},
+    "pricePerScout": {"integerValue":"120"},
+    "swishNumber":   {"stringValue":"123 456 78 90"},
+    "bankgiro":      {"stringValue":"123-4567"},
+    "fields": {"arrayValue":{"values":[
+      {"mapValue":{"fields":{"id":{"stringValue":"allergi"},"label":{"stringValue":"Allergier och specialkost"},"scope":{"stringValue":"patrull"},"required":{"booleanValue":false}}}},
+      {"mapValue":{"fields":{"id":{"stringValue":"buss"},"label":{"stringValue":"Kommer ni med buss?"},"scope":{"stringValue":"anmalan"},"required":{"booleanValue":false}}}}
+    ]}}
+  }}}
 }'
 
 # --- Controls: 10 points on a loop around Lindsdal (center 56.7380, 16.3280)
@@ -260,7 +299,8 @@ score() {
     \"poang\":      {\"integerValue\":\"$poang\"},
     \"extraPoang\": {\"integerValue\":\"$extra\"},
     \"note\":       {\"stringValue\":\"\"},
-    \"reportedAt\": {\"timestampValue\":\"$ts\"},
+    \"reportedAt\":       {\"timestampValue\":\"$ts\"},
+    \"clientReportedAt\": {\"timestampValue\":\"$ts\"},
     \"reporter\":   {\"stringValue\":\"demo\"}
   }"
 }
@@ -336,5 +376,222 @@ while read -r kind a b c d e; do
       ;;
   esac
 done <<< "$RACE_MATRIX"
+
+# =============================================================================
+# ALLT NEDAN GÖR DEMOT KOMPLETT — ytorna som annars står tomma.
+#
+# Regel för varje tidsstämpel: iso_min <minuter före seedögonblicket>. Ett fast
+# datum får demot att åldras; Läget pinnar sin klocka till senaste stämpeln.
+# =============================================================================
+
+# --- Driftmeddelanden (Meddelanden-fliken, bannerstacken, publika anslagstavlan)
+# `at` MÅSTE vara en ISO-STRÄNG: store.js skriver new Date().toISOString(), och
+# ett timestampValue renderar "kl Invalid Date" i vyn.
+msg() {
+  local id="$1" text="$2" level="$3" minutes="$4" kontroller="$5" patruller="$6" publikt="$7" ack="$8"
+  write "competitions/$CID/messages/$id" "{
+    \"text\":       {\"stringValue\":\"$text\"},
+    \"level\":      {\"stringValue\":\"$level\"},
+    \"at\":         {\"stringValue\":\"$(iso_min "$minutes")\"},
+    \"active\":     {\"booleanValue\":true},
+    \"requireAck\": {\"booleanValue\":$ack},
+    \"target\":     {\"mapValue\":{\"fields\":{
+      \"kontroller\": $kontroller,
+      \"patruller\":  $patruller,
+      \"publikt\":    {\"booleanValue\":$publikt}
+    }}}
+  }"
+}
+msg demo-m01 "Banan är släppt — alla tio kontroller är öppna. Lycka till!" info 170 \
+  '{"booleanValue":true}' '{"booleanValue":true}' true false
+msg demo-m02 "Regnskur på väg in över banan. Kontroll 6 och 7: ta in materielen om det kommer." varning 45 \
+  '{"arrayValue":{"values":[{"stringValue":"demo-c06"},{"stringValue":"demo-c07"}]}}' '{"booleanValue":false}' false true
+msg demo-m03 "Prisutdelning kl 16:00 vid scoutgården. Alla patruller samlas där efter mål." info 15 \
+  '{"booleanValue":false}' '{"booleanValue":true}' true false
+echo "  ✓ 3 driftmeddelanden"
+
+# --- Kontrollernas nödinfo + samtalsnyckel ------------------------------------
+# private/meta är member-only i vanliga fall; demospår har en egen läsgren i
+# reglerna så nödinfon i fältkorten och TELEFON-kolumnen i Läget inte står tom.
+ctrlmeta() {
+  local id="$1" telefon="$2" notering="$3" token="$4"
+  write "competitions/$CID/controls/$id/private/meta" "{
+    \"telefon\":     {\"stringValue\":\"$telefon\"},
+    \"notering\":    {\"stringValue\":\"$notering\"},
+    \"threadToken\": {\"stringValue\":\"$token\"},
+    \"ansvariga\":      {\"arrayValue\":{\"values\":[
+      {\"mapValue\":{\"fields\":{\"name\":{\"stringValue\":\"Kontrollansvarig\"},\"email\":{\"stringValue\":\"kontroll@example.se\"}}}}
+    ]}},
+    \"ansvarigaEmails\": {\"arrayValue\":{\"values\":[{\"stringValue\":\"kontroll@example.se\"}]}}
+  }"
+  # Trådhuvudet måste finnas innan fältet får skriva i en tokentråd.
+  write "competitions/$CID/threads/$token" "{
+    \"kind\":  {\"stringValue\":\"kontroll\"},
+    \"refId\": {\"stringValue\":\"$id\"}
+  }"
+}
+ctrlmeta demo-c01 "070-000 01 01" "Materiel: spårband, 6 st markörer."       demotokenc01aaaaaaaaaaaa
+ctrlmeta demo-c02 "070-000 01 02" "Extra rep finns i lådan vid stigen."      demotokenc02aaaaaaaaaaaa
+ctrlmeta demo-c03 "070-000 01 03" "Sjukvårdsväskan står vid kontrollen."     demotokenc03aaaaaaaaaaaa
+ctrlmeta demo-c04 "070-000 01 04" "Vatten hämtas i dunk från sekretariatet." demotokenc04aaaaaaaaaaaa
+ctrlmeta demo-c05 "070-000 01 05" "Facit till utslagsfrågan: 1420 steg."     demotokenc05aaaaaaaaaaaa
+ctrlmeta demo-c06 "070-000 01 06" ""                                         demotokenc06aaaaaaaaaaaa
+ctrlmeta demo-c07 "070-000 01 07" ""                                         demotokenc07aaaaaaaaaaaa
+ctrlmeta demo-c08 "070-000 01 08" "Kavlar ligger färdiga bakom kontrollen."  demotokenc08aaaaaaaaaaaa
+ctrlmeta demo-c09 "070-000 01 09" ""                                         demotokenc09aaaaaaaaaaaa
+ctrlmeta demo-c10 "070-000 01 10" "Startar först när det är mörkt."          demotokenc10aaaaaaaaaaaa
+echo "  ✓ nödinfo + samtalsnyckel på 10 kontroller"
+
+# --- Utslagsfråga på kontroll 5 ----------------------------------------------
+# Seeden tvingar fram ett oavgjort par (p05/p06) för att visa delad placering.
+# Utan facit visar demot problemet men aldrig lösningen.
+write "competitions/$CID/controls/demo-c05" "{
+  \"nummer\":       {\"integerValue\":\"5\"},
+  \"name\":         {\"stringValue\":\"Kartan\"},
+  \"maxPoang\":     {\"integerValue\":\"15\"},
+  \"minPoang\":     {\"integerValue\":\"0\"},
+  \"extraPoang\":   {\"integerValue\":\"0\"},
+  \"lat\":          {\"doubleValue\":56.74575},
+  \"lng\":          {\"doubleValue\":16.28114},
+  \"placement\":    {\"stringValue\":\"Under ekarna sydöst om fotbollsplanen.\"},
+  \"instructions\": {\"arrayValue\":{\"values\":[
+    {\"mapValue\":{\"fields\":{\"avdelningar\":{\"arrayValue\":{}},\"text\":{\"stringValue\":\"Orientera på karta. Ange position + azimut till tre landmärken.\"}}}}
+  ]}},
+  \"notering\":     {\"stringValue\":\"\"},
+  \"open\":         {\"booleanValue\":true},
+  \"utslag\":       {\"booleanValue\":true},
+  \"utslagFraga\":  {\"stringValue\":\"Hur många steg är det runt sjön?\"},
+  \"utslagSvar\":   {\"integerValue\":\"1420\"}
+}"
+# Gissningarna skiljer det oavgjorda paret åt: p05 (1380, 40 fel) slår p06 (1500, 80 fel).
+for pair in "demo-p05 1380" "demo-p06 1500" "demo-p01 1400" "demo-p02 1250" "demo-p03 1600" "demo-p04 2100"; do
+  set -- $pair
+  curl -sS -X PATCH \
+    "$HOST/v1/$DBPATH/competitions/$CID/controls/demo-c05/scores/$1?updateMask.fieldPaths=utslagGissning" \
+    -H 'Content-Type: application/json' -H 'Authorization: Bearer owner' \
+    -d "{\"fields\":{\"utslagGissning\":{\"integerValue\":\"$2\"}}}" > /dev/null
+done
+echo "  ✓ utslagsfråga med facit + 6 gissningar"
+
+# --- Kontrollernas livstecken (Lägets LIVSTECKEN-kolumn) ----------------------
+beacon() {
+  write "competitions/$CID/controls/$1/beacon/demo-enhet" "{
+    \"at\":      {\"timestampValue\":\"$(iso_min "$2")\"},
+    \"batteri\": {\"integerValue\":\"$3\"},
+    \"laddar\":  {\"booleanValue\":false},
+    \"koade\":   {\"integerValue\":\"$4\"}
+  }"
+}
+beacon demo-c01 2 84 0
+beacon demo-c02 3 61 0
+beacon demo-c03 1 92 0
+beacon demo-c04 4 47 0
+beacon demo-c05 2 73 0
+beacon demo-c06 6 11 3
+beacon demo-c07 70 38 0
+beacon demo-c08 3 55 0
+beacon demo-c09 2 66 0
+beacon demo-c10 5 96 0
+echo "  ✓ livstecken på 10 kontroller (c06 lågt batteri + kö, c07 tyst i 70 min)"
+
+# --- Samtal fält ↔ ledning ----------------------------------------------------
+tradmsg() {
+  write "competitions/$CID/threads/$1/messages/$2" "{
+    \"from\": {\"stringValue\":\"$3\"},
+    \"at\":   {\"timestampValue\":\"$(iso_min "$4")\"},
+    \"text\": {\"stringValue\":\"$5\"}
+  }"
+}
+tradmsg demotokenc03aaaaaaaaaaaa m1 falt    52 "En patrull kom fram med blöta strumpor. Har ni torra att skicka ut?"
+tradmsg demotokenc03aaaaaaaaaaaa m2 ledning 49 "Vi skickar med nästa funktionär om ca 20 min. Håll dem i värmen så länge."
+tradmsg demotokenc03aaaaaaaaaaaa m3 falt    47 "Perfekt, tack!"
+write "competitions/$CID/threads/demotokenc03aaaaaaaaaaaa" "{
+  \"kind\":     {\"stringValue\":\"kontroll\"},
+  \"refId\":    {\"stringValue\":\"demo-c03\"},
+  \"lastAt\":   {\"timestampValue\":\"$(iso_min 47)\"},
+  \"lastFrom\": {\"stringValue\":\"falt\"},
+  \"lastText\": {\"stringValue\":\"Perfekt, tack!\"},
+  \"ledningReadAt\": {\"timestampValue\":\"$(iso_min 46)\"}
+}"
+tradmsg demotokenc06aaaaaaaaaaaa m1 falt 12 "Telefonen här har 11% kvar. Har ni en powerbank i sekretariatet?"
+write "competitions/$CID/threads/demotokenc06aaaaaaaaaaaa" "{
+  \"kind\":     {\"stringValue\":\"kontroll\"},
+  \"refId\":    {\"stringValue\":\"demo-c06\"},
+  \"lastAt\":   {\"timestampValue\":\"$(iso_min 12)\"},
+  \"lastFrom\": {\"stringValue\":\"falt\"},
+  \"lastText\": {\"stringValue\":\"Telefonen här har 11% kvar. Har ni en powerbank i sekretariatet?\"}
+}"
+echo "  ✓ 2 fälttrådar (en besvarad, en oläst)"
+
+# --- Utgången patrull (DNF) ---------------------------------------------------
+# BARA flaggan. Ledningens anteckning bor i patrols/{id}/private/meta och är
+# member-only med flit — den kan innehålla hälsouppgifter om ett barn.
+curl -sS -X PATCH \
+  "$HOST/v1/$DBPATH/competitions/$CID/patrols/demo-p27?updateMask.fieldPaths=utgatt" \
+  -H 'Content-Type: application/json' -H 'Authorization: Bearer owner' \
+  -d "{\"fields\":{\"utgatt\":{\"mapValue\":{\"fields\":{\"at\":{\"timestampValue\":\"$(iso_min 65)\"}}}}}}" > /dev/null
+echo "  ✓ 1 utgången patrull"
+
+# --- Anmälningar (Anmälan-fliken + kassörens betalningsunderlag) --------------
+# Fyra kårer i olika lägen, så fliken visar hela spannet: betalt (paidRefs =
+# FACIT), "vi har betalat" (paymentClaims = PÅSTÅENDE), obetalt, förhinder och
+# en ändringsförfrågan efter stängd anmälan. Alla adresser är example.se.
+reg() {
+  local id="$1" kar="$2" patrullrader="$3" belopp="$4" ref="$5" extra="$6"
+  write "competitions/$CID/registrations/$id" "{
+    \"kar\":     {\"stringValue\":\"$kar\"},
+    \"contact\": {\"mapValue\":{\"fields\":{
+      \"name\":  {\"stringValue\":\"Kårkontakt\"},
+      \"email\": {\"stringValue\":\"anmalan@example.se\"},
+      \"phone\": {\"stringValue\":\"070-000 02 00\"}
+    }}},
+    \"patrols\": {\"arrayValue\":{\"values\":[$patrullrader]}},
+    \"payments\": {\"arrayValue\":{\"values\":[
+      {\"mapValue\":{\"fields\":{
+        \"amount\":    {\"integerValue\":\"$belopp\"},
+        \"reference\": {\"stringValue\":\"$ref\"}
+      }}}
+    ]}},
+    \"createdAt\": {\"stringValue\":\"$(iso_min 4300)\"}
+    $extra
+  }"
+}
+patrullrad() {  # namn, avdelning, antal, allergi
+  echo "{\"mapValue\":{\"fields\":{\"name\":{\"stringValue\":\"$1\"},\"avdelning\":{\"stringValue\":\"$2\"},\"antal\":{\"integerValue\":\"$3\"},\"answers\":{\"mapValue\":{\"fields\":{\"allergi\":{\"stringValue\":\"$4\"}}}}}}}"
+}
+
+reg demo-r01 "Lindsdals Scoutkår" \
+  "$(patrullrad 'Björnarna' 'Spårare' 6 'Två nötallergier'),$(patrullrad 'Rävarna' 'Upptäckare' 5 '')" \
+  1320 "DEMO-1001" ',
+    "paidRefs": {"arrayValue":{"values":[{"stringValue":"DEMO-1001"}]}}'
+
+reg demo-r02 "Oskarshamns Scoutkår" \
+  "$(patrullrad 'Vargarna' 'Äventyrare' 7 'Glutenfritt, en scout')" \
+  840 "DEMO-1002" ',
+    "paidRefs": {"arrayValue":{"values":[{"stringValue":"DEMO-1002"}]}}'
+
+reg demo-r03 "Nybro Scoutkår" \
+  "$(patrullrad 'Falkarna' 'Utmanare' 4 '')" \
+  480 "DEMO-1003" ',
+    "paymentClaims": {"arrayValue":{"values":[{"mapValue":{"fields":{
+      "reference": {"stringValue":"DEMO-1003"},
+      "at":        {"stringValue":"'"$(iso_min 2880)"'"}
+    }}}]}},
+    "andringar": {"arrayValue":{"values":[{"mapValue":{"fields":{
+      "sort":    {"stringValue":"antal"},
+      "patrol": {"stringValue":"Falkarna"},
+      "message": {"stringValue":"Vi blir 5 i stället för 4 — en till hann anmäla sig."},
+      "at":      {"stringValue":"'"$(iso_min 1400)"'"}
+    }}}]}}'
+
+reg demo-r04 "Kalmar Scoutkår" \
+  "$(patrullrad 'Ugglorna' 'Spårare' 6 ''),$(patrullrad 'Lodjuren' 'Rover' 5 'Vegetarian')" \
+  1320 "DEMO-1004" ',
+    "forhinder": {"arrayValue":{"values":[{"mapValue":{"fields":{
+      "patrol": {"stringValue":"Lodjuren"},
+      "message": {"stringValue":"En scout är sjuk, vi kommer med 4 i stället för 5."},
+      "at":      {"stringValue":"'"$(iso_min 600)"'"}
+    }}}]}}'
+echo "  ✓ 4 anmälningar (2 betalda, 1 påstådd betalning + ändring, 1 förhinder)"
 
 echo "✅ Demospår seedat ($CID) · 10 kontroller · 30 patruller · $SCORE_COUNT poängrapporter · $PASS_COUNT passager"

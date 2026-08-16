@@ -1009,3 +1009,53 @@ describe('Papperskorgen', () => {
     assert.equal((await list(`competitions/${CID}/papperskorg`, USER)).ok, true, 'admin listar');
   });
 });
+
+describe('Demospårets läsrättigheter', () => {
+  // Demot är kontofritt: en besökare utan inloggning ska se ESKIL:s funktioner,
+  // inte tomma kolumner. Grenarna hänger på compIsDemo — ALDRIG på ett
+  // tävlings-id — och får aldrig läcka över på en riktig tävling.
+  const D = uniq('demo');
+  const S = uniq('skarp');
+
+  before(async () => {
+    for (const [cid, demo] of [[D, true], [S, false]]) {
+      await seed(`competitions/${cid}`, { name: 'T', demo, closed: false });
+      await seed(`competitions/${cid}/controls/${CTRL}`, { name: 'K', nummer: 1, open: true });
+      await seed(`competitions/${cid}/controls/${CTRL}/private/meta`, { telefon: '070-000 00 01' });
+      await seed(`competitions/${cid}/controls/${CTRL}/beacon/enhet1`, { batteri: 42 });
+      await seed(`competitions/${cid}/patrols/${PATROL}`, { name: 'P', number: 1 });
+      await seed(`competitions/${cid}/registrations/r1`, { kar: 'Lindsdals Scoutkår' });
+      await seed(`competitions/${cid}/threads/kontroll-${CTRL}`, { kind: 'kontroll', refId: CTRL });
+      await seed(`competitions/${cid}/threads/kontroll-${CTRL}/messages/m1`, { from: 'falt', text: 'Hej' });
+    }
+  });
+  after(async () => {
+    for (const cid of [D, S]) {
+      for (const p of [
+        `competitions/${cid}/threads/kontroll-${CTRL}/messages/m1`, `competitions/${cid}/threads/kontroll-${CTRL}`,
+        `competitions/${cid}/registrations/r1`, `competitions/${cid}/patrols/${PATROL}`,
+        `competitions/${cid}/controls/${CTRL}/beacon/enhet1`, `competitions/${cid}/controls/${CTRL}/private/meta`,
+        `competitions/${cid}/controls/${CTRL}`, `competitions/${cid}`
+      ]) await remove(p, 'owner');
+    }
+  });
+
+  const ytor = [
+    ['kontrollens telefon (nödinfon)', (cid) => `competitions/${cid}/controls/${CTRL}/private/meta`, 'get'],
+    ['kontrollens livstecken', (cid) => `competitions/${cid}/controls/${CTRL}/beacon/enhet1`, 'get'],
+    ['fälttrådens huvud', (cid) => `competitions/${cid}/threads/kontroll-${CTRL}`, 'get'],
+    ['fälttrådens meddelanden', (cid) => `competitions/${cid}/threads/kontroll-${CTRL}/messages`, 'list'],
+    ['anmälningslistan', (cid) => `competitions/${cid}/registrations`, 'list']
+  ];
+
+  for (const [namn, väg, op] of ytor) {
+    test(`demo visar ${namn}`, async () => {
+      const r = op === 'list' ? await list(väg(D), null) : await read(väg(D), null);
+      assert.equal(r.ok, true, `${namn} på demospår`);
+    });
+    test(`men en RIKTIG tävling gör det inte — ${namn}`, async () => {
+      const r = op === 'list' ? await list(väg(S), null) : await read(väg(S), null);
+      assert.equal(r.ok, false, `${namn} på skarp tävling`);
+    });
+  }
+});

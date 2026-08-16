@@ -188,6 +188,11 @@ export async function renderUtskrifter(app, user, cid) {
   // samma kod, regler och vyer som en skarp, så ett genrep som fungerar bevisar
   // något. Priset är att den måste gå att städa bort — därav knappen.
   async function ritaGenrep() {
+    // Genrepet är en SKRIVNING (det skapar en riktig patrull). För en
+    // demobesökare — och för en icke-admin — nekas den av reglerna, och
+    // knappen svarade med rå PERMISSION_DENIED. Göm hela kortet i stället.
+    const genrepHost = wrap.querySelector('#genrep-kort');
+    if (genrepHost && (!isAdmin || comp.demo)) { genrepHost.hidden = true; return; }
     const host = wrap.querySelector('#genrep-kort');
     if (!host) return;
     const g = patrols.find(p => p.genrep);

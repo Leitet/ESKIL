@@ -901,3 +901,105 @@ a.pub-brand:hover { opacity: 0.85; }
     100%    { background: transparent; }
   }
 }
+
+/* --- Landningssidan: bevisremsa, funktionslista, demodörrar, kom-igång ------
+   Allt nedan använder tokens.css — inga hex-värden, så profilen kan justeras
+   på ett ställe. Sidan är produktens enda skyltfönster; den ska tåla att läsas
+   på en telefon i en kårlokal lika väl som på en projektor. */
+
+.hero-cta-row {
+  display: flex; align-items: center; gap: var(--sp-4);
+  flex-wrap: wrap; margin-top: var(--sp-5);
+}
+.hero-cta-note { color: var(--scout-blue-200); font-size: 14px; }
+.btn-gul {
+  background: var(--rover-yellow); color: var(--scout-blue-900);
+  border: none; font-weight: 700; padding: 12px 22px; font-size: 16px;
+  display: inline-flex; align-items: center; gap: 8px;
+  border-radius: var(--r-md); text-decoration: none;
+  transition: transform var(--dur-base) var(--ease), filter var(--dur-base) var(--ease);
+}
+.btn-gul:hover { transform: translateY(-1px); filter: brightness(1.06); }
+
+/* Bevisremsan ligger direkt under hero och tar tre påståenden som går att
+   kontrollera i produkten — inte marknadsföringsord. */
+.landing-proof {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: var(--sp-4) var(--sp-6);
+  padding: var(--sp-6) 0 var(--sp-7);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--sp-7);
+}
+.landing-proof-item, .landing-proof-num { display: flex; flex-direction: column; gap: 4px; }
+.landing-proof-item strong { color: var(--scout-blue); font-size: 15px; }
+.landing-proof-item span { color: var(--fg2); font-size: 14px; line-height: 1.5; }
+.landing-proof-num strong {
+  font-family: var(--font-display); font-weight: 200; font-size: 40px;
+  line-height: 1; color: var(--avent-orange);
+}
+.landing-proof-num span { color: var(--fg3); font-size: 13px; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
+
+/* Funktionslistan. Grupperna staplas i två kolumner på skärm och en på
+   telefon; raderna är en definitionslista i formen namn + en mening. */
+.landing-funk {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--sp-6) var(--sp-7); margin-bottom: var(--sp-8);
+}
+.landing-funk-rubrik {
+  display: flex; align-items: center; gap: 10px;
+  font-family: var(--font-display); font-weight: 400; font-size: 20px;
+  color: var(--scout-blue); margin: 0 0 var(--sp-3);
+}
+.landing-funk-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
+.landing-funk-lista li {
+  display: flex; flex-direction: column; gap: 2px;
+  padding-left: var(--sp-4); border-left: 2px solid var(--scout-blue-100);
+}
+.landing-funk-lista strong { font-size: 15px; color: var(--fg); }
+.landing-funk-lista span { font-size: 14px; line-height: 1.5; color: var(--fg2); }
+.landing-feature-icon-sm { width: 28px; height: 28px; }
+
+/* Demosektionen: en huvuddörr som tar halva bredden, resten som små kort.
+   Hierarkin är avsiktlig — sekretariatets vy är det man ska öppna först. */
+.landing-demo-lede { color: var(--fg2); max-width: 68ch; margin: 0 0 var(--sp-5); }
+.landing-demo {
+  display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: var(--sp-4); margin-bottom: var(--sp-8); align-items: start;
+}
+/* Ingen height:100% — kortet ska hugga sitt innehåll. Med den sträcktes det
+   till sidokolumnens höjd och lämnade ett stort tomrum före knapparna. */
+.landing-demo-huvud { display: flex; flex-direction: column; margin: 0; }
+.landing-demo-sido { display: grid; gap: var(--sp-3); }
+.landing-demo-liten { margin: 0; padding: var(--sp-4); text-decoration: none; color: inherit; display: block; }
+.landing-demo-liten strong { color: var(--scout-blue); }
+.landing-demo-ext { color: var(--fg3); display: inline-flex; margin-left: auto; }
+
+/* Kom igång-stegen. Numren bär information (ordningen ÄR processen), därför
+   är de synliga siffror och inte dekoration. */
+.landing-steg {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--sp-4); margin-bottom: var(--sp-5);
+}
+.landing-steg-kort {
+  background: var(--white); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: var(--sp-5);
+}
+.landing-steg-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--scout-blue); color: var(--white);
+  font-weight: 700; font-size: 15px; margin-bottom: var(--sp-3);
+}
+.landing-steg-kort strong { display: block; color: var(--scout-blue); font-size: 16px; }
+.landing-kostnad {
+  background: var(--scout-blue-50); border: 1px solid var(--scout-blue-100);
+  border-radius: var(--r-lg); padding: var(--sp-6);
+  margin-bottom: var(--sp-8);
+}
+.landing-kostnad p { margin: 0; color: var(--fg2); line-height: 1.6; }
+.landing-kostnad a { color: var(--scout-blue); }
+
+@media (max-width: 720px) {
+  .landing-demo { grid-template-columns: 1fr; }
+  .landing-proof { padding-top: var(--sp-5); }
+}

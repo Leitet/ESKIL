@@ -883,7 +883,7 @@ async function main() {
   chatPanel?.destroy();
   chatPanel = mountMessages({
     cid, kind: 'kontroll', refId: ctrlId, token: samtalsToken,
-    enabled: comp?.fieldMessaging !== false
+    enabled: comp?.fieldMessaging !== false, demo: !!comp?.demo
   });
 
   sync.el = root.querySelector('#sync');
