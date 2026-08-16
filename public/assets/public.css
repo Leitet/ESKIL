@@ -1084,9 +1084,41 @@ a.pub-brand:hover { opacity: 0.85; }
 .om-sida h2 { color: var(--scout-blue); margin: 0 0 var(--sp-3); }
 .om-sida p { line-height: 1.65; color: var(--fg2); margin: 0 0 var(--sp-3); }
 .om-sida a { color: var(--scout-blue); }
-.om-tom {
-  border-left: 3px solid var(--border); padding-left: var(--sp-4);
-  color: var(--fg3) !important; font-style: italic;
+
+/* Biografin: porträtt vid sidan av texten, staplat på telefon. */
+.om-bio { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: var(--sp-6); align-items: start; }
+.om-portratt {
+  margin: 0; position: relative; aspect-ratio: 3 / 4;
+  border-radius: var(--r-lg); overflow: hidden;
+  background: var(--scout-blue-100);
+  display: grid; place-items: center;
+}
+.om-portratt img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* Reservläget: initialer i stället för en trasig bildikon när filen saknas. */
+.om-portratt-reserv {
+  position: absolute; font-family: var(--font-display); font-weight: 200;
+  font-size: 52px; color: var(--scout-blue-400); display: none;
+}
+.om-portratt-tom img { display: none; }
+.om-portratt-tom .om-portratt-reserv { display: block; }
+.om-namn { font-family: var(--font-display); font-weight: 400; font-size: 24px; color: var(--scout-blue); margin: 0; }
+.om-roll { color: var(--fg3) !important; font-size: 14px; margin: 2px 0 var(--sp-4) !important; }
+
+/* Frågan om AI. Sidans enda plats för en glimt i ögat — den ska synas, men
+   inte skrika. */
+.om-fraga {
+  background: var(--scout-blue-50); border: 1px solid var(--scout-blue-100);
+  border-radius: var(--r-lg); padding: var(--sp-6);
+}
+.om-fraga-q { font-weight: 700; color: var(--scout-blue) !important; margin: 0 0 var(--sp-2) !important; }
+.om-fraga-a {
+  font-family: var(--font-serif, Georgia, serif); font-style: italic;
+  font-size: 21px; line-height: 1.45; color: var(--fg1) !important; margin: 0 !important;
+}
+
+@media (max-width: 560px) {
+  .om-bio { grid-template-columns: 1fr; }
+  .om-portratt { max-width: 200px; }
 }
 
 @media (max-width: 640px) {
