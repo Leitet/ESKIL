@@ -680,7 +680,9 @@ service cloud.firestore {
           // skyddet. Lägg aldrig till paidRefs här.
              registrationEnabled(cid) && !compIsDemo(cid) && !compClosed(cid)
           && request.resource.data.diff(resource.data).affectedKeys()
-               .hasOnly(['kar','contact','patrols','answers','mode','totalAmount','payments','cancelled','forhinder','paymentClaims','andringar','updatedAt'])
+               .hasOnly(['kar','contact','patrols','answers','mode','totalAmount','payments','cancelled','forhinder','paymentClaims','andringar','kompletteringar','updatedAt'])
+          && request.resource.data.get('kompletteringar', []) is list
+          && request.resource.data.get('kompletteringar', []).size() <= 40
           // Ändringsförfrågningar efter stängd anmälan. Samma .get()-med-default
           // som paymentClaims: en direktläsning på en anmälan utan fältet är ett
           // evalueringsFEL som tyst nekar HELA redigeringen.
@@ -712,13 +714,18 @@ service cloud.firestore {
         // känna till ett regId ÄR att ha den: id:t är hemligheten, precis som
         // för kontrollerna. Kravet att anmälan finns stänger därför ute den som
         // bara gissar, och samtidigt spam mot en tävling utan anmälningar.
+        // Dokumentet bär INTE regId. Doc-id:t är öppet läsbart (token ÄR
+        // hemligheten), så ett regId här hade gjort kompletteringslänken
+        // utbytbar mot hela anmälningslänken: patrulledaren kunde läsa ut
+        // regId ur svaret och öppna /a/<cid>/<regId> med läs- OCH skrivrätt
+        // till kårens alla patruller, kontaktuppgifter och betalningar.
+        // Kopplingen ligger i stället på anmälan (`kompletteringar[]`), som
+        // bara den med anmälningslänken når.
         allow create: if isCompAdmin(cid) || (
              !compIsDemo(cid) && !compClosed(cid)
-          && request.resource.data.regId is string
-          && exists(/databases/$(database)/documents/competitions/$(cid)/registrations/$(request.resource.data.regId))
           && request.resource.data.patrol is string
           && request.resource.data.patrol.size() <= 120
-          && request.resource.data.keys().hasOnly(['regId','patrol','antal','allergier','kontakt','ovrigt'])
+          && request.resource.data.keys().hasOnly(['patrol','antal','allergier','kontakt','ovrigt'])
         );
         allow delete: if isCompAdmin(cid);
         // Patrulledaren fyller i sina egna uppgifter. regId och patrullnamnet
@@ -728,6 +735,8 @@ service cloud.firestore {
              !compIsDemo(cid) && !compClosed(cid)
           && request.resource.data.diff(resource.data).affectedKeys()
                .hasOnly(['antal', 'allergier', 'kontakt', 'ovrigt', 'ifylltAt'])
+          // patrol är kårledarens; kunde den skrivas om skulle raden döpas om
+          // till en patrull som inte finns i anmälan.
           && (!('antal' in request.resource.data)
               || (request.resource.data.antal is int
                   && request.resource.data.antal >= 0

@@ -476,6 +476,12 @@ export async function closeCompetition(cid) {
     });
     await batch.commit();
   }
+  // Kompletteringarna bär ALLERGIER — hälsouppgifter — och kontaktpersoner.
+  // De fyller sitt syfte fram till tävlingsdagen; efter avslut är de bara
+  // personuppgifter. Raderas helt, som fälttrådarna.
+  const komplSnap = await getDocs(collection(db, 'competitions', cid, 'kompletteringar'));
+  await deleteRefs(komplSnap.docs.map(d => d.ref));
+
   // Sekretariatets logg namnger enskilda patruller och bär funktionärernas
   // e-postadresser. Den fyller sitt syfte under och strax efter dagen; när
   // tävlingen avslutas är den bara personuppgifter kvar. Raderas helt, precis
@@ -679,12 +685,15 @@ function slumpToken() {
   return [...b].map(x => x.toString(36).padStart(2, '0')).join('').slice(0, 24);
 }
 
-export async function skapaKompletteringar(cid, regId, patrullnamn = []) {
+// Returnerar de skapade {token, patrol}. ANROPAREN skriver dem på anmälan —
+// kopplingen token→anmälan får inte ligga i kompletteringsdokumentet, som är
+// öppet läsbart för den som har token.
+export async function skapaKompletteringar(cid, patrullnamn = []) {
   const skapade = [];
   for (const namn of patrullnamn) {
     const token = slumpToken();
     await setDoc(doc(db, 'competitions', cid, 'kompletteringar', token), {
-      regId, patrol: namn, antal: 0, allergier: '', kontakt: '', ovrigt: ''
+      patrol: namn, antal: 0, allergier: '', kontakt: '', ovrigt: ''
     });
     skapade.push({ token, patrol: namn });
   }
@@ -709,10 +718,18 @@ export async function sparaKomplettering(cid, token, { antal, allergier, kontakt
   });
 }
 
-export async function listKompletteringar(cid, regId = null) {
-  const snap = await getDocs(collection(db, 'competitions', cid, 'kompletteringar'));
-  return snap.docs.map(d => ({ token: d.id, ...d.data() }))
-    .filter(k => !regId || k.regId === regId);
+// Hämtar kompletteringarna för EN anmälan via dess egen tokenlista. Ingen
+// list-operation: den är member-only, och kårledaren är anonym — ett getDocs
+// här kastade permission-denied och tog hela funktionen med sig, tyst.
+export async function kompletteringarForAnmalan(cid, reg) {
+  const rader = (reg?.kompletteringar || []);
+  const ut = [];
+  for (const r of rader) {
+    const k = await getKomplettering(cid, r.token).catch(() => null);
+    if (k) ut.push(k);
+    else ut.push({ token: r.token, patrol: r.patrol, saknas: true });
+  }
+  return ut;
 }
 
 // --- Genrep --------------------------------------------------------------------
@@ -1334,6 +1351,13 @@ export async function updateRegistration(cid, regId, data) {
 }
 
 export async function deleteRegistration(cid, regId) {
+  // Kompletteringarna hänger på anmälan. Lämnades de kvar skulle deras länkar
+  // fortsätta fungera och visa allergier för en anmälan som inte finns — och
+  // en tävling utan anmälningar skulle bära patrulluppgifter i databasen.
+  const reg = await getRegistration(cid, regId).catch(() => null);
+  for (const r of (reg?.kompletteringar || [])) {
+    await deleteDoc(doc(db, 'competitions', cid, 'kompletteringar', r.token)).catch(() => {});
+  }
   await deleteDoc(doc(db, 'competitions', cid, 'registrations', regId));
 }
 

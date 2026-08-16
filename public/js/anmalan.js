@@ -12,7 +12,7 @@
 
 import {
   getCompetition, getCompetitionBySlug, getRegistration, createRegistration, updateRegistration,
-  getKomplettering, sparaKomplettering, skapaKompletteringar, listKompletteringar
+  getKomplettering, sparaKomplettering, skapaKompletteringar, kompletteringarForAnmalan
 } from './store.js';
 import {
   allowedAvdelningar, escapeHtml, formatDate, toast, withBusy, confirmDialog, wireOverlayClose,
@@ -1155,14 +1155,16 @@ function wireManage() {
     } catch (e) { toast('Kunde inte spara: ' + (e?.message || e), 'error'); }
   })));
 
-  // Kompletteringslänkarna. Skapas EN gång per patrull; finns de redan listas
-  // de i stället för att dubbleras — annars får patrulledaren två länkar och
-  // ingen vet vilken som gäller.
+  // Kompletteringslänkarna. Tokenlistan ligger på ANMÄLAN, inte i
+  // kompletteringsdokumenten: de är öppet läsbara för den som har sin token,
+  // och ett regId där hade gjort kompletteringslänken utbytbar mot hela
+  // anmälningslänken. Att lista kollektionen går inte heller — list är
+  // member-only och kårledaren är anonym.
   (async () => {
     const host = document.getElementById('kompl-lista');
     if (!host) return;
     let befintliga = [];
-    try { befintliga = await listKompletteringar(cid, reg.id); } catch { return; }
+    try { befintliga = await kompletteringarForAnmalan(cid, reg); } catch { befintliga = []; }
     const rita = () => {
       host.innerHTML = befintliga.length ? befintliga.map(k => `
         <div class="anm-sum-row">
@@ -1179,10 +1181,15 @@ function wireManage() {
       const saknar = (reg.patrols || []).map(p => p.name).filter(n => n && !befintliga.some(k => k.patrol === n));
       if (!saknar.length) { toast('Alla patruller har redan en länk'); return; }
       try {
-        await skapaKompletteringar(cid, reg.id, saknar);
-        befintliga = await listKompletteringar(cid, reg.id);
+        const nya = await skapaKompletteringar(cid, saknar);
+        // Läs om anmälan färskt före append — samma skäl som för förhinder.
+        const fresh = await getRegistration(cid, reg.id).catch(() => null) || reg;
+        const lista = [...(fresh.kompletteringar || []), ...nya];
+        await updateRegistration(cid, reg.id, { kompletteringar: lista, updatedAt: isoNow() });
+        reg = await getRegistration(cid, reg.id);
+        befintliga = await kompletteringarForAnmalan(cid, reg);
         rita();
-        toast(`${saknar.length} länk${saknar.length === 1 ? '' : 'ar'} skapade`, 'success');
+        toast(`${nya.length} länk${nya.length === 1 ? '' : 'ar'} skapade`, 'success');
       } catch (err) { toast('Kunde inte skapa: ' + (err?.message || err), 'error'); }
     }));
   })();

@@ -347,17 +347,31 @@ Kompletteringen ger varje patrull en EGEN hemlighet: doc-id:t är en slumpad
 token och `/a/<cid>/k/<token>` öppnar exakt den patrullens rad — inte anmälan,
 inte de andra patrullerna, inte betalningarna.
 
-`list` är member-only; `read` hade täckt både get och list och gjort varje
-token — alltså varje patrulls allergier — uppräkningsbar anonymt.
+**Dokumentet bär ALDRIG `regId`.** Doc-id:t är öppet läsbart, så ett regId där
+hade gjort kompletteringslänken utbytbar mot hela anmälningslänken:
+patrulledaren kunde läsa ut det ur svaret och öppna `/a/<cid>/<regId>` med läs-
+OCH skrivrätt till kårens alla patruller, kontaktuppgifter och betalningar.
+Kopplingen ligger i stället som `kompletteringar[{token, patrol}]` PÅ anmälan,
+som bara den med anmälningslänken når. Mutationsverifierat.
+
+**Ingen list-operation i klientvägen.** `list` är member-only och kårledaren är
+ANONYM — ett `getDocs` här kastade permission-denied och tog hela funktionen
+med sig, tyst. Läs per token ur anmälans egen lista (`kompletteringarForAnmalan`).
+`read` hade dessutom täckt både get och list och gjort varje token — alltså
+varje patrulls allergier — uppräkningsbar.
 `regId` och `patrol` går inte att skriva om: kunde de det skulle
 kompletteringen peka på fel anmälan eller döpas om till en patrull som inte
 finns.
 
 **Kårledaren skapar länkarna, inte admin** — hen är den som delar ut dem, och
-hen är ANONYM. Rules kan inte se att någon "har" anmälningslänken, men att
-känna till ett `regId` ÄR att ha den (id:t är hemligheten, precis som för
-kontrollerna). Därför kräver create att anmälan `exists()`. Alla tre
-mutationsverifierade. `deleteCompetition` måste svepa kollektionen.
+hen är anonym. Create tillåter därför anonym skrivning, men bara av en TOM rad
+(patrullnamn plus tomma fält) och utan regId. `deleteCompetition`,
+`closeCompetition` och `deleteRegistration` måste alla svepa kollektionen.
+
+**Testa anonyma sidor UTLOGGAD.** Första versionen av den här funktionen
+"verifierades" i en flik där jag var inloggad som super-admin — då var
+`isCompMember` sant och den list-operation som nekar en riktig kårledare gick
+igenom. Funktionen var död i produktion och testet visade grönt.
 
 ## Backup och radering hänger ihop
 

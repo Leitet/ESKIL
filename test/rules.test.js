@@ -808,7 +808,7 @@ describe('Sekretariatets logg', () => {
 describe('Komplettering per patrull', () => {
   const TOK = uniq('tok');
   const path = `competitions/${CID}/kompletteringar/${TOK}`;
-  const bas = { regId: 'reg-1', patrol: 'Rävarna', antal: 0, allergier: '', kontakt: '', ovrigt: '' };
+  const bas = { patrol: 'Rävarna', antal: 0, allergier: '', kontakt: '', ovrigt: '' };
 
   before(async () => { await seed(path, bas); });
 
@@ -817,11 +817,9 @@ describe('Komplettering per patrull', () => {
       null, { merge: true }), 'anonym komplettering');
   });
 
-  test('men kan inte peka om den till en annan anmälan', async () => {
-    // regId och patrullnamnet är kårledarens och admins. Kunde de skrivas om
-    // skulle kompletteringen hamna på fel anmälan, eller döpas om till en
-    // patrull som inte finns.
-    deny(await write(path, { regId: 'reg-2' }, null, { merge: true }), 'byta regId');
+  test('patrullnamnet går inte att skriva om', async () => {
+    // Namnet är kårledarens. Kunde det skrivas om skulle raden döpas om till
+    // en patrull som inte finns i anmälan.
     deny(await write(path, { patrol: 'Någon annan' }, null, { merge: true }), 'byta patrull');
   });
 
@@ -832,18 +830,22 @@ describe('Komplettering per patrull', () => {
     deny(await write(path, { hittepa: 'x' }, null, { merge: true }), 'okänt fält');
   });
 
-  test('kårledaren skapar länkarna — men bara mot en anmälan som finns', async () => {
-    // Kårledaren är anonym. Att känna till ett regId ÄR att ha
-    // anmälningslänken, precis som kontroll-id:t är kontrollens hemlighet.
-    const RID2 = uniq('reg');
-    await seed(`competitions/${CID}/registrations/${RID2}`, { kar: 'Lindsdals Scoutkår' });
+  test('kompletteringen bär ALDRIG regId — annars är token utbytbar mot anmälningslänken', async () => {
+    // Doc-id:t är öppet läsbart (token ÄR hemligheten). Låg regId här kunde
+    // patrulledaren läsa ut det ur svaret och öppna /a/<cid>/<regId> med läs-
+    // OCH skrivrätt till kårens alla patruller, kontakter och betalningar.
+    deny(await write(`competitions/${CID}/kompletteringar/${uniq('t')}`,
+      { ...bas, regId: 'reg-1' }, null), 'regId i kompletteringen');
+    deny(await write(`competitions/${CID}/kompletteringar/${TOK}`,
+      { regId: 'reg-1' }, null, { merge: true }), 'smyga in regId efteråt');
+  });
+
+  test('kårledaren skapar länkarna anonymt — men bara tomma rader', async () => {
     allow(await write(`competitions/${CID}/kompletteringar/${uniq('t')}`,
-      { ...bas, regId: RID2 }, null), 'anonym med giltigt regId');
+      { patrol: 'Rävarna', antal: 0, allergier: '', kontakt: '', ovrigt: '' }, null),
+      'anonym skapar tom rad');
     deny(await write(`competitions/${CID}/kompletteringar/${uniq('t')}`,
-      { ...bas, regId: 'finns-inte' }, null), 'gissat regId');
-    deny(await write(`competitions/${CID}/kompletteringar/${uniq('t')}`,
-      { ...bas, regId: RID2, hittepa: 'x' }, null), 'okänt fält');
-    // radering är fortfarande admins
+      { patrol: 'Rävarna', hittepa: 'x' }, null), 'okänt fält');
     assert.equal((await remove(`competitions/${CID}/kompletteringar/${TOK}`, OTHER)).ok, false, 'utomstående raderar');
   });
 
