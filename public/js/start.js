@@ -8,7 +8,7 @@
 import { db, doc, onSnapshot, collection } from './firebase.js';
 import {
   getCompetition, getCompetitionBySlug, getPatrol, listControls, listPatrols, getTrack,
-  watchSelfPassages, confirmSelfPassage
+  watchSelfPassages, confirmSelfPassage, sendThreadMessage
 } from './store.js';
 import { courseLegs, drawCourseOnMap, addCourseChip, legLatLngs, courseEtaCalibrated, patrolFinishEtaMs, fmtDist, fmtMin, competitionArea } from './course.js';
 import {
@@ -554,6 +554,17 @@ function render() {
       <div class="start-ctrl-list">
         ${renderList()}
       </div>
+
+      ${(phase === 'tavling' && !patrol.__test && comp?.fieldMessaging !== false) ? `
+        <div class="start-hjalp">
+          <div class="start-hjalp-text">
+            <strong>Behöver ni hjälp?</strong>
+            <span>Skickar er position till tävlingsledningen, som svarar i meddelandena.</span>
+          </div>
+          <button type="button" class="start-hjalp-btn" id="hjalp-btn">
+            ${icon('map-pin', { size: 18 })} Skicka vår position
+          </button>
+        </div>` : ''}
     `}
 
     <p class="r-sub" style="text-align:center;opacity:.55;margin-top:36px;font-size:13px;">
@@ -577,6 +588,48 @@ function render() {
   // Wire filter
   root.querySelectorAll('.start-filter button').forEach(b => {
     b.addEventListener('click', () => { filter = b.dataset.f; render(); });
+  });
+
+  // Hjälp-knappen: hämta position, skicka som fältmeddelande i patrullens
+  // befintliga tråd, öppna meddelandebladet så patrullen ser sitt rop och
+  // ledningens svar på samma ställe. Bekräftelsegrindad — en 12-åring ska
+  // inte kunna råk-larma med ett enda tapp, men grinden är ETT native-confirm,
+  // inte en labyrint: den som verkligen behöver hjälp är stressad.
+  const hjalpBtn = root.querySelector('#hjalp-btn');
+  if (hjalpBtn) bindTap(hjalpBtn, async () => {
+    if (!confirm('Skicka er position till tävlingsledningen och be om hjälp?')) return;
+    hjalpBtn.disabled = true;
+    hjalpBtn.textContent = 'Hämtar position…';
+    // Positionen är kärnan i ropet, men ett rop UTAN position är fortfarande
+    // ett rop — GPS-fel (skog, nekad behörighet) får aldrig stoppa det.
+    const pos = await new Promise(res => {
+      if (!navigator.geolocation) return res(null);
+      navigator.geolocation.getCurrentPosition(
+        p => res(p),
+        () => res(null),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+      );
+    });
+    hjalpBtn.textContent = 'Skickar…';
+    const rader = ['🆘 VI BEHÖVER HJÄLP!'];
+    if (pos) {
+      const la = pos.coords.latitude.toFixed(5), ln = pos.coords.longitude.toFixed(5);
+      rader.push(`Vår position: ${la}, ${ln} (±${Math.round(pos.coords.accuracy)} m)`);
+      rader.push(`https://www.google.com/maps?q=${la},${ln}`);
+    } else {
+      rader.push('(positionen kunde inte hämtas — ring oss eller fråga var vi är)');
+    }
+    try {
+      await sendThreadMessage(parsePath().cid, 'patrull', patrol.id, { from: 'falt', text: rader.join('\n') });
+      // Öppna meddelandebladet — att se sitt eget rop i tidslinjen ÄR
+      // kvittensen, och det är där svaret kommer.
+      document.getElementById('eskil-msg-btn')?.click();
+    } catch (e) {
+      alert('Kunde inte skicka: ' + (e?.message || e) + '\n\nRing tävlingsledningen — numret finns under (i).');
+    } finally {
+      hjalpBtn.disabled = false;
+      hjalpBtn.innerHTML = `${icon('map-pin', { size: 18 })} Skicka vår position`;
+    }
   });
 
   // Countdown to the patrol's start time on the chip

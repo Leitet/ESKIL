@@ -718,3 +718,28 @@ html[data-mode="night"] .start-summary-head { color: var(--r-danger); }
   margin: 8px 0 0;
   font-size: 13px; color: var(--r-fg-muted); text-align: center;
 }
+
+/* "Vi behöver hjälp" — synlig men inte skrikig: den ska hittas när den
+   behövs, inte tryckas av misstag. Bekräftelsen ligger i knappflödet. */
+.start-hjalp {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 14px; flex-wrap: wrap;
+  margin-top: 22px;
+  padding: 14px 16px;
+  background: var(--r-card);
+  border: 1.5px dashed var(--r-border);
+  border-radius: 14px;
+}
+.start-hjalp-text { display: flex; flex-direction: column; gap: 2px; min-width: 200px; flex: 1; }
+.start-hjalp-text span { color: var(--r-fg-muted); font-size: 13.5px; }
+.start-hjalp-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 12px 18px;
+  border: 1.5px solid var(--r-danger);
+  border-radius: 999px;
+  background: transparent; color: var(--r-danger);
+  font: 700 15px/1 inherit; font-family: inherit;
+  cursor: pointer; flex-shrink: 0;
+}
+.start-hjalp-btn:active { transform: scale(0.97); }
+.start-hjalp-btn:disabled { opacity: .6; }
