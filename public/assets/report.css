@@ -993,3 +993,33 @@ html:has(.field-bar) {
 }
 .note-chip:active { transform: scale(0.97); }
 .note-chip.active { border-color: var(--r-primary); background: var(--r-primary); color: var(--r-primary-fg); }
+
+/* --- Navigering på "nästa kontroll"-kortet -------------------------------- */
+.sn-nav {
+  display: flex; align-items: center; gap: 10px; margin-top: 8px;
+  font-size: 15px; color: var(--r-fg-muted); font-variant-numeric: tabular-nums;
+}
+.sn-nav .sn-m { font-size: 20px; font-weight: 800; color: var(--r-fg); }
+.sn-nav.is-nara { color: var(--r-primary); }
+.sn-nav.is-nara .sn-m { color: var(--r-primary); }
+/* Pilen ritas bara när telefonens kompass svarar. Utan riktning vore en pil
+   en gissning, och en patrull som följer en gissande pil går fel i skogen. */
+.sn-arrow { width: 26px; height: 26px; flex: none; transition: transform .2s linear; }
+.sn-kompass { font-weight: 700; color: var(--r-fg); }
+
+/* --- Firande när en kontroll prickas av ----------------------------------- */
+/* Ligger över allt annat men försvinner av sig själv — patrullen ska inte
+   behöva stänga något mitt i skogen. Nattläget ärver report.css-variablerna,
+   så det här bländar inte i mörkret. */
+.fira {
+  position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 24px);
+  z-index: 80; max-width: min(92vw, 420px);
+  background: var(--r-primary); color: var(--r-primary-fg);
+  border-radius: 16px; padding: 14px 20px; box-shadow: var(--r-shadow);
+  text-align: center; opacity: 0; transition: opacity .3s, transform .3s;
+  pointer-events: none;
+}
+.fira.in { opacity: 1; transform: translate(-50%, 0); }
+.fira-rubrik { font-size: 18px; font-weight: 800; }
+.fira-under { font-size: 14px; opacity: .9; margin-top: 2px; }
+@media (prefers-reduced-motion: reduce) { .fira { transition: opacity .3s; transform: translate(-50%, 0); } }

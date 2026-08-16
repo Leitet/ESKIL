@@ -10,7 +10,7 @@ import {
   getCompetition, getCompetitionBySlug, getPatrol, listControls, listPatrols, getTrack,
   watchSelfPassages, confirmSelfPassage, sendThreadMessage
 } from './store.js';
-import { courseLegs, drawCourseOnMap, addCourseChip, legLatLngs, courseEtaCalibrated, patrolFinishEtaMs, fmtDist, fmtMin, competitionArea } from './course.js';
+import { courseLegs, drawCourseOnMap, addCourseChip, legLatLngs, courseEtaCalibrated, patrolFinishEtaMs, fmtDist, fmtMin, competitionArea, bearingDeg, kompassnamn } from './course.js';
 import {
   escapeHtml, formatDate, publicManagement, patrolStartTime, patrolStartDateTime,
   startFinishPoints, startTimeSettings,
@@ -93,6 +93,13 @@ let chatPanel = null;      // samtalspanelen mot tävlingsledningen
 async function main() {
   const parsed = parsePath();
   if (!parsed) return renderError('Ogiltig länk.');
+  lyssnaKompass();
+  // GPS:en är bara igång medan kortet syns. En patrull som stoppar telefonen
+  // i fickan ska inte betala batteri för en watchPosition ingen läser.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) stoppaNav(); else startaNav();
+  });
+  window.addEventListener('pagehide', () => stoppaNav());
   cid = parsed.cid;
   const { patrolId } = parsed;
 
@@ -162,6 +169,7 @@ async function main() {
         allScoresByCtrl[c.id] = rows;
         const own = rows.find(r => r.patrolId === patrolId);
         if (own) scoresForPatrol[c.id] = own; else delete scoresForPatrol[c.id];
+        firaNyaKontroller(c.id);
         render();
       });
     }
@@ -275,7 +283,153 @@ function renderNextControl(t) {
     <span class="sn-label">Nästa kontroll</span>
     <span class="sn-name"><span class="sn-no">${next.nummer ?? '?'}</span>${escapeHtml(displayName(next))}</span>
     <span class="sn-go">${positionsVisible() ? 'Visa på kartan →' : 'Mer info →'}</span>
+    <span class="sn-nav" id="sn-nav" hidden></span>
   </button>`;
+}
+
+// --- Fira varje klarad kontroll ------------------------------------------------
+// Allt beröm låg tidigare i summeringen, som patrullen ser först när de är
+// hemma. Den här är för stunden ute på banan: en kort glad rad plus en vibb
+// när en avprickning dyker upp. ALLTID positiv — kortet nämner aldrig hur
+// dåligt det gick, bara att kontrollen är avklarad.
+const firade = new Set();       // kontroll-id vi redan firat
+const firaSeedade = new Set();  // kontroll-id vars FÖRSTA snapshot passerat
+const FIRA_FARSK_MS = 15 * 60000;
+
+// Två grindar, för det finns två olika sätt att fira fel — mätt i emulatorn.
+//
+// 1. SEEDNING PER KONTROLL. Varje kontroll har en egen onSnapshot-lyssnare, så
+//    "första serversnapshoten" finns inte som en gemensam tidpunkt. En global
+//    flagga flippades av den lyssnare som råkade svara först och svalde
+//    firandet för den kontroll som faktiskt bar den nya poängen.
+// 2. FÖRSTA SNAPSHOTEN, INTE FÖRSTA SERVER-SNAPSHOTEN. Att vänta på en
+//    okachad snapshot fungerar inte här: servern skickar bara en när något
+//    ändras, så en kontroll som ligger stilla hela dagen förblir "oseedad" —
+//    och när avprickningen väl kom var det just den snapshoten, som då
+//    konsumerades som seed. Det var därför inget firande syntes alls.
+// 3. FÄRSKHETSGRIND. Priset för (2) är att en TOM lokal cache gör serverns
+//    första svar till "nya" avprickningar — en patrull som laddar om mitt på
+//    banan hade fått fem firanden i rad. Poängen måste därför också vara
+//    rapporterad nyss. clientReportedAt är tryckögonblicket, inte synktiden.
+function firaNyaKontroller(ctrlId) {
+  const s = scoresForPatrol[ctrlId];
+  const seedad = firaSeedade.has(ctrlId);
+  firaSeedade.add(ctrlId);
+  if (!seedad) { if (s) firade.add(ctrlId); return; }   // tyst seed
+  if (!s || firade.has(ctrlId)) return;
+  firade.add(ctrlId);
+
+  const t = s.clientReportedAt?.toDate ? s.clientReportedAt.toDate() : (s.clientReportedAt ? new Date(s.clientReportedAt) : null);
+  if (t && Date.now() - t.getTime() > FIRA_FARSK_MS) return;
+
+  const ctrl = controls.find(c => c.id === ctrlId);
+  const p = (Number(s.poang) || 0) + (Number(s.extraPoang) || 0);
+  const namn = ctrl ? (isAnonymous() ? `Kontroll ${ctrl.nummer ?? '?'}` : displayName(ctrl)) : 'Kontrollen';
+  const kvar = controls.length - Object.keys(scoresForPatrol).length;
+  const rad = kvar > 0
+    ? `${kvar} kontroll${kvar === 1 ? '' : 'er'} kvar`
+    : 'Alla kontroller klara — spring i mål!';
+  visaFirande(`${namn} klar${p > 0 ? ` — ${p} poäng` : ''}`, rad);
+  try { navigator.vibrate?.([40, 50, 90]); } catch { /* stöds inte */ }
+}
+
+function visaFirande(rubrik, under) {
+  document.getElementById('fira')?.remove();
+  const el = document.createElement('div');
+  el.id = 'fira';
+  el.className = 'fira';
+  el.setAttribute('role', 'status');
+  el.innerHTML = `<div class="fira-rubrik">${escapeHtml(rubrik)}</div><div class="fira-under">${escapeHtml(under)}</div>`;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('in'));
+  setTimeout(() => { el.classList.remove('in'); setTimeout(() => el.remove(), 400); }, 4200);
+}
+
+// --- Live-navigering till nästa kontroll --------------------------------------
+// Patrullen vet ofta inte åt vilket håll de ska. Kortet visar därför avstånd
+// live, och en pil NÄR OCH ENDAST NÄR telefonens kompass svarar — en pil som
+// inte vet var telefonen pekar skulle vara en gissning, och en patrull som
+// följer en gissande pil går fel i skogen. Utan kompass står det väderstreck
+// i stället ("mot nordost"), vilket går att använda med en riktig kompass.
+let navWatchId = null;
+let navMal = null;          // { lat, lng, id } — kontrollen vi navigerar mot
+let navHeading = null;      // telefonens riktning i grader, null = okänd
+let navNaraVibbad = null;   // kontroll-id vi redan vibbat för
+const NARA_M = 40;
+
+function stoppaNav() {
+  if (navWatchId != null) { navigator.geolocation.clearWatch(navWatchId); navWatchId = null; }
+  navMal = null;
+}
+
+function ritaNavRad(userLat, userLng, noggrannhet) {
+  const rad = document.getElementById('sn-nav');
+  if (!rad || !navMal) return;
+  const m = haversineMeters([userLat, userLng], [navMal.lat, navMal.lng]);
+  const bearing = bearingDeg({ lat: userLat, lng: userLng }, navMal);
+  const nara = m <= NARA_M;
+
+  // Vibbar EN gång per kontroll när patrullen kommer nära. Upprepad vibration
+  // medan de letar runt kontrollen vore bara irriterande.
+  if (nara && navNaraVibbad !== navMal.id) {
+    navNaraVibbad = navMal.id;
+    try { navigator.vibrate?.([80, 60, 80]); } catch { /* stöds inte */ }
+  } else if (!nara && navNaraVibbad === navMal.id && m > NARA_M * 2) {
+    navNaraVibbad = null;   // gick därifrån igen — tillåt en ny vibb
+  }
+
+  rad.hidden = false;
+  rad.classList.toggle('is-nara', nara);
+  const avstand = `<span class="sn-m">${formatDistance(m)}</span>`;
+  if (navHeading != null) {
+    // Pilen pekar dit patrullen ska GÅ, relativt hur telefonen hålls.
+    const vinkel = ((bearing - navHeading) % 360 + 360) % 360;
+    rad.innerHTML = `<svg class="sn-arrow" viewBox="0 0 24 24" aria-hidden="true"
+        style="transform:rotate(${vinkel.toFixed(0)}deg)">
+        <path d="M12 2 L19 21 L12 16.5 L5 21 Z" fill="currentColor"/></svg>
+      ${avstand}${nara ? '<span>— ni är framme</span>' : ''}`;
+    rad.setAttribute('aria-label', `${formatDistance(m)} till nästa kontroll, mot ${kompassnamn(bearing)}`);
+  } else {
+    rad.innerHTML = `${avstand}<span class="sn-kompass">mot ${kompassnamn(bearing)}</span>`
+      + (noggrannhet ? `<span>±${Math.round(noggrannhet)} m</span>` : '');
+    rad.setAttribute('aria-label', `${formatDistance(m)} till nästa kontroll, mot ${kompassnamn(bearing)}`);
+  }
+}
+
+function startaNav() {
+  // Bara under själva tävlingen, och bara när kontrollernas positioner är
+  // synliga — före start visar kortet medvetet ingen bana.
+  if (cardPhase() !== 'tavling' || !positionsVisible() || !navigator.geolocation) { stoppaNav(); return; }
+  const ordered = [...controls].sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0));
+  const next = ordered.find(c => !isDone(c.id) && Number.isFinite(c.lat) && Number.isFinite(c.lng));
+  if (!next) { stoppaNav(); return; }
+
+  const bytteMal = navMal?.id !== next.id;
+  navMal = { id: next.id, lat: next.lat, lng: next.lng };
+  if (navWatchId != null && !bytteMal) return;      // redan igång mot rätt kontroll
+
+  if (navWatchId == null) {
+    navWatchId = navigator.geolocation.watchPosition(
+      pos => ritaNavRad(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy),
+      () => { const r = document.getElementById('sn-nav'); if (r) r.hidden = true; },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 }
+    );
+  }
+}
+
+// Kompassen. iOS kräver ett användartryck för att få fråga om lov, så vi
+// lyssnar bara passivt där den ges gratis (Android) — och faller annars
+// tillbaka på väderstreck, som är fullt användbart för en scout med kompass.
+function lyssnaKompass() {
+  if (typeof DeviceOrientationEvent === 'undefined') return;
+  if (typeof DeviceOrientationEvent.requestPermission === 'function') return;  // iOS: kräver gest
+  window.addEventListener('deviceorientationabsolute', e => {
+    if (typeof e.alpha === 'number') navHeading = 360 - e.alpha;
+  });
+  window.addEventListener('deviceorientation', e => {
+    if (typeof e.webkitCompassHeading === 'number') navHeading = e.webkitCompassHeading;
+    else if (e.absolute && typeof e.alpha === 'number') navHeading = 360 - e.alpha;
+  });
 }
 
 // ETA-raden under KPI:erna: hur mycket bana som är kvar och när patrullen
@@ -737,6 +891,10 @@ function render() {
     requestAnimationFrame(() => { try { overviewMap?.invalidateSize(); } catch {} });
   }
   if (withPos.length) renderOverviewMap(withPos);
+
+  // Navigeringen kopplas efter varje render: kortet byggs om vid varje
+  // poäng-snapshot, och nästa kontroll kan ha bytts ut just då.
+  startaNav();
 }
 
 function renderList() {

@@ -21,6 +21,29 @@ export function haversine(a, b) {
   return 2 * R * Math.asin(Math.sqrt(s));
 }
 
+// Initial bäring i grader från norr (0–360), medurs. Används av startkortets
+// "nästa kontroll"-kort. Storcirkelbäring, inte enkel atan2 på lat/lng-skillnad
+// — på svenska breddgrader är en longitudgrad ungefär halva en latitudgrads
+// längd, och den naiva varianten pekar märkbart fel.
+export function bearingDeg(from, to) {
+  const rad = Math.PI / 180;
+  const f1 = from.lat * rad, f2 = to.lat * rad;
+  const dl = (to.lng - from.lng) * rad;
+  const y = Math.sin(dl) * Math.cos(f2);
+  const x = Math.cos(f1) * Math.sin(f2) - Math.sin(f1) * Math.cos(f2) * Math.cos(dl);
+  return (Math.atan2(y, x) / rad + 360) % 360;
+}
+
+// Väderstreck på svenska. Detta är vad patrullen får när telefonen INTE kan
+// säga åt vilket håll den själv pekar: en pil som inte vet var norr är skulle
+// ljuga, men "mot nordost" går att använda med en riktig kompass — och scouter
+// har kompass.
+const STRECK = ['norr', 'nordost', 'öster', 'sydost', 'söder', 'sydväst', 'väster', 'nordväst'];
+export function kompassnamn(deg) {
+  const i = Math.round((((deg % 360) + 360) % 360) / 45) % 8;
+  return STRECK[i];
+}
+
 // Sequence nodes (start, placed controls in number order, mål) and the legs
 // between them, with any stored waypoints merged in. `hasDrawn` is true when
 // at least one leg has drawn waypoints — the signal that a track exists and

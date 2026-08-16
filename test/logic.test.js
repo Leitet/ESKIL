@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import {
   courseEta, courseEtaCalibrated, patrolFinishEtaMs, controlEtaWindow, courseLegs,
   waypointInsertIndex, nearestSegmentIndex, pointToSegmentDistance,
-  DEFAULT_DWELL_MIN, ETA_MIN_SAMPLES, fmtDist, fmtMin
+  DEFAULT_DWELL_MIN, ETA_MIN_SAMPLES, fmtDist, fmtMin, bearingDeg, kompassnamn
 } from '../public/js/course.js';
 import {
   patrolStartDateTime, normSlug, isValidSlug, suggestSlug,
@@ -1156,5 +1156,35 @@ describe('snabbnoteringar', () => {
     for (const c of NOTE_CHIPS) assert.ok(harNotering(t, c), c + ' saknas');
     for (const c of NOTE_CHIPS) t = taBortNotering(t, c);
     assert.equal(t, 'Egen kommentar');
+  });
+});
+
+// --- Navigering till nästa kontroll -------------------------------------------
+describe('bearingDeg + kompassnamn', () => {
+  const P = { lat: 58.4000, lng: 15.6000 };   // ungefär Linköping
+
+  test('rakt norrut är 0°, rakt österut 90°', () => {
+    assert.ok(Math.abs(bearingDeg(P, { lat: 58.5000, lng: 15.6000 }) - 0) < 0.5);
+    assert.ok(Math.abs(bearingDeg(P, { lat: 58.4000, lng: 15.8000 }) - 90) < 0.5);
+    assert.ok(Math.abs(bearingDeg(P, { lat: 58.3000, lng: 15.6000 }) - 180) < 0.5);
+    assert.ok(Math.abs(bearingDeg(P, { lat: 58.4000, lng: 15.4000 }) - 270) < 0.5);
+  });
+
+  test('lika stora steg i lat och lng ger INTE 45° på svensk breddgrad', () => {
+    // Detta är hela skälet till storcirkelformeln. Vid 58° N är en longitud-
+    // grad ~53 % av en latitudgrads längd, så nordost-ish punkten ligger
+    // närmare norr än 45°. En naiv atan2(dLng, dLat) hade svarat exakt 45.
+    const b = bearingDeg(P, { lat: 58.5000, lng: 15.7000 });
+    assert.ok(b > 20 && b < 35, 'väntade ~28°, fick ' + b.toFixed(1));
+  });
+
+  test('väderstrecken delar jämnt och wrappar runt norr', () => {
+    assert.equal(kompassnamn(0), 'norr');
+    assert.equal(kompassnamn(45), 'nordost');
+    assert.equal(kompassnamn(90), 'öster');
+    assert.equal(kompassnamn(225), 'sydväst');
+    assert.equal(kompassnamn(359), 'norr', '359° ska runda till norr, inte nordväst');
+    assert.equal(kompassnamn(-45), 'nordväst', 'negativa grader ska normaliseras');
+    assert.equal(kompassnamn(360), 'norr');
   });
 });
