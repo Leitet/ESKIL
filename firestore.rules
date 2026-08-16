@@ -415,7 +415,22 @@ service cloud.firestore {
             && anonScoreShape(ctrlData(cid, ctrlId), scoreId, request.resource.data)
             && request.resource.data.get('history', []) == resource.data.get('history', [])
           );
-          allow delete: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
+          // Rapportsidans "Ta bort rapport" är anonym — kontrollanten som
+          // råkade trycka på fel patrull har ingen inloggning. Utan den här
+          // grenen NEKADES borttagningen: online syntes ett kryptiskt
+          // rättighetsfel, och offline tog Firestore bort dokumentet lokalt,
+          // sa "Borttagen" och rullade tillbaka det vid synk — poängen kom
+          // tillbaka utan att någon fick veta det.
+          // Samma grindar som create: kontrollen måste vara öppen (samma
+          // hemlighet som styr rapporteringen), aldrig demo. Ett dokument med
+          // admin-historik lämnas i fred — rättelsespåret får inte gå att
+          // radera bort anonymt.
+          allow delete: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid)) || (
+               !compIsDemo(cid)
+            && ctrlData(cid, ctrlId).get('open', false) == true
+            && scoreId == resource.data.patrolId
+            && resource.data.get('history', []).size() == 0
+          );
         }
 
         // Internal/personal control meta (telefon, notering, ansvariga) — NOT

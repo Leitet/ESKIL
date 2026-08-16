@@ -17,7 +17,7 @@
 //
 // Bump VERSION whenever cached-asset behavior must be reset.
 
-const VERSION = 'eskil-sw-v5';
+const VERSION = 'eskil-sw-v6';
 const RUNTIME = `${VERSION}-runtime`;
 
 const FIELD_SHELLS = { '/k/': '/k.html', '/s/': '/s.html', '/m/': '/m.html' };
@@ -25,7 +25,11 @@ const FIELD_SHELLS = { '/k/': '/k.html', '/s/': '/s.html', '/m/': '/m.html' };
 const PRECACHE_URLS = [
   '/k.html', '/s.html', '/m.html',
   '/assets/tokens.css', '/assets/report.css', '/assets/start.css', '/assets/station.css',
-  '/js/mode-boot.js', '/js/sw-register.js', '/js/field-watchdog.js'
+  '/js/mode-boot.js', '/js/sw-register.js', '/js/field-watchdog.js',
+  // Klientkonfigurationen. 339 byte, och utan den startar ingen fältsida —
+  // därför förcachad tillsammans med skalet i stället för att hämtas först
+  // när sidan redan står och väntar.
+  '/__/firebase/init.json'
 ];
 
 // Cross-origin CDN scripts are deliberately NOT cached: caching them opaquely
@@ -35,10 +39,16 @@ const PRECACHE_URLS = [
 // the cached same-origin shell + modules + Firestore's own IndexedDB cache;
 // map tiles and PDF generation need the network regardless.
 
+// En URL i taget, inte addAll: addAll är ATOMISK och avvisar hela
+// förcachningen om en enda adress svarar fel. Då står fältsidorna helt utan
+// offline-skal — sämre än att sakna en fil. Särskilt känsligt nu när
+// /__/firebase/init.json ingår: den serveras av Firebase Hosting och finns
+// inte alls när sidan körs från något annat (en lokal statisk server, en
+// förhandsvisning), och skulle då tagit skalet med sig i fallet.
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(RUNTIME)
-      .then(cache => cache.addAll(PRECACHE_URLS))
+      .then(cache => Promise.allSettled(PRECACHE_URLS.map(u => cache.add(u))))
       .then(() => self.skipWaiting())
   );
 });
@@ -117,7 +127,11 @@ self.addEventListener('fetch', (event) => {
   // auth/functions, map tiles) is left entirely to the network.
   const sameOrigin = url.origin === self.location.origin;
   if (!sameOrigin) return;
-  if (url.pathname.startsWith('/__/')) return; // firebase init/auth helpers
+  // /__/ är Firebases egna hjälpvägar och ska normalt gå förbi cachen — MEN
+  // init.json är klientkonfigurationen, och utan den startar ingen fältsida.
+  // Var den undantagen kunde /k inte öppnas om utan täckning: allt annat kom
+  // ur cachen, och sidan stannade på konfigurationshämtningen.
+  if (url.pathname.startsWith('/__/') && url.pathname !== '/__/firebase/init.json') return;
 
   const isStatic = url.pathname.startsWith('/js/')
     || url.pathname.startsWith('/assets/')

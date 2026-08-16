@@ -98,6 +98,12 @@ Email extension). Production domain: https://eskilscout.se.
   ansikten — i Firestore följer den tävlingens gallring. `public/js/photo.js`
   skalar ner till ≤ 400 000 tecken och reglerna vaktar samma tak; håll de två
   i synk. `closeCompetition` och `deleteCompetition` raderar trådarna HELT.
+  **Meddelandet och trådhuvudet skrivs i SAMMA `writeBatch`.** Förut väntade
+  koden ut `addDoc` innan huvudet skrevs — och offline resolvar den väntan
+  aldrig. Stängde kontrollanten fliken innan täckningen kom tillbaka synkades
+  meddelandet, men huvudet hade aldrig ens köats: frågan från skogen landade i
+  en tråd ledningens inkorg inte kunde se. Av samma skäl har fältets
+  skicka-knapp ett `withTimeout` — utan det stod den grå utan kvittens.
   UI: `public/js/chat.js` (`mountMessages`) äger EN ikon och EN modal på /k
   och /s, och flätar in `broadcast.js`-driftmeddelandena i SAMMA tidslinje som
   samtalet — för den som står i skogen är det ett flöde av saker ledningen
@@ -448,15 +454,28 @@ BÅDA ställena.
   users + ansvariga + ekonomi + each control's `telefon` (GDPR cleanup) —
   admins remain.
 - `.../patrols/{pid}` — publicly readable (for the reporter page). May carry
-  `utgatt: {at, note}` (DNF, set/undone from Läget): excluded from queues,
-  alarms and rest-lists everywhere; the note (can be sensitive) is wiped by
-  closeCompetition, the flag itself remains as history.
+  `utgatt: {at}` (DNF, set/undone from Läget): excluded from queues, alarms and
+  rest-lists everywhere; the flag remains as history.
+  **Anteckningen ligger i `patrols/{pid}/private/meta.utgattNote`, ALDRIG på
+  patrulldokumentet.** Dialogen lovar ordagrant att den "syns bara för
+  ledningen", och patrols är världsläsbar — den som i god tro skrev "Elsa
+  svimmade, hämtad med ambulans" publicerade en hälsouppgift om ett barn för
+  hela internet. Läget läser den via `attachPatrolMeta` (member-only) och
+  visar den i badgens `title`; `closeCompetition` nollar den i metan OCH i den
+  gamla publika grenen (tävlingar skrivna före flytten).
 - `.../controls/{ctrlId}` — publicly readable; writable by competition admins.
 - `.../controls/{ctrlId}/scores/{patrolId}` — one doc per patrol×control; the
   doc id IS the patrolId so re-reporting overwrites. May carry
   `utslagGissning` (the patrol's tiebreaker guess) when the control has
   `utslag: true` + `utslagFraga`/`utslagSvar`; ranking uses it only once
   `utslagSvar` is set. Beware `Number(null) === 0` — use utils.isNumSet.
+  **Anonym borttagning är TILLÅTEN** medan kontrollen är öppen (samma
+  hemlighet som styr rapporteringen), utom på demo och utom när dokumentet bär
+  admin-`history` — rättelsespåret får inte sopas bort anonymt. Utan den
+  grenen var "Ta bort rapport" på /k död: online ett kryptiskt rättighetsfel,
+  och OFFLINE tog Firestore bort dokumentet lokalt, sa "Borttagen" och rullade
+  tillbaka det vid synk — poängen kom tillbaka utan att någon fick veta det.
+  Båda vakterna är mutationsverifierade.
   Score docs carry BOTH `reportedAt` (serverTimestamp = sync moment, audit)
   and `clientReportedAt` (client time = when the button was pressed; the
   offline queue passes its queuedAt). Anything reasoning about WHEN a patrol

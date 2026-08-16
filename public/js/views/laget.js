@@ -10,7 +10,7 @@
 
 import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import {
-  getCompetition, listPatrols, listStations, createStation, watchPassages, watchSelfPassages, clearSelfPassage,
+  getCompetition, listPatrols, attachPatrolMeta, listStations, createStation, watchPassages, watchSelfPassages, clearSelfPassage,
   watchControls, watchScoresForControl, getTrack, getControlMeta, watchControlBeacon,
   updateCompetition, updateControl, setPatrolUtgatt, createBroadcastMessage, loggHandelse, watchLogg
 } from '../store.js';
@@ -59,6 +59,7 @@ export async function renderLaget(app, user, cid) {
   const isAdmin = isCompAdminUser(comp, user);
 
   let patrols = [];
+  const utgattNoteById = {};   // pid -> not, ur member-only private/meta
   let controls = [];
   let vaderHamtat = false;   // prognosen hämtas en gång per sidladdning
   let sistaKopia = 0;        // strypning: högst en dagskopia per intervall
@@ -117,6 +118,11 @@ export async function renderLaget(app, user, cid) {
     return;
   }
   if (!wrap.isConnected) return;
+  // Utgått-anteckningarna ligger i member-only private/meta sedan de flyttades
+  // av det världsläsbara patrulldokumentet. Misslyckas läsningen står statusen
+  // kvar — bara verktygstipset uteblir.
+  await attachPatrolMeta(cid, patrols).catch(() => {});
+  patrols.forEach(p => { if (p.utgattNote) utgattNoteById[p.id] = p.utgattNote; });
 
   setDocTitle('Läget', compLabel(comp));
   wrap.innerHTML = `
@@ -330,7 +336,11 @@ export async function renderLaget(app, user, cid) {
       const reports = [];
       for (const c of ordered) {
         const s = (scoresByCtrl[c.id] || []).find(x => x.patrolId === p.id);
-        if (s && s.reportedAt) reports.push({ nummer: c.nummer ?? 0, t: toDate(s.reportedAt) });
+        // clientReportedAt = tryckögonblicket, reportedAt = synktiden. En
+        // offline-kö som flushas tre timmar senare gör den senare till en lögn:
+        // patrullen såg "nyss sedd" ut fast ingen sett den sedan kl 11.
+        const t = toDate(s?.clientReportedAt ?? s?.reportedAt);
+        if (t) reports.push({ nummer: c.nummer ?? 0, t });
       }
       reports.sort((a, b) => a.nummer - b.nummer);
       const startAt = toDate(pass.startAt);
@@ -391,7 +401,7 @@ export async function renderLaget(app, user, cid) {
       const prevN = i > 0 ? (ordered[i - 1].nummer ?? 0) : 0;
       const scores = scoresByCtrl[c.id] || [];
       const lastReport = scores
-        .map(s => toDate(s.reportedAt)).filter(Boolean)
+        .map(s => toDate(s.clientReportedAt ?? s.reportedAt)).filter(Boolean)
         .sort((a, b) => b - a)[0] || null;
       const inbound = perPatrol.filter(pp =>
         pp.active && pp.position === prevN && (i > 0 || pp.started)
@@ -743,7 +753,7 @@ export async function renderLaget(app, user, cid) {
           ${rows.map(pp => {
             const p = pp.patrol;
             const planned = patrolStartTime(comp, p, patrols.length, now);
-            const status = pp.utgatt ? `<span class="badge badge-gray" title="${escapeHtml(pp.utgatt.note || '')}">Utgått${pp.utgatt.at ? ' ' + formatTime(pp.utgatt.at) : ''}</span>`
+            const status = pp.utgatt ? `<span class="badge badge-gray" title="${escapeHtml(utgattNoteById[p.id] || '')}">Utgått${pp.utgatt.at ? ' ' + formatTime(pp.utgatt.at) : ''}</span>`
               : pp.finishAt ? `<span class="badge badge-green" title="${pp.autoFinished
                     ? 'Härledd ur sista kontrollrapporten — ingen har sett patrullen i mål'
                     : pp.selfFinished ? 'Patrullen markerade sig i mål på sitt startkort'

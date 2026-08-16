@@ -497,12 +497,17 @@ export async function closeCompetition(cid) {
 
   // Utgått-noteringar kan innehålla känsligt (skäl, skador) — gallra noten
   // vid avslut men behåll själva utgått-statusen som tävlingshistorik.
+  // Noten ligger numera i private/meta; den publika grenen finns kvar för
+  // tävlingar som skrevs innan den flyttades dit.
   const patrolsSnap = await getDocs(collection(db, 'competitions', cid, 'patrols'));
   for (let i = 0; i < patrolsSnap.docs.length; i += 400) {
     const batch = writeBatch(db);
     patrolsSnap.docs.slice(i, i + 400).forEach(d => {
       const u = d.data().utgatt;
-      if (u && u.note) batch.update(d.ref, { utgatt: { ...u, note: '' } });
+      if (!u) return;
+      if (u.note) batch.update(d.ref, { utgatt: { at: u.at } });
+      batch.set(doc(db, 'competitions', cid, 'patrols', d.id, 'private', 'meta'),
+        { utgattNote: '' }, { merge: true });
     });
     await batch.commit();
   }
@@ -869,11 +874,18 @@ export async function setHandover(cid, text, user) {
 
 // DNF: markera en patrull som utgått (eller ångra med null). Patrulldokumentet
 // är publikt läsbart, så noten hålls kort och saklig — den gallras vid avslut.
+// Noten hamnar i private/meta, ALDRIG på patrulldokumentet. patrols har
+// `allow read: if true` — det måste den, fältsidorna är anonyma — och
+// dialogen i Läget lovar ordagrant att anteckningen "syns bara för ledningen".
+// Den som i god tro skrev "Elsa svimmade, hämtad med ambulans" publicerade
+// alltså en hälsouppgift om ett barn för hela internet. Kvar publikt ligger
+// bara tidsstämpeln, som Läget och köerna behöver för att veta ATT patrullen
+// utgått.
 export async function setPatrolUtgatt(cid, pid, utgatt) {
   await updateDoc(doc(db, 'competitions', cid, 'patrols', pid),
-    utgatt
-      ? { utgatt: { at: Timestamp.fromDate(new Date()), note: utgatt.note || '' } }
-      : { utgatt: deleteField() });
+    utgatt ? { utgatt: { at: Timestamp.fromDate(new Date()) } } : { utgatt: deleteField() });
+  await setPatrolMeta(cid, pid, { utgattNote: utgatt ? (utgatt.note || '') : '' })
+    .catch(() => { /* noten är en bonus — statusen får aldrig hänga på den */ });
 }
 
 // Write `startOrder: idx` on each patrol in one batched commit.
@@ -1039,7 +1051,12 @@ export async function getPatrolMeta(cid, pid) {
 
 export async function attachPatrolMeta(cid, patrols) {
   const metas = await Promise.all(patrols.map(p => getPatrolMeta(cid, p.id).catch(() => ({}))));
-  patrols.forEach((p, i) => { p.notering = metas[i].notering || ''; });
+  patrols.forEach((p, i) => {
+    p.notering = metas[i].notering || '';
+    // Utgått-anteckningen ligger här sedan den flyttades av från det
+    // världsläsbara patrulldokumentet — se setPatrolUtgatt.
+    p.utgattNote = metas[i].utgattNote || '';
+  });
   return patrols;
 }
 
@@ -1433,16 +1450,24 @@ export async function sendThreadMessage(cid, kind, refId, { from, text = '', ima
   const msg = { from, at };
   if (text) msg.text = String(text).slice(0, 2000);
   if (image) msg.image = image;
-  await addDoc(collection(db, 'competitions', cid, 'threads', tid, 'messages'), msg);
-  // Trådhuvudet driver ledningens inkorg. Fältet får inte röra
-  // ledningReadAt (reglerna vaktar det), så oläst-status kan inte gömmas.
+  // Trådhuvudet driver ledningens inkorg — utan det finns meddelandet i
+  // databasen men syns ingenstans. Båda skrivningarna läggs i SAMMA batch, och
+  // det är hela poängen: förut väntade koden ut `addDoc` innan huvudet skrevs,
+  // och offline resolvar den väntan aldrig. Stängde kontrollanten fliken innan
+  // täckningen kom tillbaka synkades meddelandet — men huvudet hade aldrig ens
+  // köats, så frågan från skogen landade i en tråd ledningen inte kunde se.
+  // Fältet får inte röra ledningReadAt (reglerna vaktar det), så oläst-status
+  // kan inte gömmas.
   const huvud = {
     kind, refId, lastAt: at, lastFrom: from,
     lastText: text ? String(text).slice(0, 120) : (image ? '[bild]' : '')
   };
   if (from === 'falt') huvud.faltReadAt = at;
   else huvud.ledningReadAt = at;
-  await setDoc(doc(db, 'competitions', cid, 'threads', tid), huvud, { merge: true });
+  const batch = writeBatch(db);
+  batch.set(doc(collection(db, 'competitions', cid, 'threads', tid, 'messages')), msg);
+  batch.set(doc(db, 'competitions', cid, 'threads', tid), huvud, { merge: true });
+  await batch.commit();
 }
 
 // Läskvittens. Vem som läst styr vilken stämpel som sätts — och reglerna

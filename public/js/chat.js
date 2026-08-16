@@ -17,6 +17,7 @@ import { openSheet } from './sheet.js';
 import { icon } from './icons.js';
 import { watchThread, watchThreadDoc, sendThreadMessage, markThreadRead } from './store.js';
 import { pickImage } from './photo.js';
+import { withTimeout } from './offline-queue.js';
 import {
   onBroadcastChange, broadcastFeed, broadcastPendingAcks, ackBroadcast,
   notificationState, requestNotifications
@@ -195,14 +196,25 @@ export function mountMessages({ cid, kind, refId, enabled = true } = {}) {
         if (!text && !bild) return;
         send.disabled = true;
         try {
-          await sendThreadMessage(cid, kind, refId, { from: 'falt', text, image: bild?.dataUrl || null });
+          // Offline resolvar Firestores skrivlöfte ALDRIG — skrivningen ligger
+          // i den lokala kön och går fram när täckningen kommer. Utan taket
+          // stod knappen kvar grå och rutan full av text, och kontrollanten
+          // som just skickat sitt nödrop fick ingen kvittens alls.
+          await withTimeout(
+            sendThreadMessage(cid, kind, refId, { from: 'falt', text, image: bild?.dataUrl || null }),
+            4000);
           overlay.querySelector('#emb-text').value = '';
           bild = null; visaBild();
           overlay.querySelector('#emb-hint').textContent = 'Tävlingsledningen ser frågan direkt och svarar här.';
         } catch (e) {
-          // Offline hamnar skrivningen i Firestores lokala kö och går fram
-          // sedan; det här är riktiga fel.
-          overlay.querySelector('#emb-hint').textContent = 'Kunde inte skicka: ' + (e?.message || e);
+          if (e?.message === 'offline-timeout') {
+            overlay.querySelector('#emb-text').value = '';
+            bild = null; visaBild();
+            overlay.querySelector('#emb-hint').textContent =
+              'Sparat — skickas så fort du har täckning igen.';
+          } else {
+            overlay.querySelector('#emb-hint').textContent = 'Kunde inte skicka: ' + (e?.message || e);
+          }
         } finally { send.disabled = false; }
       });
     }

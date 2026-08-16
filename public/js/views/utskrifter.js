@@ -10,7 +10,7 @@
 // ursprungliga fliken, så det finns fortfarande bara EN implementation per
 // dokument. Skulle den här sidan börja rita egna PDF:er är det två sanningar
 // om hur en kontrollpärm ser ut, och den ena kommer att glömmas bort.
-import { getCompetition, listPatrols, listControls, getTrack, listAllScores, listRegistrations,
+import { getCompetition, listPatrols, listControls, attachControlMeta, getTrack, listAllScores, listRegistrations,
   skapaGenrepPatrull, rensaGenrep, GENREP_NAMN } from '../store.js';
 import { compHeader, setDocTitle } from '../nav.js';
 import { escapeHtml, toast, withBusy, isCompAdminUser, internalManagement, confirmDialog } from '../utils.js';
@@ -50,6 +50,10 @@ export async function renderUtskrifter(app, user, cid) {
     [patrols, controls, track] = await Promise.all([
       listPatrols(cid), listControls(cid), getTrack(cid).catch(() => null)
     ]);
+    // Telefonnumret bor i controls/{id}/private/meta, inte på kontrolldokumentet.
+    // Utan det här blev nödinfon i fältkorten TOM — och den här sidan är enligt
+    // CLAUDE.md den kompletta listan man packar pärmarna efter.
+    await attachControlMeta(cid, controls).catch(() => { /* medlem utan metaläsning */ });
   } catch (e) {
     wrap.innerHTML = `<div class="empty"><h3>Kunde inte ladda</h3><p>${escapeHtml(e.message)}</p></div>`;
     return;

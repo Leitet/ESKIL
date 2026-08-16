@@ -83,6 +83,30 @@ describe('Poängrapportering (anonym)', () => {
     await seed(`competitions/${CID}/controls/${CTRL}`, { open: true });
   });
 
+  test('anonym får ta bort sin egen rapport på öppen kontroll', async () => {
+    // Rapportsidans "Ta bort rapport" är anonym. Utan den här grenen NEKADES
+    // borttagningen: online ett rättighetsfel, offline en lokal radering som
+    // rullades tillbaka vid synk — poängen kom tillbaka utan besked.
+    await seed(scorePath, { patrolId: PATROL, poang: 7 });
+    allow(await remove(scorePath, null), 'anonym borttagning');
+  });
+
+  test('anonym borttagning nekas på stängd kontroll', async () => {
+    await seed(scorePath, { patrolId: PATROL, poang: 7 });
+    await seed(`competitions/${CID}/controls/${CTRL}`, { open: false });
+    deny(await remove(scorePath, null), 'borttagning på stängd kontroll');
+    await seed(`competitions/${CID}/controls/${CTRL}`, { open: true });
+    await remove(scorePath, 'owner');
+  });
+
+  test('anonym borttagning nekas när ledningen rättat poängen', async () => {
+    // history är rättelsespåret. Kan det raderas anonymt går det att sopa
+    // undan att en poäng justerats.
+    await seed(scorePath, { patrolId: PATROL, poang: 7, history: [{ poang: 3 }] });
+    deny(await remove(scorePath, null), 'borttagning av rättad poäng');
+    await remove(scorePath, 'owner');
+  });
+
   test('REGRESSION: tävling UTAN demo-fält blockerar inte rapportering', async () => {
     // Fällan som en gång stoppade all rapportering: compIsDemo() läste
     // `demo` direkt i stället för med .get(default).
