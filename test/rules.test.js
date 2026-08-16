@@ -523,6 +523,38 @@ describe('Användarkonton', () => {
   });
 });
 
+describe('Kontrollens livstecken (beacon)', () => {
+  const path = `competitions/${CID}/controls/${CTRL}/beacon/status`;
+  const ok_data = { at: new Date(), batteri: 78, laddar: false, koade: 2 };
+
+  test('anonym får skriva livstecken på en öppen kontroll', async () => {
+    allow(await write(path, ok_data, null), 'anonymt livstecken');
+    allow(await write(path, { at: new Date() }, null), 'bara at — batteri/kö är valfria');
+  });
+
+  test('formen är hård: bara status-dokumentet, kända fält, rimliga värden', async () => {
+    deny(await write(`competitions/${CID}/controls/${CTRL}/beacon/annat`, ok_data, null), 'annat doc-id');
+    deny(await write(path, { ...ok_data, batteri: 150 }, null), 'batteri över 100');
+    deny(await write(path, { ...ok_data, batteri: -1 }, null), 'negativt batteri');
+    deny(await write(path, { ...ok_data, koade: -1 }, null), 'negativ kö');
+    deny(await write(path, { ...ok_data, hittepa: 'x' }, null), 'okänt fält');
+    deny(await write(path, { batteri: 50 }, null), 'utan at');
+  });
+
+  test('stängd kontroll tar inte emot livstecken', async () => {
+    await seed(`competitions/${CID}/controls/${CTRL}`, { open: false });
+    deny(await write(path, ok_data, null), 'livstecken på stängd kontroll');
+    await seed(`competitions/${CID}/controls/${CTRL}`, { open: true });
+  });
+
+  test('läsning är member-only — batteri och könivå är intern drift', async () => {
+    await write(path, ok_data, null);
+    assert.equal((await read(path, null)).ok, false, 'anonym läser beacon');
+    assert.equal((await read(path, OTHER)).ok, false, 'utomstående läser beacon');
+    assert.equal((await read(path, USER)).ok, true, 'medlem läser beacon');
+  });
+});
+
 describe('Meddelanden till ESKIL (kontaktformuläret)', () => {
   const FB = uniq('fb');
   const STANGD = uniq('fb');

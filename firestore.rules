@@ -330,6 +330,34 @@ service cloud.firestore {
 
         // Scores — anonymous create/update allowed if control is open AND the
         // competition isn't a demo. Super-admin can always seed scores.
+        // Kontrollens livstecken — rapportsidan skriver ett litet hjärtslag
+        // medan den är öppen: senaste livstecknet (klient-tid, så en buffrad
+        // offline-skrivning bär SANN senast-vid-liv-tid), batterinivå och
+        // antalet köade offline-poäng. Läget kan då skilja "tyst för att inga
+        // patruller kommit" från "telefonen håller på att dö", och ser köade
+        // poäng som annars är osynliga i EN telefons localStorage.
+        // Anonym skrivning (rapportsidan är anonym; kontroll-id:t är
+        // hemligheten och kontrollen måste vara öppen), hårt formad.
+        // Läsning är MEMBER-only: batteri- och könivå är intern drift.
+        match /beacon/{beaconDoc} {
+          allow read: if isCompMember(cid);
+          allow write: if !compIsDemo(cid)
+            && ctrlData(cid, ctrlId).get('open', false) == true
+            && beaconDoc == 'status'
+            && request.resource.data.at is timestamp
+            && (!('batteri' in request.resource.data)
+                || (request.resource.data.batteri is number
+                    && request.resource.data.batteri >= 0
+                    && request.resource.data.batteri <= 100))
+            && (!('laddar' in request.resource.data) || request.resource.data.laddar is bool)
+            && (!('koade' in request.resource.data)
+                || (request.resource.data.koade is int
+                    && request.resource.data.koade >= 0
+                    && request.resource.data.koade <= 1000))
+            && request.resource.data.keys().hasOnly(['at', 'batteri', 'laddar', 'koade']);
+          allow delete: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
+        }
+
         match /scores/{scoreId} {
           allow read: if true;
           // Admins may always write scores (adjustments, backup restore).

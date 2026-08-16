@@ -11,7 +11,7 @@
 import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import {
   getCompetition, listPatrols, listStations, createStation, watchPassages, watchSelfPassages, clearSelfPassage,
-  watchControls, watchScoresForControl, getTrack, getControlMeta,
+  watchControls, watchScoresForControl, getTrack, getControlMeta, watchControlBeacon,
   updateCompetition, updateControl, setPatrolUtgatt
 } from '../store.js';
 import { deleteField } from '../firebase.js';
@@ -247,6 +247,7 @@ export async function renderLaget(app, user, cid) {
 
   // --- Subscriptions -----------------------------------------------------------
   const subscribedScores = new Set();
+  const beaconByCtrl = {};   // ctrlId -> beacon-doc — kontrollens livstecken
   const subscribePassages = () => {
     if (!station) return;
     unsubs.push(watchPassages(cid, station.id, rows => {
@@ -284,6 +285,11 @@ export async function renderLaget(app, user, cid) {
       subscribedScores.add(c.id);
       unsubs.push(watchScoresForControl(cid, c.id, scores => {
         scoresByCtrl[c.id] = scores;
+        renderStats();
+      }));
+      // Livstecknet från kontrollens telefon (batteri, köade offline-poäng).
+      unsubs.push(watchControlBeacon(cid, c.id, b => {
+        beaconByCtrl[c.id] = b;
         renderStats();
       }));
     }
@@ -421,6 +427,23 @@ export async function renderLaget(app, user, cid) {
     return { now, perPatrol, ctrlStats, ordered };
   }
 
+  // Livstecken-cellen: hur länge sedan kontrollens telefon hördes av, batteri
+  // och köade offline-poäng. Rött när telefonen varit tyst länge (hjärtslaget
+  // går var 5:e minut, så 15 min = tre missade) eller batteriet är lågt —
+  // det är skillnaden mellan "lugn kontroll" och "poäng på väg att strandas".
+  function beaconCell(b, now) {
+    if (!b || !b.at) return '<span class="muted t-sm">—</span>';
+    const t = b.at?.toDate ? b.at.toDate() : new Date(b.at);
+    const min = Math.max(0, Math.round((now - t) / 60000));
+    const gammal = min >= 15;
+    const lågBatt = typeof b.batteri === 'number' && b.batteri <= 20 && !b.laddar;
+    const delar = [min < 1 ? 'nyss' : `${min} min sedan`];
+    if (typeof b.batteri === 'number') delar.push(`${b.batteri} %${b.laddar ? ' ⚡' : ''}`);
+    if (b.koade > 0) delar.push(`<strong>${b.koade} i kö</strong>`);
+    const varning = gammal || lågBatt || b.koade > 0;
+    return `<span class="t-sm mono" style="white-space:nowrap;${varning ? 'color:var(--utm-pink);font-weight:600;' : 'color:var(--fg2);'}"${gammal ? ' title="Inget livstecken på ' + min + ' minuter — telefonen kan vara död eller kontrollen obemannad"' : ''}>${delar.join(' · ')}</span>`;
+  }
+
   // --- Render ------------------------------------------------------------------
   function renderStats() {
     if (!wrap.isConnected) return;
@@ -495,6 +518,7 @@ export async function renderLaget(app, user, cid) {
       <div class="table-wrap"><table class="t">
         <thead><tr>
           <th style="width:30px;"></th><th class="num">Nr</th><th>Kontroll</th><th>Status</th><th>Telefon</th>
+          <th>Livstecken${help('laget.beacon')}</th>
           <th class="num">Klara</th><th class="num">Kö nu</th><th class="num">Mellantid</th><th>Senaste rapport</th>
         </tr></thead>
         <tbody>
@@ -507,6 +531,7 @@ export async function renderLaget(app, user, cid) {
                 ? '<span class="badge badge-green">Öppen</span>'
                 : `<span class="badge badge-gray">Stängd</span>${isAdmin && cs.inbound > 0 ? ` <button class="btn btn-secondary btn-sm" data-open-ctrl="${escapeHtml(cs.control.id)}" title="Kontrollen har patruller på väg men tar inte emot rapporter">Öppna</button>` : ''}`}</td>
               <td>${cs.control.telefon ? `<a class="mono t-sm" href="tel:${escapeHtml(cs.control.telefon)}" style="color:var(--scout-blue);text-decoration:none;white-space:nowrap;">${escapeHtml(cs.control.telefon)}</a>` : '<span class="muted">—</span>'}</td>
+              <td>${beaconCell(beaconByCtrl[cs.control.id], now)}</td>
               <td class="num">${cs.doneCount}/${patrols.length}</td>
               <td class="num" style="${cs.inbound >= 2 ? 'font-weight:700;color:' + HEAT[cs.heat].fill + ';' : ''}">${cs.inbound}</td>
               <td class="num">${cs.legMedian != null ? Math.round(cs.legMedian) + ' min' + (cs.trendUp ? ' <strong style="color:var(--utm-pink);">↑</strong>' : '') : '—'}</td>

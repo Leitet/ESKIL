@@ -319,6 +319,19 @@ export const HELP = {
     ]
   },
 
+  'laget.beacon': {
+    title: 'Kontrollens livstecken',
+    body: [
+      'Rapportsidan skickar ett litet livstecken var femte minut medan den är öppen på kontrollantens telefon: när den senast hördes av, batterinivån och hur många poängrapporter som ligger sparade lokalt i väntan på täckning.',
+      'Det gör att du kan skilja en kontroll som är tyst för att inga patruller kommit än, från en vars telefon håller på att dö — innan poängen stryks med telefonen.',
+      'Raden blir röd när telefonen varit tyst i en kvart (tre missade livstecken), när batteriet är under 20 % utan laddare, eller när rapporter ligger i kö.'
+    ],
+    faq: [
+      { q: 'Varför står det bara ett streck?', a: 'Kontrollantens telefon har inte öppnat rapportsidan än — eller så använder den en webbläsare utan batteri-API (då syns tid och kö men inte batteri).' },
+      { q: '"2 i kö" — är poängen borta?', a: 'Nej, tvärtom: de är sparade lokalt i telefonen och synkas automatiskt när täckningen kommer tillbaka. Men om telefonen dör innan dess följer kön med den — därför visas den här.' }
+    ]
+  },
+
   'eta.model': {
     title: 'Så beräknas målgången',
     body: [

@@ -3,7 +3,7 @@
 // with the URL report (if the control is open).
 
 import { db, doc, onSnapshot } from './firebase.js';
-import { getCompetition, getControl, listPatrols, watchScoresForControl, upsertScore, deleteScore, listControls, getTrack, listAllScores } from './store.js';
+import { getCompetition, getControl, listPatrols, watchScoresForControl, upsertScore, deleteScore, listControls, getTrack, listAllScores, sendControlBeacon } from './store.js';
 import { AVDELNINGAR, escapeHtml, allInstructionGroups, internalManagement } from './utils.js';
 import { controlEtaWindow } from './course.js';
 import { ensureLeaflet } from './leaflet.js';
@@ -33,23 +33,14 @@ function applyMode(mode) {
 applyMode(document.documentElement.getAttribute('data-mode') || 'light');
 bindHaptic(modeBtn);
 
-// iOS ignores viewport user-scalable=no. The only reliable way to block
-// pinch-zoom and the residual double-tap-zoom on this page is to swallow
-// the native gesture events before Safari acts on them. These handlers
-// have no effect on buttons, taps, or vertical scrolling — only on the
-// zoom gestures we don't want.
-document.addEventListener('dblclick',     (e) => e.preventDefault(), { passive: false });
-document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
-document.addEventListener('gesturechange', (e) => e.preventDefault(), { passive: false });
-document.addEventListener('gestureend',    (e) => e.preventDefault(), { passive: false });
-// Multi-touch moves are the pinch gesture on browsers that don't fire the
-// legacy gesture* events (Android Chrome, Firefox). Block them — but NOT
-// inside a Leaflet map, where pinch-zoom is the intended interaction.
-document.addEventListener('touchmove', (e) => {
-  if (e.touches.length > 1 && !e.target.closest?.('.leaflet-container')) {
-    e.preventDefault();
-  }
-}, { passive: false });
+// Dubbeltapp-zoomen är den OAVSIKTLIGA zoomen — två snabba tryck på +/-
+// ska ge två poängsteg, inte en inzoomad sida. Den blockeras. NYP-zoomen är
+// däremot den avsiktliga: en ledare med nedsatt syn förstorar kontrollnamn
+// och siffror med den (WCAG 1.4.4), så den får INTE blockeras — de gamla
+// gesture*/touchmove-blockarna som svalde nypet är borttagna tillsammans med
+// user-scalable=no i viewporten. Stegknapparna skyddas redan per element av
+// bindTap (touchstart + preventDefault).
+document.addEventListener('dblclick', (e) => e.preventDefault(), { passive: false });
 modeBtn.addEventListener('click', () => {
   const cur = document.documentElement.getAttribute('data-mode') || 'light';
   applyMode(cur === 'night' ? 'light' : 'night');
@@ -862,6 +853,33 @@ async function main() {
   };
   keepAwake();
   document.addEventListener('visibilitychange', () => { if (!document.hidden) keepAwake(); });
+
+  // Livstecknet till Läget: var femte minut medan sidan är synlig skrivs ett
+  // litet hjärtslag (klient-tid, batterinivå, antal köade poäng) till
+  // kontrollens beacon-dokument. Ledningen kan då skilja "tyst för att inga
+  // patruller kommit än" från "telefonen håller på att dö" — och ser köade
+  // offline-poäng som annars bara finns i den här telefonens localStorage.
+  // `at` är klient-tid: buffras skrivningen offline och synkar senare bär den
+  // ändå den sanna senast-vid-liv-tiden. Fel sväljs — livstecknet är en
+  // bonus och får aldrig störa rapporteringen.
+  const skickaLivstecken = async () => {
+    if (document.hidden || comp?.demo || !control.open) return;
+    let batteri = null, laddar = null;
+    try {
+      const b = await navigator.getBattery?.();
+      if (b) { batteri = Math.round(b.level * 100); laddar = !!b.charging; }
+    } catch { /* API:t saknas (iOS) — skicka utan */ }
+    try {
+      await sendControlBeacon(cid, ctrlId, { batteri, laddar, koade: listQueue(cid, ctrlId).length });
+    } catch { /* aldrig ett fel för kontrollanten */ }
+  };
+  skickaLivstecken();
+  const beaconTimer = setInterval(skickaLivstecken, 5 * 60000);
+  // När kontrollanten växlar tillbaka till fliken: skicka direkt i stället
+  // för att vänta upp till fem minuter på nästa intervall — Läget ska se
+  // "vaknade nyss" så fort telefonen faktiskt är tillbaka.
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) skickaLivstecken(); });
+  window.addEventListener('pagehide', () => clearInterval(beaconTimer));
 
   renderHead();
   renderAvdelningar();

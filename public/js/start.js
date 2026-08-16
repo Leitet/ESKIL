@@ -42,16 +42,14 @@ function applyMode(mode) {
 applyMode(document.documentElement.getAttribute('data-mode') || 'light');
 bindHaptic(modeBtn);
 
-// Same iOS zoom-blockers as the reporter page (dblclick + pinch gestures).
-document.addEventListener('dblclick',      (e) => e.preventDefault(), { passive: false });
-document.addEventListener('gesturestart',  (e) => e.preventDefault(), { passive: false });
-document.addEventListener('gesturechange', (e) => e.preventDefault(), { passive: false });
-document.addEventListener('gestureend',    (e) => e.preventDefault(), { passive: false });
-document.addEventListener('touchmove', (e) => {
-  if (e.touches.length > 1 && !e.target.closest?.('.leaflet-container')) {
-    e.preventDefault();
-  }
-}, { passive: false });
+// Dubbeltapp-zoomen är den OAVSIKTLIGA zoomen — två snabba tryck på +/-
+// ska ge två poängsteg, inte en inzoomad sida. Den blockeras. NYP-zoomen är
+// däremot den avsiktliga: en ledare med nedsatt syn förstorar kontrollnamn
+// och siffror med den (WCAG 1.4.4), så den får INTE blockeras — de gamla
+// gesture*/touchmove-blockarna som svalde nypet är borttagna tillsammans med
+// user-scalable=no i viewporten. Stegknapparna skyddas redan per element av
+// bindTap (touchstart + preventDefault).
+document.addEventListener('dblclick', (e) => e.preventDefault(), { passive: false });
 modeBtn.addEventListener('click', () => {
   const cur = document.documentElement.getAttribute('data-mode') || 'light';
   applyMode(cur === 'night' ? 'light' : 'night');

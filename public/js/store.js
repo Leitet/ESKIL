@@ -1246,3 +1246,19 @@ export async function listNewFeedback() {
   const snap = await getDocs(query(collection(db, 'feedback'), where('status', '==', 'ny')));
   return snap.size;
 }
+
+// --- Kontrollens livstecken (beacon) ------------------------------------------
+// Rapportsidan skriver; Läget läser. `at` är KLIENT-tid med flit: en buffrad
+// offline-skrivning som synkar senare ska bära den sanna senast-vid-liv-tiden,
+// inte synkögonblicket (samma resonemang som clientReportedAt på poängen).
+export async function sendControlBeacon(cid, ctrlId, { batteri = null, laddar = null, koade = 0 } = {}) {
+  const data = { at: Timestamp.fromDate(new Date()), koade: Number(koade) || 0 };
+  if (typeof batteri === 'number' && Number.isFinite(batteri)) data.batteri = Math.round(batteri);
+  if (typeof laddar === 'boolean') data.laddar = laddar;
+  await setDoc(doc(db, 'competitions', cid, 'controls', ctrlId, 'beacon', 'status'), data);
+}
+
+export function watchControlBeacon(cid, ctrlId, cb) {
+  return onSnapshot(doc(db, 'competitions', cid, 'controls', ctrlId, 'beacon', 'status'),
+    snap => cb(snap.exists() ? snap.data() : null), () => cb(null));
+}
