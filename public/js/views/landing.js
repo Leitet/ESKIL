@@ -160,7 +160,7 @@ const FUNKTIONER = [
       ['Anmälan på webben', 'Kårerna anmäler sina patruller själva. Pris per scout, Swish-QR och betalningsreferenser räknas ut åt er.'],
       ['Kvitton och påminnelser', 'Bekräftelse och kvitto mailas automatiskt. Obetalda anmälningar syns i en lista med en påminnelseknapp.'],
       ['Komplettering per patrull', 'Kårledaren skickar en egen länk till varje patrulledare för allergier och antal — utan att lämna ut hela anmälan.'],
-      ['Banan på karta', 'Rita spåret ben för ben, lägg ut kontroller, parkering, sekretariat och matplats. Längd och gångtid räknas ut.'],
+      ['Banan på karta', 'Rita spåret sträcka för sträcka, lägg ut kontroller, parkering, sekretariat och matplats. Längd och gångtid räknas ut.'],
       ['Utskriftscentral', 'Kontrollernas pärmar med karta, QR, instruktioner, nödinfo och reservprotokoll — och startkort på papper för patruller utan mobil.'],
       ['Genrep', 'Provkör hela kedjan med en testpatrull som går genom exakt samma kod som en skarp, och städa bort den efteråt.']
     ]
@@ -204,7 +204,7 @@ function funktionslista() {
   return `
     <div class="pub-section-head" id="funktioner">
       <h2 class="t-h2">Vad ESKIL gör</h2>
-      <span class="muted">Byggt för en tävlingsdag i skogen, inte för ett kontor</span>
+      <span class="muted">Byggt för en härlig dag på spåret i skogen</span>
     </div>
     <div class="landing-funk">
       ${FUNKTIONER.map(g => `

@@ -997,7 +997,9 @@ a.pub-brand:hover { opacity: 0.85; }
   margin-bottom: var(--sp-8);
 }
 .landing-kostnad p { margin: 0; color: var(--fg2); line-height: 1.6; }
-.landing-kostnad a { color: var(--scout-blue); }
+/* :not(.btn) — utan den träffade regeln även knappen i samma ruta, och
+   scout-blå text på scout-blå botten gjorde etiketten helt osynlig. */
+.landing-kostnad a:not(.btn) { color: var(--scout-blue); }
 
 @media (max-width: 720px) {
   .landing-demo { grid-template-columns: 1fr; }
