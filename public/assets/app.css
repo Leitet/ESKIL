@@ -485,9 +485,13 @@ table.t tr.sf-row.park-row td {
   display: flex; justify-content: space-between; align-items: center;
 }
 .modal-head h3 { margin: 0; }
-/* pre-wrap: bekräftelsedialoger citerar ofta meddelandetexten som ska skickas,
-   och den har radbrytningar som bär meningen. Enradiga anrop påverkas inte. */
-.modal-body { padding: var(--sp-6); white-space: pre-wrap; }
+.modal-body { padding: var(--sp-6); }
+/* pre-wrap BARA där rå text skrivs rakt in i kroppen — confirmDialog citerar
+   meddelandetexten som ska skickas, och dess radbrytningar bär meningen.
+   Regeln låg först på .modal-body och slog då mot ALLA modaler: redigerings-
+   formulärens indentering i mallarna renderades som luft, och patrullmodalen
+   blev mätt 142 % för hög (1481 px mot 611). */
+.modal-body.is-text { white-space: pre-wrap; }
 .modal-foot {
   padding: var(--sp-4) var(--sp-6);
   border-top: 1px solid var(--border);

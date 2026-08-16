@@ -224,7 +224,7 @@ export function confirmDialog(message, { okLabel = 'Ta bort', danger = true } = 
     const modal = el('div', { class: 'modal' });
     modal.innerHTML = `
       <div class="modal-head"><h3>Bekräfta</h3></div>
-      <div class="modal-body">${escapeHtml(message)}</div>
+      <div class="modal-body is-text">${escapeHtml(message)}</div>
       <div class="modal-foot">
         <button class="btn btn-ghost" data-cancel>Avbryt</button>
         <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" data-ok>${escapeHtml(okLabel)}</button>
