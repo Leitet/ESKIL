@@ -170,22 +170,81 @@ export function setTopbarCompetition(cid, comp, user) {
 }
 
 // Shared layout helper — call with {topbar:true} on most pages.
+//
+// Topbaren och sidfoten ÅTERANVÄNDS mellan vyer. Förut tömdes hela #app och
+// allt byggdes om vid varje vybyte, inklusive topbarens logotypbild — det gav
+// en synlig blinkning över hela sidan varje gång man bytte flik, trots att
+// bara innehållet faktiskt ändrades. Nu byts bara <main class="page">.
+//
+// Topbaren byggs om bara när identiteten ändras, för då ändras dess innehåll
+// (Logga ut kontra Logga in, super-admin-märket). renderTopbar() kopplar sina
+// egna lyssnare, så att återanvända noden kan aldrig dubbelkoppla dem.
+let topbarNod = null;
+let topbarFor = null;
+
+function chromeNyckel() {
+  return currentUser
+    ? `${currentUser.uid || ''}:${currentUser.role || ''}:${currentUser.demoViewer ? 'demo' : ''}`
+    : 'anon';
+}
+
 export function layout(inner, { narrow = false } = {}) {
-  app.innerHTML = '';
-  app.appendChild(renderTopbar());
-  const page = document.createElement('main');
+  const nyckel = chromeNyckel();
+  if (!topbarNod || !topbarNod.isConnected || topbarFor !== nyckel) {
+    app.innerHTML = '';
+    topbarNod = renderTopbar();
+    topbarFor = nyckel;
+    app.appendChild(topbarNod);
+    const page = document.createElement('main');
+    page.className = 'page';
+    app.appendChild(page);
+    // Slim footer — the signed-in app's only route to the public landing page.
+    const foot = document.createElement('footer');
+    foot.className = 'app-foot';
+    foot.innerHTML = `
+      <div class="app-foot-inner">
+        <span>ESKIL · Scouttävlingar</span>
+        <span><a href="/" data-link>ESKIL:s startsida</a> · <a href="/kontakt" data-link>Kontakta oss</a> · <a href="/integritet">Integritet &amp; GDPR</a></span>
+      </div>`;
+    app.appendChild(foot);
+  }
+
+  // Tävlingschipet hör till FÖRRA vyn tills den nya fyllt i sitt. Töms här,
+  // annars står föregående tävlings namn kvar på t.ex. kontosidan.
+  const chip = topbarNod.querySelector('#topbar-comp');
+  if (chip) chip.innerHTML = '';
+
+  const page = app.querySelector('main.page');
   page.className = 'page' + (narrow ? ' page-narrow' : '');
-  page.appendChild(inner);
-  app.appendChild(page);
-  // Slim footer — the signed-in app's only route to the public landing page.
-  const foot = document.createElement('footer');
-  foot.className = 'app-foot';
-  foot.innerHTML = `
-    <div class="app-foot-inner">
-      <span>ESKIL · Scouttävlingar</span>
-      <span><a href="/" data-link>ESKIL:s startsida</a> · <a href="/kontakt" data-link>Kontakta oss</a> · <a href="/integritet">Integritet &amp; GDPR</a></span>
-    </div>`;
-  app.appendChild(foot);
+  page.replaceChildren(inner);
+
+  animeraIn(page);
+}
+
+// Mjuk ingång — men ALDRIG på bekostnad av att innehållet syns.
+//
+// Animationen börjar på opacitet 0, och webbläsaren FRYSER animationens
+// tidslinje i en dold flik: navigerar man med fliken i bakgrunden fastnar
+// sidan osynlig (mätt: playState "running", currentTime 0, opacitet 0) tills
+// man kommer tillbaka. Därför körs den bara när dokumentet faktiskt är synligt.
+// Är fliken dold syns innehållet direkt i stället, vilket ändå är rätt: ingen
+// tittar på övergången.
+//
+// Klassen tas bort och sätts igen med en påtvingad omflödning emellan, annars
+// startar animationen inte om vid nästa vybyte. Den rör bara opacitet och sex
+// pixlars lyft — ingen skalning, som hade fått Leaflet att mäta kartan fel
+// medan den pågår.
+function animeraIn(page) {
+  page.classList.remove('page-in');
+  if (document.hidden) return;
+  try {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  } catch { return; }
+  void page.offsetWidth;
+  page.classList.add('page-in');
+  // Städa bort klassen när den gjort sitt, så en fryst animation från ett
+  // tidigare vybyte aldrig kan ligga kvar och hålla sidan osynlig.
+  page.addEventListener('animationend', () => page.classList.remove('page-in'), { once: true });
 }
 
 // ---- Magic-link completion UI ---------------------------------------------

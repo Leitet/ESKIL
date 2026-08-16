@@ -1157,3 +1157,19 @@ table.t tr.sf-row.park-row td {
   .logg-lista li { flex-wrap: wrap; }
   .logg-av { width: 100%; }
 }
+
+/* --- Övergång mellan vyer -------------------------------------------------- */
+/* Topbaren och sidfoten återanvänds numera (se layout() i app.js), så bara
+   sidinnehållet rör sig. Kurvan är ease-out: snabb start, mjuk landning —
+   den känns som att sidan kommer på plats, inte som att den startar.
+   Ingen skalning, bara opacitet och sex pixlar lyft: en transform-skalning
+   hade fått Leaflet att mäta kartan fel medan animationen pågår. */
+@media (prefers-reduced-motion: no-preference) {
+  .page-in { animation: sida-in 220ms cubic-bezier(0.22, 0.61, 0.36, 1); }
+  @keyframes sida-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: none; }
+  }
+}
+/* Flikbytet ska kännas som att markören glider, inte hoppar. */
+.tabs a { transition: color 140ms ease-out, border-color 140ms ease-out; }

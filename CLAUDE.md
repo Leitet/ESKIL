@@ -52,6 +52,18 @@ Email extension). Production domain: https://eskilscout.se.
   eftersom page-head varierar i höjd (Anmälan har underrubrik och två knappar,
   Spår bara en rubrik) hamnade flikraden på olika y och menyn hoppade när man
   bytte flik. Mätt efteråt: flikraden ligger på 145 px på samtliga tio flikar.
+  **`layout()` ÅTERANVÄNDER topbar och sidfot** mellan vyer och byter bara
+  `<main class="page">`. Förut tömdes hela `#app` vid varje vybyte och
+  topbaren byggdes om inklusive logotypbilden — hela sidan blinkade fast bara
+  innehållet ändrats. Topbaren byggs om bara när identiteten ändras (då ändras
+  dess innehåll); `renderTopbar()` kopplar sina egna lyssnare, så
+  återanvändningen kan aldrig dubbelkoppla dem. `#topbar-comp` töms vid varje
+  layout — annars står föregående tävlings namn kvar på t.ex. kontosidan.
+  Ingångsanimationen körs ENDAST när dokumentet är synligt: den börjar på
+  opacitet 0, och webbläsaren fryser animationstidslinjen i en dold flik —
+  navigerar man med fliken i bakgrunden fastnar sidan osynlig (mätt:
+  playState "running", currentTime 0, opacitet 0). Vilotillståndet måste alltid
+  vara synligt.
   Rubrik och underrubrik ESCAPAS (`title`/`subtitle`); de få sidor som bär
   badges skickar `titleHtml`/`subtitleHtml` och ansvarar då själva för
   escapningen. `compCrumbs` tar numera både `{ label }` och en ren sträng — en
