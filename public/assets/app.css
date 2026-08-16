@@ -114,6 +114,10 @@
   flex-wrap: wrap;
 }
 .page-head h1 { margin: var(--sp-2) 0 0; }   /* small gap after the eyebrow */
+/* Sidrubriken ligger UNDER flikraden (se compHeader i nav.js): flikarna ska
+   stå på samma höjd på varje sida, så det som varierar i höjd hamnar under. */
+.page-head-under-tabs { margin-top: var(--sp-5); }
+.page-head-under-tabs h1 { margin-top: 0; }
 .page-head .t-over { color: var(--scout-blue); }
 
 /* Tabs */

@@ -14,7 +14,7 @@ import {
   isPaymentPaid, isPaymentClaimed, paymentClaimAt, isCompAdminUser, isEkonomiUser
 } from '../utils.js';
 import { icon } from '../icons.js';
-import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
+import { compHeader, compLabel, setDocTitle } from '../nav.js';
 
 // Ready-made PM templates — {comp} is replaced with the competition label,
 // [HAKPARENTESER] are gaps the admin fills in before sending.
@@ -66,19 +66,13 @@ export async function renderAnmalanAdmin(app, user, cid) {
 
   setDocTitle('Anmälan', compLabel(comp));
   wrap.innerHTML = `
-    <div class="page-head">
-      <div>
-        ${compCrumbs(cid, comp, { label: 'Anmälan' })}
-        <h1 class="t-d2">Anmälan</h1>
-        <p class="muted">${escapeHtml(stateLabel)} · ${settings.mode === 'kar' ? 'kårvis anmälan' : 'patrullvis anmälan'}</p>
-      </div>
-      <div class="btn-row">
+    ${compHeader(cid, comp, user, {
+      active: 'anmalan', title: 'Anmälan',
+      subtitle: `${stateLabel} · ${settings.mode === 'kar' ? 'kårvis anmälan' : 'patrullvis anmälan'}`,
+      actions: `
         ${isAdmin && !comp.demo ? `<button class="btn btn-primary btn-sm" id="send-pm">${icon('send', { size: 14 })} Skicka PM</button>` : ''}
-        <button class="btn btn-secondary btn-sm" id="copy-link">${icon('copy', { size: 14 })} Anmälningslänk</button>
-      </div>
-    </div>
-
-    ${compTabs(cid, 'anmalan', comp, user)}
+        <button class="btn btn-secondary btn-sm" id="copy-link">${icon('copy', { size: 14 })} Anmälningslänk</button>`
+    })}
 
     <div id="content"><div class="muted">Laddar anmälningar…</div></div>
   `;

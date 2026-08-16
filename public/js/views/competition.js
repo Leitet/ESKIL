@@ -2,7 +2,7 @@ import { layout, setTopbarCompetition } from '../app.js';
 import { getCompetition, listPatrols, listControls, getControlMeta, migrateCompetitionAccess } from '../store.js';
 import { startklarChecks } from '../startklar.js';
 import { escapeHtml, formatDate, activeManagement, isCompAdminUser } from '../utils.js';
-import { compTabs, compCrumbs, setDocTitle } from '../nav.js';
+import { compHeader, setDocTitle } from '../nav.js';
 
 export async function renderCompetition(app, user, cid) {
   const wrap = document.createElement('div');
@@ -37,16 +37,12 @@ export async function renderCompetition(app, user, cid) {
   const karer = new Set(patrols.map(p => p.kar).filter(Boolean));
 
   wrap.innerHTML = `
-    <div class="page-head">
-      <div>
-        ${compCrumbs(cid, comp)}
-        <h1 class="t-d2" style="color:var(--scout-blue);">${escapeHtml(comp.name)} ${comp.demo ? '<span class="badge badge-orange" style="font-size:14px;vertical-align:middle;">Demospår</span>' : ''}${comp.closed ? '<span class="badge badge-gray" style="font-size:14px;vertical-align:middle;">Avslutad</span>' : ''}</h1>
-        <p class="muted">${comp.date ? formatDate(comp.date) : ''} ${comp.location ? '· ' + escapeHtml(comp.location) : ''}</p>
-        ${comp.demo && user.role !== 'super-admin' ? '<p class="t-sm" style="color:var(--avent-orange);font-weight:600;">Demospår — du kan utforska men inte ändra.</p>' : ''}
-      </div>
-    </div>
-
-    ${compTabs(cid, 'oversikt', comp, user)}
+    ${compHeader(cid, comp, user, {
+      active: 'oversikt',
+      titleHtml: `<span style="color:var(--scout-blue);">${escapeHtml(comp.name)}</span> ${comp.demo ? '<span class="badge badge-orange" style="font-size:14px;vertical-align:middle;">Demospår</span>' : ''}${comp.closed ? '<span class="badge badge-gray" style="font-size:14px;vertical-align:middle;">Avslutad</span>' : ''}`,
+      subtitleHtml: `${comp.date ? formatDate(comp.date) : ''} ${comp.location ? '· ' + escapeHtml(comp.location) : ''}`
+        + `${comp.demo && user.role !== 'super-admin' ? '<br><span class="t-sm" style="color:var(--avent-orange);font-weight:600;">Demospår — du kan utforska men inte ändra.</span>' : ''}`
+    })}
 
     <div id="startklar"></div>
 

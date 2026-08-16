@@ -14,7 +14,7 @@ import { icon } from '../icons.js';
 import { help, helpOnButton } from '../help.js';
 import { openPlaceModal } from '../place-modal.js';
 import { compPlaces } from '../places.js';
-import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
+import { compHeader, compLabel, setDocTitle } from '../nav.js';
 
 // Lazy-load SortableJS (also used by patrols.js).
 let sortableReady = null;
@@ -53,12 +53,9 @@ export async function renderControls(app, user, cid) {
 
   setDocTitle('Kontroller', compLabel(comp));
   wrap.innerHTML = `
-    <div class="page-head">
-      <div>
-        ${compCrumbs(cid, comp, { label: 'Kontroller' })}
-        <h1 class="t-d2">Kontroller</h1>
-      </div>
-      <div class="btn-row">
+    ${compHeader(cid, comp, user, {
+      active: 'controls', title: 'Kontroller',
+      actions: `
         ${helpOnButton(
           `<button class="btn btn-secondary btn-sm" id="field-pack" title="Alla kontrollers kompletta PDF:er i en fil — placering, instruktioner, nödinfo och reservprotokoll. Varje kontroll börjar på en ny framsida.">${icon('file-text', { size: 14 })} Fältpaket (PDF)</button>`,
           'comp.faltpaket')}
@@ -66,11 +63,8 @@ export async function renderControls(app, user, cid) {
           <button class="btn btn-secondary btn-sm" id="open-all">Öppna alla</button>
           <button class="btn btn-secondary btn-sm" id="close-all">Stäng alla</button>
           <button class="btn btn-primary" id="new">+ Ny kontroll</button>
-        ` : ''}
-      </div>
-    </div>
-
-    ${compTabs(cid, 'controls', comp, user)}
+        ` : ''}`
+    })}
 
     <div id="tbl"></div>
   `;

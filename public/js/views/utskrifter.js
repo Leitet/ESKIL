@@ -11,7 +11,7 @@
 // dokument. Skulle den här sidan börja rita egna PDF:er är det två sanningar
 // om hur en kontrollpärm ser ut, och den ena kommer att glömmas bort.
 import { getCompetition, listPatrols, listControls, getTrack, listAllScores, listRegistrations } from '../store.js';
-import { compTabs, compCrumbs, setDocTitle } from '../nav.js';
+import { compHeader, setDocTitle } from '../nav.js';
 import { escapeHtml, toast, withBusy, isCompAdminUser, internalManagement } from '../utils.js';
 import { compPlaces } from '../places.js';
 import { icon } from '../icons.js';
@@ -116,16 +116,11 @@ export async function renderUtskrifter(app, user, cid) {
   ];
 
   wrap.innerHTML = `
-    ${compCrumbs(cid, comp, 'Utskrifter')}
-    ${compTabs(cid, 'utskrifter', comp, user)}
-
-    <div class="page-head">
-      <div>
-        <h1>Inför tävlingsdagen ${help('utskrift.oversikt')}</h1>
-        <p class="muted">Allt som ska tryckas, på ett ställe. Bocka av när högen ligger i lådan —
-        markeringen sparas i den här webbläsaren och är till för dig som packar, inte för systemet.</p>
-      </div>
-    </div>
+    ${compHeader(cid, comp, user, {
+      active: 'utskrifter', crumb: 'Utskrifter',
+      titleHtml: `Inför tävlingsdagen ${help('utskrift.oversikt')}`,
+      subtitle: 'Allt som ska tryckas, på ett ställe. Bocka av när högen ligger i lådan — markeringen sparas i den här webbläsaren och är till för dig som packar, inte för systemet.'
+    })}
 
     ${!isAdmin ? '<div class="notice">Du kan ladda ner, men bara tävlingens admin kan ändra underlagen.</div>' : ''}
 

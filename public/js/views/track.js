@@ -16,7 +16,7 @@ import {
 } from '../course.js';
 import { ensureLeaflet } from '../leaflet.js';
 import { icon } from '../icons.js';
-import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
+import { compHeader, compLabel, setDocTitle } from '../nav.js';
 
 const CONTROL_MINUTES = 5;     // scheduled stop per control (fixed by design)
 const SPEEDS = [3, 4, 5];      // selectable walking pace, km/h
@@ -67,14 +67,7 @@ export async function renderTrack(app, user, cid) {
   const nPlaces = nodes.filter(n => n.kind === 'place').length;
   setDocTitle('Spår', compLabel(comp));
   wrap.innerHTML = `
-    <div class="page-head" style="margin-bottom:var(--sp-3);">
-      <div>
-        ${compCrumbs(cid, comp, { label: 'Spår' })}
-        <h1 class="t-d2">Spår</h1>
-      </div>
-    </div>
-
-    ${compTabs(cid, 'track', comp, user)}
+    ${compHeader(cid, comp, user, { active: 'track', title: 'Spår' })}
 
     ${unplaced.length ? `
       <div class="card mb-3" style="border-left:3px solid var(--avent-orange);padding:10px 16px;">

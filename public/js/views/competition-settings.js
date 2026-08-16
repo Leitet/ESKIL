@@ -28,7 +28,7 @@ import { help } from '../help.js';
 import { DISTRICTS, normDistrict } from '../districts.js';
 import { compPlaces, placeKind, placeToStorage } from '../places.js';
 import { openPlaceModal } from '../place-modal.js';
-import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
+import { compHeader, compLabel, setDocTitle } from '../nav.js';
 import { navigate } from '../router.js';
 import { initMapPicker } from '../mappicker.js';
 
@@ -80,15 +80,10 @@ export async function renderCompetitionSettings(app, user, cid) {
 
   const renderAll = () => {
     wrap.innerHTML = `
-      <div class="page-head">
-        <div>
-          ${compCrumbs(cid, comp, { label: 'Inställningar' })}
-          <h1 class="t-d2">Inställningar</h1>
-          <p class="muted">${escapeHtml(comp.name)}${isDemoReadOnly ? ' · skrivskyddat (demospår)' : ''}</p>
-        </div>
-      </div>
-
-      ${compTabs(cid, 'settings', comp, user)}
+      ${compHeader(cid, comp, user, {
+        active: 'settings', title: 'Inställningar',
+        subtitle: `${comp.name}${isDemoReadOnly ? ' · skrivskyddat (demospår)' : ''}`
+      })}
 
       <div class="tabs-sub">
         ${TABS.map(t => `<a href="#${t.key}" data-tab="${t.key}" class="${activeTab === t.key ? 'active' : ''}">${escapeHtml(t.label)}</a>`).join('')}

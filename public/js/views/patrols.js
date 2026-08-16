@@ -13,7 +13,7 @@ import { renderQrToImg, downloadStartPdf, downloadManualStartPdf } from '../pdf.
 import { icon } from '../icons.js';
 import { help, helpOnButton } from '../help.js';
 import { compPlaces } from '../places.js';
-import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
+import { compHeader, compLabel, setDocTitle } from '../nav.js';
 
 let unsub = null;
 let sortableInstance = null;
@@ -59,22 +59,16 @@ export async function renderPatrols(app, user, cid) {
 
   setDocTitle('Patruller', compLabel(comp));
   wrap.innerHTML = `
-    <div class="page-head">
-      <div>
-        ${compCrumbs(cid, comp, { label: 'Patruller' })}
-        <h1 class="t-d2">Patruller</h1>
-        ${st.enabled ? `<p class="muted" id="st-header">Starttid från ${escapeHtml(st.firstStart)} · ${st.intervalMinutes} min intervall</p>` : ''}
-      </div>
-      <div class="btn-row">
+    ${compHeader(cid, comp, user, {
+      active: 'patrols', title: 'Patruller',
+      subtitleHtml: st.enabled ? `<span id="st-header">Starttid från ${escapeHtml(st.firstStart)} · ${st.intervalMinutes} min intervall</span>` : '',
+      actions: `
         <a class="btn btn-ghost btn-sm" href="/s/${encodeURIComponent(comp.slug || cid)}/test" target="_blank" rel="noopener">${icon('external', { size: 14 })} Testa startkort</a>
         ${isAdmin ? helpOnButton(
           `<button class="btn btn-secondary btn-sm" id="manual-all">${icon('file-text', { size: 14 })} Manuella startkort</button>`,
           'comp.manualStartkort') : ''}
-        ${isAdmin ? '<button class="btn btn-primary" id="new">+ Ny patrull</button>' : ''}
-      </div>
-    </div>
-
-    ${compTabs(cid, 'patrols', comp, user)}
+        ${isAdmin ? '<button class="btn btn-primary" id="new">+ Ny patrull</button>' : ''}`
+    })}
 
     <div class="scoreboard-controls">
       <input class="input" id="q" placeholder="Sök namn, kår, nummer…" style="max-width:260px;">

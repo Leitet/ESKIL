@@ -46,6 +46,17 @@ Email extension). Production domain: https://eskilscout.se.
 - **Navigation lives in `public/js/nav.js`.** Competition tab bar
   (`compTabs`), breadcrumbs (`crumbs`/`compCrumbs`) and browser-tab titles
   (`setDocTitle`) are shared — never hand-roll a `.tabs` bar in a view.
+  **Tävlingssidor bygger HELA huvudet med `compHeader()`** — smulor, flikar och
+  sidrubrik i ETT anrop. Ordningen är smulor → flikar → rubrik, och den är inte
+  kosmetisk: förut låg smulorna inuti `page-head` med flikarna efter, och
+  eftersom page-head varierar i höjd (Anmälan har underrubrik och två knappar,
+  Spår bara en rubrik) hamnade flikraden på olika y och menyn hoppade när man
+  bytte flik. Mätt efteråt: flikraden ligger på 145 px på samtliga tio flikar.
+  Rubrik och underrubrik ESCAPAS (`title`/`subtitle`); de få sidor som bär
+  badges skickar `titleHtml`/`subtitleHtml` och ansvarar då själva för
+  escapningen. `compCrumbs` tar numera både `{ label }` och en ren sträng — en
+  sträng gav förut `label: undefined`, vilket renderade en avslutande "›" med
+  ingenting efter, helt tyst.
   Every page must have a route back to the competition start page and to a
   start page (`/app` or `/`); anonymous pages may link to `/t/<cid>` (public)
   but must never link to, or leak, secret URLs. The router fires its

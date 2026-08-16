@@ -68,8 +68,53 @@ export function compCrumbs(cid, comp, ...rest) {
   return crumbs([
     { label: 'Tävlingar', href: '/app' },
     { label: compLabel(comp), href: `/app/c/${encodeURIComponent(cid)}` },
-    ...rest
+    // En ren sträng är det naturliga att skicka för sista steget, och gjorde
+    // man det förr blev label undefined: smulan renderade en avslutande "›"
+    // med ingenting efter, helt tyst. Ta emot båda formerna.
+    ...rest.map(r => (typeof r === 'string' ? { label: r } : r))
   ]);
+}
+
+/**
+ * Standardhuvudet för ALLA tävlingssidor. En definition, så att flikraden
+ * hamnar på exakt samma höjd på varje flik.
+ *
+ * Tidigare byggde varje vy sitt eget huvud, med smulorna INUTI `page-head` och
+ * flikarna efter. Höjden på page-head varierar — Anmälan har underrubrik och
+ * två knappar, Spår bara en rubrik — så flikraden låg på olika y beroende på
+ * var man var, och menyn hoppade när man bytte flik.
+ *
+ * Ordningen är därför: smulor → flikar → sidrubrik. Navigationen ligger överst
+ * och står stilla; det som varierar hamnar under den.
+ *
+ * @param opts.active       flikens nyckel (samma som COMP_TABS)
+ * @param opts.title        sidrubrik, ESCAPAS — standardvägen
+ * @param opts.titleHtml    rå rubrik för de få sidor som bär badges; den som
+ *                          skickar den ansvarar själv för escapning
+ * @param opts.subtitle     förklarande rad under rubriken, ESCAPAS
+ * @param opts.subtitleHtml rå underrubrik (badges, statusmärken)
+ * @param opts.actions      HTML för knappraden till höger
+ * @param opts.crumbs       extra brödsmulor FÖRE den sista (t.ex. Kontroller ›)
+ * @param opts.crumb        sista brödsmulan; faller tillbaka på titeln
+ */
+export function compHeader(cid, comp, user, {
+  active, title = '', titleHtml = '', subtitle = '', subtitleHtml = '',
+  actions = '', crumbs: extra = [], crumb
+} = {}) {
+  const sista = crumb ?? title;
+  const rubrik = titleHtml || (title ? escapeHtml(title) : '');
+  const under = subtitleHtml || (subtitle ? escapeHtml(subtitle) : '');
+  return `
+    ${compCrumbs(cid, comp, ...extra, ...(sista ? [{ label: sista }] : []))}
+    ${compTabs(cid, active, comp, user)}
+    ${rubrik || under || actions ? `
+      <div class="page-head page-head-under-tabs">
+        <div>
+          ${rubrik ? `<h1 class="t-d2">${rubrik}</h1>` : ''}
+          ${under ? `<p class="muted">${under}</p>` : ''}
+        </div>
+        ${actions ? `<div class="btn-row">${actions}</div>` : ''}
+      </div>` : ''}`;
 }
 
 // Browser-tab title: "Del · Del — ESKIL". Views call this once their data is

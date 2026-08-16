@@ -17,7 +17,7 @@ import {
 } from '../store.js';
 import { deleteField } from '../firebase.js';
 import { escapeHtml, linkifyText, toast, withBusy, confirmDialog, isCompAdminUser, formatTime } from '../utils.js';
-import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
+import { compHeader, compLabel, setDocTitle } from '../nav.js';
 import { icon } from '../icons.js';
 import { help } from '../help.js';
 import { pickImage } from '../photo.js';
@@ -67,13 +67,7 @@ export async function renderMeddelanden(app, user, cid) {
   const ackSubs = new Set();
 
   wrap.innerHTML = `
-    <div class="page-head">
-      <div>
-        ${compCrumbs(cid, comp, { label: 'Meddelanden' })}
-        <h1 class="t-d2">Meddelanden</h1>
-      </div>
-    </div>
-    ${compTabs(cid, 'meddelanden', comp, user)}
+    ${compHeader(cid, comp, user, { active: 'meddelanden', title: 'Meddelanden' })}
     <p class="muted" style="max-width:72ch;">Når fältet direkt som banner på kontrollernas rapportsidor,
     start/mål-stationen, patrullernas startkort och startskärmen. Flera meddelanden kan vara aktiva
     samtidigt — klienterna staplar dem och samlar historiken i sin notisklocka ${icon('bell', { size: 14 })}.</p>

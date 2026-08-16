@@ -28,7 +28,7 @@ import { ensureLeaflet } from '../leaflet.js';
 import { renderQrToImg } from '../pdf.js';
 import { icon } from '../icons.js';
 import { help } from '../help.js';
-import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
+import { compHeader, compLabel, setDocTitle } from '../nav.js';
 
 const WARN_SILENT_MIN = 60;   // patrol out with no sign of life this long → warning
 const CTRL_STALE_MIN = 45;    // control silent this long WITH inbound patrols → red
@@ -120,15 +120,10 @@ export async function renderLaget(app, user, cid) {
 
   setDocTitle('Läget', compLabel(comp));
   wrap.innerHTML = `
-    <div class="page-head">
-      <div>
-        ${compCrumbs(cid, comp, { label: 'Läget' })}
-        <h1 class="t-d2">Läget</h1>
-        <p class="muted">Tävlingsdagsvy — uppdateras live när kontrollanter rapporterar och stationen checkar in.</p>
-      </div>
-    </div>
-
-    ${compTabs(cid, 'laget', comp, user)}
+    ${compHeader(cid, comp, user, {
+      active: 'laget', title: 'Läget',
+      subtitle: 'Tävlingsdagsvy — uppdateras live när kontrollanter rapporterar och stationen checkar in.'
+    })}
 
     <div id="broadcast-card"></div>
     <div id="station-card"></div>

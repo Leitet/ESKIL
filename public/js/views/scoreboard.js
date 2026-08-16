@@ -3,7 +3,7 @@ import { getCompetition, listPatrols, listControls, listAllScores, updateControl
 import { downloadResultsPdf, downloadResultsCsv, attachTrackStats } from '../results-export.js';
 import { allowedAvdelningar, escapeHtml, rankPatrols, rankKarer, RANKING_RULES_TEXT, utslagRows, isNumSet, toast, withBusy, isCompAdminUser, patrolLabel } from '../utils.js';
 import { icon } from '../icons.js';
-import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
+import { compHeader, compLabel, setDocTitle } from '../nav.js';
 
 export async function renderScoreboard(app, user, cid) {
   const wrap = document.createElement('div');
@@ -19,21 +19,15 @@ export async function renderScoreboard(app, user, cid) {
 
   setDocTitle('Poängtabell', compLabel(comp));
   wrap.innerHTML = `
-    <div class="page-head">
-      <div>
-        ${compCrumbs(cid, comp, { label: 'Poängtabell' })}
-        <h1 class="t-d2">Poängtabell</h1>
-      </div>
-      <div class="btn-row">
+    ${compHeader(cid, comp, user, {
+      active: 'scoreboard', title: 'Poängtabell',
+      actions: `
         ${isAdmin ? `<a class="btn btn-secondary btn-sm" href="/app/c/${cid}/ceremony" target="_blank" rel="noopener">${icon('trophy', { size: 14 })} Prisutdelning</a>
         <button class="btn btn-secondary btn-sm" id="dl-pdf">${icon('download', { size: 14 })} Resultat (PDF)</button>
         <button class="btn btn-ghost btn-sm" id="dl-csv">${icon('download', { size: 14 })} CSV</button>` : ''}
         ${canTogglePublic ? `<button class="btn btn-secondary btn-sm" id="toggle-public-scores"></button>` : ''}
-        <button class="btn btn-ghost btn-sm" id="refresh">Uppdatera</button>
-      </div>
-    </div>
-
-    ${compTabs(cid, 'scoreboard', comp, user)}
+        <button class="btn btn-ghost btn-sm" id="refresh">Uppdatera</button>`
+    })}
 
     <div class="scoreboard-controls">
       <label class="t-sm muted">Visa</label>

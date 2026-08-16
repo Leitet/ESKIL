@@ -7,7 +7,7 @@ import {
 import { courseLegs, legStub, legLatLngs, controlEtaWindow } from '../course.js';
 import { escapeHtml, toast, copyToClipboard, reportUrl, confirmDialog, formatTime, allInstructionGroups, withBusy, wireOverlayClose, isCompAdminUser, canEditControl } from '../utils.js';
 import { icon } from '../icons.js';
-import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
+import { compHeader, compLabel, setDocTitle } from '../nav.js';
 import { navigate } from '../router.js';
 import { openControlModal } from './controls.js';
 import { downloadControlPdf, renderQrToImg } from '../pdf.js';
@@ -49,19 +49,14 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
   const ctrlTitle = `${control.nummer ?? ''}. ${control.name || ''}`;
   setDocTitle(ctrlTitle, compLabel(comp));
   wrap.innerHTML = `
-    <div class="page-head">
-      <div>
-        ${compCrumbs(cid, comp, { label: 'Kontroller', href: `/app/c/${cid}/controls` }, { label: ctrlTitle })}
-        <h1 class="t-d2">${escapeHtml(ctrlTitle)}</h1>
-        <p class="muted">${control.open ? '<span class="badge badge-green">Öppen</span>' : '<span class="badge badge-gray">Stängd</span>'} Max ${control.maxPoang || 0} · Min ${control.minPoang || 0}${control.extraPoang ? ' · Extra ' + control.extraPoang : ''}</p>
-      </div>
-      <div class="btn-row">
+    ${compHeader(cid, comp, user, {
+      active: 'controls', title: ctrlTitle,
+      crumbs: [{ label: 'Kontroller', href: `/app/c/${cid}/controls` }],
+      subtitleHtml: `${control.open ? '<span class="badge badge-green">Öppen</span>' : '<span class="badge badge-gray">Stängd</span>'} Max ${control.maxPoang || 0} · Min ${control.minPoang || 0}${control.extraPoang ? ' · Extra ' + control.extraPoang : ''}`,
+      actions: `
         ${canEdit ? '<button class="btn btn-secondary" id="edit">Redigera kontrollen</button>' : ''}
-        ${canEdit ? `<button class="btn btn-primary" id="toggle">${control.open ? 'Stäng' : 'Öppna'} för rapport</button>` : ''}
-      </div>
-    </div>
-
-    ${compTabs(cid, 'controls', comp, user)}
+        ${canEdit ? `<button class="btn btn-primary" id="toggle">${control.open ? 'Stäng' : 'Öppna'} för rapport</button>` : ''}`
+    })}
 
     <div class="grid grid-2">
       <div class="card">
