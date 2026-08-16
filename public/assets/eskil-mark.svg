@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ESKIL">
+  <!-- ESKIL:s eget märke. Ersätter Scouternas logotyp och scoutsymbolen, som
+       inte får användas utan sanktion centralt.
+
+       Formen är kontrollskärmen: en kvadrat delad längs diagonalen, vit uppe
+       till vänster och orange nere till höger. Den är generisk orienterings-
+       symbolik — ingen organisations kännetecken — och den säger exakt vad
+       ESKIL handlar om till var och en som stått vid en kontroll i skogen.
+
+       Märket bär sin egen botten, så det fungerar både på det blå fältet och
+       på vitt, och läser sig ända ner i 16 px där finare motiv blir gröt. -->
+  <rect width="64" height="64" rx="14" fill="#003660"/>
+  <path d="M16 16 H48 L16 48 Z" fill="#ffffff"/>
+  <path d="M48 16 V48 H16 Z" fill="#E95F13"/>
+</svg>

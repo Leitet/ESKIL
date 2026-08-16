@@ -524,7 +524,15 @@ table.t tr.sf-row.park-row td {
 .splash h1 { margin: var(--sp-4) 0 var(--sp-5); font-family: var(--font-display); font-weight: 200; font-size: 64px; line-height: 1; letter-spacing: -0.02em; }
 .splash h1 em { font-family: var(--font-serif); font-weight: 500; font-style: italic; color: var(--rover-yellow); }
 .splash .lede { font-family: var(--font-serif); font-size: 19px; line-height: 1.5; color: #d2dde8; margin-bottom: var(--sp-8); }
-.splash-logo { display: block; width: min(320px, 70%); height: auto; }
+/* Låsningen: märket + ordbilden. Den gamla .splash-logo var en BRED ordbild
+   och sattes till 320 px; ESKIL:s märke är kvadratiskt och hade blivit en
+   jättelik ruta i samma mått. */
+.splash-lockup { display: flex; align-items: center; gap: var(--sp-4); }
+.splash-mark { width: 64px; height: 64px; display: block; }
+.splash-ord {
+  font-family: var(--font-display); font-weight: 200;
+  font-size: 44px; letter-spacing: .1em; color: var(--white); line-height: 1;
+}
 .login-card {
   background: var(--white); color: var(--fg1);
   border-radius: var(--r-xl);

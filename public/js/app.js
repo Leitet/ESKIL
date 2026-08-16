@@ -124,7 +124,7 @@ export function renderTopbar(extra) {
   bar.innerHTML = `
     <div class="topbar-inner">
       <a class="brand" href="${brandHref}" data-link>
-        <img class="brand-mark" src="/assets/scout-symbol.svg" alt="" aria-hidden="true">
+        <img class="brand-mark" src="/assets/eskil-mark.svg" alt="" aria-hidden="true">
         <span class="brand-name">ESKIL</span>
         <span class="brand-sub">Scoutspår</span>
       </a>
@@ -257,7 +257,10 @@ function splashScreen(bodyHtml) {
     <div class="splash">
       <div class="splash-pattern"></div>
       <div class="splash-inner">
-        <img class="splash-logo" src="/assets/logo-scouterna-tagline-white.svg" alt="Scouterna" width="320">
+        <div class="splash-lockup">
+        <img class="splash-mark" src="/assets/eskil-mark.svg" alt="" aria-hidden="true">
+        <span class="splash-ord">ESKIL</span>
+      </div>
         ${bodyHtml}
       </div>
     </div>`;

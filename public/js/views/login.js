@@ -9,10 +9,13 @@ export function renderLogin(app) {
   splash.innerHTML = `
     <div class="splash-pattern"></div>
     <div class="splash-inner">
-      <img class="splash-logo" src="/assets/logo-scouterna-tagline-white.svg" alt="Scouterna — raised by adventure" width="320">
+      <div class="splash-lockup">
+      <img class="splash-mark" src="/assets/eskil-mark.svg" alt="" aria-hidden="true">
+      <span class="splash-ord">ESKIL</span>
+      </div>
       <div class="t-over eyebrow" style="margin-top: var(--sp-8);">ESKIL · Scoutspår</div>
-      <h1>Raised by <em>adventure.</em></h1>
-      <p class="lede">ESKIL hjälper dig att köra scouttävlingar — från Älghornsjakten till DM. Patruller, kontroller, poängrapportering — samlat på ett ställe.</p>
+      <h1>Allt ett spår behöver.</h1>
+      <p class="lede">Patruller, kontroller, poängrapportering och live-resultat — samlat på ett ställe.</p>
 
       <div class="login-card">
         <h2 class="t-h2" style="margin-top:0;color:var(--scout-blue);">Logga in</h2>

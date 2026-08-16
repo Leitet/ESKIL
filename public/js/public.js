@@ -35,20 +35,16 @@ function avdImg(avd) {
   }[avd] || null;
 }
 
-// Inline scout-symbol SVG so we can color it via currentColor — loading it as
-// `<img>` ignored CSS color and gave flaky results when filter-inverted.
-const SCOUT_SYMBOL_SVG = `<svg class="avd-scout-symbol" viewBox="0 0 200 240" aria-hidden="true" fill="currentColor">
-  <path d="M100 12 C 92 38, 90 60, 90 92 C 90 118, 95 138, 100 158 C 105 138, 110 118, 110 92 C 110 60, 108 38, 100 12 Z"/>
-  <path d="M38 32 C 44 62, 52 86, 68 108 C 78 122, 84 132, 82 152 C 78 138, 70 132, 58 128 C 44 124, 34 118, 30 102 C 26 82, 28 58, 38 32 Z"/>
-  <path d="M162 32 C 156 62, 148 86, 132 108 C 122 122, 116 132, 118 152 C 122 138, 130 132, 142 128 C 156 124, 166 118, 170 102 C 174 82, 172 58, 162 32 Z"/>
-  <ellipse cx="100" cy="170" rx="62" ry="10"/>
-  <rect x="48" y="184" width="104" height="6"/>
-  <rect x="54" y="196" width="92" height="6"/>
-  <path d="M100 208 C 94 216, 92 224, 96 232 L 104 232 C 108 224, 106 216, 100 208 Z"/>
+// Kontrollskärmen inline, så den kan färgas via currentColor — som <img>
+// ignoreras CSS-färgen. Ersätter Scouternas klöverblad, som stod här förut
+// och som inte får användas utan sanktion centralt.
+const ESKIL_MARK_SVG = `<svg class="avd-scout-symbol" viewBox="0 0 64 64" aria-hidden="true" fill="currentColor">
+  <path d="M8 8 H56 V56 H8 Z" fill="none" stroke="currentColor" stroke-width="5"/>
+  <path d="M56 8 V56 H8 Z"/>
 </svg>`;
 
 function avdIllustration(avd) {
-  if (avd === 'Ledare') return SCOUT_SYMBOL_SVG;
+  if (avd === 'Ledare') return ESKIL_MARK_SVG;
   const src = avdImg(avd);
   return src ? `<img src="${src}" alt="">` : '';
 }
@@ -627,12 +623,11 @@ function renderHero() {
   return `
     <header class="pub-hero">
       <div class="pub-hero-pattern"></div>
-      <img class="pub-hero-symbol" src="/assets/scout-symbol.svg" alt="" aria-hidden="true">
+      <img class="pub-hero-symbol" src="/assets/eskil-mark-mono.svg" alt="" aria-hidden="true">
       <div class="page">
         <div class="pub-hero-top">
           <a class="pub-brand" href="/" aria-label="Till ESKIL:s startsida">
-            <img src="/assets/logo-scouterna-tagline-white.svg" alt="Scouterna">
-            <span class="divider"></span>
+            <img src="/assets/eskil-mark.svg" alt="" aria-hidden="true">
             <span class="sublabel">ESKIL</span>
           </a>
           <div class="pub-hero-actions">
@@ -736,7 +731,7 @@ function renderFooter() {
     <footer class="pub-foot">
       <div class="page">
         <div style="display:flex;align-items:center;gap:var(--sp-4);">
-          <img src="/assets/logo-scouterna-tagline-white.svg" alt="Scouterna">
+          <img src="/assets/eskil-mark.svg" alt="ESKIL">
           <span>· ESKIL · ${comp?.year || ''}</span>
         </div>
         <span class="muted">${scoresPublic()
@@ -1550,7 +1545,7 @@ function renderNotFound(msg) {
       <div class="pub-hero-pattern"></div>
       <div class="page">
         <a class="pub-brand" href="/" aria-label="Till ESKIL:s startsida">
-          <img src="/assets/logo-scouterna-tagline-white.svg" alt="Scouterna">
+          <img src="/assets/eskil-mark.svg" alt="ESKIL">
         </a>
         <h1>Tävlingen hittades inte</h1>
         <p class="lede">${escapeHtml(msg)}</p>

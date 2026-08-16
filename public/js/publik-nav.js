@@ -47,8 +47,7 @@ export function publikHeader({ aktiv = '', titel = '', ingress = '' } = {}) {
       <div class="page">
         <div class="pub-hero-top">
           <a class="pub-brand" href="/"${iSpa('/') ? ' data-link' : ''} aria-label="Till ESKIL:s startsida">
-            <img src="/assets/logo-scouterna-tagline-white.svg" alt="Scouterna">
-            <span class="divider"></span>
+            <img src="/assets/eskil-mark.svg" alt="" aria-hidden="true">
             <span class="sublabel">ESKIL</span>
           </a>
           <nav class="pub-meny" aria-label="ESKIL:s sidor">
@@ -81,7 +80,7 @@ export function publikFooter({ extra = '' } = {}) {
     <footer class="pub-foot">
       <div class="page">
         <div style="display:flex;align-items:center;gap:var(--sp-4);">
-          <img src="/assets/logo-scouterna-tagline-white.svg" alt="Scouterna">
+          <img src="/assets/eskil-mark.svg" alt="ESKIL">
           <span>· ESKIL</span>
         </div>
         <nav class="pub-foot-lankar" aria-label="ESKIL:s sidor">
