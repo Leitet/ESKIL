@@ -3,7 +3,7 @@
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
 import {
-  getAuth,
+  initializeAuth, indexedDBLocalPersistence,
   connectAuthEmulator,
   isSignInWithEmailLink, sendSignInLinkToEmail, signInWithEmailLink,
   onAuthStateChanged, signOut
@@ -69,7 +69,19 @@ if (!isLocalHost && config.appId) {
   }
 }
 
-const auth = getAuth(app);
+// initializeAuth, INTE getAuth. getAuth drar in popup/redirect-resolvern, och
+// den laddar https://apis.google.com/js/api.js för sin osynliga iframe. CSP:n
+// tillåter inte den värden, så skriptet blockerades — och Auth svarade inte
+// förrän försöket gett upp. Det var därför /app stod på "Laddar…" i sekunder
+// på en kall klient (syntes som upprepade CSP-fel i konsolen).
+//
+// ESKIL loggar in med e-postlänk (signInWithEmailLink) och använder aldrig
+// popup eller redirect, så resolvern behövs inte. Att inte ladda det vi inte
+// använder är både snabbare och en CSP-överträdelse mindre.
+//
+// Persistensen anges uttryckligen här eftersom initializeAuth kräver det;
+// indexedDBLocalPersistence är samma förval som getAuth hade gett.
+const auth = initializeAuth(app, { persistence: indexedDBLocalPersistence });
 // All Firebase-sent emails (magic links, anmälan manage-links/receipt
 // notifications) use the Swedish template instead of the English default.
 auth.languageCode = 'sv';

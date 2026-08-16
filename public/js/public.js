@@ -627,11 +627,11 @@ function renderHero() {
   return `
     <header class="pub-hero">
       <div class="pub-hero-pattern"></div>
-      <img class="pub-hero-symbol" src="/assets/scout-symbol.svg" alt="" aria-hidden="true">
+      <img class="pub-hero-symbol" src="/assets/eskil_design_library/svg/eskil-symbol-inverted.svg" alt="" aria-hidden="true">
       <div class="page">
         <div class="pub-hero-top">
           <a class="pub-brand" href="/" aria-label="Till ESKIL:s startsida">
-            <img src="/assets/scout-symbol.svg" alt="" aria-hidden="true">
+            <img src="/assets/eskil_design_library/svg/eskil-symbol-inverted.svg" alt="" aria-hidden="true">
             <span class="sublabel">ESKIL</span>
           </a>
           <div class="pub-hero-actions">
@@ -735,7 +735,7 @@ function renderFooter() {
     <footer class="pub-foot">
       <div class="page">
         <div style="display:flex;align-items:center;gap:var(--sp-4);">
-          <img src="/assets/scout-symbol.svg" alt="ESKIL">
+          <img src="/assets/eskil_design_library/svg/eskil-symbol-inverted.svg" alt="ESKIL">
           <span>· ESKIL · ${comp?.year || ''}</span>
         </div>
         <span class="muted">${scoresPublic()
@@ -1549,7 +1549,7 @@ function renderNotFound(msg) {
       <div class="pub-hero-pattern"></div>
       <div class="page">
         <a class="pub-brand" href="/" aria-label="Till ESKIL:s startsida">
-          <img src="/assets/scout-symbol.svg" alt="ESKIL">
+          <img src="/assets/eskil_design_library/svg/eskil-symbol-inverted.svg" alt="ESKIL">
         </a>
         <h1>Tävlingen hittades inte</h1>
         <p class="lede">${escapeHtml(msg)}</p>

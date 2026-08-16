@@ -10,7 +10,7 @@ export function renderLogin(app) {
     <div class="splash-pattern"></div>
     <div class="splash-inner">
       <div class="splash-lockup">
-      <img class="splash-mark" src="/assets/scout-symbol.svg" alt="" aria-hidden="true">
+      <img class="splash-mark" src="/assets/eskil_design_library/svg/eskil-symbol-inverted.svg" alt="" aria-hidden="true">
       <span class="splash-ord">ESKIL</span>
         <span class="splash-tagline">Där spåret börjar</span>
       </div>

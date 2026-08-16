@@ -124,7 +124,7 @@ export function renderTopbar(extra) {
   bar.innerHTML = `
     <div class="topbar-inner">
       <a class="brand" href="${brandHref}" data-link>
-        <img class="brand-mark" src="/assets/scout-symbol.svg" alt="" aria-hidden="true">
+        <img class="brand-mark" src="/assets/eskil_design_library/svg/eskil-symbol-primary.svg" alt="" aria-hidden="true">
         <span class="brand-name">ESKIL</span>
         <span class="brand-sub">Scoutspår</span>
       </a>
@@ -258,7 +258,7 @@ function splashScreen(bodyHtml) {
       <div class="splash-pattern"></div>
       <div class="splash-inner">
         <div class="splash-lockup">
-        <img class="splash-mark" src="/assets/scout-symbol.svg" alt="" aria-hidden="true">
+        <img class="splash-mark" src="/assets/eskil_design_library/svg/eskil-symbol-inverted.svg" alt="" aria-hidden="true">
         <span class="splash-ord">ESKIL</span>
         <span class="splash-tagline">Där spåret börjar</span>
       </div>

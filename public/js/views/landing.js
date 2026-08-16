@@ -295,11 +295,11 @@ function heroHtml(user) {
   return `
     <header class="pub-hero">
       <div class="pub-hero-pattern"></div>
-      <img class="pub-hero-symbol" src="/assets/scout-symbol.svg" alt="" aria-hidden="true">
+      <img class="pub-hero-symbol" src="/assets/eskil_design_library/svg/eskil-symbol-inverted.svg" alt="" aria-hidden="true">
       <div class="page">
         <div class="pub-hero-top">
           <a class="pub-brand" href="/" data-link aria-label="Till ESKIL:s startsida">
-            <img src="/assets/scout-symbol.svg" alt="" aria-hidden="true">
+            <img src="/assets/eskil_design_library/svg/eskil-symbol-inverted.svg" alt="" aria-hidden="true">
             <span class="sublabel">ESKIL</span>
           </a>
           <div class="pub-hero-actions">

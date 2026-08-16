@@ -227,7 +227,7 @@ function hero(sub = 'Anmälan') {
     <header class="anm-hero">
       <div class="anm-hero-pattern"></div>
       <div class="anm-hero-inner">
-        <img src="/assets/scout-symbol.svg" alt="ESKIL">
+        <img src="/assets/eskil_design_library/svg/eskil-symbol-inverted.svg" alt="ESKIL">
         <div class="t-over" style="color:var(--rover-yellow);margin-top:14px;">${escapeHtml(comp.shortName || '')} · ${comp.year || ''} · ${escapeHtml(sub)}</div>
         <h1>${escapeHtml(comp.name || '')}</h1>
         <div class="sub">${comp.date ? escapeHtml(formatDate(comp.date)) : ''}${comp.location ? ' · ' + escapeHtml(comp.location) : ''}</div>
@@ -293,7 +293,7 @@ function renderFatal(msg) {
     <header class="anm-hero">
       <div class="anm-hero-pattern"></div>
       <div class="anm-hero-inner">
-        <img src="/assets/scout-symbol.svg" alt="ESKIL">
+        <img src="/assets/eskil_design_library/svg/eskil-symbol-inverted.svg" alt="ESKIL">
         <h1>Hoppsan</h1>
         <div class="sub">${escapeHtml(msg)}</div>
         <div style="margin-top:var(--sp-6);display:flex;gap:var(--sp-3);justify-content:center;flex-wrap:wrap;">
