@@ -987,6 +987,9 @@ export async function attachControlMeta(cid, controls) {
     const m = metas[i] || {};
     c.telefon = m.telefon || '';
     c.notering = m.notering || '';
+    // Samtalstoken hör till fältlänken, inte till samtalet — den behövs där
+    // länkar och QR-koder byggs.
+    c.threadToken = m.threadToken || '';
     // ansvariga/ansvarigaEmails moved to the meta subdoc (Fas 3c) — surface
     // them for the admin/ansvarig editor. Fall back to the doc during migration.
     if (m.ansvariga !== undefined) c.ansvariga = m.ansvariga;
@@ -1056,6 +1059,7 @@ export async function attachPatrolMeta(cid, patrols) {
     // Utgått-anteckningen ligger här sedan den flyttades av från det
     // världsläsbara patrulldokumentet — se setPatrolUtgatt.
     p.utgattNote = metas[i].utgattNote || '';
+    p.threadToken = metas[i].threadToken || '';
   });
   return patrols;
 }
@@ -1410,14 +1414,74 @@ export function watchPassages(cid, stationId, cb) {
 }
 
 // --- Samtal fält <-> tävlingsledning -------------------------------------------
-// En tråd per kontroll och per patrull, med deterministiskt id så fältsidan
-// hittar sin egen utan att kunna räkna upp andras (se firestore.rules).
+// En tråd per kontroll och per patrull. Tråd-id:t finns i TVÅ former, och
+// skillnaden är hela säkerhetsmodellen:
+//
+//   HÄRLEDD  'kontroll-<ctrlId>' / 'patrull-<patrolId>' — går att räkna fram,
+//            eftersom kontroller och patruller är världsläsbara. Fältet får
+//            fortfarande SKRIVA hit (nödropet måste alltid gå fram), men bara
+//            ledningen får läsa.
+//   TOKEN    en slumpad sträng som ledningen mintar och som ligger i
+//            fältlänkens fjärde segment. Den som har länken får läsa svaren.
+//
+// Se `harledd()` i firestore.rules. Funktionerna nedan tar ett FÄRDIGT tråd-id
+// — anroparen väljer form med `threadIdFor`.
 
 export const threadId = (kind, refId) => `${kind}-${refId}`;
 
-export function watchThread(cid, kind, refId, cb) {
+// Fältsidans val: har vi en token i länken används den, annars den härledda
+// formen (skriv-bara). Ledningen anropar alltid med trådens riktiga id.
+export const threadIdFor = (kind, refId, token) => token || threadId(kind, refId);
+
+// Ett tråd-id som INTE är härlett kan bara ledningen ha skapat — det är så
+// klienten vet om den får läsa. Samma regex som reglerna.
+export const arHarleddTrad = (tid) => /^(kontroll|patrull)-/.test(String(tid || ''));
+
+// Mintar samtalstoken för en kontroll eller patrull, en gång.
+//
+// Token läggs i private/meta (member-only) OCH ett tomt trådhuvud skapas på
+// token-id:t: reglerna kräver att huvudet finns innan fältet får skriva i en
+// tokentråd, och det kravet är det enda som hindrar att någon lägger upp ett
+// eget id och läser sina egna meddelanden.
+//
+// Mintningen sker LAT, där länken byggs — inte i createControl. Kontroller och
+// patruller skapas nämligen på fyra ställen till (årgångskopiering,
+// backupimport, återställning ur papperskorgen, massimport från anmälan), och
+// var och en av dem hade behövt komma ihåg det.
+export async function ensureThreadToken(cid, kind, refId) {
+  const metaRef = kind === 'kontroll'
+    ? doc(db, 'competitions', cid, 'controls', refId, 'private', 'meta')
+    : doc(db, 'competitions', cid, 'patrols', refId, 'private', 'meta');
+  // Läsfelet får INTE svälja: "kunde inte läsa" och "har ingen token" måste
+  // hållas isär. Gjorde de inte det skulle en tillfällig läsmiss mynta en ny
+  // token över den befintliga, och ledningen skulle svara i en tråd som den
+  // utskrivna QR-koden inte pekar på.
+  const snap = await getDoc(metaRef);
+  const redan = snap.exists() ? snap.data()?.threadToken : null;
+  if (redan) return redan;
+  // Samma generator som kompletteringarnas token: 24 tecken bas36, inga
+  // bindestreck — kan alltså aldrig se ut som den härledda formen.
+  const token = slumpToken();
+  const batch = writeBatch(db);
+  batch.set(metaRef, { threadToken: token }, { merge: true });
+  batch.set(doc(db, 'competitions', cid, 'threads', token), { kind, refId }, { merge: true });
+  await batch.commit();
+  return token;
+}
+
+// Mintar för en hel lista och hänger på `threadToken` på varje post, så
+// länkbyggarna (PDF:er, kopiera-länk, utskiftscentralen) kan köra rakt igenom.
+export async function ensureThreadTokens(cid, kind, items) {
+  await Promise.all((items || []).map(async (it) => {
+    if (it.threadToken) return;
+    it.threadToken = await ensureThreadToken(cid, kind, it.id).catch(() => null);
+  }));
+  return items;
+}
+
+export function watchThread(cid, tid, cb) {
   return onSnapshot(
-    query(collection(db, 'competitions', cid, 'threads', threadId(kind, refId), 'messages'), orderBy('at')),
+    query(collection(db, 'competitions', cid, 'threads', tid, 'messages'), orderBy('at')),
     // includeMetadataChanges: ett meddelande skrivet utan täckning ska synas
     // som "skickar…" tills servern bekräftat, precis som stationens
     // incheckningar.
@@ -1427,8 +1491,8 @@ export function watchThread(cid, kind, refId, cb) {
   );
 }
 
-export function watchThreadDoc(cid, kind, refId, cb) {
-  return onSnapshot(doc(db, 'competitions', cid, 'threads', threadId(kind, refId)),
+export function watchThreadDoc(cid, tid, cb) {
+  return onSnapshot(doc(db, 'competitions', cid, 'threads', tid),
     snap => cb(snap.exists() ? { id: snap.id, ...snap.data() } : null), () => cb(null));
 }
 
@@ -1444,8 +1508,8 @@ export function watchThreads(cid, cb) {
 // Klienttid, inte serverTimestamp: samma skäl som poängrapporterna. Ett
 // meddelande som skrivs offline och synkas senare ska bära ögonblicket det
 // skrevs, annars hamnar samtalet i fel ordning när nätet kommer tillbaka.
-export async function sendThreadMessage(cid, kind, refId, { from, text = '', image = null }) {
-  const tid = threadId(kind, refId);
+export async function sendThreadMessage(cid, kind, refId, { from, text = '', image = null, token = null }) {
+  const tid = threadIdFor(kind, refId, token);
   const at = Timestamp.fromDate(new Date());
   const msg = { from, at };
   if (text) msg.text = String(text).slice(0, 2000);
@@ -1472,8 +1536,8 @@ export async function sendThreadMessage(cid, kind, refId, { from, text = '', ima
 
 // Läskvittens. Vem som läst styr vilken stämpel som sätts — och reglerna
 // hindrar fältet från att sätta ledningens.
-export async function markThreadRead(cid, kind, refId, who) {
-  await setDoc(doc(db, 'competitions', cid, 'threads', threadId(kind, refId)),
+export async function markThreadRead(cid, kind, refId, who, token = null) {
+  await setDoc(doc(db, 'competitions', cid, 'threads', threadIdFor(kind, refId, token)),
     { kind, refId, [who === 'ledning' ? 'ledningReadAt' : 'faltReadAt']: Timestamp.fromDate(new Date()) },
     { merge: true });
 }

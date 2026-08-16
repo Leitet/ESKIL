@@ -499,9 +499,99 @@ describe('Samtal fält ↔ tävlingsledning', () => {
     assert.equal((await list(`competitions/${MC}/threads`, null)).ok, false, 'anonym listning av trådar');
   });
 
-  test('men den som har länken kan läsa sin egen tråd', async () => {
-    assert.equal((await read(trad(MC, 'kontroll', CTRL), null)).ok, true, 'läsa egen tråd');
-    assert.equal((await list(`${trad(MC, 'kontroll', CTRL)}/messages`, null)).ok, true, 'läsa svaren');
+  test('kontrollansvarig kan inte skriva om samtalstoken', async () => {
+    // Token ligger i tryckta QR-koder. Kunde en ansvarig skriva om den dog
+    // kontrollens fältlänk tyst mitt i tävlingen.
+    const KC = uniq('tokmeta');
+    await seed(`competitions/${KC}`, { name: 'Token', demo: false, closed: false });
+    await seed(`competitions/${KC}/private/access`, { adminEmails: ['nan@example.com'], userEmails: [] });
+    await seed(`competitions/${KC}/controls/${CTRL}`, { name: 'K', nummer: 1, open: true });
+    await seed(`competitions/${KC}/controls/${CTRL}/private/meta`,
+      { ansvarigaEmails: [USER.email], threadToken: 'abc123', telefon: '070' });
+    deny(await write(`competitions/${KC}/controls/${CTRL}/private/meta`,
+      { threadToken: 'kapad' }, USER, { merge: true }), 'ansvarig skriver om token');
+    allow(await write(`competitions/${KC}/controls/${CTRL}/private/meta`,
+      { telefon: '070-1' }, USER, { merge: true }), 'ansvarig ändrar telefon');
+    for (const p of [`competitions/${KC}/controls/${CTRL}/private/meta`,
+      `competitions/${KC}/controls/${CTRL}`, `competitions/${KC}/private/access`, `competitions/${KC}`])
+      await remove(p, 'owner');
+  });
+
+  test('LÄCKAN: den härledda tråden är INTE anonymt läsbar', async () => {
+    // 'kontroll-<ctrlId>' går att räkna fram — kontroller och patruller är
+    // världsläsbara. Med `allow get: if true` kunde vem som helst läsa fältets
+    // samtal med ledningen, inklusive nödropens GPS-position och bilderna
+    // från skogen. Reproducerat anonymt mot skarpa regler innan fixen.
+    assert.equal((await read(trad(MC, 'kontroll', CTRL), null)).ok, false, 'härledd tråd anonymt');
+    assert.equal((await list(`${trad(MC, 'kontroll', CTRL)}/messages`, null)).ok, false,
+      'härledda trådens meddelanden anonymt');
+  });
+
+  test('radbrytning i tråd-id smiter inte förbi den härledda formen', async () => {
+    // RE2:s punkt matchar INTE radbrytning. Utan (?s) föll ett id som
+    // 'kontroll-\nsmyg' ur den härledda formen och behandlades som en token
+    // — alltså läsbart för vem som helst. Mätt: 200 utan flaggan, 403 med.
+    const id = encodeURIComponent('kontroll-\nsmyg');
+    await seed(`competitions/${MC}/threads/${id}`, { kind: 'kontroll', refId: CTRL, lastText: 'nödrop' });
+    assert.equal((await read(`competitions/${MC}/threads/${id}`, null)).ok, false,
+      'tråd-id med radbrytning anonymt');
+    await remove(`competitions/${MC}/threads/${id}`, 'owner');
+  });
+
+  test('men fältet kan fortfarande SKRIVA på den härledda tråden', async () => {
+    // Nödropet på startkortet har EN kanal, och tävlingssidan länkar publikt
+    // till startkorten — de flesta patruller står alltså utan token. Krävdes
+    // token för att skriva vore nödropet dött för dem.
+    allow(await write(trad(MC, 'patrull', PATROL),
+      { kind: 'patrull', refId: PATROL, lastFrom: 'falt', lastText: '🆘', lastAt: new Date() }, null),
+      'nödrop utan token');
+    allow(await write(msg(MC, 'patrull', PATROL, uniq('sos')),
+      { from: 'falt', text: '🆘 VI BEHÖVER HJÄLP', at: new Date() }, null), 'nödropets meddelande');
+  });
+
+  test('tokentråd: ledningen mintar huvudet, den som har token läser', async () => {
+    const TOK = uniq('tok') + uniq('en');            // ~20 tecken, som en riktig token
+    await seed(`competitions/${MC}/threads/${TOK}`, { kind: 'kontroll', refId: CTRL });
+    allow(await write(`competitions/${MC}/threads/${TOK}/messages/t1`,
+      { from: 'falt', text: 'Fråga via tokenlänken', at: new Date() }, null), 'skriva i tokentråd');
+    assert.equal((await read(`competitions/${MC}/threads/${TOK}`, null)).ok, true, 'läsa tokentråd');
+    assert.equal((await list(`competitions/${MC}/threads/${TOK}/messages`, null)).ok, true,
+      'läsa tokentrådens svar');
+    for (const p of [`competitions/${MC}/threads/${TOK}/messages/t1`, `competitions/${MC}/threads/${TOK}`])
+      await remove(p, 'owner');
+  });
+
+  test('anonym kan INTE minta en egen tokentråd', async () => {
+    // Kunde fältet skapa en tråd med valfritt id vore hela tokenformen
+    // värdelös: lägg upp ett id, skriv i det, läs det.
+    const TOK = uniq('egen') + uniq('token');
+    deny(await write(`competitions/${MC}/threads/${TOK}`,
+      { kind: 'kontroll', refId: CTRL, lastFrom: 'falt', lastAt: new Date() }, null),
+      'anonymt mintad tokentråd');
+    deny(await write(`competitions/${MC}/threads/${TOK}/messages/x1`,
+      { from: 'falt', text: 'hej', at: new Date() }, null),
+      'meddelande i tokentråd utan huvud');
+  });
+
+  test('fältet kan inte peka om en tokentråd till en annan mottagare', async () => {
+    const TOK = uniq('peka') + uniq('om');
+    await seed(`competitions/${MC}/threads/${TOK}`, { kind: 'kontroll', refId: CTRL });
+    deny(await write(`competitions/${MC}/threads/${TOK}`,
+      { kind: 'patrull', refId: PATROL, lastFrom: 'falt', lastAt: new Date() }, null, { merge: true }),
+      'ompekad tokentråd');
+    await remove(`competitions/${MC}/threads/${TOK}`, 'owner');
+  });
+
+  test('fältets läskvittens går fram även när ledningen svarat sist', async () => {
+    // Buggen: lastFrom-kravet läste det FÄRDIGA (merge:ade) dokumentet, som
+    // bär 'ledning' precis den enda gång kvittensen körs. Varje kvittens
+    // nekades, felet slukades av .catch() och oläst-pricken slocknade aldrig.
+    const T = trad(MC, 'kontroll', CTRL);
+    await seed(T, { kind: 'kontroll', refId: CTRL, lastFrom: 'ledning', lastAt: new Date() });
+    allow(await write(T, { kind: 'kontroll', refId: CTRL, faltReadAt: new Date() }, null, { merge: true }),
+      'fältets läskvittens');
+    deny(await write(T, { kind: 'kontroll', refId: CTRL, faltReadAt: new Date(), lastText: 'smugit in' },
+      null, { merge: true }), 'kvittens som samtidigt ändrar texten');
   });
 });
 

@@ -15,7 +15,7 @@
 import { escapeHtml, linkifyText } from './utils.js';
 import { openSheet } from './sheet.js';
 import { icon } from './icons.js';
-import { watchThread, watchThreadDoc, sendThreadMessage, markThreadRead } from './store.js';
+import { watchThread, watchThreadDoc, sendThreadMessage, markThreadRead, threadIdFor } from './store.js';
 import { pickImage } from './photo.js';
 import { withTimeout } from './offline-queue.js';
 import {
@@ -37,7 +37,18 @@ const tillDatum = (ts) => {
  *   visas alltid, den är inte en tvåvägsfunktion.
  * @returns { destroy() }
  */
-export function mountMessages({ cid, kind, refId, enabled = true } = {}) {
+/**
+ * Meddelandepanelen på fältsidorna.
+ *
+ * `token` är samtalstoken ur fältlänkens fjärde segment. Har vi den blir
+ * panelen tvåvägs — annars SKICKAR-BARA: meddelandet går fram (nödropet måste
+ * alltid göra det), men svaren kan inte läsas. Se firestore.rules `harledd()`.
+ * En länk utan token är en gammal utskrift; det är därför texten pekar på att
+ * be ledningen om en ny.
+ */
+export function mountMessages({ cid, kind, refId, token = null, enabled = true } = {}) {
+  const tid = threadIdFor(kind, refId, token);
+  const kanLasa = !!token;
   let samtal = [];
   let tråd = null;
   let bild = null;
@@ -116,7 +127,23 @@ export function mountMessages({ cid, kind, refId, enabled = true } = {}) {
           ${p.text ? `<div class="emb-text">${linkifyText(p.text)}</div>` : ''}
           <div class="emb-status">${p.from === 'falt' ? 'Du' : 'Tävlingsledningen'} · ${klocka(p.at)}${p.pending ? ' · skickar…' : ''}</div>
         </div>`;
-    }).join('') : `<p class="emb-empty">Inget än. Här samlas allt tävlingsledningen skickar ut — och dina egna frågor.</p>`;
+    }).join('') : `<p class="emb-empty">Inget än. Här samlas allt tävlingsledningen skickar ut${kanLasa ? ' — och dina egna frågor' : ''}.</p>`;
+
+    // Skickar-bara-läget. Utan token kan sidan inte läsa tråden, och det ska
+    // stå rakt ut: annars ser panelen ut som om ledningen aldrig svarar.
+    if (!kanLasa) {
+      const rad = document.createElement('p');
+      rad.className = 'emb-hint emb-readonly';
+      // Formuleringen måste stämma med hur man KOM hit. En patrull har oftast
+      // följt tävlingssidans publika startkortslänk — den har aldrig burit
+      // någon nyckel, och "äldre utskrift" vore obegripligt.
+      rad.textContent = kind === 'patrull'
+        ? 'Du kan skicka härifrån — det går alltid fram. Svaren visas bara på länken '
+          + 'i ert eget startkort, inte på den här.'
+        : 'Du kan skicka härifrån — det går alltid fram. Svaren visas inte på den här '
+          + 'länken; den är från en äldre utskrift. Be tävlingsledningen om den nya.';
+      log.appendChild(rad);
+    }
 
     // Hoppa inte ifrån den som scrollat upp för att läsa något äldre.
     if (nereVid < 80) log.scrollTop = log.scrollHeight;
@@ -201,11 +228,15 @@ export function mountMessages({ cid, kind, refId, enabled = true } = {}) {
           // stod knappen kvar grå och rutan full av text, och kontrollanten
           // som just skickat sitt nödrop fick ingen kvittens alls.
           await withTimeout(
-            sendThreadMessage(cid, kind, refId, { from: 'falt', text, image: bild?.dataUrl || null }),
+            sendThreadMessage(cid, kind, refId, { from: 'falt', text, image: bild?.dataUrl || null, token }),
             4000);
           overlay.querySelector('#emb-text').value = '';
           bild = null; visaBild();
-          overlay.querySelector('#emb-hint').textContent = 'Tävlingsledningen ser frågan direkt och svarar här.';
+          overlay.querySelector('#emb-hint').textContent = kanLasa
+            ? 'Tävlingsledningen ser frågan direkt och svarar här.'
+            : (kind === 'patrull'
+                ? 'Skickat till tävlingsledningen. Svaret visas på länken i ert startkort.'
+                : 'Skickat till tävlingsledningen. Svaret syns inte på den här länken — be dem om den nya.');
         } catch (e) {
           if (e?.message === 'offline-timeout') {
             overlay.querySelector('#emb-text').value = '';
@@ -219,7 +250,7 @@ export function mountMessages({ cid, kind, refId, enabled = true } = {}) {
       });
     }
 
-    if (oläsraSvar()) markThreadRead(cid, kind, refId, 'falt').catch(() => {});
+    if (kanLasa && oläsraSvar()) markThreadRead(cid, kind, refId, 'falt', token).catch(() => {});
     ritaPanel();
     ritaKnapp();
     const log = overlay.querySelector('#emb-log');
@@ -230,12 +261,17 @@ export function mountMessages({ cid, kind, refId, enabled = true } = {}) {
 
   // --- Datakällor -------------------------------------------------------------
   unsubs.push(onBroadcastChange(() => { ritaKnapp(); ritaPanel(); }));
-  unsubs.push(watchThread(cid, kind, refId, rows => { samtal = rows; ritaPanel(); }));
-  unsubs.push(watchThreadDoc(cid, kind, refId, t => {
-    tråd = t;
-    if (öppen && oläsraSvar()) markThreadRead(cid, kind, refId, 'falt').catch(() => {});
-    ritaKnapp();
-  }));
+  // Utan token är tråden member-only: en prenumeration hade bara gett
+  // permission-denied i loop. Driftmeddelandena (broadcast) är opåverkade —
+  // de är en egen, publik kanal.
+  if (kanLasa) {
+    unsubs.push(watchThread(cid, tid, rows => { samtal = rows; ritaPanel(); }));
+    unsubs.push(watchThreadDoc(cid, tid, t => {
+      tråd = t;
+      if (öppen && oläsraSvar()) markThreadRead(cid, kind, refId, 'falt', token).catch(() => {});
+      ritaKnapp();
+    }));
+  }
   window.addEventListener('resize', ritaKnapp);
 
   ritaKnapp();

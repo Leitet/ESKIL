@@ -317,10 +317,15 @@ export async function renderControls(app, user, cid) {
     const btn = e.currentTarget;
     withBusy(btn, 'Skapar fältpaket…', async () => {
       try {
-        const [{ downloadFieldPackPdf }, { listPatrols, getTrack }, { internalManagement }] = await Promise.all([
+        const [{ downloadFieldPackPdf }, { listPatrols, getTrack, attachControlMeta, ensureThreadTokens },
+               { internalManagement }] = await Promise.all([
           import('../pdf.js'), import('../store.js'), import('../utils.js')
         ]);
         const [patrols, track] = await Promise.all([listPatrols(cid), getTrack(cid).catch(() => null)]);
+        // Telefonnummer OCH samtalstoken bor i kontrollens private/meta — utan
+        // det här blir nödinfon tom och fältkortens QR skickar-bara.
+        await attachControlMeta(cid, state.rows).catch(() => {});
+        await ensureThreadTokens(cid, 'kontroll', state.rows).catch(() => {});
         // Paketet ritar en karta per kontroll — det tar tid, så säg var vi är
         // i stället för att låta knappen stå och snurra.
         const label = btn.querySelector('.busy-label') || btn;

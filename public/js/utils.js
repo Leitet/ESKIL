@@ -357,12 +357,35 @@ export function copyToClipboard(text) {
   return Promise.resolve();
 }
 
-export function reportUrl(competitionId, controlId) {
-  return `${location.origin}/k/${competitionId}/${controlId}`;
+// Fältlänkarna. Den frivilliga fjärde delen är samtalstoken: den som har den
+// kan LÄSA tråden mellan fältet och ledningen. Utan token fungerar länken i
+// övrigt precis som förr — poäng rapporteras, nödrop går fram — men svaren
+// syns inte. Se `harledd()` i firestore.rules för varför.
+//
+// Token läggs i sökvägen, inte i frågesträngen: en frågesträng tappas oftare
+// vid klipp-och-klistra, och hamnar i Referer när sidan hämtar något externt.
+export function reportUrl(competitionId, controlId, token) {
+  return `${location.origin}/k/${competitionId}/${controlId}`
+    + (token ? `/${encodeURIComponent(token)}` : '');
 }
 
-export function startUrl(competitionId, patrolId) {
-  return `${location.origin}/s/${competitionId}/${patrolId}`;
+export function startUrl(competitionId, patrolId, token) {
+  return `${location.origin}/s/${competitionId}/${patrolId}`
+    + (token ? `/${encodeURIComponent(token)}` : '');
+}
+
+/**
+ * Delar upp en fältsidas sökväg. EN parser för /k och /s i stället för tre
+ * handrullade kopior — det är den här som avgör om en länk bär token, och den
+ * var det enda otestade steget i hela kedjan.
+ *
+ * Returnerar null när sökvägen inte hör till sidan. `id` är RÅTT segment: på
+ * /s är det ofta kortadressen (slugen), aldrig ett upplöst tävlings-id.
+ */
+export function parseFieldPath(pathname, prefix) {
+  const parts = String(pathname || '').split('/').filter(Boolean);
+  if (parts[0] !== prefix || !parts[1] || !parts[2]) return null;
+  return { cid: parts[1], id: parts[2], token: parts[3] || null };
 }
 
 // --- Ranking rules (delad placering vid total tie) --------------------------

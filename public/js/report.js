@@ -4,7 +4,7 @@
 
 import { db, doc, onSnapshot } from './firebase.js';
 import { getCompetition, getControl, listPatrols, watchScoresForControl, upsertScore, deleteScore, listControls, getTrack, listAllScoresForEta, rensaEtaCache, sendControlBeacon } from './store.js';
-import { AVDELNINGAR, escapeHtml, allInstructionGroups, internalManagement,
+import { AVDELNINGAR, escapeHtml, allInstructionGroups, internalManagement, parseFieldPath,
   NOTE_CHIPS, harNotering, laggTillNotering, taBortNotering, kapaNotering,
   sparlagesBeslut } from './utils.js';
 import { controlEtaWindow } from './course.js';
@@ -248,12 +248,11 @@ function formatDistance(m) {
 }
 
 function parsePath() {
-  // /k/:cid/:ctrlId
-  const parts = location.pathname.split('/').filter(Boolean);
-  if (parts[0] === 'k' && parts.length >= 3) {
-    return { cid: parts[1], ctrlId: parts[2] };
-  }
-  return null;
+  // /k/:cid/:ctrlId[/:token] — token är FRIVILLIG med flit. Tryckta QR-koder
+  // är från före den, och de måste fortsätta rapportera poäng och nå
+  // ledningen. Token styr bara om SVAREN går att läsa (se chat.js).
+  const p = parseFieldPath(location.pathname, 'k');
+  return p ? { cid: p.cid, ctrlId: p.id, token: p.token } : null;
 }
 
 function rtoast(msg, kind) {
@@ -279,6 +278,9 @@ async function main() {
     return;
   }
   const { cid, ctrlId } = parsed;
+  // Samtalstoken ur länkens fjärde segment. Saknas den kan sidan skicka men
+  // inte läsa svaren — se mountMessages.
+  const samtalsToken = parsed.token;
 
   let comp, control, patrols = [], scores = [];
   try {
@@ -880,7 +882,7 @@ async function main() {
   // fallet framför sig — det här är vägen att fråga.
   chatPanel?.destroy();
   chatPanel = mountMessages({
-    cid, kind: 'kontroll', refId: ctrlId,
+    cid, kind: 'kontroll', refId: ctrlId, token: samtalsToken,
     enabled: comp?.fieldMessaging !== false
   });
 

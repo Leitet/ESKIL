@@ -117,7 +117,7 @@ export const HELP = {
       'Startkortet får då tre lägen. Före bekräftelsen visas bara tävlingsinformation, tävlingsledningens kontaktuppgifter och vägen till starten — ingen bankarta och inga kontroller. Knappen finns men är släckt tills patrullens starttid passerats, och tänds då grön. Efter bekräftelsen öppnas kortet: karta, kontroller, poäng och ETA.',
       'Bekräftelsen landar i Läget precis som en utcheckning från startstationen, så sen-till-start-larmet och ETA:n räknar på patrullens verkliga starttid.'
     ],
-    warn: 'Startkortslänken är hemligheten. Den som har den kan bekräfta starten — men bara en gång: en bekräftad start går inte att flytta i efterhand. Behöver den ångras gör en administratör det.',
+    warn: 'Startkortslänken är hemligheten. Den som har den kan bekräfta starten — men bara en gång: en bekräftad start går inte att flytta i efterhand. Behöver den ångras gör en administratör det. (Tävlingssidan länkar till startkorten; den länken saknar samtalsnyckeln och kan därför inte läsa patrullens samtal med er.)',
     faq: [
       { q: 'Kan de trycka innan starttiden?', a: 'Nej. Knappen är släckt tills patrullens egen starttid passerats. Har tävlingen inga starttider alls är knappen tänd direkt.' },
       { q: 'Vad händer om de glömmer trycka?', a: 'Kortet står kvar i informationsläget. Startfunktionären kan checka ut dem på stationen som vanligt — de två sätten fungerar sida vid sida och Läget visar båda.' },
@@ -183,7 +183,8 @@ export const HELP = {
     ],
     warn: 'Bilder från fältet kan visa scouters ansikten. Hela samtalet — text och bilder — raderas när tävlingen avslutas; det finns inget här som sparas som tävlingshistorik.',
     faq: [
-      { q: 'Vem kan skriva?', a: 'Den som har kontrollens rapportlänk eller patrullens startkortslänk — samma hemlighet som redan krävs för att rapportera poäng. Ingen utomstående kan skriva in sig i en tråd.' },
+      { q: 'Vem kan skriva?', a: 'Den som har kontrollens rapportlänk eller patrullens startkortslänk. Att SKICKA är medvetet lätt — ett nödrop får aldrig hindras av fel länk.' },
+      { q: 'Vem kan LÄSA svaren?', a: 'Bara den som har länkens sista del, samtalsnyckeln, plus ni i tävlingsledningen. Kontroll- och patrull-id:n går att räkna fram ur tävlingens öppna uppgifter, så de räcker inte som skydd för ett samtal som kan innehålla positioner och foton på scouter. Skriv ut kontrollblad och startkort från Utskrifter så bär de rätt länk; en äldre utskrift kan skicka till er men inte visa era svar.' },
       { q: 'Kan någon utge sig för att vara oss?', a: 'Nej. Ett meddelande som påstår sig komma från tävlingsledningen kan bara skrivas av en inloggad administratör.' },
       { q: 'Fungerar det utan täckning?', a: 'Frågan hamnar i kö och går iväg när nätet kommer tillbaka, med tiden den skrevs. Panelen visar "skickar…" tills den gått fram.' },
       { q: 'Vad händer om vi stänger av det?', a: 'Panelen försvinner från fältsidorna och inga nya frågor kan skickas. Redan skrivna trådar ligger kvar tills tävlingen avslutas.' }

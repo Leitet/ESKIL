@@ -22,6 +22,7 @@ const { logger } = require('firebase-functions');
 const admin = require('firebase-admin');
 const { FieldValue } = require('firebase-admin/firestore');
 const QRCode = require('qrcode');
+const crypto = require('crypto');
 const { renderReceiptPdfBase64 } = require('./receipt-pdf');
 
 admin.initializeApp();
@@ -984,7 +985,27 @@ exports.onControlMetaWritten = onDocumentWritten('competitions/{cid}/controls/{c
 
   const ctrlLabel = `kontroll ${ctrl.nummer ?? '?'} · ${ctrl.name || 'utan namn'}`;
   const ctrlUrl = `${APP_URL}/app/c/${cid}/controls/${ctrlId}`;
-  const reportUrl = `${APP_URL}/k/${cid}/${ctrlId}`;
+  // Samtalstoken ligger i samma private/meta som triggern redan fått i `after`.
+  // Saknas den mintas den här — annars får den nyutsedda kontrollansvarige en
+  // länk som kan skicka till ledningen men inte visa svaren, och länken ligger
+  // sedan kvar i inkorgen som "den riktiga".
+  //
+  // Den skrivs INTE här. Triggern lyssnar på private/meta, alltså sitt EGET
+  // dokument: en separat set() här återtriggar funktionen medan `welcomed`
+  // fortfarande är ostämplad, `added` är oförändrad, och den nyutsedda
+  // kontrollansvarige får välkomstmailet TVÅ gånger. Reproducerat mot
+  // functions-emulatorn. Token skrivs därför tillsammans med welcomed-
+  // stämpeln längst ned — då är `added` tom vid återtriggningen.
+  let samtalsToken = String(after.threadToken || '');
+  const nyToken = !samtalsToken;
+  if (nyToken) {
+    samtalsToken = crypto.randomBytes(12).toString('hex');
+    // Trådhuvudet däremot ligger i en ANNAN kollektion och triggar ingenting.
+    // Det måste finnas innan fältet får skriva i tokentråden (se rules).
+    await db.doc(`competitions/${cid}/threads/${samtalsToken}`)
+      .set({ kind: 'kontroll', refId: ctrlId }, { merge: true });
+  }
+  const reportUrl = `${APP_URL}/k/${cid}/${ctrlId}/${samtalsToken}`;
   const qrBase64 = (await QRCode.toBuffer(reportUrl, { width: 240, margin: 1 })).toString('base64');
   const replyTo = managementEmails(comp)[0] || undefined;
 
@@ -1032,8 +1053,12 @@ exports.onControlMetaWritten = onDocumentWritten('competitions/{cid}/controls/{c
     });
   }));
   // Mark them welcomed so a later meta write (or migration) never re-mails.
+  // Samtalstoken följer med i SAMMA skrivning — se resonemanget ovan.
   await event.data.after.ref.set(
-    { welcomed: [...welcomed, ...added] }, { merge: true });
+    nyToken
+      ? { welcomed: [...welcomed, ...added], threadToken: samtalsToken }
+      : { welcomed: [...welcomed, ...added] },
+    { merge: true });
   logger.info(`Kontrollansvarig mail queued for ${added.join(', ')} (${cid}/${ctrlId})`);
 });
 

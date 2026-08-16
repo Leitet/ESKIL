@@ -16,7 +16,7 @@ import {
   startFinishPoints, startTimeSettings,
   effectiveIntervalSec as effectiveIntervalSecValue,
   wireOverlayClose, allowedAvdelningar,
-  controlsAutoReleased, controlsReleaseTime
+  controlsAutoReleased, controlsReleaseTime, parseFieldPath
 } from './utils.js';
 import { ensureLeaflet } from './leaflet.js';
 import { icon } from './icons.js';
@@ -57,11 +57,11 @@ modeBtn.addEventListener('click', () => {
 });
 
 function parsePath() {
-  const parts = location.pathname.split('/').filter(Boolean);
-  if (parts[0] === 's' && parts.length >= 3) {
-    return { cid: parts[1], patrolId: parts[2] };
-  }
-  return null;
+  // /s/:cid|slug/:patrolId[/:token]. Token är frivillig: tävlingssidan länkar
+  // publikt hit UTAN den, och nödropet måste fungera även då — det får aldrig
+  // hänga på vilken länk patrullen råkade öppna. Se firestore.rules.
+  const p = parseFieldPath(location.pathname, 's');
+  return p ? { cid: p.cid, patrolId: p.id, token: p.token } : null;
 }
 
 // --- Global state ---
@@ -71,6 +71,9 @@ function parsePath() {
 // det upplösta id:t; en skrivning på slugen hamnar under en tävling som inte
 // finns (nödropet försvinner spårlöst) eller nekas av reglerna.
 let cid = null;
+// Samtalstoken ur länkens fjärde segment (modulnivå av samma skäl som cid:
+// panelen monteras långt utanför main()). Null = skickar-bara.
+let samtalsToken = null;
 // SOS pågår. Knappens disabled räcker inte: render() river hela DOM:en vid
 // varje snapshot, och en patrull som trycker igen medan GPS:en snurrar skulle
 // annars skicka två nödrop.
@@ -101,6 +104,7 @@ async function main() {
   });
   window.addEventListener('pagehide', () => stoppaNav());
   cid = parsed.cid;
+  samtalsToken = parsed.token;
   const { patrolId } = parsed;
 
   try {
@@ -743,7 +747,7 @@ function render() {
   // reglerna skulle neka och panelen bara se trasig ut.
   if (!chatPanel && !patrol.__test) {
     chatPanel = mountMessages({
-      cid, kind: 'patrull', refId: patrol.id,
+      cid, kind: 'patrull', refId: patrol.id, token: samtalsToken,
       enabled: comp?.fieldMessaging !== false
     });
   }
@@ -795,11 +799,27 @@ function render() {
       // Utan klocka resolvar aldrig setDoc offline: knappen står kvar på
       // "Skickar…" och patrullen tror att hjälpen är på väg.
       await withTimeout(
-        sendThreadMessage(cid, 'patrull', patrol.id, { from: 'falt', text: rader.join('\n') }),
+        // Token om vi har den, annars den härledda tråden. Nödropet går fram
+        // BÅDA vägarna — reglerna gör bara den härledda tråden oläsbar för
+        // utomstående, aldrig oskrivbar för patrullen.
+        sendThreadMessage(cid, 'patrull', patrol.id,
+          { from: 'falt', text: rader.join('\n'), token: samtalsToken }),
         12000
       );
-      // Öppna meddelandebladet — att se sitt eget rop i tidslinjen ÄR
-      // kvittensen, och det är där svaret kommer.
+      // KVITTENSEN MÅSTE VARA EXPLICIT. Förut öppnades bara meddelandebladet
+      // med motiveringen att "se sitt eget rop i tidslinjen ÄR kvittensen" —
+      // men utan samtalstoken prenumererar bladet inte på tråden (reglerna
+      // nekar läsning), så ropet ekas aldrig och bladet står tomt. En patrull
+      // med någon skadad drog då slutsatsen att inget gått fram. Ropet HAR
+      // gått fram i båda fallen; skrivning kräver aldrig token.
+      hjalpBtn.innerHTML = `${icon('check', { size: 18 })} Skickat till tävlingsledningen`;
+      alert('Ropet är skickat till tävlingsledningen.\n\n'
+        + 'Stanna där ni är om ni kan — det är positionen de fått.'
+        + (samtalsToken ? '\n\nSvaret visas i meddelandebladet.'
+                        : '\n\nSvaret kan inte visas på den här länken. Håll telefonen framme — '
+                          + 'ledningen ringer eller skickar ett driftmeddelande.'));
+      // Bladet öppnas ändå: med token ligger samtalet där, utan token står
+      // åtminstone ledningens driftmeddelanden.
       document.getElementById('eskil-msg-btn')?.click();
     } catch (e) {
       // Det ENDA som räknas här är att patrullen förstår att ropet INTE gick

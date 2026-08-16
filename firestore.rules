@@ -441,18 +441,20 @@ service cloud.firestore {
         // to their own control — but APPEND-ONLY: the new ansvarigaEmails must
         // contain every existing entry (hasAll), so nobody can be removed and
         // the control can never be taken over. Removal stays admin-only, and
-        // `welcomed` (the welcome-mail ledger) stays client-immutable.
+        // `welcomed` (the welcome-mail ledger) plus `threadToken` (samtalstoken
+        // — den ligger i tryckta QR-koder; kunde en ansvarig skriva om den
+        // dog kontrollens fältlänk tyst mitt i tävlingen) stay client-immutable.
         match /private/{doc} {
           allow read: if isCompMember(cid) || isCtrlAnsvarig(cid, ctrlId);
           allow create: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid))
             || (!compIsDemo(cid) && !compClosed(cid) && isCtrlAnsvarig(cid, ctrlId)
-                && !request.resource.data.keys().hasAny(['welcomed'])
+                && !request.resource.data.keys().hasAny(['welcomed', 'threadToken'])
                 && (!request.resource.data.keys().hasAny(['ansvariga', 'ansvarigaEmails'])
                     || request.resource.data.get('ansvarigaEmails', [])
                          .hasAll(ctrlData(cid, ctrlId).get('ansvarigaEmails', []))));
           allow update: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid))
             || (!compIsDemo(cid) && !compClosed(cid) && isCtrlAnsvarig(cid, ctrlId)
-                && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['welcomed'])
+                && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['welcomed', 'threadToken'])
                 && request.resource.data.get('ansvarigaEmails', [])
                      .hasAll(resource.data.get('ansvarigaEmails', [])));
         }
@@ -484,31 +486,87 @@ service cloud.firestore {
           return (kind == 'kontroll' && exists(/databases/$(database)/documents/competitions/$(cid)/controls/$(refId)))
               || (kind == 'patrull'  && exists(/databases/$(database)/documents/competitions/$(cid)/patrols/$(refId)));
         }
+        // Formen på ett trådhuvud skrivet FRÅN FÄLTET.
+        //
+        // lastFrom-kravet har en undantagsgren, och den är inte kosmetisk:
+        // fältets läskvittens (faltReadAt) skrivs med merge, så det FÄRDIGA
+        // dokumentet bär lastFrom 'ledning' — precis den enda gång kvittensen
+        // körs, nämligen när ledningen svarat sist. Utan undantaget nekades
+        // varje kvittens, felet slukades av .catch() i chat.js och oläst-pricken
+        // på /k och /s slocknade aldrig. Mätt i emulatorn.
+        function faltHuvudForm() {
+          return request.resource.data.keys().hasOnly(['kind', 'refId', 'lastAt', 'lastFrom', 'lastText', 'faltReadAt', 'ledningReadAt'])
+            && request.resource.data.kind in ['kontroll', 'patrull']
+            && request.resource.data.refId is string
+            && request.resource.data.refId.size() > 0
+            && request.resource.data.refId.size() <= 64
+            && refFinns(request.resource.data.kind, request.resource.data.refId)
+            && (request.resource.data.get('lastFrom', '') == 'falt'
+                || (resource != null
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['faltReadAt'])));
+        }
 
-        allow get: if true;
-        // list bara för medlemmar — annars går kontroll-id:n att räkna upp.
+        // TRÅD-ID:T ÄR ANTINGEN HÄRLETT ELLER EN TOKEN, och skillnaden avgör vem
+        // som får LÄSA. Den härledda formen ('kontroll-<ctrlId>') går att räkna
+        // fram ur publikt läsbara kontroll- och patrulldokument — den var därför
+        // ingen hemlighet alls, och med `allow get: if true` kunde vem som helst
+        // läsa fältets samtal med ledningen: nödropens GPS-position och
+        // bilderna från skogen. Tokenformen mintas av ledningen, ligger bara i
+        // fältlänken och i member-only meta, och kan inte räknas fram.
+        //
+        // SKRIVNING lämnas medvetet öppen på BÅDA formerna. Nödropet på
+        // startkortet har EN enda kanal (start.js) och tävlingssidan länkar
+        // publikt till startkorten, så de flesta patruller står utan token —
+        // krävdes token för att skriva vore nödropet dött för dem. Att kunna
+        // skicka utan att kunna läsa är hela poängen: fältet blir aldrig
+        // avstängt från ledningen, men samtalet går inte att tjuvlyssna på.
+        // (?s) så att punkten matchar ÄVEN radbrytning. Utan flaggan skulle ett
+        // id som 'kontroll-<något med \n>' falla ur den härledda formen och
+        // behandlas som en token — alltså bli läsbart för alla. Dokument-id:n
+        // får innehålla radbrytning, så det är inte teoretiskt.
+        function harledd() {
+          return threadId.matches('(?s)^(kontroll|patrull)-.*');
+        }
+
+        allow get: if isCompMember(cid) || !harledd();
+        // list bara för medlemmar — annars går både kontroll-id:n och tokens
+        // att räkna upp.
         allow list: if isCompMember(cid);
 
-        allow create, update: if isCompAdmin(cid) || (
+        // Fältet får BARA skapa den härledda tråden. Kunde det skapa en tråd
+        // med valfritt id vore tokenformen värdelös — vem som helst kunde lägga
+        // upp ett id, göra det läsbart och sedan läsa det. Tokentrådens huvud
+        // skapas av ledningen när token mintas.
+        allow create: if isCompAdmin(cid) || (
              faltFar()
-          && request.resource.data.keys().hasOnly(['kind', 'refId', 'lastAt', 'lastFrom', 'lastText', 'faltReadAt', 'ledningReadAt'])
-          && request.resource.data.kind in ['kontroll', 'patrull']
-          && request.resource.data.refId is string
-          && request.resource.data.refId.size() > 0
-          && request.resource.data.refId.size() <= 64
+          && harledd()
+          && faltHuvudForm()
           && threadId == request.resource.data.kind + '-' + request.resource.data.refId
-          && refFinns(request.resource.data.kind, request.resource.data.refId)
-          && request.resource.data.get('lastFrom', '') == 'falt'
+          && !('ledningReadAt' in request.resource.data)
+        );
+        allow update: if isCompAdmin(cid) || (
+             faltFar()
+          && faltHuvudForm()
+          && (harledd()
+              // Härledd tråd: id:t MÅSTE fortsätta matcha sin referens.
+              ? threadId == request.resource.data.kind + '-' + request.resource.data.refId
+              // Tokentråd: huvudet finns redan (ledningen skapade det), och
+              // fältet får inte peka om det till en annan kontroll/patrull —
+              // då hamnar samtalet under fel namn i inkorgen.
+              : (resource != null
+                 && request.resource.data.kind == resource.data.kind
+                 && request.resource.data.refId == resource.data.refId))
           // Fältet får aldrig röra ledningens läskvittens — då skulle ett
           // inkommet meddelande kunna gömmas för sekretariatet.
-          && (resource == null
-              ? !('ledningReadAt' in request.resource.data)
-              : request.resource.data.get('ledningReadAt', null) == resource.data.get('ledningReadAt', null))
+          && request.resource.data.get('ledningReadAt', null) == resource.data.get('ledningReadAt', null)
         );
         allow delete: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
 
         match /messages/{msgId} {
-          allow read: if true;
+          // Samma delning som på huvudet: härledd tråd = member-only, tokentråd
+          // = den som håller fältlänken. Det är HÄR nödropen och bilderna
+          // ligger, så det är den här raden som stänger läckan.
+          allow read: if isCompMember(cid) || !harledd();
           // Anonymt: BARA från fältet. Ett anonymt meddelande som utger sig
           // för att komma från ledningen vore ett sätt att lura kontrollanter.
           allow create: if isCompAdmin(cid) || (
@@ -525,6 +583,10 @@ service cloud.firestore {
                     && request.resource.data.image.size() <= 400000
                     && request.resource.data.image.matches('^data:image/(jpeg|png|webp);base64,.*')))
             && (('text' in request.resource.data) || ('image' in request.resource.data))
+            // I en tokentråd måste huvudet redan finnas: det är beviset för att
+            // ledningen mintat just den token. Utan kravet kunde vem som helst
+            // skriva meddelanden under ett påhittat id och sedan läsa dem.
+            && (harledd() || exists(/databases/$(database)/documents/competitions/$(cid)/threads/$(threadId)))
           );
           // Skrivet är skrivet — ett samtal med sekretariatet ska inte gå att
           // skriva om i efterhand. Admin kan rensa.

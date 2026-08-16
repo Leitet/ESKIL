@@ -95,16 +95,23 @@ export async function dumpCompetition(cid) {
   const ctrlMetas = await Promise.all(controls.map(c => getControlMeta(cid, c.id).catch(() => ({}))));
   const patrolMetas = await Promise.all(patrols.map(p => getPatrolMeta(cid, p.id).catch(() => ({}))));
 
+  // Samtalstoken följer ALDRIG med i dumpen. Filen mailas runt, läggs i Drive
+  // och packas i export-ZIP:en — med tokens vore den en komplett uppsättning
+  // fungerande fältlänkar in i ett pågående tävlingssamtal. Den behövs inte
+  // heller: en import skapar en NY tävling med nytt cid, så gamla utskrivna
+  // länkar är döda oavsett, och nya tokens mintas när länkarna byggs.
+  const utanToken = (m) => { const { threadToken, ...rest } = (m || {}); return rest; };
+
   const { id, ...compData } = comp;
   return toPlain({
     eskilBackup: BACKUP_VERSION,
     exportedAt: new Date().toISOString(),
     sourceCid: cid,
     competition: compData,
-    patrols: patrols.map((p, i) => ({ ...p, _private: patrolMetas[i] || {} })),
+    patrols: patrols.map((p, i) => ({ ...p, _private: utanToken(patrolMetas[i]) })),
     controls: controls.map((c, i) => ({
       ...c,
-      _private: ctrlMetas[i] || {},
+      _private: utanToken(ctrlMetas[i]),
       scores: (scoresByCtrl[c.id] || []).map(({ controlId, ...s }) => s)
     })),
     registrations,
@@ -128,7 +135,12 @@ async function batchSet(refs) {
 
 // Recreates the competition from a backup dump as a NEW competition (new
 // competition id — the old one may still exist). Subcollection doc ids are
-// preserved so reporter/startkort/station links and the track keep working.
+// preserved, so the track and every internal reference survives.
+//
+// TRYCKTA LÄNKAR ÖVERLEVER INTE en import, och det är värt att säga rakt ut:
+// /k/<cid>/<ctrlId> bär tävlingens id, och det byts. Kontroll- och patrull-id
+// bevaras alltså, men QR-koderna i pärmarna pekar på den gamla tävlingen. En
+// import räddar inte pappret på tävlingsmorgonen — den räddar datan.
 export async function importCompetitionBackup(rawDump, user) {
   const dump = revive(rawDump);
   if (!dump || !dump.eskilBackup || dump.eskilBackup > BACKUP_VERSION || !dump.competition) {

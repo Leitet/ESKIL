@@ -14,7 +14,8 @@ import {
   effectiveIntervalSec, swishAppUrl, swishQrString, patrolLabel, linkifyText, isNumSet, mergeBeacons,
   NOTE_CHIPS, harNotering, laggTillNotering, taBortNotering, kapaNotering,
   publicNotices, anslagSynlig, isPaymentPaid, isPaymentClaimed, paymentClaimAt,
-  sparlagesBeslut, SPAR_PA_UNDER, SPAR_AV_VID
+  sparlagesBeslut, SPAR_PA_UNDER, SPAR_AV_VID,
+  parseFieldPath
 } from '../public/js/utils.js';
 import { hasIcon } from '../public/js/icons.js';
 import { tolkaVader, vaderMeddelande, BY_VARNING_MS } from '../public/js/vader.js';
@@ -1551,5 +1552,37 @@ describe('sparlagesBeslut', () => {
     assert.equal(sparlagesBeslut(false, {}), false);
     assert.equal(sparlagesBeslut(true, { level: null, charging: false }), true);
     assert.equal(sparlagesBeslut(false, undefined), false);
+  });
+});
+
+
+describe('Fältlänkens sökväg (token)', () => {
+  test('gammal länk utan token läses fortfarande', () => {
+    // Tryckta QR-koder är från före tokenen. De MÅSTE fortsätta fungera —
+    // poängrapportering och nödrop hänger på dem.
+    assert.deepEqual(parseFieldPath('/k/alg2026/ctrl-1', 'k'),
+      { cid: 'alg2026', id: 'ctrl-1', token: null });
+  });
+
+  test('token plockas ur fjärde segmentet', () => {
+    assert.deepEqual(parseFieldPath('/s/ah26/p-7/AbC123', 's'),
+      { cid: 'ah26', id: 'p-7', token: 'AbC123' });
+  });
+
+  test('id:t är RÅTT segment — slugen löses inte upp här', () => {
+    // Samma fälla som fick ett nödrop att försvinna: skriver man på det råa
+    // segmentet hamnar dokumentet under en tävling som inte finns.
+    assert.equal(parseFieldPath('/s/ah26/p-7/tok', 's').cid, 'ah26');
+  });
+
+  test('fel sida eller för få segment ger null', () => {
+    assert.equal(parseFieldPath('/k/alg2026', 'k'), null);
+    assert.equal(parseFieldPath('/s/ah26/p-7', 'k'), null);
+    assert.equal(parseFieldPath('', 'k'), null);
+    assert.equal(parseFieldPath('/', 'k'), null);
+  });
+
+  test('extra skräp efter token ignoreras', () => {
+    assert.equal(parseFieldPath('/k/c/x/tok/extra', 'k').token, 'tok');
   });
 });

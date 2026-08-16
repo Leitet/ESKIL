@@ -624,7 +624,10 @@ export async function generateControlPdf(comp, control, {
   patrols = [], mgmt = [], allControls = [], pdf: existing = null
 } = {}) {
   await ensureLibs();
-  const url = reportUrl(comp.id, control.id);
+  // control.threadToken sätts av attachControlMeta/ensureThreadTokens. Saknas
+  // den trycks den gamla länkformen — kontrollen kan rapportera och skicka
+  // till ledningen, men inte läsa svaren.
+  const url = reportUrl(comp.id, control.id, control.threadToken);
   // Course stubs on the map: gray dashed = patrols arrive from there, orange
   // dashed with arrow = send them onward that way.
   const stubPaths = [];
@@ -1109,7 +1112,7 @@ function drawStartBanner(pdf, W, comp, patrol) {
 
 export async function generateStartPdf(comp, patrol) {
   await ensureLibs();
-  const url = startUrl(comp.id, patrol.id);
+  const url = startUrl(comp.id, patrol.id, patrol.threadToken);
   const qr = await qrDataUrl(url, 700);
 
   // eslint-disable-next-line no-undef

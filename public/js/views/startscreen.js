@@ -9,7 +9,7 @@
 // green: "GÅ NU". Transitions automatically as the clock advances, and
 // resyncs whenever startTimes or startOrder changes in Firestore.
 
-import { getCompetition, watchPatrols } from '../store.js';
+import { getCompetition, watchPatrols, ensureThreadToken } from '../store.js';
 import { db, doc, onSnapshot } from '../firebase.js';
 import {
   escapeHtml, startTimeSettings, patrolStartDateTime, effectiveIntervalSec, startUrl,
@@ -27,10 +27,19 @@ let unsubComp = null;
 let tickInterval = null;
 let currentPatrolId = null;
 let currentQrId = null;
+// renderWindow() ligger på MODULNIVÅ och ser inte renderStartScreen:s lokala
+// variabler. Det som QR-koden behöver måste därför bo här — annars kastar
+// kortritningen ReferenceError, och den enda synliga effekten är en tom
+// QR-ruta (kastet sker före .catch-grenen som skulle visat felet).
+let ssCid = null;
+let ssTestMode = false;
+const ssQrTokens = new Map();   // patrolId -> samtalstoken, en mintning per patrull
 
 export async function renderStartScreen(app, user, cid) {
   stopWatches();
 
+  ssCid = cid;
+  ssQrTokens.clear();
   let comp = await getCompetition(cid).catch(() => null);
   if (!comp) {
     app.innerHTML = `<div class="page"><div class="empty"><h3>Tävlingen hittades inte</h3></div></div>`;
@@ -114,6 +123,7 @@ export async function renderStartScreen(app, user, cid) {
       testAnchor = `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`;
     }
     patrols = testMode ? TEST_PATROLS : rows;
+    ssTestMode = testMode;
     const badge = document.getElementById('ss-test-badge');
     if (badge) badge.style.display = testMode ? 'inline-block' : 'none';
     tick();
@@ -250,7 +260,19 @@ function renderWindow(comp, patrols, now) {
       const qrHost = document.getElementById('ss-qr');
       const qrKey = p.id;
       currentQrId = qrKey;
-      renderQrToImg(startUrl(comp.id || comp, p.id), 440).then(img => {
+      // Samtalstoken hämtas EN gång per patrull och sparas — startskärmen
+      // ritar om varje sekund, och en mintning per tick vore en skrivning per
+      // sekund hela morgonen. Testpatrullerna (tom lista → TEST_PATROLS) har
+      // inga riktiga id:n och får aldrig mintas.
+      const tokenLöfte = (ssTestMode || !ssCid)
+        ? Promise.resolve('')
+        : (ssQrTokens.has(p.id)
+            ? Promise.resolve(ssQrTokens.get(p.id))
+            : ensureThreadToken(ssCid, 'patrull', p.id).catch(() => '')
+                .then(tok => { ssQrTokens.set(p.id, tok || ''); return tok || ''; }));
+      tokenLöfte
+        .then(tok => renderQrToImg(startUrl(comp.id || comp, p.id, tok), 440))
+        .then(img => {
         if (currentQrId !== qrKey) return;  // changed while loading
         qrHost.innerHTML = '';
         qrHost.appendChild(img);

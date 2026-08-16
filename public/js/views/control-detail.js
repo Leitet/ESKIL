@@ -2,7 +2,7 @@ import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import {
   getCompetition, getControl, updateControl, attachControlMeta,
   watchScoresForControl, listPatrols, listControls, getTrack,
-  deleteScore, adjustScore
+  deleteScore, adjustScore, ensureThreadToken
 } from '../store.js';
 import { courseLegs, legStub, legLatLngs, controlEtaWindow } from '../course.js';
 import { escapeHtml, toast, copyToClipboard, reportUrl, confirmDialog, formatTime, allInstructionGroups, withBusy, wireOverlayClose, isCompAdminUser, canEditControl } from '../utils.js';
@@ -38,12 +38,19 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
   }
   // telefon/notering live in a member-only subdoc — merge them in for display.
   await attachControlMeta(cid, [control]).catch(() => {});
+  // Samtalstoken mintas LAT, här där länken byggs. Utan den blir den utskrivna
+  // QR-koden en skickar-bara-länk: kontrollanten når ledningen men ser inga
+  // svar. Misslyckas mintningen (t.ex. kontrollansvarig utan skrivrätt på
+  // metan) byggs länken ändå — den fungerar, bara utan samtalet.
+  if (!control.threadToken) {
+    control.threadToken = await ensureThreadToken(cid, 'kontroll', ctrlId).catch(() => '');
+  }
   setTopbarCompetition(cid, comp, user);
   const isAdmin = isCompAdminUser(comp, user);
   // Kontrollansvariga may edit and open/close THIS control (not delete it,
   // not change who is ansvarig) — the security rules enforce the same.
   const canEdit = canEditControl(comp, control, user);
-  const url = reportUrl(cid, ctrlId);
+  const url = reportUrl(cid, ctrlId, control.threadToken);
   const shortOf = (avd) => ({ 'Spårare':'sp','Upptäckare':'up','Äventyrare':'av','Utmanare':'ut','Rover':'ro','Ledare':'le' }[avd] || 'le');
 
   const ctrlTitle = `${control.nummer ?? ''}. ${control.name || ''}`;
@@ -62,6 +69,12 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
       <div class="card">
         <h3 class="t-h3">Rapporteringslänk</h3>
         <p class="muted t-sm">Distribuera denna QR-kod eller länk till kontrollfunktionären. Länken är hemlig — dela den bara med rätt person.</p>
+        ${control.threadToken ? `<p class="muted t-sm">Sista delen av länken är kontrollens samtalsnyckel. Har funktionären
+        en <strong>äldre utskrift utan den</strong> går det fortfarande att rapportera poäng och skicka
+        frågor till er — men era svar syns inte i telefonen. Skriv i så fall ut kontrollbladet på nytt.</p>`
+        : `<p class="muted t-sm">Kontrollen saknar ännu en samtalsnyckel, så funktionären kan skicka
+        frågor till tävlingsledningen men inte se svaren. Nyckeln skapas när en <strong>administratör</strong>
+        öppnar den här sidan eller Utskrifter.</p>`}
         <div id="qr" class="row" style="justify-content:center;padding:16px 0;"></div>
         <label class="field">Länk</label>
         <div class="row">

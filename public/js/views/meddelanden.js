@@ -13,7 +13,7 @@ import {
   getCompetition, listControls, listPatrols, listStations,
   watchBroadcastMessages, createBroadcastMessage, setBroadcastMessageActive,
   deleteBroadcastMessage, watchMessageAcks, updateCompetition,
-  watchThreads, watchThread, sendThreadMessage, markThreadRead
+  watchThreads, watchThread, sendThreadMessage, markThreadRead, arHarleddTrad
 } from '../store.js';
 import { deleteField } from '../firebase.js';
 import { escapeHtml, linkifyText, toast, withBusy, confirmDialog, isCompAdminUser, formatTime } from '../utils.js';
@@ -436,14 +436,50 @@ function mountInbox(host, { cid, comp, controls, patrols, isAdmin }) {
     const p = patrols.find(x => x.id === t.refId);
     return p ? `#${p.number ?? '?'} ${p.name || ''}${p.kar ? ` (${p.kar})` : ''}` : 'Patrull (borttagen)';
   };
-  const oläst = (t) => {
-    const sist = t.lastAt?.toDate?.();
-    const läst = t.ledningReadAt?.toDate?.();
-    return t.lastFrom === 'falt' && sist && (!läst || sist > läst);
+  const olästDel = (d) => {
+    const sist = d.lastAt?.toDate?.();
+    const läst = d.ledningReadAt?.toDate?.();
+    return !!(d.lastFrom === 'falt' && sist && (!läst || sist > läst));
   };
+  // En grupp är oläst om NÅGON del är det. Räknade man bara på den senaste
+  // delen kunde en fråga som kom in i den härledda tråden tystas av ett
+  // nyare meddelande i tokentråden — och tvärtom.
+  const oläst = (t) => (t.delar ? t.delar.some(olästDel) : olästDel(t));
+
+  // En kontroll eller patrull kan ha TVÅ trådar: den härledda (dit fältet
+  // skriver utan token, t.ex. från en gammal utskrift eller från startkortet
+  // man öppnat via tävlingssidan) och tokentråden (dit den som har den nya
+  // fältlänken både skriver och läser). För sekretariatet är det ETT samtal —
+  // annars ligger halva konversationen i en rad man inte råkar klicka på.
+  const nyckelAv = (t) => `${t.kind}-${t.refId}`;
+  const grupper = () => {
+    const map = new Map();
+    for (const t of trådar) {
+      // Ett nymintat tokenhuvud bär bara {kind, refId}. Det är inte ett samtal
+      // och ska inte stå i inkorgen som en tom rad.
+      const g = map.get(nyckelAv(t)) || { nyckel: nyckelAv(t), kind: t.kind, refId: t.refId, delar: [] };
+      g.delar.push(t);
+      map.set(g.nyckel, g);
+    }
+    return [...map.values()]
+      .map(g => {
+        const medText = g.delar.filter(t => t.lastAt);
+        const sist = medText.sort((a, b) => (b.lastAt?.toMillis?.() || 0) - (a.lastAt?.toMillis?.() || 0))[0];
+        // Kom det senaste FÄLTmeddelandet i den härledda tråden sitter
+        // avsändaren på en länk utan samtalsnyckel och kan inte läsa svaret.
+        // Det måste ledningen se innan de skriver ett svar ingen läser.
+        const senasteFalt = medText.filter(t => t.lastFrom === 'falt')[0];
+        return { ...g, sist, lastAt: sist?.lastAt || null, lastText: sist?.lastText || '',
+                 utanNyckel: !!senasteFalt && arHarleddTrad(senasteFalt.id) };
+      })
+      .filter(g => g.sist);
+  };
+  // Ledningens svar går i TOKENtråden när en sådan finns — svarar man i den
+  // härledda kan fältet inte läsa det, hur ny länk kontrollanten än har.
+  const svarsTrad = (g) => g.delar.find(t => !arHarleddTrad(t.id)) || g.delar[0];
 
   let trådar = [];
-  let öppen = null;   // trådens id
+  let öppen = null;   // gruppens nyckel
 
   host.innerHTML = `
     <section class="card mb-4">
@@ -461,22 +497,24 @@ function mountInbox(host, { cid, comp, controls, patrols, isAdmin }) {
   const count = host.querySelector('#inbox-count');
 
   const ritaLista = () => {
-    const nya = trådar.filter(oläst).length;
+    const rader = grupper();
+    const nya = rader.filter(oläst).length;
     count.hidden = nya === 0;
     count.textContent = `${nya} ny${nya === 1 ? '' : 'a'}`;
-    if (!trådar.length) {
+    if (!rader.length) {
       list.innerHTML = `<div class="empty" style="padding:var(--sp-4);"><p class="muted" style="margin:0;">Inga frågor än.</p></div>`;
       return;
     }
-    const sorterade = [...trådar].sort((a, b) =>
-      (oläst(b) - oläst(a)) || String(b.lastAt?.toMillis?.() || 0) - String(a.lastAt?.toMillis?.() || 0));
+    const sorterade = rader.sort((a, b) =>
+      (oläst(b) - oläst(a)) || ((b.lastAt?.toMillis?.() || 0) - (a.lastAt?.toMillis?.() || 0)));
     list.innerHTML = sorterade.map(t => `
-      <button type="button" class="place-row ${oläst(t) ? 'inbox-unread' : ''}" data-thread="${escapeHtml(t.id)}">
+      <button type="button" class="place-row ${oläst(t) ? 'inbox-unread' : ''}" data-thread="${escapeHtml(t.nyckel)}">
         <span class="place-dot" style="background:${t.kind === 'kontroll' ? 'var(--scout-blue)' : 'var(--avent-orange)'};">
           ${icon(t.kind === 'kontroll' ? 'flag' : 'users', { size: 16 })}</span>
         <span class="place-body">
           <span class="place-name">${escapeHtml(namnAv(t))}</span>
           <span class="muted t-sm" style="display:block;">${escapeHtml(t.lastText || '')}</span>
+          ${t.utanNyckel ? '<span class="muted t-sm" style="display:block;">Skickat från en länk utan samtalsnyckel — de ser inte ert svar</span>' : ''}
         </span>
         ${oläst(t) ? '<span class="badge badge-orange">Ny</span>' : ''}
         <span class="muted t-sm">${t.lastAt ? formatTime(t.lastAt.toDate()) : ''}</span>
@@ -485,14 +523,21 @@ function mountInbox(host, { cid, comp, controls, patrols, isAdmin }) {
       b.addEventListener('click', () => öppnaTråd(b.dataset.thread)));
   };
 
-  let trådUnsub = null;
   let bild = null;
-  function öppnaTråd(tid) {
-    const t = trådar.find(x => x.id === tid);
+  let trådUnsubs = [];
+  let öppnaDelar = 0;   // antal trådhalvor det öppna samtalet prenumererar på
+  function öppnaTråd(nyckel) {
+    const t = grupper().find(x => x.nyckel === nyckel);
     if (!t) return;
-    öppen = tid;
-    if (trådUnsub) { trådUnsub(); trådUnsub = null; }
-    if (isAdmin) markThreadRead(cid, t.kind, t.refId, 'ledning').catch(() => {});
+    öppen = nyckel;
+    trådUnsubs.forEach(u => { try { u(); } catch {} });
+    trådUnsubs = [];
+    // Kvittera på VARJE del — annars står gruppen kvar som oläst för att den
+    // andra tråden aldrig markerades.
+    if (isAdmin) {
+      t.delar.forEach(d =>
+        markThreadRead(cid, d.kind, d.refId, 'ledning', arHarleddTrad(d.id) ? null : d.id).catch(() => {}));
+    }
 
     threadHost.innerHTML = `
       <div class="card mt-3" style="box-shadow:none;border:1.5px solid var(--border);">
@@ -515,11 +560,17 @@ function mountInbox(host, { cid, comp, controls, patrols, isAdmin }) {
 
     const log = threadHost.querySelector('#inbox-log');
     threadHost.querySelector('#inbox-close').addEventListener('click', () => {
-      if (trådUnsub) { trådUnsub(); trådUnsub = null; }
+      trådUnsubs.forEach(u => { try { u(); } catch {} });
+      trådUnsubs = [];
       öppen = null; threadHost.innerHTML = '';
     });
 
-    trådUnsub = watchThread(cid, t.kind, t.refId, rows => {
+    // Gruppens delar prenumereras var för sig och flätas ihop på tid — det är
+    // ETT samtal för den som läser.
+    const perTrad = new Map();
+    const rita = () => {
+      const rows = [...perTrad.values()].flat()
+        .sort((a, b) => (a.at?.toMillis?.() || 0) - (b.at?.toMillis?.() || 0));
       log.innerHTML = rows.length ? rows.map(m => `
         <div class="inbox-msg ${m.from === 'ledning' ? 'inbox-mine' : 'inbox-theirs'}">
           ${m.image ? `<img class="inbox-img" src="${escapeHtml(m.image)}" alt="Bifogad bild" loading="lazy">` : ''}
@@ -527,7 +578,12 @@ function mountInbox(host, { cid, comp, controls, patrols, isAdmin }) {
           <div class="inbox-meta">${m.from === 'ledning' ? 'Ni' : 'Fältet'} · ${m.at ? formatTime(m.at.toDate()) : ''}</div>
         </div>`).join('') : '<p class="muted t-sm">Tom tråd.</p>';
       log.scrollTop = log.scrollHeight;
-    });
+    };
+    öppnaDelar = t.delar.length;
+    t.delar.forEach(d => trådUnsubs.push(watchThread(cid, d.id, rows => {
+      perTrad.set(d.id, rows);
+      rita();
+    })));
 
     if (!isAdmin) return;
     const attach = threadHost.querySelector('#inbox-attach');
@@ -545,7 +601,10 @@ function mountInbox(host, { cid, comp, controls, patrols, isAdmin }) {
       const text = threadHost.querySelector('#inbox-text').value.trim();
       if (!text && !bild) return;
       try {
-        await sendThreadMessage(cid, t.kind, t.refId, { from: 'ledning', text, image: bild?.dataUrl || null });
+        const mal = svarsTrad(t);
+        await sendThreadMessage(cid, t.kind, t.refId,
+          { from: 'ledning', text, image: bild?.dataUrl || null,
+            token: arHarleddTrad(mal.id) ? null : mal.id });
         threadHost.querySelector('#inbox-text').value = '';
         bild = null; visaBild();
       } catch (e) { toast('Kunde inte skicka: ' + e.message, 'error'); }
@@ -558,8 +617,8 @@ function mountInbox(host, { cid, comp, controls, patrols, isAdmin }) {
   const sedda = new Set();
   inboxUnsubs.push(watchThreads(cid, rows => {
     trådar = rows;
-    for (const t of rows) {
-      const nyckel = `${t.id}:${t.lastAt?.toMillis?.() || 0}`;
+    for (const t of grupper()) {
+      const nyckel = `${t.nyckel}:${t.lastAt?.toMillis?.() || 0}`;
       if (!första && oläst(t) && !sedda.has(nyckel)) {
         toast(`Ny fråga: ${namnAv(t)}`, 'success');
         try { navigator.vibrate?.(120); } catch { /* stöds inte */ }
@@ -568,7 +627,11 @@ function mountInbox(host, { cid, comp, controls, patrols, isAdmin }) {
     }
     första = false;
     ritaLista();
-    if (öppen && !rows.some(t => t.id === öppen)) { threadHost.innerHTML = ''; öppen = null; }
+    const öppenGrupp = öppen ? grupper().find(g => g.nyckel === öppen) : null;
+    if (öppen && !öppenGrupp) { threadHost.innerHTML = ''; öppen = null; }
+    // Dök en NY trådhalva upp för det öppna samtalet (fältet skrev via den
+    // andra länken) prenumererar vi inte på den — öppna om.
+    else if (öppenGrupp && öppenGrupp.delar.length !== öppnaDelar) öppnaTråd(öppen);
   }));
 
   ritaLista();

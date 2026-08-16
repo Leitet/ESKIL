@@ -84,12 +84,53 @@ Email extension). Production domain: https://eskilscout.se.
   på baksidan av föregående. Verifierat genom att leta upp sidfoten
   "Sida 1 · Placering" per sida i den färdiga filen — och mutationsverifierat
   (utan utfyllnad blir startsidorna 1, 6, 11, 16).
-- `.../threads/{kind-refId}/messages/{msgId}` — **samtal fält ↔ ledning**
+- `.../threads/{tid}/messages/{msgId}` — **samtal fält ↔ ledning**
   (`comp.fieldMessaging`, PÅ som standard, så regeln läser
-  `.get('fieldMessaging', true)`). Tråd-id:t är deterministiskt
-  (`kontroll-<ctrlId>` / `patrull-<patrolId>`), så att känna till det ÄR att
-  hålla den hemliga fältlänken; `list` är member-only så id:n inte kan räknas
-  upp. Anonymt får `from` bara vara `'falt'` — ett falskt "från ledningen"
+  `.get('fieldMessaging', true)`).
+  **Tråd-id:t finns i TVÅ former, och skillnaden ÄR säkerhetsmodellen.**
+  Den HÄRLEDDA (`kontroll-<ctrlId>` / `patrull-<patrolId>`) antogs en gång vara
+  hemlig — den är den inte: kontroller och patruller är världsläsbara och
+  listbara, så id:t går att räkna fram. Med `allow get: if true` kunde vem som
+  helst läsa fältets samtal, inklusive nödropens GPS-position och bilderna
+  från skogen (reproducerat anonymt mot skarpa regler). TOKENformen är en
+  slumpad sträng som ledningen mintar (`ensureThreadToken`) och som ligger i
+  fältlänkens fjärde segment: `/k/<cid>/<ctrlId>/<token>`,
+  `/s/<cid|slug>/<patrolId>/<token>`.
+  **LÄSNING kräver token; SKRIVNING gör det aldrig.** Nödropet på startkortet
+  har EN kanal, och tävlingssidan länkar publikt till startkorten — de flesta
+  patruller står alltså utan token, och krävdes token för att skriva vore
+  nödropet dött för dem. Samma sak för en kontroll med en äldre tryckt QR:
+  den kan rapportera och nå ledningen, men ser inga svar (chat.js säger det
+  rakt ut i stället för att se ut som att ledningen tiger).
+  Fältet får bara SKAPA den härledda tråden — kunde det skapa valfritt id vore
+  tokenformen värdelös. Tokentrådens huvud skapas av ledningen vid mintningen,
+  och regeln kräver att huvudet finns innan fältet får skriva i den.
+  Token bor i `controls/{id}/private/meta.threadToken` respektive
+  `patrols/{id}/private/meta.threadToken`, är **klient-immutabel** (som
+  `welcomed` — en kontrollansvarig som skrev om den hade dödat en tryckt QR
+  tyst), och följer ALDRIG med i `dumpCompetition`: backupfilen mailas runt,
+  och en token där vore en fungerande fältlänk in i ett pågående samtal.
+  Mintningen är LAT och sker där länken byggs (control-detail, kontrollistan,
+  utskriftscentralen, startskärmen, välkomstmailet) — kontroller och patruller
+  skapas på fyra ställen till (årgångskopiering, backupimport, papperskorgen,
+  massimport från anmälan), och en mint i `createControl` hade missat alla.
+  Ledningens inkorg SLÅR IHOP en referens två trådar till ett samtal och
+  svarar alltid i tokentråden; svarar man i den härledda kan fältet inte läsa
+  det, hur ny länk kontrollanten än har.
+  `list` är member-only så varken kontroll-id:n eller tokens kan räknas upp.
+  Tre fällor som slog till när token infördes, alla mätta:
+  1. **Nödropet måste kvittera EXPLICIT.** Koden lutade sig mot att "se sitt
+     eget rop i tidslinjen ÄR kvittensen" — men utan token prenumererar bladet
+     inte på tråden, så bladet stod tomt och patrullen trodde att ropet inte
+     gick fram. Ropet HAR alltid gått fram; skrivning kräver aldrig token.
+  2. **`renderWindow` i startscreen.js ligger på MODULNIVÅ** och ser inte
+     `renderStartScreen`:s lokala variabler. En token-uppslagning som läste dem
+     kastade ReferenceError före `.catch`-grenen — enda synliga effekten var en
+     tom QR-ruta på storbildsskärmen på tävlingsmorgonen.
+  3. **`onControlMetaWritten` lyssnar på SITT EGET dokument.** Skriver den
+     token i en separat `set()` återtriggas den medan `welcomed` är ostämplad
+     och välkomstmailet går ut TVÅ gånger. Token skrivs därför tillsammans med
+     welcomed-stämpeln. Anonymt får `from` bara vara `'falt'` — ett falskt "från ledningen"
   skulle kunna få en kontrollant att göra fel på riktigt. Fältet får heller
   inte röra `ledningReadAt` (då kunde en inkommen fråga gömmas). Allt tre är
   mutationsverifierat.

@@ -10,7 +10,9 @@
 // ursprungliga fliken, så det finns fortfarande bara EN implementation per
 // dokument. Skulle den här sidan börja rita egna PDF:er är det två sanningar
 // om hur en kontrollpärm ser ut, och den ena kommer att glömmas bort.
-import { getCompetition, listPatrols, listControls, attachControlMeta, getTrack, listAllScores, listRegistrations,
+import { getCompetition, listPatrols, listControls, attachControlMeta, attachPatrolMeta,
+  ensureThreadToken, ensureThreadTokens,
+  getTrack, listAllScores, listRegistrations,
   skapaGenrepPatrull, rensaGenrep, GENREP_NAMN } from '../store.js';
 import { compHeader, setDocTitle } from '../nav.js';
 import { escapeHtml, toast, withBusy, isCompAdminUser, internalManagement, confirmDialog } from '../utils.js';
@@ -62,6 +64,14 @@ export async function renderUtskrifter(app, user, cid) {
   setTopbarCompetition(cid, comp, user);
 
   const isAdmin = isCompAdminUser(comp, user);
+  // Utskriftscentralen ÄR listan man packar pärmarna efter — mintas inte
+  // samtalstoken här trycks fältkorten med skickar-bara-länkar, och det
+  // upptäcks i skogen. Men BARA för admin: reglerna nekar en vanlig medlems
+  // skrivning, och då blir det bara 30 nekade skrivningar per sidladdning.
+  // Patrullerna mintas INTE i klump — ingen av utskrifterna här bär en
+  // /s-länk (de manuella startkorten har ingen QR alls). Genrepet mintas för
+  // sig, där dess länk faktiskt byggs.
+  if (isAdmin) await ensureThreadTokens(cid, 'kontroll', controls).catch(() => {});
   const bockar = lasBockar(cid);
   const antalKontroller = controls.length;
   const antalPatruller = patrols.length;
@@ -161,7 +171,10 @@ export async function renderUtskrifter(app, user, cid) {
           'Powerbank till kontrollerna som ligger längst ut. Rapportsidan håller skärmen tänd hela dagen.',
           'Tävlingsledningens telefonnummer uppskrivet på papper, inte bara i mobilen.',
           'En utskriven karta till sekretariatet, för att kunna peka när någon ringer.',
-          'Kontrollera att kontrollernas nödinfo faktiskt har telefonnummer — se förkontrollen på Översikt.'
+          'Kontrollera att kontrollernas nödinfo faktiskt har telefonnummer — se förkontrollen på Översikt.',
+          'Använd kontrollblad och startkort som skrivits ut HÄRIFRÅN. Länkarna bär numera en '
+            + 'samtalsnyckel; en äldre utskrift kan rapportera och skicka frågor till er, men '
+            + 'kontrollanten ser inte era svar.'
         ].map((t, i) => `
           <li><label><input type="checkbox" data-bock="fys-${i}" ${bockar.has('fys-' + i) ? 'checked' : ''}>
             <span>${escapeHtml(t)}</span></label></li>`).join('')}
@@ -174,10 +187,15 @@ export async function renderUtskrifter(app, user, cid) {
   // Genrepspatrullen är en RIKTIG patrull just därför: den går genom exakt
   // samma kod, regler och vyer som en skarp, så ett genrep som fungerar bevisar
   // något. Priset är att den måste gå att städa bort — därav knappen.
-  function ritaGenrep() {
+  async function ritaGenrep() {
     const host = wrap.querySelector('#genrep-kort');
     if (!host) return;
     const g = patrols.find(p => p.genrep);
+    // Genrepets startkortslänk ska bära token — hela poängen med genrepet är
+    // att det går genom exakt samma kod som en skarp patrull, svarsvägen med.
+    if (g && isAdmin && !g.threadToken) {
+      g.threadToken = await ensureThreadToken(cid, 'patrull', g.id).catch(() => '');
+    }
     host.innerHTML = `
       <h3>${icon('target', { size: 16 })} Genrep</h3>
       <p class="muted t-sm" style="margin:6px 0 10px;">
@@ -192,7 +210,7 @@ export async function renderUtskrifter(app, user, cid) {
           står den i resultatlistan.
         </div>
         <div class="btn-row mt-3">
-          <a class="btn btn-secondary btn-sm" href="/s/${escapeHtml(comp.slug || cid)}/${escapeHtml(g.id)}" target="_blank" rel="noopener">
+          <a class="btn btn-secondary btn-sm" href="/s/${escapeHtml(comp.slug || cid)}/${escapeHtml(g.id)}${g.threadToken ? '/' + escapeHtml(g.threadToken) : ''}" target="_blank" rel="noopener">
             ${icon('external', { size: 14 })} Öppna genrepets startkort</a>
           <button class="btn btn-danger btn-sm" id="genrep-rensa">Rensa genrepet</button>
         </div>`
@@ -202,7 +220,12 @@ export async function renderUtskrifter(app, user, cid) {
     host.querySelector('#genrep-start')?.addEventListener('click', (e) => withBusy(e.currentTarget, 'Skapar…', async () => {
       try {
         await skapaGenrepPatrull(cid);
+        // Omhämtningen ger FÄRSKA objekt utan private/meta — utan de här två
+        // raderna tappar listan sina samtalstokens, och nästa startkorts-PDF
+        // trycks med skickar-bara-länkar.
         patrols = await listPatrols(cid);
+        await attachPatrolMeta(cid, patrols).catch(() => {});
+        await ensureThreadTokens(cid, 'patrull', patrols).catch(() => {});
         ritaGenrep();
         toast('Genrepspatrullen är upplagd — rapportera den från en kontroll', 'success');
       } catch (err) { toast('Kunde inte starta genrep: ' + (err?.message || err), 'error'); }
@@ -216,6 +239,7 @@ export async function renderUtskrifter(app, user, cid) {
       try {
         const res = await rensaGenrep(cid);
         patrols = await listPatrols(cid);
+        await attachPatrolMeta(cid, patrols).catch(() => {});
         ritaGenrep();
         toast(`Genrepet rensat — ${res.patruller} patrull och ${res.poang} rapport${res.poang === 1 ? '' : 'er'} borttagna`, 'success');
       } catch (err) { toast('Kunde inte rensa: ' + (err?.message || err), 'error'); }

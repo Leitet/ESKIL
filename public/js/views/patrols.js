@@ -1,7 +1,7 @@
 import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import {
   getCompetition, watchPatrols, createPatrol, updatePatrol, flyttaTillPapperskorg,
-  updatePatrolOrders, getPatrolMeta, migratePatrolMeta, listControls, getTrack
+  updatePatrolOrders, getPatrolMeta, migratePatrolMeta, listControls, getTrack, ensureThreadToken
 } from '../store.js';
 import {
   allowedAvdelningar, escapeHtml, toast, confirmDialog, withBusy, startUrl,
@@ -279,7 +279,11 @@ function shortOf(avd) {
 
 async function openStartCardModal(cid, patrol, startScreenAvailable = false) {
   if (!patrol) return;
-  const url = startUrl(cid, patrol.id);
+  // Se control-detail.js: token mintas där länken byggs.
+  if (!patrol.threadToken) {
+    patrol.threadToken = await ensureThreadToken(cid, 'patrull', patrol.id).catch(() => '');
+  }
+  const url = startUrl(cid, patrol.id, patrol.threadToken);
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.innerHTML = `
