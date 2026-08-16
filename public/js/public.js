@@ -625,7 +625,6 @@ function renderHero() {
   const regSettings = registrationSettings(comp);
   const cid = parsePath()?.cid;
   return `
-    <div id="anslagstavla"></div>
     <header class="pub-hero">
       <div class="pub-hero-pattern"></div>
       <img class="pub-hero-symbol" src="/assets/scout-symbol.svg" alt="" aria-hidden="true">
@@ -641,6 +640,8 @@ function renderHero() {
             ${openCount > 0 ? `<div class="status-pill"><span class="dot-live"></span>Tävlingen pågår · live</div>` : ''}
           </div>
         </div>
+        <div class="pub-hero-grid">
+        <div class="pub-hero-huvud">
         <div class="t-over" style="color:var(--rover-yellow);">${escapeHtml(comp.shortName || '')} · ${comp.year || ''}</div>
         <h1>${escapeHtml(comp.name || '')}</h1>
         ${comp.description ? `<p class="lede">${escapeHtml(comp.description)}</p>` : ''}
@@ -657,6 +658,9 @@ function renderHero() {
         ${reg === 'open' ? `
           <a class="hero-cta" href="/a/${escapeHtml(cid || '')}">Anmäl er nu${regSettings.closesAt ? ` — öppet t.o.m. ${escapeHtml(formatDate(regSettings.closesAt))}` : ''} →</a>
         ` : ''}
+        </div>
+        <div id="anslagstavla" class="anslag-kol"></div>
+        </div>
       </div>
     </header>
   `;
@@ -665,28 +669,61 @@ function renderHero() {
 // Anslagstavlan. Egen renderare så ett nytt anslag inte bygger om hela sidan
 // — kartan och listorna ska stå still. Fritexten går genom linkifyText: en
 // länk till t.ex. en ny samlingsplats ska gå att trycka på.
+// Vilka anslag som redan fällts in. Renderaren körs om vid varje snapshot, och
+// utan den här mängden skulle hela stacken glida in på nytt var gång någon
+// rapporterar en poäng — rörelse utan innebörd, mitt framför den som läser.
+const anslagAnimerade = new Set();
+// Signaturen bor PÅ elementet, inte i en modulvariabel. Firestore levererar
+// först ur den lokala cachen och sedan från servern, så renderaren kallas två
+// gånger inom millisekunder — utan vakten byggdes DOM:en om mitt i
+// infällningen och rörelsen kapades. Men renderHero() river och bygger om
+// #anslagstavla, och med signaturen i en modulvariabel mötte ett FÄRSKT tomt
+// element en oförändrad signatur: tavlan blev tyst tom. Sitter märket på
+// elementet försvinner det med elementet, som sig bör.
+
 function renderAnslag() {
   const host = document.getElementById('anslagstavla');
   if (!host) return;
-  if (!anslagSynlig(comp, anslag)) { host.innerHTML = ''; return; }
+  if (!anslagSynlig(comp, anslag)) { host.innerHTML = ''; host.hidden = true; delete host.dataset.sig; return; }
+  const signatur = JSON.stringify(anslag.map(a => [a.id, a.level, a.text, String(a.at || '')]));
+  if (host.dataset.sig === signatur) return;
+  host.dataset.sig = signatur;
+  host.hidden = false;
   if (!anslag.length) {
-    host.innerHTML = `<div class="anslag"><div class="page">
-      <div class="anslag-lugn">${icon('check', { size: 16 })}
-        <span>Allt lugnt — tävlingsledningen har inget att meddela just nu.</span>
-      </div></div></div>`;
+    // Tomt läge är ett BESKED, inte frånvaro av information: "vi har inget att
+    // säga" är precis vad en förälder vill veta. Men det ska vara diskret.
+    host.innerHTML = `<p class="anslag-lugn">${icon('check', { size: 15 })}
+      <span>Allt lugnt — tävlingsledningen har inget att meddela.</span></p>`;
     return;
   }
   const ETIKETT = { kritisk: 'Viktigt', varning: 'Observera', info: 'Information' };
-  host.innerHTML = `<div class="anslag"><div class="page">
-    ${anslag.map(a => `
-      <div class="anslag-item anslag-${escapeHtml(a.level)}" role="status">
-        <div class="anslag-huvud">
-          <span class="anslag-niva">${escapeHtml(ETIKETT[a.level] || 'Information')}</span>
-          ${a.at ? `<span class="anslag-tid">${escapeHtml(klockslag(a.at))}</span>` : ''}
-        </div>
-        <div class="anslag-text">${linkifyText(a.text)}</div>
-      </div>`).join('')}
-  </div></div>`;
+  // Fäll BARA in när dokumentet är synligt. Animationen börjar på opacitet 0
+  // med fill-mode both, och webbläsaren fryser animationstidslinjen i en dold
+  // flik: öppnar någon /t i en bakgrundsflik skulle anslagen fastna osynliga
+  // och aldrig visa sig. Samma vakt som animeraIn() i app.js — vilotillståndet
+  // måste alltid vara synligt.
+  const fallIn = !document.hidden;
+  host.innerHTML = `
+    <h2 class="anslag-rubrik">${icon('info', { size: 15 })} Från tävlingsledningen</h2>
+    <div class="anslag-stack">
+      ${anslag.map((a, i) => `
+        <article class="anslag-item anslag-${escapeHtml(a.level)}${(fallIn && !anslagAnimerade.has(a.id)) ? ' anslag-ny' : ''}"
+                 role="status" style="--fall: ${i * 70}ms;">
+          <div class="anslag-huvud">
+            <span class="anslag-niva">${escapeHtml(ETIKETT[a.level] || 'Information')}</span>
+            ${a.at ? `<span class="anslag-tid">${escapeHtml(klockslag(a.at))}</span>` : ''}
+          </div>
+          <div class="anslag-text">${linkifyText(a.text)}</div>
+        </article>`).join('')}
+    </div>`;
+  // Markera som infällda FÖRST när ritningen visat sig överleva. /t bygger om
+  // hela sidan vid varje poängsnapshot, och en markering direkt satte id:na
+  // på ett element som revs en millisekund senare — då spelade infällningen
+  // aldrig. Överlever elementet en halv sekund var det en riktig ritning.
+  const stack = host.querySelector('.anslag-stack');
+  setTimeout(() => {
+    if (stack?.isConnected) anslag.forEach(a => anslagAnimerade.add(a.id));
+  }, 600);
 }
 
 function klockslag(at) {

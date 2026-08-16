@@ -865,32 +865,78 @@ a.pub-brand:hover { opacity: 0.85; }
 }
 
 /* --- Publik anslagstavla -------------------------------------------------- */
-/* Ligger ÖVER hjälten: det ledningen skriver när starten är försenad ska vara
-   det första en förälder ser, inte något man scrollar fram. */
-.anslag { background: var(--bg2); border-bottom: 1px solid var(--border); }
-.anslag .page { padding-top: var(--sp-3); padding-bottom: var(--sp-3); }
-.anslag-lugn {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 14px; color: var(--fg2);
+/* Anslagen bor i HJÄLTEN, i dess högra halva. Förut låg de i en grå remsa
+   ovanför: de sköt ner varumärket, såg ut som ett felmeddelande från
+   webbläsaren, och den halva av hjälten som ändå stod tom fylldes aldrig.
+   Nu står tävlingens namn och det ledningen säger bredvid varandra — man ser
+   båda i samma blick, och inget hoppar när ett anslag kommer eller går. */
+.pub-hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 21rem);
+  gap: var(--sp-6) var(--sp-8);
+  align-items: start;
 }
-.anslag-lugn .lucide { color: var(--success); flex-shrink: 0; }
+.anslag-kol { padding-top: var(--sp-2); }
+.anslag-rubrik {
+  display: flex; align-items: center; gap: 7px;
+  font-family: var(--font-body); font-size: 12px; font-weight: 800;
+  letter-spacing: .08em; text-transform: uppercase;
+  color: var(--rover-yellow); margin: 0 0 var(--sp-3);
+}
+.anslag-rubrik .lucide { flex-shrink: 0; }
+.anslag-stack { display: flex; flex-direction: column; gap: var(--sp-2); }
 .anslag-item {
+  background: var(--white);
+  border-radius: var(--r-md);
   border-left: 4px solid var(--scout-blue);
-  background: var(--bg1); border-radius: var(--r-md);
-  padding: 10px 14px; margin-bottom: var(--sp-2);
+  padding: 10px 14px;
+  box-shadow: 0 6px 20px rgba(0, 24, 45, .22);
 }
-.anslag-item:last-child { margin-bottom: 0; }
 .anslag-huvud { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; }
-.anslag-niva { font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
-.anslag-tid { font-size: 12px; color: var(--fg3); font-variant-numeric: tabular-nums; }
+.anslag-niva { font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.anslag-tid { font-size: 12px; color: var(--fg3); font-variant-numeric: tabular-nums; margin-left: auto; }
 /* pre-wrap: ett anslag är ofta flera rader, och radbrytningarna bär meningen. */
-.anslag-text { font-size: 15px; color: var(--fg1); white-space: pre-wrap; word-break: break-word; }
+.anslag-text { font-size: 14.5px; line-height: 1.5; color: var(--fg1); white-space: pre-wrap; word-break: break-word; }
 .anslag-info    { border-left-color: var(--scout-blue); }
 .anslag-info    .anslag-niva { color: var(--scout-blue); }
 .anslag-varning { border-left-color: var(--avent-orange); }
 .anslag-varning .anslag-niva { color: var(--avent-orange); }
 .anslag-kritisk { border-left-color: var(--utm-pink); }
 .anslag-kritisk .anslag-niva { color: var(--utm-pink); }
+.anslag-lugn {
+  display: flex; align-items: center; gap: 8px; margin: 0;
+  font-size: 13.5px; color: var(--scout-blue-200);
+}
+.anslag-lugn .lucide { color: var(--spaer-green); flex-shrink: 0; }
+
+/* Infällningen. --fall ger en liten trappa så stacken läses uppifrån och ner
+   i stället för att slå upp på en gång. Bara NYA anslag bär klassen. */
+@media (prefers-reduced-motion: no-preference) {
+  .anslag-ny { animation: anslag-in .45s var(--ease, cubic-bezier(.22,.61,.36,1)) both; animation-delay: var(--fall, 0ms); }
+  @keyframes anslag-in {
+    from { opacity: 0; transform: translateX(18px); }
+    to   { opacity: 1; transform: none; }
+  }
+}
+
+/* Under 900 px finns ingen högerhalva att fälla in i: stacken lägger sig under
+   texten och full bredd. En vågrät rörelse på en smal skärm ser dessutom ut
+   som att sidan glappar i sidled. */
+@media (max-width: 900px) {
+  .pub-hero-grid { grid-template-columns: 1fr; gap: var(--sp-5); }
+  /* order: -1 — stacken läggs FÖRE tävlingsnamnet på smal skärm. Den gamla
+     placeringen ovanför hjälten fanns av ett skäl: det ledningen skriver när
+     starten är försenad ska vara det första en förälder ser, inte något man
+     scrollar fram. På bred skärm står den redan i blickfånget till höger; på
+     en telefon måste den flyttas upp för att behålla samma egenskap. */
+  .anslag-kol { padding-top: 0; order: -1; }
+  @media (prefers-reduced-motion: no-preference) {
+    @keyframes anslag-in {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: none; }
+    }
+  }
+}
 
 /* Följ-länken landar mitt i en lista — en kort markering visar VILKEN rad som
    är din, utan att man behöver leta efter stjärnan. */
