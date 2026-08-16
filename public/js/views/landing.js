@@ -299,8 +299,7 @@ function heroHtml(user) {
       <div class="page">
         <div class="pub-hero-top">
           <a class="pub-brand" href="/" data-link aria-label="Till ESKIL:s startsida">
-            <img src="/assets/eskil_design_library/svg/eskil-symbol-inverted.svg" alt="" aria-hidden="true">
-            <span class="sublabel">ESKIL</span>
+            <img class="pub-logo" src="/assets/eskil_design_library/svg/eskil-logo-inverted.svg" alt="ESKIL — Där spåret börjar">
           </a>
           <div class="pub-hero-actions">
             <nav class="pub-meny" aria-label="ESKIL:s sidor">
@@ -313,7 +312,6 @@ function heroHtml(user) {
               : `<a class="btn btn-secondary btn-sm" href="/app" data-link>Logga in</a>`}
           </div>
         </div>
-        <div class="t-over" style="color:var(--rover-yellow);">ESKIL · Där spåret börjar</div>
         <h1>Allt ett scoutspår behöver — <em style="font-family:var(--font-serif, Georgia, serif);">från anmälan till målgång.</em></h1>
         <p class="lede">Kårerna anmäler sig på webben. Kontrollanterna rapporterar i mobilen, även utan
         täckning. Sekretariatet ser hela banan i realtid och vet vilka som fortfarande är ute i skogen.

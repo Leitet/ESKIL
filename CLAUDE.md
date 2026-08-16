@@ -32,6 +32,22 @@ Email extension). Production domain: https://eskilscout.se.
   users stay signed in until they log out manually.
 - **Design system is `public/assets/tokens.css`.** Do not redefine tokens;
   extend via semantic class names in `app.css` or `report.css`.
+- **Logotypen är EN fil, aldrig symbol + handsatt text.** Låsningen i
+  `public/assets/eskil_design_library/svg/eskil-logo-*.svg` bär symbolen,
+  ordbilden ESKIL och taglinen "Där spåret börjar". Använd `-inverted` på blå
+  ytor (`.pub-logo` i public.css, `.splash-logo` i app.css) och `-primary` på
+  vita (`.brand-logo`, tävlingarnas topbar). Sätt ALDRIG ett eget
+  `<span>ESKIL</span>` bredvid — då står namnet två gånger, och det gjorde det
+  i sidhuvudet, båda sidfötterna och på /t innan låsningen ersatte dem.
+  **Höjden får inte understiga ~48 px** där taglinen ska gå att läsa: den är
+  98/418 av höjden, alltså 11 px vid 48 och 7,5 px vid 32. Topbaren kör 40 px
+  och mobilen 32 — där är taglinen medvetet dekor, inte text man läser.
+  Typsnittet ligger INBAKAT i SVG:n (Arimo, OFL, metriskt lika Arial). En SVG
+  som visas via `<img>` når varken sidans CSS eller en webbfont, så utan
+  inbakningen renderades ordbilden i vad enheten råkade ha och logotypen bytte
+  form efter besökare. Detaljerna och de tre reglerna för att röra filerna
+  står i bibliotekets `README.txt`. Ändras namnet eller taglinen måste
+  teckendelmängden hämtas om — nya tecken finns inte i den.
 - **Night mode** on the reporter page is a red palette. Don't swap it for a
   gray dark mode — preserving night vision is the requirement.
 - **Banans delar heter STRÄCKA i all svensk text** — aldrig "ben". Ordet är en

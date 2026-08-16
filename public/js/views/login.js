@@ -9,11 +9,7 @@ export function renderLogin(app) {
   splash.innerHTML = `
     <div class="splash-pattern"></div>
     <div class="splash-inner">
-      <div class="splash-lockup">
-      <img class="splash-mark" src="/assets/eskil_design_library/svg/eskil-symbol-inverted.svg" alt="" aria-hidden="true">
-      <span class="splash-ord">ESKIL</span>
-        <span class="splash-tagline">Där spåret börjar</span>
-      </div>
+      <img class="splash-logo" src="/assets/eskil_design_library/svg/eskil-logo-inverted.svg" alt="ESKIL — Där spåret börjar">
       <h1>Allt ett spår behöver.</h1>
       <p class="lede">Patruller, kontroller, poängrapportering och live-resultat — samlat på ett ställe.</p>
 

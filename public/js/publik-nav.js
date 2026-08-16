@@ -47,8 +47,7 @@ export function publikHeader({ aktiv = '', titel = '', ingress = '' } = {}) {
       <div class="page">
         <div class="pub-hero-top">
           <a class="pub-brand" href="/"${iSpa('/') ? ' data-link' : ''} aria-label="Till ESKIL:s startsida">
-            <img src="/assets/eskil_design_library/svg/eskil-symbol-inverted.svg" alt="" aria-hidden="true">
-            <span class="sublabel">ESKIL</span>
+            <img class="pub-logo" src="/assets/eskil_design_library/svg/eskil-logo-inverted.svg" alt="ESKIL — Där spåret börjar">
           </a>
           <nav class="pub-meny" aria-label="ESKIL:s sidor">
             ${OFFICIELLA_SIDOR.map(s => `
@@ -79,10 +78,7 @@ export function publikFooter({ extra = '' } = {}) {
   return `
     <footer class="pub-foot">
       <div class="page">
-        <div style="display:flex;align-items:center;gap:var(--sp-4);">
-          <img src="/assets/eskil_design_library/svg/eskil-symbol-inverted.svg" alt="ESKIL">
-          <span>· ESKIL</span>
-        </div>
+        <img class="pub-logo" src="/assets/eskil_design_library/svg/eskil-logo-inverted.svg" alt="ESKIL — Där spåret börjar">
         <nav class="pub-foot-lankar" aria-label="ESKIL:s sidor">
           ${OFFICIELLA_SIDOR.filter(s => s.id !== 'start')
             .map(s => `<a href="${s.href}"${iSpa(s.href) ? ' data-link' : ''}>${esc(s.label)}</a>`).join('')}

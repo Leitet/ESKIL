@@ -631,8 +631,7 @@ function renderHero() {
       <div class="page">
         <div class="pub-hero-top">
           <a class="pub-brand" href="/" aria-label="Till ESKIL:s startsida">
-            <img src="/assets/eskil_design_library/svg/eskil-symbol-inverted.svg" alt="" aria-hidden="true">
-            <span class="sublabel">ESKIL</span>
+            <img class="pub-logo" src="/assets/eskil_design_library/svg/eskil-logo-inverted.svg" alt="ESKIL — Där spåret börjar">
           </a>
           <div class="pub-hero-actions">
             ${adminAccess ? `<a class="btn btn-secondary btn-sm" href="/app/c/${encodeURIComponent(realCid || cid || '')}">${icon('settings', { size: 14 })} Administrera</a>` : ''}
@@ -735,8 +734,8 @@ function renderFooter() {
     <footer class="pub-foot">
       <div class="page">
         <div style="display:flex;align-items:center;gap:var(--sp-4);">
-          <img src="/assets/eskil_design_library/svg/eskil-symbol-inverted.svg" alt="ESKIL">
-          <span>· ESKIL · ${comp?.year || ''}</span>
+          <img class="pub-logo" src="/assets/eskil_design_library/svg/eskil-logo-inverted.svg" alt="ESKIL — Där spåret börjar">
+          ${comp?.year ? `<span>· ${comp.year}</span>` : ''}
         </div>
         <span class="muted">${scoresPublic()
           ? 'Poängtabellen uppdateras direkt när kontrollanter rapporterar.'
@@ -1549,7 +1548,7 @@ function renderNotFound(msg) {
       <div class="pub-hero-pattern"></div>
       <div class="page">
         <a class="pub-brand" href="/" aria-label="Till ESKIL:s startsida">
-          <img src="/assets/eskil_design_library/svg/eskil-symbol-inverted.svg" alt="ESKIL">
+          <img class="pub-logo" src="/assets/eskil_design_library/svg/eskil-logo-inverted.svg" alt="ESKIL — Där spåret börjar">
         </a>
         <h1>Tävlingen hittades inte</h1>
         <p class="lede">${escapeHtml(msg)}</p>

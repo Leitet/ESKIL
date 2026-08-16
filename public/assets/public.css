@@ -40,16 +40,11 @@ a.pub-brand:hover { opacity: 0.85; }
 .pub-hero-actions {
   display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap;
 }
-.pub-brand img { height: 32px; width: auto; }
-.pub-brand .divider {
-  width: 1px; height: 22px; background: rgba(255,255,255,0.2);
-}
-.pub-brand .sublabel {
-  font-family: var(--font-display);
-  font-weight: 600; font-size: 13px;
-  letter-spacing: 0.14em; text-transform: uppercase;
-  color: var(--rover-yellow);
-}
+/* Låsningen bär BÅDE symbolen, ordbilden och taglinen. Förut låg symbolen
+   och ett separat <span>ESKIL</span> bredvid varandra — ordet stod då två
+   gånger så fort låsningen användes. Höjden styr; bredden följer med (3,2:1). */
+.pub-logo { height: 48px; width: auto; display: block; }
+@media (max-width: 560px) { .pub-logo { height: 40px; } }
 .pub-hero h1 {
   font-family: var(--font-display);
   font-weight: 200;

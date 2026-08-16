@@ -32,23 +32,10 @@
   color: var(--scout-blue);
   text-decoration: none;
 }
-.brand-mark { width: 28px; height: 28px; object-fit: contain; flex-shrink: 0; }
-.brand-name {
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 16px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-.brand-sub {
-  font-family: var(--font-display);
-  font-weight: 400;
-  font-size: 13px;
-  color: var(--fg3);
-  margin-left: var(--sp-2);
-  border-left: 1px solid var(--border);
-  padding-left: var(--sp-3);
-}
+/* Samma låsning som på de blå ytorna, i den blå varianten. Topbaren är låg —
+   32 px höjd ger ~102 px bredd och lämnar plats åt flikarna. */
+.brand-logo { height: 40px; width: auto; display: block; flex-shrink: 0; }
+@media (max-width: 560px) { .brand-logo { height: 32px; } }
 /* Slot for competition-specific buttons (Offentlig sida + Startskärm).
    `margin-left: auto` consumes the space between brand and the right-hand
    cluster, effectively pushing the slot + topbar-right all the way right. */
@@ -73,7 +60,6 @@
 
 /* Mobile topbar: drop the decorative bits, keep every action reachable. */
 @media (max-width: 900px) {
-  .brand-sub { display: none; }
   .topbar-email { display: none; }
 }
 @media (max-width: 760px) {
@@ -524,19 +510,10 @@ table.t tr.sf-row.park-row td {
 .splash h1 { margin: var(--sp-4) 0 var(--sp-5); font-family: var(--font-display); font-weight: 200; font-size: 64px; line-height: 1; letter-spacing: -0.02em; }
 .splash h1 em { font-family: var(--font-serif); font-weight: 500; font-style: italic; color: var(--rover-yellow); }
 .splash .lede { font-family: var(--font-serif); font-size: 19px; line-height: 1.5; color: #d2dde8; margin-bottom: var(--sp-8); }
-/* Låsningen: märket + ordbilden. Den gamla .splash-logo var en BRED ordbild
-   och sattes till 320 px; ESKIL:s märke är kvadratiskt och hade blivit en
-   jättelik ruta i samma mått. */
-.splash-lockup { display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap; }
-.splash-tagline {
-  flex-basis: 100%; margin-left: calc(64px + var(--sp-4));
-  font-size: 14px; letter-spacing: .04em; color: var(--scout-blue-200);
-}
-.splash-mark { width: 64px; height: 64px; display: block; }
-.splash-ord {
-  font-family: var(--font-display); font-weight: 200;
-  font-size: 44px; letter-spacing: .1em; color: var(--white); line-height: 1;
-}
+/* Startskärmens låsning. Bredden styr här (till skillnad från topbaren):
+   splashen är en tom yta där logotypen är hela innehållet. */
+.splash-logo { width: min(340px, 80%); height: auto; display: block; }
+
 .login-card {
   background: var(--white); color: var(--fg1);
   border-radius: var(--r-xl);
