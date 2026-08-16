@@ -10,10 +10,10 @@ export function renderLogin(app) {
     <div class="splash-pattern"></div>
     <div class="splash-inner">
       <div class="splash-lockup">
-      <img class="splash-mark" src="/assets/eskil-mark.svg" alt="" aria-hidden="true">
+      <img class="splash-mark" src="/assets/scout-symbol.svg" alt="" aria-hidden="true">
       <span class="splash-ord">ESKIL</span>
+        <span class="splash-tagline">Där spåret börjar</span>
       </div>
-      <div class="t-over eyebrow" style="margin-top: var(--sp-8);">ESKIL · Scoutspår</div>
       <h1>Allt ett spår behöver.</h1>
       <p class="lede">Patruller, kontroller, poängrapportering och live-resultat — samlat på ett ställe.</p>
 
