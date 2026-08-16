@@ -256,6 +256,25 @@ mutationsverifierade i `test/rules.test.js`.
 
 ## Väder, dagskopia och utskrifter (P2)
 
+- **Sekretariatets logg (`.../logg/{id}`)** skrivs från ADMIN-VYERNA, aldrig
+  inifrån store.js-mutationerna. Det är frestande att lägga anropet i t.ex.
+  `deleteScore` så det aldrig glöms — men den anropas ANONYMT från
+  rapportsidan, och en anonym klient kan inte skriva till en member-only logg;
+  skrivningen hade kastat och tagit borttagningen med sig. `loggHandelse`
+  sväljer dessutom fel: en logg som inte kunde skrivas får aldrig hindra det
+  den skulle beskriva.
+  `list` är member-only (loggen namnger patruller); `read` hade täckt både get
+  och list och gjort kollektionen uppräkningsbar. Append-only via
+  `allow update: if false` men med `delete` för admin — hade den varit
+  `update, delete: if false` kunde varken closeCompetition eller
+  deleteCompetition sopa den, och loggen överlevt tävlingen den handlar om.
+  Båda mutationsverifierade. `closeCompetition` raderar den HELT (den bär
+  funktionärernas adresser och namnger patruller), `deleteCompetition` sveper
+  den med övriga subkollektioner.
+  UI:t säger uttryckligen VILKA åtgärder som loggas — en logg man tror är
+  komplett är värre än ingen, för då drar man slutsatser av det som inte står
+  där.
+
 - **`vader.js` använder Open-Meteo, inte SMHI.** SMHI:s `pmp3g` — som
   förbättringslistan pekade på — svarar 404 på varje sökväg inklusive API-roten
   (verifierat 2026-08-16). MET Norway kräver en identifierande User-Agent, som

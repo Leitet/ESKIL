@@ -1138,3 +1138,18 @@ table.t tr.sf-row.park-row td {
 .vader-kritisk strong { color: var(--utm-pink); }
 .vader-varning strong { color: var(--avent-orange); }
 .vader-fot { margin-top: 8px; }
+
+/* --- Sekretariatets logg --------------------------------------------------- */
+.logg-lista { list-style: none; padding: 0; margin: 0; }
+.logg-lista li {
+  display: flex; gap: var(--sp-3); align-items: baseline;
+  padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 14px;
+}
+.logg-lista li:last-child { border-bottom: 0; }
+.logg-tid { flex: none; color: var(--fg3); font-variant-numeric: tabular-nums; }
+.logg-text { flex: 1 1 auto; min-width: 0; }
+.logg-av { flex: none; font-size: 12px; }
+@media (max-width: 640px) {
+  .logg-lista li { flex-wrap: wrap; }
+  .logg-av { width: 100%; }
+}

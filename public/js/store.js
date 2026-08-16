@@ -476,6 +476,13 @@ export async function closeCompetition(cid) {
     });
     await batch.commit();
   }
+  // Sekretariatets logg namnger enskilda patruller och bär funktionärernas
+  // e-postadresser. Den fyller sitt syfte under och strax efter dagen; när
+  // tävlingen avslutas är den bara personuppgifter kvar. Raderas helt, precis
+  // som fälttrådarna.
+  const loggSnap = await getDocs(collection(db, 'competitions', cid, 'logg'));
+  await deleteRefs(loggSnap.docs.map(d => d.ref));
+
   // Utgått-noteringar kan innehålla känsligt (skäl, skador) — gallra noten
   // vid avslut men behåll själva utgått-statusen som tävlingshistorik.
   const patrolsSnap = await getDocs(collection(db, 'competitions', cid, 'patrols'));
@@ -578,7 +585,7 @@ export async function deleteCompetition(cid) {
   await deleteRefs(stationsSnap.docs.map(d => d.ref));
   // Platta kollektioner. `selfPassages`, `track` och `utskick` saknades och
   // låg kvar som föräldralösa dokument efter en "raderad" tävling.
-  for (const sub of ['registrations', 'invites', 'selfPassages', 'track', 'utskick']) {
+  for (const sub of ['registrations', 'invites', 'selfPassages', 'track', 'utskick', 'logg']) {
     const snap = await getDocs(collection(db, 'competitions', cid, sub));
     await deleteRefs(snap.docs.map(d => d.ref));
   }
@@ -589,6 +596,38 @@ export async function deleteCompetition(cid) {
   const privSnap = await getDocs(collection(db, 'competitions', cid, 'private'));
   await deleteRefs(privSnap.docs.map(d => d.ref));
   await deleteDoc(doc(db, 'competitions', cid));
+}
+
+// --- Sekretariatets logg ------------------------------------------------------
+// Vem stängde kontrollen, vem tog bort patrullen, vem ändrade maxtiden. Det
+// saknade spår helt, och dagen efter minns ingen.
+//
+// Loggen skrivs från ADMIN-VYERNA, aldrig härifrån inuti mutationerna. Det är
+// frestande att lägga anropet i t.ex. deleteScore så det aldrig glöms — men
+// deleteScore anropas ANONYMT från rapportsidan, och en anonym klient kan inte
+// skriva till en member-only logg. Skrivningen hade då kastat och tagit
+// borttagningen med sig.
+//
+// Fel sväljs medvetet: en logg som inte kunde skrivas får aldrig hindra det
+// den skulle beskriva.
+export async function loggHandelse(cid, { vad, text, av }) {
+  try {
+    await addDoc(collection(db, 'competitions', cid, 'logg'), {
+      at: Timestamp.fromDate(new Date()),
+      av: String(av || 'okänd').slice(0, 120),
+      vad: String(vad || '').slice(0, 60),
+      text: String(text || '').slice(0, 500)
+    });
+  } catch (e) {
+    console.warn('[ESKIL] kunde inte logga:', e?.message || e);
+  }
+}
+
+export function watchLogg(cid, cb) {
+  return onSnapshot(collection(db, 'competitions', cid, 'logg'),
+    snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (b.at?.toMillis?.() ?? 0) - (a.at?.toMillis?.() ?? 0))),
+    () => cb([]));
 }
 
 // --- Patrols ---------------------------------------------------------------

@@ -756,3 +756,40 @@ describe('Anmälans betalning: påstående kontra facit', () => {
       'redigering av anmälan utan paymentClaims');
   });
 });
+
+describe('Sekretariatets logg', () => {
+  const path = `competitions/${CID}/logg/${uniq('l')}`;
+  const bra = { at: new Date(), av: 'user@test.se', vad: 'kontroll-stangd', text: 'Kontroll 4 stängd' };
+
+  test('medlem skriver, utomstående nekas', async () => {
+    allow(await write(path, bra, USER), 'medlem loggar');
+    deny(await write(`competitions/${CID}/logg/${uniq('l')}`, bra, OTHER), 'utomstående loggar');
+    deny(await write(`competitions/${CID}/logg/${uniq('l')}`, bra, null), 'anonym loggar');
+  });
+
+  test('loggen går inte att skriva om — det är hela poängen', async () => {
+    const p2 = `competitions/${CID}/logg/${uniq('l')}`;
+    allow(await write(p2, bra, USER), 'skapa');
+    deny(await write(p2, { ...bra, text: 'Något annat' }, USER, { merge: true }), 'skriva om posten');
+  });
+
+  test('men admin får gallra — annars överlever loggen tävlingen', async () => {
+    const p3 = `competitions/${CID}/logg/${uniq('l')}`;
+    await write(p3, bra, USER);
+    assert.equal((await remove(p3, USER)).ok, true, 'admin raderar');
+  });
+
+  test('list är member-only — loggen namnger patruller', async () => {
+    assert.equal((await list(`competitions/${CID}/logg`, null)).ok, false, 'anonym listar');
+    assert.equal((await list(`competitions/${CID}/logg`, OTHER)).ok, false, 'utomstående listar');
+    assert.equal((await list(`competitions/${CID}/logg`, USER)).ok, true, 'medlem listar');
+  });
+
+  test('formen vaktas', async () => {
+    const p4 = () => `competitions/${CID}/logg/${uniq('l')}`;
+    deny(await write(p4(), { ...bra, hittepa: 'x' }, USER), 'okänt fält');
+    deny(await write(p4(), { ...bra, text: 'x'.repeat(501) }, USER), 'för lång text');
+    deny(await write(p4(), { at: new Date(), av: 'a', vad: 'b' }, USER), 'utan text');
+    deny(await write(p4(), { ...bra, at: new Date(Date.now() + 3600000) }, USER), 'at en timme fram');
+  });
+});

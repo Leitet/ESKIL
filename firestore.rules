@@ -296,6 +296,32 @@ service cloud.firestore {
         allow write: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
       }
 
+      // Sekretariatets logg. Vem stängde kontrollen, vem tog bort patrullen,
+      // vem ändrade maxtiden — det saknade spår helt, och dagen efter minns
+      // ingen. Loggen namnger patruller och bär ledningens anteckningar, så
+      // `list` är member-only; `read` hade täckt både get och list och gjort
+      // hela kollektionen uppräkningsbar.
+      //
+      // APPEND-ONLY, men inte via `allow update, delete: if false` — då kunde
+      // varken closeCompetition eller deleteCompetition sopa den, och loggen
+      // hade överlevt tävlingen den handlar om. Admin får radera (gallring),
+      // ingen får skriva om en befintlig post.
+      match /logg/{loggId} {
+        allow get, list: if isCompMember(cid);
+        allow create: if isCompMember(cid) && !compIsDemo(cid)
+          && request.resource.data.at is timestamp
+          && request.resource.data.at <= request.time + duration.value(2, 'm')
+          && request.resource.data.av is string
+          && request.resource.data.av.size() <= 120
+          && request.resource.data.vad is string
+          && request.resource.data.vad.size() <= 60
+          && request.resource.data.text is string
+          && request.resource.data.text.size() <= 500
+          && request.resource.data.keys().hasOnly(['at', 'av', 'vad', 'text']);
+        allow update: if false;
+        allow delete: if isSuperAdmin() || isCompAdmin(cid);
+      }
+
       // Patrols — readable by anyone (ID is obscure anyway, used by control page)
       match /patrols/{pid} {
         allow read: if true;

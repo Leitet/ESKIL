@@ -12,7 +12,7 @@ import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import {
   getCompetition, listPatrols, listStations, createStation, watchPassages, watchSelfPassages, clearSelfPassage,
   watchControls, watchScoresForControl, getTrack, getControlMeta, watchControlBeacon,
-  updateCompetition, updateControl, setPatrolUtgatt, createBroadcastMessage
+  updateCompetition, updateControl, setPatrolUtgatt, createBroadcastMessage, loggHandelse, watchLogg
 } from '../store.js';
 import { deleteField } from '../firebase.js';
 import { compPlaces, placeKind, drawPlaces } from '../places.js';
@@ -136,6 +136,7 @@ export async function renderLaget(app, user, cid) {
     <div id="tidslinje"></div>
     <div id="vader"></div>
     <div id="dagskopia"></div>
+    <div id="logg"></div>
 
     <div class="grid" style="grid-template-columns:1fr;gap:var(--sp-6);">
       <div>
@@ -266,6 +267,7 @@ export async function renderLaget(app, user, cid) {
   subscribePassages();
 
   // Självbekräftade starter finns även när tävlingen saknar startstation.
+  unsubs.push(watchLogg(cid, rader => ritaLogg(rader)));
   unsubs.push(watchSelfPassages(cid, rows => {
     selfPassages = {};
     rows.forEach(r => { selfPassages[r.id] = r; });
@@ -464,6 +466,34 @@ export async function renderLaget(app, user, cid) {
     return `<span class="t-sm mono" style="white-space:nowrap;${farg}" title="${escapeHtml(titel)}">${delar.join(' · ')}</span>`;
   }
 
+  // Sekretariatets logg. Säger uttryckligen VILKA åtgärder som loggas — en
+  // logg man tror är komplett är värre än ingen, för då drar man slutsatser av
+  // det som inte står där. Rapportsidans egna åtgärder loggas inte: de görs
+  // anonymt och en anonym klient kan inte skriva till en member-only logg.
+  function ritaLogg(rader) {
+    const host = wrap.querySelector('#logg');
+    if (!host || !isAdmin) return;
+    host.innerHTML = `
+      <div class="card">
+        <h3>${icon('history', { size: 16 })} Sekretariatets logg</h3>
+        <p class="muted t-sm" style="margin:6px 0 10px;">
+          Loggar det som görs härifrån: öppnade kontroller, utgångna patruller,
+          efterlysningar och skickade vädervarningar. Poängrättelser och
+          fältets egna åtgärder står inte här.
+        </p>
+        ${rader.length ? `
+          <ul class="logg-lista">
+            ${rader.slice(0, 40).map(r => `
+              <li>
+                <span class="logg-tid mono">${r.at ? formatTime(r.at.toDate ? r.at.toDate() : new Date(r.at)) : '—'}</span>
+                <span class="logg-text">${escapeHtml(r.text || '')}</span>
+                <span class="logg-av muted">${escapeHtml(r.av || '')}</span>
+              </li>`).join('')}
+          </ul>`
+          : '<p class="muted t-sm">Inget loggat än.</p>'}
+      </div>`;
+  }
+
   // Kortet säger rakt ut vad kopian INTE innehåller. Kallas den "backup" i
   // gränssnittet kommer någon att lita på den vid en radering och förlora
   // anmälningar, utskick och överlämningsdokument.
@@ -540,6 +570,7 @@ export async function renderLaget(app, user, cid) {
           target: { kontroller: true, patruller: true, publikt: false },
           requireAck: true
         });
+        loggHandelse(cid, { vad: 'askvarning', av: user?.email || '', text });
         toast('Åskvarningen är skickad', 'success');
       } catch (err) { toast('Kunde inte skicka: ' + (err?.message || err), 'error'); }
     }));
@@ -694,7 +725,13 @@ export async function renderLaget(app, user, cid) {
 
     // Snabböppning av stängd kontroll med inkommande patruller.
     wrap.querySelectorAll('[data-open-ctrl]').forEach(btn => btn.addEventListener('click', () => withBusy(btn, '…', async () => {
-      try { await updateControl(cid, btn.dataset.openCtrl, { open: true }); toast('Kontrollen öppnad', 'success'); }
+      try {
+        await updateControl(cid, btn.dataset.openCtrl, { open: true });
+        const k = controls.find(c => c.id === btn.dataset.openCtrl);
+        loggHandelse(cid, { vad: 'kontroll-oppnad', av: user?.email || '',
+          text: `Öppnade kontroll ${k?.nummer ?? '?'}${k?.name ? ' — ' + k.name : ''}` });
+        toast('Kontrollen öppnad', 'success');
+      }
       catch (e) { toast('Fel: ' + e.message, 'error'); }
     })));
 
@@ -763,6 +800,8 @@ export async function renderLaget(app, user, cid) {
       if (note === null) return;
       try {
         await setPatrolUtgatt(cid, p.id, { note });
+        loggHandelse(cid, { vad: 'patrull-utgatt', av: user?.email || '',
+          text: `Markerade ${patrolLabel(p)} som utgången${note ? ' — ' + note : ''}` });
         p.utgatt = { at: new Date(), note }; // patrols hämtas inte live — spegla lokalt
         toast(`${p.name} markerad som utgått`);
         renderStats();
@@ -790,6 +829,8 @@ export async function renderLaget(app, user, cid) {
           target: { kontroller: true, patruller: false, publikt: false },
           requireAck: false
         });
+        loggHandelse(cid, { vad: 'efterlysning', av: user?.email || '',
+          text: `Efterlyste ${patrolLabel(p)} hos kontrollerna` });
         toast('Efterlysningen är skickad till kontrollerna', 'success');
       } catch (e) { toast('Kunde inte skicka: ' + (e?.message || e), 'error'); }
     })));
@@ -800,6 +841,8 @@ export async function renderLaget(app, user, cid) {
       if (!(await confirmDialog(`Ta tillbaka ${p.name || 'patrullen'} i tävlingen?`, { okLabel: 'Ångra utgått', danger: false }))) return;
       try {
         await setPatrolUtgatt(cid, p.id, null);
+        loggHandelse(cid, { vad: 'patrull-ater', av: user?.email || '',
+          text: `Tog tillbaka ${patrolLabel(p)} i tävlingen` });
         delete p.utgatt; // patrols hämtas inte live — spegla lokalt
         toast(`${p.name} är åter i tävlingen`, 'success');
         renderStats();
