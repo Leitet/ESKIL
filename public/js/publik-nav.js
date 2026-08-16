@@ -33,7 +33,9 @@ const iSpa = (href) => href !== '/integritet';
  * Sidhuvudet: varumärke, meny över de officiella sidorna, brödsmulor och
  * sidans rubrik.
  *
- * @param aktiv   id ur OFFICIELLA_SIDOR — markeras i menyn och blir sista smulan
+ * @param aktiv   id ur OFFICIELLA_SIDOR — markeras i menyn och blir sista smulan.
+ *                Smulorna hamnar UNDER hjälten, på den vita ytan: i det blå
+ *                blocket konkurrerade de med rubriken om samma uppmärksamhet.
  * @param titel   sidrubrik (h1). Utelämnas på startsidan, som har sin egen hjälte.
  * @param ingress kort brödtext under rubriken
  */
@@ -56,16 +58,18 @@ export function publikHeader({ aktiv = '', titel = '', ingress = '' } = {}) {
                  ${s.id === aktiv ? 'aria-current="page"' : ''}>${esc(s.label)}</a>`).join('')}
           </nav>
         </div>
-        ${sida && sida.id !== 'start' ? `
-          <nav class="pub-smulor" aria-label="Brödsmulor">
-            <a href="/" data-link>ESKIL</a>
-            <span aria-hidden="true">›</span>
-            <span>${esc(sida.label)}</span>
-          </nav>` : ''}
         ${titel ? `<h1 class="t-d2">${esc(titel)}</h1>` : ''}
         ${ingress ? `<p class="lede">${esc(ingress)}</p>` : ''}
       </div>
-    </header>`;
+    </header>
+    ${sida && sida.id !== 'start' ? `
+      <nav class="pub-smulor" aria-label="Brödsmulor">
+        <div class="page">
+          <a href="/" data-link>ESKIL</a>
+          <span aria-hidden="true">›</span>
+          <span>${esc(sida.label)}</span>
+        </div>
+      </nav>` : ''}`;
 }
 
 /**

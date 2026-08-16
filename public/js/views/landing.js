@@ -10,7 +10,7 @@ import { icon } from '../icons.js';
 import { publikHeader, publikFooter } from '../publik-nav.js';
 
 export async function renderLanding(app, user) {
-  document.title = 'ESKIL — Scouttävlingssystem';
+  document.title = 'ESKIL — spår och tävlingar för scouter';
   app.innerHTML = `
     ${heroHtml(user)}
     <main class="page" id="landing-body">
@@ -64,7 +64,7 @@ export async function renderLanding(app, user) {
         <h2 class="t-h2">Testa ESKIL</h2>
         <span class="muted">Inget konto behövs — klicka runt fritt</span>
       </div>
-      <p class="landing-demo-lede">Demospåret är en riktig tävling mitt i loppet: tio kontroller,
+      <p class="landing-demo-lede">Demospåret är ett riktigt spår mitt i loppet: tio kontroller,
       trettio patruller och poäng som droppar in. Allt är påhittat, ingenting går att ändra —
       men varje vy är den ni skulle använda på tävlingsdagen.</p>
       ${demoCards(demos[0])}
@@ -140,7 +140,7 @@ function bevisremsa(comps) {
   return `
     <section class="landing-proof" aria-label="Kort om ESKIL">
       ${skarpa.length ? `<div class="landing-proof-num">
-        <strong>${skarpa.length}</strong><span>tävling${skarpa.length === 1 ? '' : 'ar'}${kar.size ? ` · ${kar.size} kår${kar.size === 1 ? '' : 'er'}` : ''}</span>
+        <strong>${skarpa.length}</strong><span>spår${kar.size ? ` · ${kar.size} kår${kar.size === 1 ? '' : 'er'}` : ''}</span>
       </div>` : ''}
       ${rader.map(([rubrik, text]) => `
         <div class="landing-proof-item">
@@ -156,7 +156,7 @@ function bevisremsa(comps) {
 // en rad utan funktion bakom är det en bugg i den här listan.
 const FUNKTIONER = [
   {
-    rubrik: 'Före tävlingen', ikon: 'send',
+    rubrik: 'Innan ni ger er ut', ikon: 'send',
     poster: [
       ['Anmälan på webben', 'Kårerna anmäler sina patruller själva. Pris per scout, Swish-QR och betalningsreferenser räknas ut åt er.'],
       ['Kvitton och påminnelser', 'Bekräftelse och kvitto mailas automatiskt. Obetalda anmälningar syns i en lista med en påminnelseknapp.'],
@@ -167,7 +167,7 @@ const FUNKTIONER = [
     ]
   },
   {
-    rubrik: 'Under tävlingsdagen', ikon: 'check',
+    rubrik: 'Ute på spåret', ikon: 'check',
     poster: [
       ['Rapportera i mobilen', 'Kontrollanten öppnar sin QR-kod och sätter poäng. Nattläge i rött för mörkerseendet, och skärmen släcks inte mellan patrullerna.'],
       ['Fungerar utan täckning', 'Rapporter köas lokalt och skickas när nätet kommer tillbaka — med tiden de faktiskt sattes, inte synktiden.'],
@@ -196,7 +196,7 @@ const FUNKTIONER = [
       ['GDPR-gallring', 'När tävlingen avslutas raderas kontaktuppgifter, fritextsvar, telefonnummer och hela fältsamtalet automatiskt.'],
       ['Papperskorg', 'Raderade patruller och kontroller går att ångra — med sina poäng och samma id, så tryckta QR-koder fungerar igen.'],
       ['Säkerhetskopiering', 'Ladda ner hela tävlingen som en fil, och läs tillbaka den. Tävlingar går inte att radera utan en färsk kopia.'],
-      ['Publik tävlingssida', 'Anhöriga följer starttider och resultat, kan prenumerera på en patrull och lägga målgången i sin kalender.']
+      ['Publik sida för anhöriga', 'Följ starttider och resultat, prenumerera på en patrull och lägg målgången i kalendern.']
     ]
   }
 ];
@@ -313,10 +313,11 @@ function heroHtml(user) {
               : `<a class="btn btn-secondary btn-sm" href="/app" data-link>Logga in</a>`}
           </div>
         </div>
-        <div class="t-over" style="color:var(--rover-yellow);">ESKIL · Scouttävlingssystem</div>
-        <h1>Allt en scouttävling behöver — <em style="font-family:var(--font-serif, Georgia, serif);">från anmälan till prisutdelning.</em></h1>
+        <div class="t-over" style="color:var(--rover-yellow);">ESKIL · Scoutspår</div>
+        <h1>Allt ett scoutspår behöver — <em style="font-family:var(--font-serif, Georgia, serif);">från anmälan till målgång.</em></h1>
         <p class="lede">Kårerna anmäler sig på webben. Kontrollanterna rapporterar i mobilen, även utan
-        täckning. Sekretariatet ser hela banan i realtid och vet vilka som fortfarande är ute i skogen.</p>
+        täckning. Sekretariatet ser hela banan i realtid och vet vilka som fortfarande är ute i skogen.
+        Ska spåret räknas som tävling finns poäng, placeringar och prisutdelning — annars låter ni bli.</p>
         <div class="hero-cta-row">
           <a class="btn btn-gul" href="#testa" aria-label="Testa demot — inget konto behövs">
             Testa demot ${icon('arrow-right', { size: 16 })}</a>

@@ -21,16 +21,17 @@ export function renderOm(app, user) {
     ${publikHeader({
       aktiv: 'om',
       titel: 'Om ESKIL',
-      ingress: 'Ett tävlingssystem byggt av en scout, för scouter.'
+      ingress: 'Byggt av en scout, för scouter.'
     })}
 
     <main class="page page-narrow om-sida">
       <section>
         <h2 class="t-h2">Vad ESKIL är</h2>
-        <p>ESKIL är ett system för att arrangera scouttävlingar — anmälan, kontroller,
-        poängrapportering och live-resultat på ett ställe. Det är byggt för en tävlingsdag
-        i skogen: kontrollanterna rapporterar i mobilen även utan täckning, och sekretariatet
-        ser hela banan i realtid.</p>
+        <p>ESKIL är ett system för att lägga upp och genomföra ett spår — anmälan, kontroller,
+        poängrapportering och live-resultat på ett ställe. Det är byggt för en dag i skogen:
+        kontrollanterna rapporterar i mobilen även utan täckning, och sekretariatet ser hela
+        banan i realtid. Ska spåret räknas som tävling finns poäng, placeringar och
+        prisutdelning — annars låter ni bli.</p>
         <p><a href="/#funktioner" data-link>Se vad ESKIL gör ${icon('arrow-right', { size: 14 })}</a></p>
       </section>
 

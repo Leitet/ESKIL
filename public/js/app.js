@@ -100,7 +100,7 @@ async function guard(render, cid = null) {
 // title so a view-specific title (e.g. ceremony's) never leaks to the next
 // page — views set their own via setDocTitle() once their data loads.
 setRouteChangeHandler(() => {
-  document.title = 'ESKIL — Scouttävlingssystem';
+  document.title = 'ESKIL — spår och tävlingar för scouter';
   document.querySelectorAll('.tabs a').forEach(a => {
     if (a.getAttribute('href') === location.pathname) a.classList.add('active');
     else a.classList.remove('active');
@@ -126,7 +126,7 @@ export function renderTopbar(extra) {
       <a class="brand" href="${brandHref}" data-link>
         <img class="brand-mark" src="/assets/scout-symbol.svg" alt="" aria-hidden="true">
         <span class="brand-name">ESKIL</span>
-        <span class="brand-sub">Scouttävlingar</span>
+        <span class="brand-sub">Scoutspår</span>
       </a>
       <div class="topbar-comp" id="topbar-comp"></div>
       <div class="topbar-right">
@@ -203,7 +203,7 @@ export function layout(inner, { narrow = false } = {}) {
     foot.className = 'app-foot';
     foot.innerHTML = `
       <div class="app-foot-inner">
-        <span>ESKIL · Scouttävlingar</span>
+        <span>ESKIL · Scoutspår</span>
         <span><a href="/" data-link>ESKIL:s startsida</a> · <a href="/kontakt" data-link>Kontakta oss</a> · <a href="/integritet">Integritet &amp; GDPR</a></span>
       </div>`;
     app.appendChild(foot);

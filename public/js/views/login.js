@@ -10,7 +10,7 @@ export function renderLogin(app) {
     <div class="splash-pattern"></div>
     <div class="splash-inner">
       <img class="splash-logo" src="/assets/logo-scouterna-tagline-white.svg" alt="Scouterna — raised by adventure" width="320">
-      <div class="t-over eyebrow" style="margin-top: var(--sp-8);">ESKIL · Scouttävlingssystem</div>
+      <div class="t-over eyebrow" style="margin-top: var(--sp-8);">ESKIL · Scoutspår</div>
       <h1>Raised by <em>adventure.</em></h1>
       <p class="lede">ESKIL hjälper dig att köra scouttävlingar — från Älghornsjakten till DM. Patruller, kontroller, poängrapportering — samlat på ett ställe.</p>
 

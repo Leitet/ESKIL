@@ -121,5 +121,5 @@ export function compHeader(cid, comp, user, {
 // loaded; the router resets to the base title on every route change.
 export function setDocTitle(...parts) {
   const head = parts.filter(Boolean).join(' · ');
-  document.title = head ? `${head} — ESKIL` : 'ESKIL — Scouttävlingar';
+  document.title = head ? `${head} — ESKIL` : 'ESKIL — Scoutspår';
 }

@@ -1066,13 +1066,18 @@ a.pub-brand:hover { opacity: 0.85; }
 .pub-meny a:hover { color: var(--white); background: rgba(255, 255, 255, .10); }
 .pub-meny a.is-aktiv { color: var(--scout-blue-900); background: var(--rover-yellow); }
 
-.pub-smulor {
+/* Smulorna ligger UNDER hjälten, på den vita ytan. I det blå blocket
+   konkurrerade de med sidrubriken om samma uppmärksamhet; här läser man dem
+   som det de är — en väg tillbaka, inte en rubrik. */
+.pub-smulor { background: var(--white); border-bottom: 1px solid var(--border); }
+.pub-smulor .page {
   display: flex; align-items: center; gap: 8px;
-  margin-top: var(--sp-5); font-size: 13px; color: var(--scout-blue-200);
+  padding-top: var(--sp-3); padding-bottom: var(--sp-3);
+  font-size: 13px; color: var(--fg2);
 }
-.pub-smulor a { color: var(--scout-blue-200); text-decoration: none; }
-.pub-smulor a:hover { color: var(--white); text-decoration: underline; }
-.pub-smulor span[aria-hidden] { opacity: .6; }
+.pub-smulor a { color: var(--scout-blue); text-decoration: none; font-weight: 600; }
+.pub-smulor a:hover { text-decoration: underline; }
+.pub-smulor span[aria-hidden] { opacity: .5; }
 
 .pub-foot-lankar { display: flex; flex-wrap: wrap; gap: var(--sp-4); align-items: center; }
 .pub-foot-lankar a { color: var(--scout-blue-300); text-decoration: none; font-size: 14px; }
