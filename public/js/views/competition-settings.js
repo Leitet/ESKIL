@@ -580,7 +580,11 @@ function renderBasicTab(comp, cid, refresh, readOnly, isSuperAdmin, user) {
     if (!isCompAdminUser(comp, user)) return;
     const korg = document.createElement('section');
     korg.className = 'card mt-6';
-    wrap.appendChild(korg);
+    // host, inte wrap: papperskorgen ligger i renderBasicTab, och `wrap` är
+    // deklarerad i renderCompetitionSettings — en helt annan funktion. Kortet
+    // renderades därför ALDRIG, trots att toasten vid radering lovade att man
+    // kunde återställa "under Inställningar".
+    host.appendChild(korg);
     const rita = async () => {
       let poster = [];
       try { poster = await listaPapperskorg(cid); } catch { korg.remove(); return; }
