@@ -339,6 +339,26 @@ mutationsverifierade i `test/rules.test.js`.
   `.modal-body` har `white-space: pre-wrap` så citerad meddelandetext behåller
   sina radbrytningar.
 
+## Komplettering per patrull (P3)
+
+`.../kompletteringar/{token}` — kårledaren har anmälningslänken och kan ändra
+ALLT i anmälan, så den kan hen inte skicka vidare till varje patrulledare.
+Kompletteringen ger varje patrull en EGEN hemlighet: doc-id:t är en slumpad
+token och `/a/<cid>/k/<token>` öppnar exakt den patrullens rad — inte anmälan,
+inte de andra patrullerna, inte betalningarna.
+
+`list` är member-only; `read` hade täckt både get och list och gjort varje
+token — alltså varje patrulls allergier — uppräkningsbar anonymt.
+`regId` och `patrol` går inte att skriva om: kunde de det skulle
+kompletteringen peka på fel anmälan eller döpas om till en patrull som inte
+finns.
+
+**Kårledaren skapar länkarna, inte admin** — hen är den som delar ut dem, och
+hen är ANONYM. Rules kan inte se att någon "har" anmälningslänken, men att
+känna till ett `regId` ÄR att ha den (id:t är hemligheten, precis som för
+kontrollerna). Därför kräver create att anmälan `exists()`. Alla tre
+mutationsverifierade. `deleteCompetition` måste svepa kollektionen.
+
 ## Backup och radering hänger ihop
 
 Raderingsskyddet KRÄVER en färsk backup, så backupen avgör vad som går att få

@@ -11,7 +11,8 @@
 // document is created, via the Trigger Email extension.
 
 import {
-  getCompetition, getCompetitionBySlug, getRegistration, createRegistration, updateRegistration
+  getCompetition, getCompetitionBySlug, getRegistration, createRegistration, updateRegistration,
+  getKomplettering, sparaKomplettering, skapaKompletteringar, listKompletteringar
 } from './store.js';
 import {
   allowedAvdelningar, escapeHtml, formatDate, toast, withBusy, confirmDialog, wireOverlayClose,
@@ -29,7 +30,10 @@ const root = document.getElementById('root');
 function parsePath() {
   const parts = location.pathname.split('/').filter(Boolean); // ['a', cid, regId?]
   if (parts[0] !== 'a' || !parts[1]) return null;
-  return { cid: parts[1], regId: parts[2] || null };
+  // /a/<cid>/k/<token> — patrulledarens avgränsade komplettering. Den ger
+  // åtkomst till EN patrulls rad, inte till anmälan.
+  if (parts[2] === 'k' && parts[3]) return { cid: parts[1], regId: null, token: parts[3] };
+  return { cid: parts[1], regId: parts[2] || null, token: null };
 }
 
 // --- Global state -----------------------------------------------------------
@@ -122,6 +126,16 @@ async function boot() {
   settings = registrationSettings(comp);
   document.title = `Anmälan · ${comp.shortName || comp.name || 'ESKIL'}`;
 
+  // Patrulledarens avgränsade vy. Den ser BARA sin egen patrulls rad — inte
+  // anmälan, inte de andra patrullerna, inte betalningarna.
+  if (parsed.token) {
+    let k = null;
+    try { k = await getKomplettering(cid, parsed.token); }
+    catch (e) { return renderFatal('Kunde inte ladda: ' + e.message); }
+    if (!k) return renderFatal('Länken gäller inte längre. Be kårledaren skicka en ny.');
+    return renderKomplettering(k);
+  }
+
   if (parsed.regId) {
     try {
       reg = await getRegistration(cid, parsed.regId);
@@ -139,6 +153,61 @@ async function boot() {
   }
 
   render();
+}
+
+// Patrulledarens sida. Medvetet mager: ett namn hen känner igen och fyra fält.
+// Den som får länken ska inte behöva förstå anmälningssystemet — och ska inte
+// heller se resten av kårens anmälan.
+function renderKomplettering(k) {
+  const root = document.getElementById('root');
+  const el = (id) => document.getElementById(id);
+  root.innerHTML = `
+    <div class="anm-wrap">
+      <div class="anm-head">
+        <div class="anm-eyebrow">${escapeHtml(comp.shortName || comp.name || '')}${comp.year ? ' · ' + comp.year : ''}</div>
+        <h1>${escapeHtml(k.patrol || 'Patrullen')}</h1>
+        <p class="muted">Fyll i uppgifterna för er patrull. Kårledaren har redan anmält er —
+        det här är bara det som saknas.</p>
+      </div>
+      <div class="anm-card">
+        <div class="field-group">
+          <div>
+            <label class="field" for="kp-antal">Hur många är ni?</label>
+            <input class="input" id="kp-antal" type="number" inputmode="numeric" min="0" max="20" value="${Number(k.antal) || ''}">
+          </div>
+          <div>
+            <label class="field" for="kp-allerg">Allergier och specialkost</label>
+            <textarea class="textarea" id="kp-allerg" placeholder="Ex. en nötallergi, en vegetarian">${escapeHtml(k.allergier || '')}</textarea>
+          </div>
+          <div>
+            <label class="field" for="kp-kontakt">Kontaktperson under dagen</label>
+            <input class="input" id="kp-kontakt" placeholder="Namn och telefon" value="${escapeHtml(k.kontakt || '')}">
+          </div>
+          <div>
+            <label class="field" for="kp-ovrigt">Övrigt tävlingsledningen bör veta</label>
+            <textarea class="textarea" id="kp-ovrigt">${escapeHtml(k.ovrigt || '')}</textarea>
+          </div>
+        </div>
+        <div class="btn-row mt-4" style="justify-content:flex-end;">
+          <button class="btn btn-primary" id="kp-spara">Spara uppgifterna</button>
+        </div>
+        ${k.ifylltAt ? `<p class="muted t-sm" style="margin-top:10px;">Senast ifyllt ${escapeHtml(String(k.ifylltAt).slice(0, 10))}.</p>` : ''}
+      </div>
+    </div>`;
+
+  el('kp-spara').addEventListener('click', (e) => withBusy(e.currentTarget, 'Sparar…', async () => {
+    try {
+      await sparaKomplettering(cid, k.token, {
+        antal: el('kp-antal').value,
+        allergier: el('kp-allerg').value,
+        kontakt: el('kp-kontakt').value,
+        ovrigt: el('kp-ovrigt').value
+      });
+      toast('Tack — uppgifterna är sparade', 'success');
+    } catch (err) {
+      toast('Kunde inte spara: ' + (err?.message || err), 'error');
+    }
+  }));
 }
 
 // --- Shared chrome ----------------------------------------------------------
@@ -908,6 +977,16 @@ function renderManage() {
 
     ${!open ? renderForhinderCard() : ''}
     ${!open ? renderAndringCard() : ''}
+    <div class="anm-card" id="kompl-kort">
+      <h2>Låt patrulledarna fylla i själva</h2>
+      <p class="muted t-sm" style="margin-top:-8px;">Skapa en länk per patrull och skicka vidare.
+      Varje länk visar BARA den patrullens rad — antal, allergier och kontaktperson. Er
+      anmälningslänk, betalningarna och de andra patrullerna följer inte med.</p>
+      <div id="kompl-lista"></div>
+      <div class="btn-row mt-3" style="justify-content:flex-end;">
+        <button class="btn btn-secondary" id="kompl-skapa">Skapa länkar</button>
+      </div>
+    </div>
     ${(reg.andringar || []).length ? `
       <div class="anm-card">
         <h2>Skickade ändringar</h2>
@@ -1075,6 +1154,38 @@ function wireManage() {
       render();
     } catch (e) { toast('Kunde inte spara: ' + (e?.message || e), 'error'); }
   })));
+
+  // Kompletteringslänkarna. Skapas EN gång per patrull; finns de redan listas
+  // de i stället för att dubbleras — annars får patrulledaren två länkar och
+  // ingen vet vilken som gäller.
+  (async () => {
+    const host = document.getElementById('kompl-lista');
+    if (!host) return;
+    let befintliga = [];
+    try { befintliga = await listKompletteringar(cid, reg.id); } catch { return; }
+    const rita = () => {
+      host.innerHTML = befintliga.length ? befintliga.map(k => `
+        <div class="anm-sum-row">
+          <span>${escapeHtml(k.patrol || '')}${k.ifylltAt ? ' <span class="anm-badge paid">Ifylld</span>' : ''}</span>
+          <button type="button" class="btn btn-ghost btn-sm" data-kopiera="${escapeHtml(k.token)}">Kopiera länk</button>
+        </div>`).join('') : '<p class="muted t-sm">Inga länkar skapade än.</p>';
+      host.querySelectorAll('[data-kopiera]').forEach(b => b.addEventListener('click', () => {
+        copyToClipboard(`${location.origin}/a/${comp.slug || cid}/k/${b.dataset.kopiera}`);
+        b.textContent = 'Kopierad';
+      }));
+    };
+    rita();
+    document.getElementById('kompl-skapa')?.addEventListener('click', (e) => withBusy(e.currentTarget, 'Skapar…', async () => {
+      const saknar = (reg.patrols || []).map(p => p.name).filter(n => n && !befintliga.some(k => k.patrol === n));
+      if (!saknar.length) { toast('Alla patruller har redan en länk'); return; }
+      try {
+        await skapaKompletteringar(cid, reg.id, saknar);
+        befintliga = await listKompletteringar(cid, reg.id);
+        rita();
+        toast(`${saknar.length} länk${saknar.length === 1 ? '' : 'ar'} skapade`, 'success');
+      } catch (err) { toast('Kunde inte skapa: ' + (err?.message || err), 'error'); }
+    }));
+  })();
 
   document.getElementById('an-send')?.addEventListener('click', (e) => withBusy(e.currentTarget, 'Skickar…', async () => {
     const msg = document.getElementById('an-msg').value.trim();

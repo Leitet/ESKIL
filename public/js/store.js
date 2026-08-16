@@ -585,7 +585,7 @@ export async function deleteCompetition(cid) {
   await deleteRefs(stationsSnap.docs.map(d => d.ref));
   // Platta kollektioner. `selfPassages`, `track` och `utskick` saknades och
   // låg kvar som föräldralösa dokument efter en "raderad" tävling.
-  for (const sub of ['registrations', 'invites', 'selfPassages', 'track', 'utskick', 'logg']) {
+  for (const sub of ['registrations', 'invites', 'selfPassages', 'track', 'utskick', 'logg', 'kompletteringar']) {
     const snap = await getDocs(collection(db, 'competitions', cid, sub));
     await deleteRefs(snap.docs.map(d => d.ref));
   }
@@ -666,6 +666,53 @@ export async function updatePatrol(cid, pid, data) {
     await updateDoc(doc(db, 'competitions', cid, 'patrols', pid), rest);
   }
   if (notering !== undefined) await setPatrolMeta(cid, pid, { notering });
+}
+
+// --- Komplettering per patrull -------------------------------------------------
+// Kårledaren har anmälningslänken och kan ändra ALLT i anmälan — den kan hen
+// inte skicka vidare till varje patrulledare. Kompletteringen ger därför varje
+// patrull en EGEN hemlighet: doc-id:t är en slumpad token, och länken
+// /a/<cid>/k/<token> öppnar exakt den patrullens rad.
+function slumpToken() {
+  const b = new Uint8Array(16);
+  (globalThis.crypto || {}).getRandomValues?.(b);
+  return [...b].map(x => x.toString(36).padStart(2, '0')).join('').slice(0, 24);
+}
+
+export async function skapaKompletteringar(cid, regId, patrullnamn = []) {
+  const skapade = [];
+  for (const namn of patrullnamn) {
+    const token = slumpToken();
+    await setDoc(doc(db, 'competitions', cid, 'kompletteringar', token), {
+      regId, patrol: namn, antal: 0, allergier: '', kontakt: '', ovrigt: ''
+    });
+    skapade.push({ token, patrol: namn });
+  }
+  return skapade;
+}
+
+export async function getKomplettering(cid, token) {
+  const snap = await getDoc(doc(db, 'competitions', cid, 'kompletteringar', token));
+  return snap.exists() ? { token, ...snap.data() } : null;
+}
+
+// Skickar BARA de fält patrulledaren får röra. regId och patrol utelämnas
+// medvetet — reglerna nekar dem, och att skicka med dem hade gjort varje
+// sparning till ett avslag.
+export async function sparaKomplettering(cid, token, { antal, allergier, kontakt, ovrigt }) {
+  await updateDoc(doc(db, 'competitions', cid, 'kompletteringar', token), {
+    antal: Math.max(0, Math.min(20, Number(antal) || 0)),
+    allergier: String(allergier || '').slice(0, 500),
+    kontakt: String(kontakt || '').slice(0, 200),
+    ovrigt: String(ovrigt || '').slice(0, 500),
+    ifylltAt: new Date().toISOString()
+  });
+}
+
+export async function listKompletteringar(cid, regId = null) {
+  const snap = await getDocs(collection(db, 'competitions', cid, 'kompletteringar'));
+  return snap.docs.map(d => ({ token: d.id, ...d.data() }))
+    .filter(k => !regId || k.regId === regId);
 }
 
 // --- Genrep --------------------------------------------------------------------

@@ -804,3 +804,54 @@ describe('Sekretariatets logg', () => {
     deny(await write(p4(), { ...bra, at: new Date(Date.now() + 3600000) }, USER), 'at en timme fram');
   });
 });
+
+describe('Komplettering per patrull', () => {
+  const TOK = uniq('tok');
+  const path = `competitions/${CID}/kompletteringar/${TOK}`;
+  const bas = { regId: 'reg-1', patrol: 'Rävarna', antal: 0, allergier: '', kontakt: '', ovrigt: '' };
+
+  before(async () => { await seed(path, bas); });
+
+  test('den som har token fyller i sin egen patrull', async () => {
+    allow(await write(path, { antal: 5, allergier: 'Nötter', ifylltAt: new Date().toISOString() },
+      null, { merge: true }), 'anonym komplettering');
+  });
+
+  test('men kan inte peka om den till en annan anmälan', async () => {
+    // regId och patrullnamnet är kårledarens och admins. Kunde de skrivas om
+    // skulle kompletteringen hamna på fel anmälan, eller döpas om till en
+    // patrull som inte finns.
+    deny(await write(path, { regId: 'reg-2' }, null, { merge: true }), 'byta regId');
+    deny(await write(path, { patrol: 'Någon annan' }, null, { merge: true }), 'byta patrull');
+  });
+
+  test('formen vaktas', async () => {
+    deny(await write(path, { antal: 99 }, null, { merge: true }), 'orimligt antal');
+    deny(await write(path, { antal: -1 }, null, { merge: true }), 'negativt antal');
+    deny(await write(path, { allergier: 'x'.repeat(501) }, null, { merge: true }), 'för lång text');
+    deny(await write(path, { hittepa: 'x' }, null, { merge: true }), 'okänt fält');
+  });
+
+  test('kårledaren skapar länkarna — men bara mot en anmälan som finns', async () => {
+    // Kårledaren är anonym. Att känna till ett regId ÄR att ha
+    // anmälningslänken, precis som kontroll-id:t är kontrollens hemlighet.
+    const RID2 = uniq('reg');
+    await seed(`competitions/${CID}/registrations/${RID2}`, { kar: 'Lindsdals Scoutkår' });
+    allow(await write(`competitions/${CID}/kompletteringar/${uniq('t')}`,
+      { ...bas, regId: RID2 }, null), 'anonym med giltigt regId');
+    deny(await write(`competitions/${CID}/kompletteringar/${uniq('t')}`,
+      { ...bas, regId: 'finns-inte' }, null), 'gissat regId');
+    deny(await write(`competitions/${CID}/kompletteringar/${uniq('t')}`,
+      { ...bas, regId: RID2, hittepa: 'x' }, null), 'okänt fält');
+    // radering är fortfarande admins
+    assert.equal((await remove(`competitions/${CID}/kompletteringar/${TOK}`, OTHER)).ok, false, 'utomstående raderar');
+  });
+
+  test('list är member-only — annars kan varje patrulls allergier räknas upp', async () => {
+    assert.equal((await list(`competitions/${CID}/kompletteringar`, null)).ok, false, 'anonym listar');
+    assert.equal((await list(`competitions/${CID}/kompletteringar`, OTHER)).ok, false, 'utomstående listar');
+    assert.equal((await list(`competitions/${CID}/kompletteringar`, USER)).ok, true, 'medlem listar');
+    // ...men den som HAR sin token kommer åt just sin
+    assert.equal((await read(path, null)).ok, true, 'anonym med token läser sin egen');
+  });
+});

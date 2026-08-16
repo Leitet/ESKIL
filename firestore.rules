@@ -695,6 +695,55 @@ service cloud.firestore {
         allow delete: if isCompAdmin(cid);
       }
 
+      // Kompletteringar per patrull. Kårledaren har anmälningslänken och kan
+      // ändra ALLT i anmälan — den länken kan hen inte skicka vidare till varje
+      // patrulledare. Därför en egen hemlighet per patrull: doc-id:t är en
+      // slumpad token, och länken /komplettera/<cid>/<token> ger åtkomst till
+      // EN patrulls rad och ingenting annat.
+      //
+      // `list` är member-only. `read` hade täckt både get och list, och då gick
+      // hela kollektionen att räkna upp anonymt — varje token, alltså varje
+      // patrulls uppgifter, inklusive allergier.
+      match /kompletteringar/{token} {
+        allow get: if true;
+        allow list: if isCompMember(cid);
+        // Kårledaren är ANONYM — det är hen som ska dela ut länkarna, inte
+        // admin. Rules kan inte se att någon "har" anmälningslänken, men att
+        // känna till ett regId ÄR att ha den: id:t är hemligheten, precis som
+        // för kontrollerna. Kravet att anmälan finns stänger därför ute den som
+        // bara gissar, och samtidigt spam mot en tävling utan anmälningar.
+        allow create: if isCompAdmin(cid) || (
+             !compIsDemo(cid) && !compClosed(cid)
+          && request.resource.data.regId is string
+          && exists(/databases/$(database)/documents/competitions/$(cid)/registrations/$(request.resource.data.regId))
+          && request.resource.data.patrol is string
+          && request.resource.data.patrol.size() <= 120
+          && request.resource.data.keys().hasOnly(['regId','patrol','antal','allergier','kontakt','ovrigt'])
+        );
+        allow delete: if isCompAdmin(cid);
+        // Patrulledaren fyller i sina egna uppgifter. regId och patrullnamnet
+        // är kårledarens och admins — kan de skrivas om pekar kompletteringen
+        // på fel anmälan, eller döps om till en patrull som inte finns.
+        allow update: if isCompAdmin(cid) || (
+             !compIsDemo(cid) && !compClosed(cid)
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['antal', 'allergier', 'kontakt', 'ovrigt', 'ifylltAt'])
+          && (!('antal' in request.resource.data)
+              || (request.resource.data.antal is int
+                  && request.resource.data.antal >= 0
+                  && request.resource.data.antal <= 20))
+          && (!('allergier' in request.resource.data)
+              || (request.resource.data.allergier is string
+                  && request.resource.data.allergier.size() <= 500))
+          && (!('kontakt' in request.resource.data)
+              || (request.resource.data.kontakt is string
+                  && request.resource.data.kontakt.size() <= 200))
+          && (!('ovrigt' in request.resource.data)
+              || (request.resource.data.ovrigt is string
+                  && request.resource.data.ovrigt.size() <= 500))
+        );
+      }
+
       // PM-utskick till anmälda kårer. Admin CREATES a doc here; the
       // onUtskickCreated Cloud Function fans it out as mail to every active
       // registration contact and stamps sentAt/recipients back (admin SDK,
