@@ -1788,12 +1788,31 @@ export async function generatePaymentSlipPdf(comp, reg, payment, methods = []) {
     pdf.setFont('helvetica', 'bold'); pdf.setFontSize(9); pdf.setTextColor('#8a8a8a');
     pdf.text(label.toUpperCase(), 15, y);
     pdf.setFont('helvetica', 'normal'); pdf.setFontSize(11); pdf.setTextColor('#282727');
-    pdf.text(String(value), 70, y);
-    y += 8;
+    // Bryt mot högermarginalen. En kår som anmäler åtta patruller fick annars
+    // raden utskriven rakt ut över sidkanten — namnen fanns i filen men syntes
+    // inte på papperet, och kassören såg en till synes kortare anmälan.
+    const rader = pdf.splitTextToSize(String(value), W - 70 - 15);
+    pdf.text(rader, 70, y);
+    y += 8 + (rader.length - 1) * 5.5;
   };
   rad('Kår', reg.kar);
   rad('Patruller', (reg.patrols || []).map(p => p.name).filter(Boolean).join(', '));
   rad('Anmäld av', reg.contact?.name);
+
+  // Ett underlag för en anmälan som ännu inte är bekräftad bär en referens som
+  // inte finns i systemet. Betalar kåren på den hamnar pengarna hos kassören
+  // utan anmälan att para ihop dem med — säg det, i stället för att låta
+  // underlaget se färdigt ut.
+  if (payment.preliminar) {
+    y += 2;
+    pdf.setFillColor('#fff4e5');
+    pdf.roundedRect(15, y - 5, W - 30, 16, 2, 2, 'F');
+    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(10); pdf.setTextColor(ORANGE);
+    pdf.text('PRELIMINÄRT — anmälan är inte bekräftad än', 21, y + 1);
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9); pdf.setTextColor('#282727');
+    pdf.text('Slutför anmälan i ESKIL innan ni betalar, annars går referensen inte att para ihop.', 21, y + 7);
+    y += 18;
+  }
 
   // Betalningssätt
   y += 4;

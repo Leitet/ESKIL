@@ -26,6 +26,7 @@ import { patrolHighlights, totalRank, rankWorthShowing } from './highlights.js';
 import { mountMessages } from './chat.js';
 import { openSheet } from './sheet.js';
 import { compPlaces, placeKind, drawPlaces } from './places.js';
+import { withTimeout } from './offline-queue.js';
 
 const root = document.getElementById('root');
 const modeBtn = document.getElementById('mode-toggle');
@@ -64,6 +65,16 @@ function parsePath() {
 }
 
 // --- Global state ---
+// Det UPPLÖSTA tävlings-id:t. parsePath() ger råa URL-segmentet, som är
+// kortadressen (slug) när kortet nås via /s/ah26/<patrolId> — den vägen är
+// den NORMALA från tävlingssidans startlista. Varje SKRIVNING måste gå på
+// det upplösta id:t; en skrivning på slugen hamnar under en tävling som inte
+// finns (nödropet försvinner spårlöst) eller nekas av reglerna.
+let cid = null;
+// SOS pågår. Knappens disabled räcker inte: render() river hela DOM:en vid
+// varje snapshot, och en patrull som trycker igen medan GPS:en snurrar skulle
+// annars skicka två nödrop.
+let sosPagar = false;
 let comp = null;
 let patrol = null;
 let patrols = [];          // all patrols in the competition — needed for
@@ -82,7 +93,7 @@ let chatPanel = null;      // samtalspanelen mot tävlingsledningen
 async function main() {
   const parsed = parsePath();
   if (!parsed) return renderError('Ogiltig länk.');
-  let { cid } = parsed;
+  cid = parsed.cid;
   const { patrolId } = parsed;
 
   try {
@@ -578,7 +589,7 @@ function render() {
   // reglerna skulle neka och panelen bara se trasig ut.
   if (!chatPanel && !patrol.__test) {
     chatPanel = mountMessages({
-      cid: parsePath().cid, kind: 'patrull', refId: patrol.id,
+      cid, kind: 'patrull', refId: patrol.id,
       enabled: comp?.fieldMessaging !== false
     });
   }
@@ -594,17 +605,26 @@ function render() {
   // inte kunna råk-larma med ett enda tapp, men grinden är ETT native-confirm,
   // inte en labyrint: den som verkligen behöver hjälp är stressad.
   const hjalpBtn = root.querySelector('#hjalp-btn');
+  if (hjalpBtn) hjalpBtn.disabled = sosPagar;
   if (hjalpBtn) bindTap(hjalpBtn, async () => {
+    if (sosPagar) return;
     if (!confirm('Skicka er position till tävlingsledningen och be om hjälp?')) return;
+    sosPagar = true;
     hjalpBtn.disabled = true;
     hjalpBtn.textContent = 'Hämtar position…';
     // Positionen är kärnan i ropet, men ett rop UTAN position är fortfarande
     // ett rop — GPS-fel (skog, nekad behörighet) får aldrig stoppa det.
+    // Egen klocka runtom: options.timeout börjar först NÄR behörigheten
+    // beviljats, så en behörighetsruta som ingen svarar på (telefonen i
+    // fickan, panik) hänger annars för evigt och ropet skickas aldrig.
     const pos = await new Promise(res => {
       if (!navigator.geolocation) return res(null);
+      let klar = false;
+      const svara = (v) => { if (!klar) { klar = true; res(v); } };
+      setTimeout(() => svara(null), 12000);
       navigator.geolocation.getCurrentPosition(
-        p => res(p),
-        () => res(null),
+        p => svara(p),
+        () => svara(null),
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
       );
     });
@@ -618,13 +638,24 @@ function render() {
       rader.push('(positionen kunde inte hämtas — ring oss eller fråga var vi är)');
     }
     try {
-      await sendThreadMessage(parsePath().cid, 'patrull', patrol.id, { from: 'falt', text: rader.join('\n') });
+      // Utan klocka resolvar aldrig setDoc offline: knappen står kvar på
+      // "Skickar…" och patrullen tror att hjälpen är på väg.
+      await withTimeout(
+        sendThreadMessage(cid, 'patrull', patrol.id, { from: 'falt', text: rader.join('\n') }),
+        12000
+      );
       // Öppna meddelandebladet — att se sitt eget rop i tidslinjen ÄR
       // kvittensen, och det är där svaret kommer.
       document.getElementById('eskil-msg-btn')?.click();
     } catch (e) {
-      alert('Kunde inte skicka: ' + (e?.message || e) + '\n\nRing tävlingsledningen — numret finns under (i).');
+      // Det ENDA som räknas här är att patrullen förstår att ropet INTE gick
+      // fram, och vad de gör i stället.
+      const varfor = e?.message === 'offline-timeout'
+        ? 'Ingen täckning här.'
+        : 'Kunde inte skicka: ' + (e?.message || e);
+      alert(`${varfor}\n\nRopet gick INTE fram. Ring tävlingsledningen — numret finns under (i)-knappen. Gå mot högre mark om ni kan.`);
     } finally {
+      sosPagar = false;
       hjalpBtn.disabled = false;
       hjalpBtn.innerHTML = `${icon('map-pin', { size: 18 })} Skicka vår position`;
     }
@@ -679,7 +710,7 @@ function render() {
     confirming = field;
     render();
     try {
-      await confirmSelfPassage(parsePath().cid, patrol.id, field);
+      await confirmSelfPassage(cid, patrol.id, field);
       // Snapshoten skriver tillbaka tiden och renderar om. Offline landar
       // skrivningen i Firestores lokala kö och slår igenom lokalt direkt —
       // patrullen ska kunna gå ut i skogen utan täckning.

@@ -343,8 +343,15 @@ service cloud.firestore {
           allow read: if isCompMember(cid);
           allow write: if !compIsDemo(cid)
             && ctrlData(cid, ctrlId).get('open', false) == true
-            && beaconDoc == 'status'
+            && beaconDoc.size() <= 64
             && request.resource.data.at is timestamp
+            // Tidsspärr som på selfPassages: `at` är klient-tid (så ett
+            // offline-buffrat livstecken bär rätt tidpunkt), men utan gräns
+            // kan den som har den hemliga länken skriva ett `at` långt fram i
+            // tiden — kontrollen ser då för evigt ut att just ha hörts av,
+            // och Läget slutar larma om en kontroll som faktiskt är tyst.
+            && request.resource.data.at >= request.time - duration.value(12, 'h')
+            && request.resource.data.at <= request.time + duration.value(2, 'm')
             && (!('batteri' in request.resource.data)
                 || (request.resource.data.batteri is number
                     && request.resource.data.batteri >= 0

@@ -646,7 +646,7 @@ function wirePay() {
   // handlar om beloppet och referensen, inte om anmälans identitet.
   document.getElementById('pay-slip')?.addEventListener('click', (e) => withBusy(e.currentTarget, 'Skapar…', async () => {
     const underlag = reg || { kar: draft?.kar, patrols: draft?.patrols || [], contact: draft?.contact };
-    try { await downloadPaymentSlipPdf(comp, underlag, { amount: pay.amount, reference: pay.reference }, settings?.methods || []); }
+    try { await downloadPaymentSlipPdf(comp, underlag, { amount: pay.amount, reference: pay.reference, preliminar: !reg }, settings?.methods || []); }
     catch (err) { toast('Kunde inte skapa underlaget: ' + err.message, 'error'); }
   }));
 

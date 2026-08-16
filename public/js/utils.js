@@ -141,6 +141,27 @@ export function escapeHtml(s) {
   }[c]));
 }
 
+// Escapar text OCH gör http(s)-länkar klickbara. Finns för nödropet från
+// patrullens startkort: det bär en kartlänk till positionen, och i ledningens
+// inkorg stod den som blå-lös text man fick markera och klistra in för hand
+// — precis när minuterna räknas. Escapningen görs styckvis så att en URL med
+// & inte förvanskas, och regexen tar bara http/https (aldrig javascript:).
+const URL_RE = /https?:\/\/[^\s<>"']+/g;
+export function linkifyText(s) {
+  if (s == null) return '';
+  const text = String(s);
+  let ut = '', sist = 0;
+  for (const m of text.matchAll(URL_RE)) {
+    ut += escapeHtml(text.slice(sist, m.index));
+    const url = m[0].replace(/[.,;:)]+$/, '');       // skiljetecken hör till meningen
+    const svans = m[0].slice(url.length);
+    ut += `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a>`
+       + escapeHtml(svans);
+    sist = m.index + m[0].length;
+  }
+  return ut + escapeHtml(text.slice(sist));
+}
+
 export function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -863,4 +884,27 @@ export function swishAppUrl(number, amount, message) {
 
 export function registrationUrl(competitionId, regId = null) {
   return `${location.origin}/a/${competitionId}${regId ? '/' + regId : ''}`;
+}
+
+// Slår ihop enheternas livstecken till en rad för Läget. Reglerna: senaste
+// `at` vinner (någon är vaken), men batteriet är det LÄGSTA bland enheter som
+// hörts av den senaste kvarten — annars vore sammanslagningen bara ett nytt
+// sätt att dölja den döende telefonen. Kön är den största: det är den mängd
+// poäng som ännu inte nått servern.
+const FARSK_MS = 15 * 60000;
+export function mergeBeacons(docs, nu = Date.now()) {
+  const rader = docs.filter(d => d && d.at);
+  if (!rader.length) return null;
+  const tid = d => (d.at?.toDate ? d.at.toDate() : new Date(d.at)).getTime();
+  const senast = rader.reduce((a, b) => (tid(a) >= tid(b) ? a : b));
+  const farska = rader.filter(d => nu - tid(d) < FARSK_MS);
+  const medBatt = (farska.length ? farska : [senast]).filter(d => typeof d.batteri === 'number');
+  const svagast = medBatt.length ? medBatt.reduce((a, b) => (a.batteri <= b.batteri ? a : b)) : null;
+  return {
+    at: senast.at,
+    batteri: svagast ? svagast.batteri : null,
+    laddar: svagast ? !!svagast.laddar : null,
+    koade: Math.max(0, ...farska.map(d => Number(d.koade) || 0), 0),
+    enheter: farska.length
+  };
 }

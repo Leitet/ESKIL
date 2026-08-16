@@ -7,6 +7,7 @@ import {
   serverTimestamp, deleteField, writeBatch, Timestamp
 } from './firebase.js';
 import { normDistrict } from './districts.js';
+import { mergeBeacons } from './utils.js';
 
 // --- System config (super-admin) --------------------------------------------
 // A single config/system doc holding operational settings that are useful to
@@ -549,6 +550,9 @@ export async function deleteCompetition(cid) {
   for (const c of controlsSnap.docs) {
     const scores = await getDocs(collection(db, 'competitions', cid, 'controls', c.id, 'scores'));
     await deleteRefs(scores.docs.map(d => d.ref));
+    // Livstecknen: en doc per telefon som stått på kontrollen.
+    const beacons = await getDocs(collection(db, 'competitions', cid, 'controls', c.id, 'beacon'));
+    await deleteRefs(beacons.docs.map(d => d.ref));
     // private/meta (telefon, notering) lives in a subcollection too.
     await deleteDoc(doc(db, 'competitions', cid, 'controls', c.id, 'private', 'meta')).catch(() => {});
   }
@@ -565,10 +569,25 @@ export async function deleteCompetition(cid) {
     await deleteRefs(acks.docs.map(d => d.ref));
   }
   await deleteRefs(msgsSnap.docs.map(d => d.ref));
-  for (const sub of ['registrations', 'invites']) {
+  // Stationerna bär avprickningarna som subkollektion.
+  const stationsSnap = await getDocs(collection(db, 'competitions', cid, 'stations'));
+  for (const st of stationsSnap.docs) {
+    const pass = await getDocs(collection(db, 'competitions', cid, 'stations', st.id, 'passages'));
+    await deleteRefs(pass.docs.map(d => d.ref));
+  }
+  await deleteRefs(stationsSnap.docs.map(d => d.ref));
+  // Platta kollektioner. `selfPassages`, `track` och `utskick` saknades och
+  // låg kvar som föräldralösa dokument efter en "raderad" tävling.
+  for (const sub of ['registrations', 'invites', 'selfPassages', 'track', 'utskick']) {
     const snap = await getDocs(collection(db, 'competitions', cid, sub));
     await deleteRefs(snap.docs.map(d => d.ref));
   }
+  // Tävlingens EGNA private-dokument sist: `access` bär adminEmails,
+  // userEmails och ekonomiEmails. De låg kvar efter raderingen — personuppgift
+  // kvar i databasen efter att någon tryckt "radera tävlingen" är precis det
+  // raderingen ska göra slut på.
+  const privSnap = await getDocs(collection(db, 'competitions', cid, 'private'));
+  await deleteRefs(privSnap.docs.map(d => d.ref));
   await deleteDoc(doc(db, 'competitions', cid));
 }
 
@@ -1251,14 +1270,28 @@ export async function listNewFeedback() {
 // Rapportsidan skriver; Läget läser. `at` är KLIENT-tid med flit: en buffrad
 // offline-skrivning som synkar senare ska bära den sanna senast-vid-liv-tiden,
 // inte synkögonblicket (samma resonemang som clientReportedAt på poängen).
+// Ett livstecken per ENHET, inte ett per kontroll. En kontroll bemannas ofta
+// av två personer, och med en delad `status`-doc skrev den friska telefonen
+// över den döende: Läget visade grönt medan batteriet som faktiskt rapporterar
+// gick mot noll. Enhets-id:t lever i localStorage och är slumpat — det säger
+// inget om vem som håller telefonen.
+function enhetsId() {
+  const NYCKEL = 'eskil-enhet';
+  try {
+    let v = localStorage.getItem(NYCKEL);
+    if (!v) { v = Math.random().toString(36).slice(2, 12) + Date.now().toString(36); localStorage.setItem(NYCKEL, v); }
+    return v;
+  } catch { return 'enhet'; }         // privat läge: dela på en doc som förr
+}
+
 export async function sendControlBeacon(cid, ctrlId, { batteri = null, laddar = null, koade = 0 } = {}) {
   const data = { at: Timestamp.fromDate(new Date()), koade: Number(koade) || 0 };
   if (typeof batteri === 'number' && Number.isFinite(batteri)) data.batteri = Math.round(batteri);
   if (typeof laddar === 'boolean') data.laddar = laddar;
-  await setDoc(doc(db, 'competitions', cid, 'controls', ctrlId, 'beacon', 'status'), data);
+  await setDoc(doc(db, 'competitions', cid, 'controls', ctrlId, 'beacon', enhetsId()), data);
 }
 
 export function watchControlBeacon(cid, ctrlId, cb) {
-  return onSnapshot(doc(db, 'competitions', cid, 'controls', ctrlId, 'beacon', 'status'),
-    snap => cb(snap.exists() ? snap.data() : null), () => cb(null));
+  return onSnapshot(collection(db, 'competitions', cid, 'controls', ctrlId, 'beacon'),
+    snap => cb(mergeBeacons(snap.docs.map(d => d.data()))), () => cb(null));
 }

@@ -28,5 +28,8 @@
 </div>
 
 <script type="module" src="/js/public.js"></script>
+<!-- Service workern behövs för favoritnotiserna: Android Chrome har ingen
+     annan väg till en systemnotis än registration.showNotification(). -->
+<script src="/js/sw-register.js"></script>
 </body>
 </html>

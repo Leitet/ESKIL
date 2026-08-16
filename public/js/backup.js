@@ -18,13 +18,18 @@ import {
 import {
   getCompetition, listPatrols, listControls, listAllScores, listRegistrations,
   listStations, listUtskick, getTrack, createCompetition,
-  getControlMeta, getPatrolMeta, setControlMeta, setPatrolMeta
+  getControlMeta, getPatrolMeta, setControlMeta, setPatrolMeta,
+  listSelfPassages, getHandover
 } from './store.js';
 import { rankPatrols } from './utils.js';
 
 // v2 adds control/patrol private meta (telefon, notering). Imports still
 // accept v1 dumps (they simply carry no meta).
-export const BACKUP_VERSION = 2;
+// v3 adds selfPassages (patrullernas egna start-/målstämplar) and the
+// handover document. Båda raderas av deleteCompetition, och sedan
+// raderingsskyddet KRÄVER en färsk backup är det backupen som avgör om de
+// går att få tillbaka. Imports still accept v1/v2 dumps.
+export const BACKUP_VERSION = 3;
 
 // --- Timestamp-safe (de)serialization -----------------------------------------
 
@@ -62,7 +67,8 @@ async function listPassages(cid, stationId) {
 }
 
 export async function dumpCompetition(cid) {
-  const [comp, patrols, controls, scores, registrations, stations, utskick, track] = await Promise.all([
+  const [comp, patrols, controls, scores, registrations, stations, utskick, track,
+         selfPassages, handover] = await Promise.all([
     getCompetition(cid),
     listPatrols(cid),
     listControls(cid),
@@ -70,7 +76,9 @@ export async function dumpCompetition(cid) {
     listRegistrations(cid).catch(() => []),
     listStations(cid).catch(() => []),
     listUtskick(cid).catch(() => []),
-    getTrack(cid).catch(() => null)
+    getTrack(cid).catch(() => null),
+    listSelfPassages(cid).catch(() => []),
+    getHandover(cid).catch(() => null)
   ]);
   if (!comp) throw new Error('Tävlingen hittades inte.');
 
@@ -102,7 +110,9 @@ export async function dumpCompetition(cid) {
     registrations,
     stations: stationsFull,
     utskick,
-    track
+    track,
+    selfPassages,
+    handover
   });
 }
 
@@ -169,6 +179,12 @@ export async function importCompetitionBackup(rawDump, user) {
       writes.push([doc(db, 'competitions', newCid, 'stations', id, 'passages', pid), pdata]);
     }
   }
+  // Patrullernas egna start-/målstämplar. Doc-id ÄR patrolId, precis som i
+  // originalet, så Läget och stationssidan hittar dem direkt.
+  for (const sp of dump.selfPassages || []) {
+    const { id, ...data } = sp;
+    writes.push([doc(db, 'competitions', newCid, 'selfPassages', id), data]);
+  }
   await batchSet(writes);
 
   // Private meta subdocs (telefon, notering) — written after the parent docs.
@@ -179,6 +195,9 @@ export async function importCompetitionBackup(rawDump, user) {
 
   if (dump.track) {
     await setDoc(doc(db, 'competitions', newCid, 'track', 'main'), dump.track);
+  }
+  if (dump.handover) {
+    await setDoc(doc(db, 'competitions', newCid, 'private', 'handover'), dump.handover);
   }
   return newCid;
 }

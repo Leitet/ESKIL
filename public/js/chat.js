@@ -12,7 +12,7 @@
 //
 // Bilder skickas som nedskalade data-URL:er, se photo.js.
 
-import { escapeHtml } from './utils.js';
+import { escapeHtml, linkifyText } from './utils.js';
 import { openSheet } from './sheet.js';
 import { icon } from './icons.js';
 import { watchThread, watchThreadDoc, sendThreadMessage, markThreadRead } from './store.js';
@@ -112,7 +112,7 @@ export function mountMessages({ cid, kind, refId, enabled = true } = {}) {
       return `
         <div class="emb-item emb-msg ${p.from === 'falt' ? 'emb-mine' : 'emb-theirs'}">
           ${p.image ? `<img class="emb-img" src="${escapeHtml(p.image)}" alt="Bifogad bild" loading="lazy">` : ''}
-          ${p.text ? `<div class="emb-text">${escapeHtml(p.text)}</div>` : ''}
+          ${p.text ? `<div class="emb-text">${linkifyText(p.text)}</div>` : ''}
           <div class="emb-status">${p.from === 'falt' ? 'Du' : 'Tävlingsledningen'} · ${klocka(p.at)}${p.pending ? ' · skickar…' : ''}</div>
         </div>`;
     }).join('') : `<p class="emb-empty">Inget än. Här samlas allt tävlingsledningen skickar ut — och dina egna frågor.</p>`;

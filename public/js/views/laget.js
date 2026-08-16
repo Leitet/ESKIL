@@ -431,17 +431,30 @@ export async function renderLaget(app, user, cid) {
   // och köade offline-poäng. Rött när telefonen varit tyst länge (hjärtslaget
   // går var 5:e minut, så 15 min = tre missade) eller batteriet är lågt —
   // det är skillnaden mellan "lugn kontroll" och "poäng på väg att strandas".
+  // Livstecknet skickas bara medan rapportsidan ligger framme. En kontrollant
+  // som låst telefonen mellan två patruller slutar därför höra av sig helt
+  // normalt — larmar vi på det blir kolumnen rosa för nästan varje kontroll,
+  // och då slutar ledningen läsa den. Tystnad är alltså DÄMPAD, inte röd:
+  // rosa reserveras för det som verkligen kräver ett samtal — lågt batteri
+  // och rapporter som ännu inte nått servern. Vem som är obemannad syns i
+  // "Senaste rapport"-kolumnen, som mäter något riktigt.
   function beaconCell(b, now) {
     if (!b || !b.at) return '<span class="muted t-sm">—</span>';
     const t = b.at?.toDate ? b.at.toDate() : new Date(b.at);
     const min = Math.max(0, Math.round((now - t) / 60000));
-    const gammal = min >= 15;
+    const tyst = min >= 30;
     const lågBatt = typeof b.batteri === 'number' && b.batteri <= 20 && !b.laddar;
     const delar = [min < 1 ? 'nyss' : `${min} min sedan`];
     if (typeof b.batteri === 'number') delar.push(`${b.batteri} %${b.laddar ? ' ⚡' : ''}`);
     if (b.koade > 0) delar.push(`<strong>${b.koade} i kö</strong>`);
-    const varning = gammal || lågBatt || b.koade > 0;
-    return `<span class="t-sm mono" style="white-space:nowrap;${varning ? 'color:var(--utm-pink);font-weight:600;' : 'color:var(--fg2);'}"${gammal ? ' title="Inget livstecken på ' + min + ' minuter — telefonen kan vara död eller kontrollen obemannad"' : ''}>${delar.join(' · ')}</span>`;
+    if (b.enheter > 1) delar.push(`${b.enheter} telefoner`);
+    const larm = lågBatt || b.koade > 0;
+    const farg = larm ? 'color:var(--utm-pink);font-weight:600;' : (tyst ? 'color:var(--fg3);' : 'color:var(--fg2);');
+    const titel = lågBatt ? 'Lågt batteri på den svagaste telefonen — kontrollen kan tappa möjligheten att rapportera'
+      : b.koade > 0 ? 'Rapporter ligger kvar i telefonen och har inte nått servern'
+      : tyst ? `Inget livstecken på ${min} minuter. Normalt om telefonen är låst — kolla "Senaste rapport" för att se om kontrollen är bemannad.`
+      : 'Rapportsidan var framme här senast';
+    return `<span class="t-sm mono" style="white-space:nowrap;${farg}" title="${escapeHtml(titel)}">${delar.join(' · ')}</span>`;
   }
 
   // --- Render ------------------------------------------------------------------
@@ -507,7 +520,7 @@ export async function renderLaget(app, user, cid) {
           ${iMörker.length ? `
             <div class="tidslinje-varning">
               ${iMörker.length} patrull${iMörker.length === 1 ? '' : 'er'} väntas i mål mindre än 30 min före solnedgången:
-              ${escapeHtml(iMörker.map(pp => pp.patrol.name || '#' + pp.patrol.number).slice(0, 5).join(', '))}${iMörker.length > 5 ? '…' : ''}
+              ${escapeHtml(iMörker.slice(0, 5).map(pp => patrolLabel(pp.patrol)).join(', '))}${iMörker.length > 5 ? '…' : ''}
               — överväg att korta banan eller möta upp.
             </div>` : ''}
         </div>`;

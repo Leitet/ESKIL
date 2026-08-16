@@ -208,10 +208,13 @@ function ensureStyles() {
 // --- Systemnotiser (PWA-förberedelse) -----------------------------------------
 function canNotify() { return typeof Notification !== 'undefined'; }
 
-async function showSystemNotification(m) {
+// Enda vägen ut till en systemnotis. Android Chrome KASTAR på `new
+// Notification()` — där finns bara service worker-vägen — så SW:n först och
+// konstruktorn som fallback för desktop utan registrerad SW. Exporterad så
+// att /t:s favoritnotiser går samma väg; en egen `new Notification()` där
+// betydde att ingen förälder på Android fick en enda notis.
+export async function showSystemNotification(title, opts) {
   if (!canNotify() || Notification.permission !== 'granted') return;
-  const title = `${LEVELS[m.level]?.label || 'Meddelande'} — tävlingsledningen`;
-  const opts = { body: m.text, tag: `eskil-msg-${m.id}` };
   try {
     const reg = await navigator.serviceWorker?.getRegistration();
     if (reg?.showNotification) { reg.showNotification(title, opts); return; }
@@ -438,7 +441,10 @@ function ensureSubscription() {
         }
         if (dirty) saveLocal(l, new Set(act.map(m => m.id)));
         if (fresh.some(m => m.level === 'kritisk')) alarm();
-        if (document.hidden) fresh.forEach(m => showSystemNotification(m));
+        if (document.hidden) fresh.forEach(m => showSystemNotification(
+          `${LEVELS[m.level]?.label || 'Meddelande'} — tävlingsledningen`,
+          { body: m.text, tag: `eskil-msg-${m.id}` }
+        ));
       }
     }
     prevIds = new Set(act.map(m => m.id));

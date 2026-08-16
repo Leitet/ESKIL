@@ -532,13 +532,30 @@ describe('Kontrollens livstecken (beacon)', () => {
     allow(await write(path, { at: new Date() }, null), 'bara at — batteri/kö är valfria');
   });
 
-  test('formen är hård: bara status-dokumentet, kända fält, rimliga värden', async () => {
-    deny(await write(`competitions/${CID}/controls/${CTRL}/beacon/annat`, ok_data, null), 'annat doc-id');
+  test('ett livstecken per enhet — flera doc-id tillåts, men inte hur långa som helst', async () => {
+    // En kontroll bemannas ofta av två telefoner. Med ett delat doc-id skrev
+    // den friska över den döende, så id:t är per ENHET numera.
+    allow(await write(`competitions/${CID}/controls/${CTRL}/beacon/enhet-abc123`, ok_data, null), 'andra enhetens livstecken');
+    deny(await write(`competitions/${CID}/controls/${CTRL}/beacon/${'x'.repeat(65)}`, ok_data, null), 'doc-id över 64 tecken');
+  });
+
+  test('formen är hård: kända fält, rimliga värden', async () => {
     deny(await write(path, { ...ok_data, batteri: 150 }, null), 'batteri över 100');
     deny(await write(path, { ...ok_data, batteri: -1 }, null), 'negativt batteri');
     deny(await write(path, { ...ok_data, koade: -1 }, null), 'negativ kö');
     deny(await write(path, { ...ok_data, hittepa: 'x' }, null), 'okänt fält');
     deny(await write(path, { batteri: 50 }, null), 'utan at');
+  });
+
+  test('`at` är tidsbunden — annars kan en kontroll se vaken ut för alltid', async () => {
+    // `at` är klient-tid (så ett offline-buffrat livstecken bär rätt tidpunkt).
+    // Utan spärr kunde den som har den hemliga länken skriva ett `at` långt
+    // fram i tiden: kontrollen ser för evigt ut att just ha hörts av, och
+    // Läget slutar visa att den tystnat.
+    const om = (ms) => new Date(Date.now() + ms);
+    deny(await write(path, { ...ok_data, at: om(60 * 60000) }, null), 'at en timme fram');
+    deny(await write(path, { ...ok_data, at: om(-13 * 3600 * 1000) }, null), 'at 13 timmar bak');
+    allow(await write(path, { ...ok_data, at: om(-2 * 3600 * 1000) }, null), 'at 2 timmar bak (offline-buffrat)');
   });
 
   test('stängd kontroll tar inte emot livstecken', async () => {

@@ -16,7 +16,7 @@ import {
   watchThreads, watchThread, sendThreadMessage, markThreadRead
 } from '../store.js';
 import { deleteField } from '../firebase.js';
-import { escapeHtml, toast, withBusy, confirmDialog, isCompAdminUser, formatTime } from '../utils.js';
+import { escapeHtml, linkifyText, toast, withBusy, confirmDialog, isCompAdminUser, formatTime } from '../utils.js';
 import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
 import { icon } from '../icons.js';
 import { help } from '../help.js';
@@ -518,7 +518,7 @@ function mountInbox(host, { cid, comp, controls, patrols, isAdmin }) {
       log.innerHTML = rows.length ? rows.map(m => `
         <div class="inbox-msg ${m.from === 'ledning' ? 'inbox-mine' : 'inbox-theirs'}">
           ${m.image ? `<img class="inbox-img" src="${escapeHtml(m.image)}" alt="Bifogad bild" loading="lazy">` : ''}
-          ${m.text ? `<div>${escapeHtml(m.text)}</div>` : ''}
+          ${m.text ? `<div style="white-space:pre-wrap;word-break:break-word;">${linkifyText(m.text)}</div>` : ''}
           <div class="inbox-meta">${m.from === 'ledning' ? 'Ni' : 'Fältet'} · ${m.at ? formatTime(m.at.toDate()) : ''}</div>
         </div>`).join('') : '<p class="muted t-sm">Tom tråd.</p>';
       log.scrollTop = log.scrollHeight;

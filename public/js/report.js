@@ -738,6 +738,10 @@ async function main() {
   };
 
   let syncInFlight = false;
+  // Sätts av livstecken-blocket längre ner (som definieras efter trySync men
+  // initieras före första anropet). Null tills dess — och på en stängd eller
+  // demo-kontroll, där inget livstecken skickas alls.
+  let beaconRefresh = null;
   async function trySync({ silent = false } = {}) {
     if (!navigator.onLine) { sync.render(); return; }
     const before = listQueue(cid, ctrlId).length;
@@ -769,6 +773,7 @@ async function main() {
     }
     if (synced.length) {
       renderPatrols();
+      beaconRefresh?.();
       if (!silent) {
         const names = synced
           .map(s => patrols.find(p => p.id === s.patrolId)?.name || '#' + (patrols.find(p => p.id === s.patrolId)?.number ?? ''))
@@ -870,9 +875,9 @@ async function main() {
   // "hördes av inom fem minuter" — sekundprecision tillför ingenting.
   const BEACON_MIN_MS = 60000;
   let sistaBeacon = 0;
-  const skickaLivstecken = async () => {
+  const skickaLivstecken = async ({ tvinga = false } = {}) => {
     if (document.hidden || comp?.demo || !control.open) return;
-    if (Date.now() - sistaBeacon < BEACON_MIN_MS) return;
+    if (!tvinga && Date.now() - sistaBeacon < BEACON_MIN_MS) return;
     sistaBeacon = Date.now();
     let batteri = null, laddar = null;
     try {
@@ -884,12 +889,26 @@ async function main() {
     } catch { /* aldrig ett fel för kontrollanten */ }
   };
   skickaLivstecken();
-  const beaconTimer = setInterval(skickaLivstecken, 5 * 60000);
+  let beaconTimer = setInterval(skickaLivstecken, 5 * 60000);
   // När kontrollanten växlar tillbaka till fliken: skicka direkt i stället
   // för att vänta upp till fem minuter på nästa intervall — Läget ska se
   // "vaknade nyss" så fort telefonen faktiskt är tillbaka.
   document.addEventListener('visibilitychange', () => { if (!document.hidden) skickaLivstecken(); });
-  window.addEventListener('pagehide', () => clearInterval(beaconTimer));
+  // pagehide/pageshow är ett PAR. Sidan hamnar i bfcache när kontrollanten
+  // byter app, och plockas fram igen när hen kommer tillbaka — utan
+  // pageshow-halvan var intervallet dödat för resten av dagen och kontrollen
+  // slutade tyst höra av sig efter första app-växlingen.
+  window.addEventListener('pagehide', () => { clearInterval(beaconTimer); beaconTimer = null; });
+  window.addEventListener('pageshow', () => {
+    if (beaconTimer) return;
+    beaconTimer = setInterval(skickaLivstecken, 5 * 60000);
+    skickaLivstecken();
+  });
+  // Efter en lyckad synk är kön tom — säg det direkt i stället för att låta
+  // Läget visa "3 i kö" i upp till fem minuter efter att de kommit fram.
+  // Efter en lyckad synk är kön tom — säg det direkt i stället för att låta
+  // Läget visa "3 i kö" i upp till fem minuter efter att de kommit fram.
+  beaconRefresh = () => skickaLivstecken({ tvinga: true });
 
   renderHead();
   renderAvdelningar();

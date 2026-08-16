@@ -11,7 +11,7 @@ import {
 } from '../public/js/course.js';
 import {
   patrolStartDateTime, normSlug, isValidSlug, suggestSlug,
-  effectiveIntervalSec, swishAppUrl, swishQrString, patrolLabel
+  effectiveIntervalSec, swishAppUrl, swishQrString, patrolLabel, linkifyText, isNumSet, mergeBeacons
 } from '../public/js/utils.js';
 import { hasIcon } from '../public/js/icons.js';
 import { AVD_FÄRG, textPå, accentMotBlått, hjälte } from '../public/js/share-card.js';
@@ -1025,5 +1025,88 @@ describe('Solnedgång (mörkerlarmet i Läget)', () => {
 
   test('ogiltiga koordinater ger null', () => {
     assert.equal(solnedgang(new Date(2026, 9, 4), NaN, 15), null);
+  });
+});
+
+// --- linkifyText: nödropets kartlänk ------------------------------------------
+// Nödropet från startkortet bär en kartlänk till patrullens position. I
+// ledningens inkorg stod den som text man fick markera och klistra in för
+// hand — precis när minuterna räknas.
+describe('linkifyText', () => {
+  test('kartlänken i nödropet blir klickbar, radbrytningarna finns kvar', () => {
+    const ut = linkifyText('🆘 VI BEHÖVER HJÄLP!\nhttps://www.google.com/maps?q=58.39,15.64');
+    assert.match(ut, /<a href="https:\/\/www\.google\.com\/maps\?q=58\.39,15\.64"/);
+    assert.ok(ut.includes('\n'), 'radbrytningen ska överleva (CSS:en har pre-wrap)');
+  });
+
+  test('escapar allt utanför länken', () => {
+    assert.equal(linkifyText('<script>alert(1)</script>'), '&lt;script&gt;alert(1)&lt;/script&gt;');
+    assert.ok(!linkifyText('<img src=x onerror=alert(1)>').includes('<img'));
+  });
+
+  test('bara http(s) — javascript: är inte en länk', () => {
+    const ut = linkifyText('javascript:alert(1)');
+    assert.ok(!ut.includes('<a '), 'javascript-schema får aldrig bli ett ankare');
+  });
+
+  test('& i frågesträngen escapas i BÅDE href och text', () => {
+    const ut = linkifyText('https://x.se/a?b=1&c=2');
+    assert.ok(!/&(?!amp;|#39;|quot;|lt;|gt;)/.test(ut), 'oescapat & kvar: ' + ut);
+  });
+
+  test('avslutande skiljetecken hör till meningen, inte till länken', () => {
+    const ut = linkifyText('Kolla (https://x.se/karta).');
+    assert.match(ut, /href="https:\/\/x\.se\/karta"/);
+    assert.ok(ut.endsWith(').'), 'parentes och punkt ska stå kvar utanför: ' + ut);
+  });
+});
+
+// --- mergeBeacons: en kontroll, flera telefoner --------------------------------
+// Poängen med sammanslagningen är att den INTE får dölja den döende telefonen.
+// Med en delad status-doc skrev den friska över den svaga och Läget lyste
+// grönt medan batteriet som faktiskt rapporterade gick mot noll.
+describe('mergeBeacons', () => {
+  const nu = new Date('2026-08-16T12:00:00Z').getTime();
+  const min = (m) => new Date(nu - m * 60000);
+
+  test('utan livstecken finns ingen rad', () => {
+    assert.equal(mergeBeacons([], nu), null);
+    assert.equal(mergeBeacons([null, {}], nu), null);
+  });
+
+  test('den friska telefonen döljer inte den döende', () => {
+    const b = mergeBeacons([
+      { at: min(1), batteri: 95, laddar: true, koade: 0 },   // medhjälparens
+      { at: min(3), batteri: 8, laddar: false, koade: 4 }    // den som rapporterar
+    ], nu);
+    assert.equal(b.batteri, 8, 'lägsta batteriet bland färska enheter');
+    assert.equal(b.laddar, false, 'laddar-flaggan följer den svagaste');
+    assert.equal(b.koade, 4, 'största kön — det är poängen som inte nått servern');
+    assert.equal(b.enheter, 2);
+  });
+
+  test('senaste `at` vinner — någon är vaken', () => {
+    const b = mergeBeacons([{ at: min(9), batteri: 50 }, { at: min(2), batteri: 60 }], nu);
+    assert.equal(new Date(b.at).getTime(), min(2).getTime());
+  });
+
+  test('en enhet som tystnat för länge drar inte ner batterisiffran', () => {
+    // Telefonen gick hem vid lunch med 5 %. Att låta den fortsätta färga
+    // kontrollen röd resten av dagen vore ett larm om ingenting.
+    const b = mergeBeacons([{ at: min(2), batteri: 80 }, { at: min(45), batteri: 5 }], nu);
+    assert.equal(b.batteri, 80);
+    assert.equal(b.enheter, 1, 'bara den färska räknas som närvarande');
+  });
+
+  test('är ingen färsk faller vi tillbaka på den senaste — inte på ingenting', () => {
+    const b = mergeBeacons([{ at: min(40), batteri: 12 }, { at: min(90), batteri: 90 }], nu);
+    assert.equal(b.batteri, 12, 'den senast hörda enhetens batteri');
+    assert.equal(b.enheter, 0, 'ingen är färsk');
+  });
+
+  test('saknat batteri (iOS har inget API) ger null, inte 0', () => {
+    const b = mergeBeacons([{ at: min(1), koade: 2 }], nu);
+    assert.equal(b.batteri, null, '0 % hade sett ut som ett dött batteri');
+    assert.equal(b.koade, 2);
   });
 });

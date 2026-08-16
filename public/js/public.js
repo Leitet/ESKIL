@@ -17,6 +17,7 @@ import {
 import { ensureLeaflet } from './leaflet.js';
 import { compPlaces, placeKind, drawPlaces } from './places.js';
 import { icon } from './icons.js';
+import { showSystemNotification } from './broadcast.js';
 
 const root = document.getElementById('root');
 
@@ -203,7 +204,7 @@ async function boot() {
         collection(db, 'competitions', cid, 'controls', c.id, 'scores'),
         s => {
           scoresByControl[c.id] = s.docs.map(d => ({ id: d.id, ...d.data() }));
-          notiseraFavoriter(c.id, scoresByControl[c.id]);
+          notiseraFavoriter(c.id, scoresByControl[c.id], s.metadata.fromCache);
           render();
         }
       );
@@ -349,9 +350,14 @@ function toggleFav(pid) {
 const settScoreKeys = new Set();   // "ctrlId:patrolId" som redan hanterats
 const seedadeCtrls = new Set();    // kontroller vars första snapshot passerat
 const målNotifierade = new Set();  // patruller som redan fått mål-notisen
-function notiseraFavoriter(ctrlId, rows) {
-  const första = !seedadeCtrls.has(ctrlId);
-  if (första) seedadeCtrls.add(ctrlId);
+function notiseraFavoriter(ctrlId, rows, franCache = false) {
+  // Seeda på första SERVER-snapshoten, inte första snapshoten. Den första
+  // kommer ofta ur den lokala cachen och kan vara tom eller förlegad; räknade
+  // vi den som seed levererade serverns svar direkt efteråt hela dagens
+  // avprickningar som "nya" — en notisstorm i telefonen.
+  const seedad = seedadeCtrls.has(ctrlId);
+  if (!seedad && !franCache) seedadeCtrls.add(ctrlId);
+  const första = !seedad;
   const favs = getFavs();
   const kanNotisa = typeof Notification !== 'undefined' && Notification.permission === 'granted';
   for (const s of rows) {
@@ -365,23 +371,19 @@ function notiseraFavoriter(ctrlId, rows) {
     const anon = comp?.anonymousControls !== false;
     const namn = (anon && control.open) ? `kontroll ${control.nummer ?? '?'}` : (control.name || `kontroll ${control.nummer ?? '?'}`);
     const poäng = scoresPublic() ? ` — ${(Number(s.poang) || 0) + (Number(s.extraPoang) || 0)} poäng` : '';
-    try {
-      new Notification(`${patrol.name || 'Er patrull'} · ${comp?.shortName || 'Tävlingen'}`, {
-        body: `Prickade av ${namn}${poäng}`,
-        tag: `eskil-fav-${key}`
-      });
-    } catch { /* notisen är en bonus */ }
+    showSystemNotification(`${patrol.name || 'Er patrull'} · ${comp?.shortName || 'Tävlingen'}`, {
+      body: `Prickade av ${namn}${poäng}`,
+      tag: `eskil-fav-${key}`
+    });
     // Härledd målsignal: alla kontroller rapporterade.
     if (controls.length > 0 && !målNotifierade.has(s.patrolId)) {
       const klara = controls.filter(c => (scoresByControl[c.id] || []).some(x => x.patrolId === s.patrolId)).length;
       if (klara >= controls.length) {
         målNotifierade.add(s.patrolId);
-        try {
-          new Notification(`${patrol.name || 'Er patrull'} · ${comp?.shortName || 'Tävlingen'}`, {
-            body: 'Alla kontroller klara — på väg mot mål!',
-            tag: `eskil-fav-mal-${s.patrolId}`
-          });
-        } catch { /* notisen är en bonus */ }
+        showSystemNotification(`${patrol.name || 'Er patrull'} · ${comp?.shortName || 'Tävlingen'}`, {
+          body: 'Alla kontroller klara — på väg mot mål!',
+          tag: `eskil-fav-mal-${s.patrolId}`
+        });
       }
     }
   }

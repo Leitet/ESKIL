@@ -119,9 +119,14 @@ export async function renderCompetition(app, user, cid) {
 // ingen packlista. Grön enradare när allt är grönt; annars listas varje
 // avvikelse med länk till fliken där den rättas.
 async function renderStartklar(host, comp, cid, controls, patrols) {
+  // Ett misslyckat meta-anrop får INTE tolkas som "kontrollen saknar telefon".
+  // Med `.catch(() => ({}))` per kontroll blev en nätverksglapp till en panel
+  // som påstod att halva banan saknade nödnummer — en falsk brandlarm strax
+  // före tävlingsdagen är värre än ingen kontroll alls. Faller något, hoppar
+  // telefonkollen över sig helt (metas = null).
   let metas = null;
-  try { metas = await Promise.all(controls.map(c => getControlMeta(cid, c.id).catch(() => ({})))); }
-  catch { /* medlem utan meta-läsning — telefonkollen hoppar över sig */ }
+  try { metas = await Promise.all(controls.map(c => getControlMeta(cid, c.id))); }
+  catch { /* medlem utan meta-läsning, eller tappat nät — hoppa kollen */ }
   const checks = startklarChecks(comp, controls, patrols, metas);
   const varningar = checks.filter(c => c.status === 'varning');
   const flikHref = { controls: `/app/c/${cid}/controls`, patrols: `/app/c/${cid}/patrols`, settings: `/app/c/${cid}/settings` };

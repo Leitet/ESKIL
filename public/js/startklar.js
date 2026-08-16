@@ -11,7 +11,7 @@
 // test/logic.test.js. Vyn hämtar datan (inklusive kontrollernas private/meta
 // för telefonkollen) och ritar.
 
-import { startFinishPoints } from './utils.js';
+import { startFinishPoints, isNumSet } from './utils.js';
 
 /**
  * @param comp     tävlingsdokumentet
@@ -40,7 +40,7 @@ export function startklarChecks(comp, controls = [], patrols = [], metas = null)
 
     // Nummerserien: dubbletter förvirrar allt som sorterar på nummer, och ett
     // hål bryter antagandet att banan går i nummerordning (ETA-benen).
-    const nummer = controls.map(c => Number(c.nummer)).filter(Number.isFinite).sort((a, b) => a - b);
+    const nummer = controls.filter(c => isNumSet(c.nummer)).map(c => Number(c.nummer)).sort((a, b) => a - b);
     const dubbletter = nummer.filter((n, i) => i > 0 && n === nummer[i - 1]);
     if (dubbletter.length) {
       varning('nummer-dubblett',
@@ -81,7 +81,7 @@ export function startklarChecks(comp, controls = [], patrols = [], metas = null)
     if (!startTider) {
       varning('starttider', 'Starttider är inte aktiverade — startkorten kan inte visa när patrullen ska gå, och sen-till-start-larmet är släckt.', 'settings');
     } else {
-      const utanOrdning = patrols.filter(p => !Number.isFinite(Number(p.startOrder)) && !p.utgatt);
+      const utanOrdning = patrols.filter(p => !isNumSet(p.startOrder) && !p.utgatt);
       if (utanOrdning.length) {
         varning('startordning',
           `${utanOrdning.length} patrull${utanOrdning.length === 1 ? '' : 'er'} saknar startordning (${namnlista(utanOrdning)}) — de får ingen starttid på sina startkort.`,
@@ -89,7 +89,7 @@ export function startklarChecks(comp, controls = [], patrols = [], metas = null)
       } else ok('startordning', 'Alla patruller har en startordning.');
     }
 
-    const pnummer = patrols.map(p => Number(p.number)).filter(Number.isFinite).sort((a, b) => a - b);
+    const pnummer = patrols.filter(p => isNumSet(p.number)).map(p => Number(p.number)).sort((a, b) => a - b);
     const pdubbla = [...new Set(pnummer.filter((n, i) => i > 0 && n === pnummer[i - 1]))];
     if (pdubbla.length) {
       varning('patrullnummer',
