@@ -89,6 +89,15 @@ export function startklarChecks(comp, controls = [], patrols = [], metas = null)
       } else ok('startordning', 'Alla patruller har en startordning.');
     }
 
+    // En kvarglömd genrepspatrull hamnar i resultatlistan och i prisutdelningen.
+    // Den syns knappt bland tjugo riktiga patruller, så förkontrollen säger det.
+    const genrep = patrols.filter(p => p.genrep);
+    if (genrep.length) {
+      varning('genrep',
+        `Genrepspatrullen ligger kvar (${namnlista(genrep)}) — den räknas med i poängtabellen och prisutdelningen. Rensa genrepet under Utskrifter.`,
+        'patrols');
+    }
+
     const pnummer = patrols.filter(p => isNumSet(p.number)).map(p => Number(p.number)).sort((a, b) => a - b);
     const pdubbla = [...new Set(pnummer.filter((n, i) => i > 0 && n === pnummer[i - 1]))];
     if (pdubbla.length) {

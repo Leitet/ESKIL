@@ -668,6 +668,63 @@ export async function updatePatrol(cid, pid, data) {
   if (notering !== undefined) await setPatrolMeta(cid, pid, { notering });
 }
 
+// --- Genrep --------------------------------------------------------------------
+// En förstagångsarrangör kan inte bevisa att kedjan rapport → sekretariat →
+// poängtabell faktiskt fungerar på SIN bana, med SINA kontroller, förrän
+// tävlingsdagen. /s/<cid>/test visar bara hur ett startkort SER UT — patrullen
+// finns inte i databasen och går därför inte att rapportera på.
+//
+// Genrepspatrullen är därför en RIKTIG patrull. Det är hela poängen: den går
+// genom exakt samma kod, samma regler och samma vyer som en skarp patrull, så
+// ett genrep som fungerar bevisar något. Priset är att den måste gå att städa
+// bort spårlöst — se rensaGenrep.
+export const GENREP_NAMN = 'GENREP — testpatrull';
+
+export async function skapaGenrepPatrull(cid) {
+  const befintlig = (await listPatrols(cid)).find(p => p.genrep);
+  if (befintlig) return befintlig.id;
+  return createPatrol(cid, {
+    name: GENREP_NAMN,
+    number: 0,
+    kar: 'Genrep',
+    avdelning: 'Spårare',
+    antal: 1,
+    startOrder: 0,
+    genrep: true
+  });
+}
+
+// Städar bort ALLT genrepet skapade: patrullen, dess poäng på varje kontroll,
+// dess avprickningar på varje station och dess egna start-/målstämplar. En
+// kvarglömd genrepspatrull i poängtabellen på tävlingsdagen är precis det den
+// här knappen finns för att förhindra.
+export async function rensaGenrep(cid) {
+  const patruller = (await listPatrols(cid)).filter(p => p.genrep);
+  if (!patruller.length) return { patruller: 0, poang: 0 };
+  let poang = 0;
+  const controls = await listControls(cid);
+  for (const c of controls) {
+    for (const p of patruller) {
+      try {
+        await deleteDoc(doc(db, 'competitions', cid, 'controls', c.id, 'scores', p.id));
+        poang++;
+      } catch { /* fanns ingen rapport på den kontrollen */ }
+    }
+  }
+  const stationer = await listStations(cid).catch(() => []);
+  for (const st of stationer) {
+    for (const p of patruller) {
+      await deleteDoc(doc(db, 'competitions', cid, 'stations', st.id, 'passages', p.id)).catch(() => {});
+    }
+  }
+  for (const p of patruller) {
+    await deleteDoc(doc(db, 'competitions', cid, 'selfPassages', p.id)).catch(() => {});
+    await deleteDoc(doc(db, 'competitions', cid, 'patrols', p.id, 'private', 'meta')).catch(() => {});
+    await deleteDoc(doc(db, 'competitions', cid, 'patrols', p.id));
+  }
+  return { patruller: patruller.length, poang };
+}
+
 export async function deletePatrol(cid, pid) {
   await deleteDoc(doc(db, 'competitions', cid, 'patrols', pid));
 }

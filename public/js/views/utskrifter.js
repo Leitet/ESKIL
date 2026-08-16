@@ -10,9 +10,10 @@
 // ursprungliga fliken, så det finns fortfarande bara EN implementation per
 // dokument. Skulle den här sidan börja rita egna PDF:er är det två sanningar
 // om hur en kontrollpärm ser ut, och den ena kommer att glömmas bort.
-import { getCompetition, listPatrols, listControls, getTrack, listAllScores, listRegistrations } from '../store.js';
+import { getCompetition, listPatrols, listControls, getTrack, listAllScores, listRegistrations,
+  skapaGenrepPatrull, rensaGenrep, GENREP_NAMN } from '../store.js';
 import { compHeader, setDocTitle } from '../nav.js';
-import { escapeHtml, toast, withBusy, isCompAdminUser, internalManagement } from '../utils.js';
+import { escapeHtml, toast, withBusy, isCompAdminUser, internalManagement, confirmDialog } from '../utils.js';
 import { compPlaces } from '../places.js';
 import { icon } from '../icons.js';
 import { downloadFieldPackPdf, downloadManualStartPdf } from '../pdf.js';
@@ -145,6 +146,8 @@ export async function renderUtskrifter(app, user, cid) {
       `).join('')}
     </div>
 
+    <div class="card" style="margin-top:var(--sp-5);" id="genrep-kort"></div>
+
     <div class="card" style="margin-top:var(--sp-5);">
       <h3>Innan ni lämnar sekretariatet</h3>
       <p class="muted t-sm">Det här står inte i någon PDF, men det är det man ångrar att man glömde.</p>
@@ -161,6 +164,60 @@ export async function renderUtskrifter(app, user, cid) {
       </ul>
     </div>
   `;
+
+  // Genrepet. En förstagångsarrangör kan inte bevisa att kedjan rapport →
+  // sekretariat → poängtabell fungerar på SIN bana förrän tävlingsdagen.
+  // Genrepspatrullen är en RIKTIG patrull just därför: den går genom exakt
+  // samma kod, regler och vyer som en skarp, så ett genrep som fungerar bevisar
+  // något. Priset är att den måste gå att städa bort — därav knappen.
+  function ritaGenrep() {
+    const host = wrap.querySelector('#genrep-kort');
+    if (!host) return;
+    const g = patrols.find(p => p.genrep);
+    host.innerHTML = `
+      <h3>${icon('target', { size: 16 })} Genrep</h3>
+      <p class="muted t-sm" style="margin:6px 0 10px;">
+        Provkör hela kedjan kvällen före: lägg upp en testpatrull, rapportera den från en
+        kontrolls QR-kod och se att den dyker upp i Läget och poängtabellen. Patrullen är
+        på riktigt — det är enda sättet att bevisa att det fungerar.
+      </p>
+      ${g ? `
+        <div class="notice" style="border-left:3px solid var(--avent-orange);">
+          <strong>Genrep pågår.</strong> ${escapeHtml(GENREP_NAMN)} ligger bland patrullerna och
+          syns i Läget och poängtabellen. <strong>Rensa den innan tävlingsdagen</strong> — annars
+          står den i resultatlistan.
+        </div>
+        <div class="btn-row mt-3">
+          <a class="btn btn-secondary btn-sm" href="/s/${escapeHtml(comp.slug || cid)}/${escapeHtml(g.id)}" target="_blank" rel="noopener">
+            ${icon('external', { size: 14 })} Öppna genrepets startkort</a>
+          <button class="btn btn-danger btn-sm" id="genrep-rensa">Rensa genrepet</button>
+        </div>`
+        : `<div class="btn-row"><button class="btn btn-secondary" id="genrep-start">Starta genrep</button></div>`}
+    `;
+
+    host.querySelector('#genrep-start')?.addEventListener('click', (e) => withBusy(e.currentTarget, 'Skapar…', async () => {
+      try {
+        await skapaGenrepPatrull(cid);
+        patrols = await listPatrols(cid);
+        ritaGenrep();
+        toast('Genrepspatrullen är upplagd — rapportera den från en kontroll', 'success');
+      } catch (err) { toast('Kunde inte starta genrep: ' + (err?.message || err), 'error'); }
+    }));
+
+    host.querySelector('#genrep-rensa')?.addEventListener('click', (e) => withBusy(e.currentTarget, 'Rensar…', async () => {
+      const ok = await confirmDialog(
+        'Ta bort genrepspatrullen och allt den rapporterat? Riktiga patruller och deras poäng rörs inte.',
+        { okLabel: 'Rensa genrepet', danger: true });
+      if (!ok) return;
+      try {
+        const res = await rensaGenrep(cid);
+        patrols = await listPatrols(cid);
+        ritaGenrep();
+        toast(`Genrepet rensat — ${res.patruller} patrull och ${res.poang} rapport${res.poang === 1 ? '' : 'er'} borttagna`, 'success');
+      } catch (err) { toast('Kunde inte rensa: ' + (err?.message || err), 'error'); }
+    }));
+  }
+  ritaGenrep();
 
   // Nedladdningarna — samma funktioner som de ursprungliga flikarna anropar.
   wrap.querySelectorAll('[data-kor]').forEach(btn => {

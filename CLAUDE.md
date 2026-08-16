@@ -277,6 +277,18 @@ en läckt länk för att mata ut notismail. Ett skickat meddelande går varken a
 ändra eller radera — det ligger redan i någons inkorg. Alla sju guards är
 mutationsverifierade i `test/rules.test.js`.
 
+- **Genrepspatrullen (`patrols/{id}.genrep === true`) är en RIKTIG patrull.**
+  Det är hela poängen: den går genom exakt samma kod, regler och vyer som en
+  skarp, så ett genrep som fungerar bevisar något. `/s/<cid>/test` är något
+  annat — en syntetisk förhandsvisning som inte finns i databasen och därför
+  inte går att rapportera på.
+  Priset är städningen: `rensaGenrep` sveper patrullen, dess poäng på VARJE
+  kontroll, dess avprickningar på varje station, dess selfPassages och dess
+  private/meta. Lägger du till ett ställe där en patrull kan lämna spår: lägg
+  till det där också. Förkontrollen (`startklar.js`) varnar om en
+  genrepspatrull ligger kvar — den skulle annars stå i resultatlistan och
+  prisutdelningen.
+
 ## Väder, dagskopia och utskrifter (P2)
 
 - **Sekretariatets logg (`.../logg/{id}`)** skrivs från ADMIN-VYERNA, aldrig
