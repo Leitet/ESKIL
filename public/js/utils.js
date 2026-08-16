@@ -726,6 +726,20 @@ export function isPaymentPaid(reg, payment) {
   return !!payment && (reg?.paidRefs || []).includes(payment.reference);
 }
 
+// Anmälarens PÅSTÅENDE att en betalning är gjord. Detta är INTE ett facit —
+// isPaymentPaid är den enda sanningen, och de två får aldrig blandas ihop.
+// Påståendet finns för att stoppa "har ni fått vår Swish?"-mejlen: kassören
+// ser vad kåren säger, och kåren ser att någon vet om det.
+export function isPaymentClaimed(reg, payment) {
+  if (!payment) return false;
+  return (reg?.paymentClaims || []).some(c => c && c.reference === payment.reference);
+}
+
+export function paymentClaimAt(reg, payment) {
+  const c = (reg?.paymentClaims || []).find(x => x && x.reference === payment?.reference);
+  return c?.at || null;
+}
+
 export function registrationSettings(comp) {
   const r = comp?.registration || {};
   return {

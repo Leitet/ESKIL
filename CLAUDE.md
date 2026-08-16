@@ -281,6 +281,14 @@ BÅDA ställena.
   `ekonomiEmails[]` (mirror of `ekonomi: [{email, name}]`, in private/access
   only — write via store.setCompetitionEkonomi) marks ekonomiansvariga/
   kassörer: member-level read + may update ONLY `paidRefs` on registrations.
+  **`paidRefs` är FACIT, `paymentClaims` är PÅSTÅENDE.** Anmälaren (den som har
+  länken) får skriva `paymentClaims` — "vi har betalat" — men aldrig `paidRefs`.
+  Uppdelningen ÄR skyddet: `paidRefs` står medvetet inte i anmälarens
+  hasOnly-lista, och lägger man dit den kan vem som helst med länken skriva sig
+  betald. `isPaymentPaid()` är den enda sanningen för Betald; `isPaymentClaimed()`
+  läggs bredvid, aldrig i stället. Reglerna läser fältet med `.get('paymentClaims', [])`
+  — en direktläsning på en anmälan som saknar det (alla befintliga) hade tyst
+  nekat HELA redigeringen. Alla tre mutationsverifierade.
   They are appointed via Tävlingsledning roles flagged `ekonomi: true` — the
   management save path syncs the mirror. A `closed`
   competition is read-only for everyone but admins, and closing wipes

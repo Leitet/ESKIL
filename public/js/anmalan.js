@@ -17,6 +17,7 @@ import {
   allowedAvdelningar, escapeHtml, formatDate, toast, withBusy, confirmDialog, wireOverlayClose,
   registrationSettings, registrationState, computeRegistrationPrice,
   makePaymentReference, swishQrString, swishAppUrl, registrationUrl, copyToClipboard, isPaymentPaid,
+  isPaymentClaimed, paymentClaimAt,
   publicManagement
 } from './utils.js';
 import { ensureQRCode } from './qr.js';
@@ -896,7 +897,9 @@ function renderManage() {
             <span class="ref">${escapeHtml(p.reference)}</span>
             ${isPaymentPaid(reg, p)
               ? `<span class="anm-badge paid">Betald</span><button type="button" class="btn btn-ghost btn-sm" data-receipt="${escapeHtml(p.id)}">${icon('download', { size: 14 })} Kvitto</button>`
-              : `<span class="anm-badge pending">Väntar</span><button type="button" class="btn btn-ghost btn-sm" data-showpay="${escapeHtml(p.id)}">Betala</button><button type="button" class="btn btn-ghost btn-sm" data-payslip="${escapeHtml(p.id)}" title="PDF med belopp, referens och Swish-QR — utan er personliga länk">${icon('download', { size: 14 })} Underlag</button>`}
+              : isPaymentClaimed(reg, p)
+              ? `<span class="anm-badge claimed" title="Ni har markerat den som betald. Tävlingsledningen bekräftar när den syns på kontot.">Ni har betalat${paymentClaimAt(reg, p) ? ' ' + escapeHtml(String(paymentClaimAt(reg, p)).slice(0, 10)) : ''}</span><button type="button" class="btn btn-ghost btn-sm" data-unclaim="${escapeHtml(p.id)}">Ångra</button>`
+              : `<span class="anm-badge pending">Väntar</span><button type="button" class="btn btn-ghost btn-sm" data-showpay="${escapeHtml(p.id)}">Betala</button><button type="button" class="btn btn-ghost btn-sm" data-claim="${escapeHtml(p.id)}">Vi har betalat</button><button type="button" class="btn btn-ghost btn-sm" data-payslip="${escapeHtml(p.id)}" title="PDF med belopp, referens och Swish-QR — utan er personliga länk">${icon('download', { size: 14 })} Underlag</button>`}
             <span class="amt">${p.amount} kr</span>
           </div>
         `).join('')}
@@ -985,6 +988,33 @@ function wireManage() {
     view = 'pay';
     render();
   }));
+
+  // "Vi har betalat" — ett PÅSTÅENDE, aldrig ett facit. Kassören ser det i
+  // admin och slipper "har ni fått vår Swish?"-mejlen; kåren ser att någon vet
+  // om det. Statusen Betald sätts fortfarande bara av tävlingsledningen.
+  document.querySelectorAll('[data-claim]').forEach(b => b.addEventListener('click', () => withBusy(b, 'Sparar…', async () => {
+    const p = (reg.payments || []).find(x => x.id === b.dataset.claim);
+    if (!p) return;
+    const claims = [...(reg.paymentClaims || []).filter(c => c?.reference !== p.reference),
+                    { reference: p.reference, at: isoNow() }];
+    try {
+      await updateRegistration(cid, reg.id, { paymentClaims: claims, updatedAt: isoNow() });
+      reg.paymentClaims = claims;
+      toast('Tack — tävlingsledningen ser att ni betalat. De bekräftar när det syns på kontot.', 'success');
+      render();
+    } catch (e) { toast('Kunde inte spara: ' + (e?.message || e), 'error'); }
+  })));
+
+  document.querySelectorAll('[data-unclaim]').forEach(b => b.addEventListener('click', () => withBusy(b, 'Ångrar…', async () => {
+    const p = (reg.payments || []).find(x => x.id === b.dataset.unclaim);
+    if (!p) return;
+    const claims = (reg.paymentClaims || []).filter(c => c?.reference !== p.reference);
+    try {
+      await updateRegistration(cid, reg.id, { paymentClaims: claims, updatedAt: isoNow() });
+      reg.paymentClaims = claims;
+      render();
+    } catch (e) { toast('Kunde inte spara: ' + (e?.message || e), 'error'); }
+  })));
 
   document.getElementById('fh-send')?.addEventListener('click', (e) => withBusy(e.currentTarget, 'Skickar…', async () => {
     const msg = document.getElementById('fh-msg').value.trim();

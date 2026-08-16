@@ -667,3 +667,92 @@ describe('Meddelanden till ESKIL (kontaktformuläret)', () => {
     assert.equal((await remove(`feedback/${FB}/messages/${id}`, SUPER)).ok, false, 'radera');
   });
 });
+
+describe('Anmälans betalning: påstående kontra facit', () => {
+  const RID = uniq('reg');
+  const REG_CID = uniq('comp');
+  const EKONOM = { uid: uniq('uid-ek'), email: 'kassor@test.se' };
+
+  before(async () => {
+    await seed(`users/${EKONOM.uid}`, { email: EKONOM.email, role: 'user' });
+    await seed(`competitions/${REG_CID}`, {
+      name: 'Anmälningstävling', shortName: 'AT', year: 2026, demo: false, closed: false,
+      registration: { enabled: true }
+    });
+    await seed(`competitions/${REG_CID}/private/access`, {
+      adminEmails: [USER.email], userEmails: [], ekonomiEmails: [EKONOM.email]
+    });
+    await seed(`competitions/${REG_CID}/registrations/${RID}`, {
+      kar: 'Lindsdals Scoutkår', contact: { name: 'Kim', email: 'kim@example.com' },
+      patrols: [{ name: 'Rävarna' }], totalAmount: 300,
+      payments: [{ reference: 'AT26-1', amount: 300 }]
+    });
+  });
+
+  const bas = { kar: 'Lindsdals Scoutkår', updatedAt: new Date().toISOString() };
+
+  test('länkinnehavaren får påstå att betalningen är gjord', async () => {
+    allow(await write(`competitions/${REG_CID}/registrations/${RID}`,
+      { ...bas, paymentClaims: [{ reference: 'AT26-1', at: new Date().toISOString() }] },
+      null, { merge: true }), 'anonymt påstående');
+  });
+
+  test('men ALDRIG röra kassörens facit', async () => {
+    // paidRefs är sanningen. Att den inte står i anmälarens hasOnly-lista är
+    // hela skyddet — utan det kan vem som helst med länken skriva sig betald.
+    deny(await write(`competitions/${REG_CID}/registrations/${RID}`,
+      { ...bas, paidRefs: ['AT26-1'] }, null, { merge: true }), 'anonym skriver paidRefs');
+    deny(await write(`competitions/${REG_CID}/registrations/${RID}`,
+      { ...bas, paidRefs: ['AT26-1'], paymentClaims: [{ reference: 'AT26-1' }] },
+      null, { merge: true }), 'paidRefs smyger med i samma skrivning');
+  });
+
+  test('kassören prickar av — och rör bara facit', async () => {
+    // Prövas på en tävling med STÄNGD anmälan. Med öppen anmälan får vem som
+    // helst med länken redigera kar/patrols, så ett "ekonomen ändrade kåren"
+    // hade bevisat ingenting om ekonomirollen — bara att länkgrenen finns.
+    const STANGD = uniq('comp');
+    const R2 = uniq('reg');
+    await seed(`competitions/${STANGD}`, {
+      name: 'Stängd anmälan', shortName: 'SA', year: 2026, demo: false, closed: false,
+      registration: { enabled: false }
+    });
+    await seed(`competitions/${STANGD}/private/access`, {
+      adminEmails: [USER.email], userEmails: [], ekonomiEmails: [EKONOM.email]
+    });
+    await seed(`competitions/${STANGD}/registrations/${R2}`, {
+      kar: 'Lindsdals Scoutkår', payments: [{ reference: 'SA26-1', amount: 300 }]
+    });
+
+    allow(await write(`competitions/${STANGD}/registrations/${R2}`,
+      { paidRefs: ['SA26-1'] }, EKONOM, { merge: true }), 'ekonomiansvarig prickar av');
+    deny(await write(`competitions/${STANGD}/registrations/${R2}`,
+      { paidRefs: ['SA26-1'], kar: 'Ändrad kår' }, EKONOM, { merge: true }), 'ekonomi ändrar deltagardata');
+    deny(await write(`competitions/${STANGD}/registrations/${R2}`,
+      { paymentClaims: [{ reference: 'SA26-1' }] }, EKONOM, { merge: true }),
+      'ekonomi skriver ett påstående — det är anmälarens fält, inte kassörens');
+    deny(await write(`competitions/${STANGD}/registrations/${R2}`,
+      { paidRefs: ['SA26-1'] }, OTHER, { merge: true }), 'utomstående prickar av');
+  });
+
+  test('formen på påståendet vaktas', async () => {
+    deny(await write(`competitions/${REG_CID}/registrations/${RID}`,
+      { ...bas, paymentClaims: 'inte-en-lista' }, null, { merge: true }), 'sträng i stället för lista');
+    deny(await write(`competitions/${REG_CID}/registrations/${RID}`,
+      { ...bas, paymentClaims: Array.from({ length: 21 }, (_, i) => ({ reference: 'r' + i })) },
+      null, { merge: true }), '21 påståenden');
+  });
+
+  test('en anmälan UTAN fältet går fortfarande att redigera', async () => {
+    // .get()-fällan: en direktläsning av paymentClaims på en anmälan som
+    // saknar fältet är ett evalueringsfel som tyst nekar HELA redigeringen —
+    // alltså varenda befintlig anmälan.
+    const UTAN = uniq('reg');
+    await seed(`competitions/${REG_CID}/registrations/${UTAN}`, {
+      kar: 'Gamla kåren', payments: [{ reference: 'AT26-9', amount: 100 }]
+    });
+    allow(await write(`competitions/${REG_CID}/registrations/${UTAN}`,
+      { kar: 'Nytt namn', updatedAt: new Date().toISOString() }, null, { merge: true }),
+      'redigering av anmälan utan paymentClaims');
+  });
+});

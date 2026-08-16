@@ -11,7 +11,7 @@ import { downloadReceiptPdf } from '../pdf.js';
 import {
   escapeHtml, formatDate, toast, withBusy, confirmDialog, wireOverlayClose,
   registrationSettings, registrationState, registrationUrl, copyToClipboard,
-  isPaymentPaid, isCompAdminUser, isEkonomiUser
+  isPaymentPaid, isPaymentClaimed, paymentClaimAt, isCompAdminUser, isEkonomiUser
 } from '../utils.js';
 import { icon } from '../icons.js';
 import { compTabs, compCrumbs, compLabel, setDocTitle } from '../nav.js';
@@ -334,7 +334,9 @@ export async function renderAnmalanAdmin(app, user, cid) {
                   ? `<span class="badge badge-green">Betald${p.paidAt ? ' ' + escapeHtml(String(p.paidAt).slice(0, 10)) : ''}</span>
                      <button class="btn btn-ghost btn-sm" data-receipt="${escapeHtml(r.id)}:${escapeHtml(p.id)}" style="margin-left:auto;">${icon('download', { size: 14 })} Kvitto</button>
                      ${canPay ? `<button class="btn btn-ghost btn-sm" data-unpay="${escapeHtml(r.id)}:${escapeHtml(p.id)}">Ångra</button>` : ''}`
-                  : `<span class="badge">Väntar</span>
+                  : `<span class="badge${isPaymentClaimed(r, p) ? ' badge-orange' : ''}"
+                        ${isPaymentClaimed(r, p) ? `title="Kåren har själv markerat den som betald ${escapeHtml(String(paymentClaimAt(r, p) || '').slice(0, 10))}. Det är deras uppgift, inte en bekräftelse."` : ''}
+                      >${isPaymentClaimed(r, p) ? 'Kåren säger betald' : 'Väntar'}</span>
                      ${canPay ? `<button class="btn btn-secondary btn-sm" data-pay="${escapeHtml(r.id)}:${escapeHtml(p.id)}" style="margin-left:auto;">Markera betald</button>` : ''}`}
               </div>
             `).join('') || '<span class="muted t-sm">Inga betalningar (gratis eller ej klar)</span>'}

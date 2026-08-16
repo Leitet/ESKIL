@@ -203,6 +203,9 @@ body { background: var(--bg-muted); }
 }
 .anm-badge.paid { background: #e3f4dd; color: #2d7a1c; }
 .anm-badge.pending { background: #fdf3d8; color: #8a6d00; }
+/* Kårens eget påstående. Medvetet INTE grön: grönt är "Betald", och det är
+   tävlingsledningens ord. Blått säger "noterat", inte "klart". */
+.anm-badge.claimed { background: #d6eefb; color: #00537a; }
 .anm-badge.cancelled { background: #fbe0ef; color: #a30f66; }
 
 /* --- Success --------------------------------------------------------------- */

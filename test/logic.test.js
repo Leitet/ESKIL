@@ -13,7 +13,7 @@ import {
   patrolStartDateTime, normSlug, isValidSlug, suggestSlug,
   effectiveIntervalSec, swishAppUrl, swishQrString, patrolLabel, linkifyText, isNumSet, mergeBeacons,
   NOTE_CHIPS, harNotering, laggTillNotering, taBortNotering, kapaNotering,
-  publicNotices, anslagSynlig
+  publicNotices, anslagSynlig, isPaymentPaid, isPaymentClaimed, paymentClaimAt
 } from '../public/js/utils.js';
 import { hasIcon } from '../public/js/icons.js';
 import { AVD_FÄRG, textPå, accentMotBlått, hjälte } from '../public/js/share-card.js';
@@ -1283,5 +1283,43 @@ describe('anslagSynlig', () => {
   test('demo och tävling utan datum visas alltid', () => {
     assert.equal(anslagSynlig({ demo: true }, [], new Date('2026-01-01')), true);
     assert.equal(anslagSynlig({}, [], new Date('2026-01-01')), true);
+  });
+});
+
+// --- Betalning: påstående kontra facit ----------------------------------------
+// Kåren kan säga att de betalat. Det är INTE detsamma som att kassören sett
+// pengarna, och de två sanningarna får aldrig glida ihop.
+describe('betalningspåstående', () => {
+  const p = { id: 'p1', reference: 'AH26-1', amount: 300 };
+
+  test('ett påstående gör INTE betalningen betald', () => {
+    const reg = { paymentClaims: [{ reference: 'AH26-1', at: '2026-08-16' }] };
+    assert.equal(isPaymentClaimed(reg, p), true);
+    assert.equal(isPaymentPaid(reg, p), false, 'bara paidRefs får ge Betald');
+  });
+
+  test('kassörens facit står oberoende av påståendet', () => {
+    const reg = { paidRefs: ['AH26-1'] };
+    assert.equal(isPaymentPaid(reg, p), true);
+    assert.equal(isPaymentClaimed(reg, p), false);
+  });
+
+  test('legacy paid:true på posten ger fortfarande INTE Betald', () => {
+    // payments[] ligger i anmälarens skrivbara fält. Läste vi p.paid som
+    // sanning kunde vem som helst med länken skriva sig betald.
+    assert.equal(isPaymentPaid({ paidRefs: [] }, { ...p, paid: true }), false);
+  });
+
+  test('ett påstående om en okänd referens matchar ingenting', () => {
+    const reg = { paymentClaims: [{ reference: 'SKRÄP-999' }] };
+    assert.equal(isPaymentClaimed(reg, p), false);
+  });
+
+  test('saknade fält kraschar inte', () => {
+    assert.equal(isPaymentClaimed({}, p), false);
+    assert.equal(isPaymentClaimed(null, p), false);
+    assert.equal(isPaymentClaimed({ paymentClaims: [null] }, p), false);
+    assert.equal(isPaymentClaimed({ paymentClaims: [{ reference: 'AH26-1' }] }, null), false);
+    assert.equal(paymentClaimAt({}, p), null);
   });
 });
