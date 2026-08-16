@@ -11,6 +11,10 @@
 
 :root {
   --r-badge-h:    24px;   /* nummerbadgen i rubriker, se .r-ctrl-no */
+  /* Accentfärgen SOM TEXT: äventyrarorange #E95F13 når bara 3,44:1 mot vitt
+     — under WCAG AA:s 4,5:1 för de små etiketter (eyebrow m.m.) den används
+     till. Mörkad variant för text; ytor och kartlinjer behåller --r-accent. */
+  --r-accent-text: #c24a0a;   /* 4,9:1 mot vitt */
   --r-bg:         #ffffff;
   --r-bg-soft:    #f8f8f7;
   --r-fg:         #282727;
@@ -29,11 +33,16 @@
 }
 
 html[data-mode="night"] {
-  /* Night mode: deep red palette preserves night vision */
+  /* Night mode: deep red palette preserves night vision.
+     Kontrasterna är BERÄKNADE, inte ögonmåttade: dämpad text och
+     accent-som-text låg på ~3,5:1 mot bottnen — under AA:s 4,5:1 — och en
+     trött ledare i mörker är exakt fel person att ge svag text. Tonerna är
+     fortfarande djupröda; nattseendet ryker av blått ljus, inte av kontrast. */
   --r-bg:         #130404;
   --r-bg-soft:    #1c0808;
   --r-fg:         #ff7a7a;
-  --r-fg-muted:   #b04a4a;
+  --r-fg-muted:   #d06868;      /* 5,6:1 mot bg, 5,4:1 mot card (var #b04a4a = 3,7:1) */
+  --r-accent-text: #e35b5b;     /* 5,7:1 mot bg (accenten själv = 3,6:1) */
   --r-border:     #3a1010;
   --r-primary:    #8a1a1a;
   --r-primary-fg: #ffd5d5;
@@ -106,7 +115,7 @@ button, a, input, textarea, select, label { touch-action: manipulation; }
   text-transform: uppercase;
   letter-spacing: 0.12em;
   font-weight: 700;
-  color: var(--r-accent);
+  color: var(--r-accent-text);
 }
 .r-title {
   font-size: 32px;
