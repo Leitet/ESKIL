@@ -5,7 +5,8 @@
 // jsPDF and qrcodejs are loaded lazily from CDN on first use.
 
 import {
-  reportUrl, startUrl, allInstructionGroups, publicManagement, patrolStartTime, patrolLabel
+  reportUrl, startUrl, allInstructionGroups, publicManagement, patrolStartTime, patrolLabel,
+  swishQrString
 } from './utils.js';
 import { legStub, courseLegs } from './course.js';
 
@@ -1731,6 +1732,119 @@ export async function generateReceiptPdf(comp, reg, payment) {
   pdf.text(`Kvitto · ${payment.reference || ''}`, W - 15, H - 10, { align: 'right' });
 
   return pdf;
+}
+
+// Betalningsunderlag — för vidarebefordran till den som faktiskt betalar
+// (kassören är sällan den som anmäler). Bär belopp, referens och
+// betalningssätt inklusive Swish-QR, men ALDRIG den hemliga ändringslänken:
+// hela poängen är att underlaget ska kunna mejlas vidare utan att ge
+// mottagaren makt över anmälan.
+export async function generatePaymentSlipPdf(comp, reg, payment, methods = []) {
+  await ensureLibs();
+  // eslint-disable-next-line no-undef
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
+  const W = 210;
+
+  // Banner — samma kostym som kvittot.
+  pdf.setFillColor(BLUE);
+  pdf.rect(0, 0, W, 46, 'F');
+  pdf.setTextColor(YELLOW);
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(9);
+  pdf.text('ESKIL · SCOUTTÄVLING', 15, 13);
+  pdf.setTextColor('#ffffff');
+  pdf.setFontSize(26);
+  pdf.text('Betalningsunderlag', 15, 28);
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(11);
+  pdf.setTextColor('#a7bccf');
+  pdf.text(`${comp.shortName || comp.name || ''}${comp.year ? ' · ' + comp.year : ''}${comp.location ? ' · ' + comp.location : ''}`, 15, 38);
+
+  // Belopp + referens
+  let y = 62;
+  pdf.setFillColor('#f3f6fa');
+  pdf.roundedRect(15, y - 8, W - 30, 26, 2, 2, 'F');
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(9);
+  pdf.setTextColor(ORANGE);
+  pdf.text('ATT BETALA', 21, y);
+  pdf.setFontSize(24);
+  pdf.setTextColor(BLUE);
+  pdf.text(`${payment.amount} kr`, 21, y + 11);
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(9);
+  pdf.setTextColor('#8a8a8a');
+  pdf.text('BETALNINGSREFERENS — MÅSTE ANGES', W - 21, y, { align: 'right' });
+  pdf.setFont('courier', 'bold');
+  pdf.setFontSize(16);
+  pdf.setTextColor('#282727');
+  pdf.text(payment.reference || '', W - 21, y + 10, { align: 'right' });
+
+  // Vem betalningen gäller
+  y += 32;
+  const rad = (label, value) => {
+    if (!value) return;
+    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(9); pdf.setTextColor('#8a8a8a');
+    pdf.text(label.toUpperCase(), 15, y);
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(11); pdf.setTextColor('#282727');
+    pdf.text(String(value), 70, y);
+    y += 8;
+  };
+  rad('Kår', reg.kar);
+  rad('Patruller', (reg.patrols || []).map(p => p.name).filter(Boolean).join(', '));
+  rad('Anmäld av', reg.contact?.name);
+
+  // Betalningssätt
+  y += 4;
+  for (const m of methods) {
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(12);
+    pdf.setTextColor(BLUE);
+    if (m.type === 'swish') {
+      pdf.text(m.label || 'Swish', 15, y);
+      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(11); pdf.setTextColor('#282727');
+      pdf.text(`Swisha ${payment.amount} kr till ${m.number || ''} med referensen ${payment.reference}.`, 15, y + 7);
+      // QR med belopp och referens låsta — skanna direkt ur pappret/mejlet.
+      try {
+        const qr = await qrDataUrl(swishQrString(m.number, payment.amount, payment.reference), 300);
+        pdf.addImage(qr, 'PNG', 15, y + 12, 42, 42);
+        pdf.setFontSize(9); pdf.setTextColor('#8a8a8a');
+        pdf.text('Skanna med Swish-appen — belopp och referens är ifyllda.', 62, y + 32);
+        y += 62;
+      } catch { y += 14; }
+    } else if (m.type === 'bankgiro') {
+      pdf.text(m.label || 'Bankgiro', 15, y);
+      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(11); pdf.setTextColor('#282727');
+      pdf.text(`Bankgiro ${m.number || ''} — ange referensen ${payment.reference} som meddelande.`, 15, y + 7);
+      y += 18;
+    } else {
+      pdf.text(m.label || 'Faktura', 15, y);
+      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(11); pdf.setTextColor('#282727');
+      const info = pdf.splitTextToSize(`${m.info || 'Kontakta tävlingsledningen.'} Uppge referensen ${payment.reference}.`, W - 30);
+      pdf.text(info, 15, y + 7);
+      y += 12 + info.length * 5;
+    }
+  }
+  if (!methods.length) {
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(11); pdf.setTextColor('#282727');
+    pdf.text('Tävlingsledningen skickar betalningsinstruktioner separat — uppge referensen ovan.', 15, y);
+    y += 10;
+  }
+
+  // Fot: varför det här papperet är säkert att skicka vidare.
+  pdf.setFontSize(9);
+  pdf.setTextColor('#8a8a8a');
+  pdf.text(pdf.splitTextToSize(
+    'Underlaget kan vidarebefordras till den som betalar (t.ex. kårens kassör). Det innehåller ingen personlig länk och ger ingen åtkomst till anmälan. Betalningen bekräftas av tävlingsledningen när den kommit in.',
+    W - 30), 15, 282);
+  return pdf;
+}
+
+export async function downloadPaymentSlipPdf(comp, reg, payment, methods) {
+  const pdf = await generatePaymentSlipPdf(comp, reg, payment, methods);
+  const safeRef = (payment.reference || 'betalning').replace(/[^\w\-]+/g, '_');
+  pdf.save(`betalningsunderlag-${safeRef}.pdf`);
 }
 
 export async function downloadReceiptPdf(comp, reg, payment) {

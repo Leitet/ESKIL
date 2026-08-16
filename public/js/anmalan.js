@@ -20,7 +20,7 @@ import {
   publicManagement
 } from './utils.js';
 import { ensureQRCode } from './qr.js';
-import { downloadReceiptPdf } from './pdf.js';
+import { downloadReceiptPdf, downloadPaymentSlipPdf } from './pdf.js';
 import { icon } from './icons.js';
 
 const root = document.getElementById('root');
@@ -550,6 +550,12 @@ function renderPay() {
         <button type="button" class="btn btn-ghost btn-sm" id="copy-ref">${icon('copy', { size: 14 })} Kopiera</button>
       </div>
       ${renderMethods(pay)}
+      <div class="anm-info" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <span>Är det någon annan som betalar — kassören till exempel?
+        Underlaget bär belopp, referens och Swish-QR men <strong>inte</strong> er personliga länk,
+        så det kan mejlas vidare tryggt.</span>
+        <button type="button" class="btn btn-secondary btn-sm" id="pay-slip">${icon('download', { size: 14 })} Underlag till kassören</button>
+      </div>
     </div>
     <div class="btn-row" style="justify-content:space-between;">
       <button class="btn btn-ghost" id="pay-back">${icon('arrow-left', { size: 16 })} Tillbaka</button>
@@ -634,6 +640,15 @@ function wirePay() {
     copyToClipboard(pay.reference);
     toast('Referens kopierad', 'success');
   });
+
+  // Underlaget till kassören. På betalsteget vid NY anmälan finns ingen reg
+  // ännu — då bär utkastet kår och patruller, och det är gott nog: underlaget
+  // handlar om beloppet och referensen, inte om anmälans identitet.
+  document.getElementById('pay-slip')?.addEventListener('click', (e) => withBusy(e.currentTarget, 'Skapar…', async () => {
+    const underlag = reg || { kar: draft?.kar, patrols: draft?.patrols || [], contact: draft?.contact };
+    try { await downloadPaymentSlipPdf(comp, underlag, { amount: pay.amount, reference: pay.reference }, settings?.methods || []); }
+    catch (err) { toast('Kunde inte skapa underlaget: ' + err.message, 'error'); }
+  }));
 
   document.getElementById('pay-back').addEventListener('click', () => {
     if (viewPay) { viewPay = null; view = 'manage'; }
@@ -881,7 +896,7 @@ function renderManage() {
             <span class="ref">${escapeHtml(p.reference)}</span>
             ${isPaymentPaid(reg, p)
               ? `<span class="anm-badge paid">Betald</span><button type="button" class="btn btn-ghost btn-sm" data-receipt="${escapeHtml(p.id)}">${icon('download', { size: 14 })} Kvitto</button>`
-              : `<span class="anm-badge pending">Väntar</span><button type="button" class="btn btn-ghost btn-sm" data-showpay="${escapeHtml(p.id)}">Betala</button>`}
+              : `<span class="anm-badge pending">Väntar</span><button type="button" class="btn btn-ghost btn-sm" data-showpay="${escapeHtml(p.id)}">Betala</button><button type="button" class="btn btn-ghost btn-sm" data-payslip="${escapeHtml(p.id)}" title="PDF med belopp, referens och Swish-QR — utan er personliga länk">${icon('download', { size: 14 })} Underlag</button>`}
             <span class="amt">${p.amount} kr</span>
           </div>
         `).join('')}
@@ -948,6 +963,13 @@ function wireManage() {
       toast('Fel: ' + e.message, 'error');
     }
   });
+
+  document.querySelectorAll('[data-payslip]').forEach(b => b.addEventListener('click', () => withBusy(b, 'Skapar…', async () => {
+    const p = (reg.payments || []).find(x => x.id === b.dataset.payslip);
+    if (!p) return;
+    try { await downloadPaymentSlipPdf(comp, reg, p, settings?.methods || []); }
+    catch (e) { toast('Kunde inte skapa underlaget: ' + e.message, 'error'); }
+  })));
 
   document.querySelectorAll('[data-receipt]').forEach(b => b.addEventListener('click', () => withBusy(b, 'Skapar…', async () => {
     const p = (reg.payments || []).find(x => x.id === b.dataset.receipt);
