@@ -4,7 +4,8 @@
 
 import { db, doc, onSnapshot } from './firebase.js';
 import { getCompetition, getControl, listPatrols, watchScoresForControl, upsertScore, deleteScore, listControls, getTrack, listAllScores, sendControlBeacon } from './store.js';
-import { AVDELNINGAR, escapeHtml, allInstructionGroups, internalManagement } from './utils.js';
+import { AVDELNINGAR, escapeHtml, allInstructionGroups, internalManagement,
+  NOTE_CHIPS, harNotering, laggTillNotering, taBortNotering } from './utils.js';
 import { controlEtaWindow } from './course.js';
 import { ensureLeaflet } from './leaflet.js';
 import { icon } from './icons.js';
@@ -533,6 +534,7 @@ async function main() {
           <button type="button" class="step-btn" id="plus" aria-label="Öka">${icon('plus', { size: 28 })}</button>
         </div>
         <input type="number" class="r-input" id="poang-input" inputmode="numeric" value="${poang}" min="${minP}" max="${maxP}" step="1">
+        ${maxP > minP ? `<button type="button" class="score-full" id="fullpott">Full pott — ${maxP}${maxE > 0 ? ` + ${maxE} extra` : ''}</button>` : ''}
 
         ${maxE > 0 ? `
           <div style="margin-top:18px;" class="r-label-inline">Extra poäng (max ${maxE})</div>
@@ -550,6 +552,9 @@ async function main() {
           <div style="font-size:13px;color:var(--r-fg-muted);margin-top:4px;">Vid lika poäng vinner patrullen närmast rätt svar — glöm inte fylla i!</div>` : ''}
 
         <div style="margin-top:18px;" class="r-label-inline">Notering (frivilligt)</div>
+        <div class="note-chips">${NOTE_CHIPS.map(t =>
+          `<button type="button" class="note-chip${harNotering(note, t) ? ' active' : ''}" data-chip="${escapeHtml(t)}">${escapeHtml(t)}</button>`
+        ).join('')}</div>
         <textarea class="r-textarea" id="note" placeholder="T.ex. regelavvikelse eller kommentar…">${escapeHtml(note)}</textarea>`,
       footer: `
         <button type="button" class="r-btn" id="save">${existing ? 'Uppdatera poäng' : 'Spara poäng'}</button>
@@ -560,10 +565,15 @@ async function main() {
 
     const valEl = overlay.querySelector('#val');
     const inp = overlay.querySelector('#poang-input');
+    // Sätts nedan när Full pott-knappen finns. Måste deklareras HÄR: setPoang
+    // skriver inp.value programmatiskt, vilket inte utlöser något input-event,
+    // så knappen stod kvar som "full" efter ett tryck på minus.
+    let speglaFull = () => {};
     const setPoang = (v) => {
       poang = Math.max(minP, Math.min(maxP, Number(v) || 0));
       valEl.firstChild.textContent = poang + ' ';
       inp.value = poang;
+      speglaFull();
     };
     // bindTap uses touchstart+preventDefault so two quick +/- taps register
     // as two increments on iOS without the browser ever considering it a
@@ -582,15 +592,50 @@ async function main() {
     });
     inp.addEventListener('change', e => setPoang(e.target.value));
 
+    // setExtra ligger utanför if-blocket: Full pott-knappen nedan måste nå den,
+    // och en block-scopad const hade kastat ReferenceError vid första trycket.
+    const evalEl = overlay.querySelector('#eval');
+    const setExtra = (v) => {
+      extra = Math.max(0, Math.min(maxE, Number(v) || 0));
+      if (evalEl) evalEl.firstChild.textContent = extra + '';
+      speglaFull();
+    };
     if (maxE > 0) {
-      const evalEl = overlay.querySelector('#eval');
-      const setExtra = (v) => {
-        extra = Math.max(0, Math.min(maxE, Number(v) || 0));
-        evalEl.firstChild.textContent = extra + '';
-      };
       bindTap(overlay.querySelector('#eminus'), () => setExtra(extra - 1));
       bindTap(overlay.querySelector('#eplus'),  () => setExtra(extra + 1));
     }
+
+    // Full pott: vid kontroller där de flesta klarar allt stegade kontrollanten
+    // upp från mitten för VARJE patrull — åtta tapp på en 15-poängskontroll.
+    // Knappen fyller bara i värdet; Spara är kvar som bekräftelse, så ett
+    // felaktigt tapp aldrig blir en sparad rapport.
+    const fullBtn = overlay.querySelector('#fullpott');
+    if (fullBtn) {
+      speglaFull = () => fullBtn.classList.toggle('is-full', poang === maxP && extra === maxE);
+      bindTap(fullBtn, () => { setPoang(maxP); setExtra(maxE); });
+      inp.addEventListener('input', () => speglaFull());
+      speglaFull();
+    }
+
+    // Snabbnoteringar. Chipsen skriver in vanlig läsbar text i SAMMA note-fält
+    // — noteringen hamnar i reservprotokollet, exporten och admin, och där ska
+    // det stå svenska, inte koder. Aktiv = etiketten finns i texten, vilket
+    // också gör att en handskriven "Regelbrott" tänder sitt chip.
+    const noteEl = overlay.querySelector('#note');
+    overlay.querySelectorAll('[data-chip]').forEach(chip => {
+      bindTap(chip, () => {
+        const t = chip.dataset.chip;
+        noteEl.value = harNotering(noteEl.value, t)
+          ? taBortNotering(noteEl.value, t)
+          : laggTillNotering(noteEl.value, t);
+        chip.classList.toggle('active', harNotering(noteEl.value, t));
+      });
+    });
+    // Skriver kontrollanten själv ska chipsen följa med.
+    noteEl.addEventListener('input', () => {
+      overlay.querySelectorAll('[data-chip]').forEach(c =>
+        c.classList.toggle('active', harNotering(noteEl.value, c.dataset.chip)));
+    });
 
     const saveBtn = overlay.querySelector('#save');
     bindHaptic(saveBtn, 15);

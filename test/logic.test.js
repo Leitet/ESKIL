@@ -11,7 +11,8 @@ import {
 } from '../public/js/course.js';
 import {
   patrolStartDateTime, normSlug, isValidSlug, suggestSlug,
-  effectiveIntervalSec, swishAppUrl, swishQrString, patrolLabel, linkifyText, isNumSet, mergeBeacons
+  effectiveIntervalSec, swishAppUrl, swishQrString, patrolLabel, linkifyText, isNumSet, mergeBeacons,
+  NOTE_CHIPS, harNotering, laggTillNotering, taBortNotering
 } from '../public/js/utils.js';
 import { hasIcon } from '../public/js/icons.js';
 import { AVD_FÄRG, textPå, accentMotBlått, hjälte } from '../public/js/share-card.js';
@@ -1108,5 +1109,52 @@ describe('mergeBeacons', () => {
     const b = mergeBeacons([{ at: min(1), koade: 2 }], nu);
     assert.equal(b.batteri, null, '0 % hade sett ut som ett dött batteri');
     assert.equal(b.koade, 2);
+  });
+});
+
+// --- Snabbnoteringar ----------------------------------------------------------
+// Texten som chipsen bygger hamnar i reservprotokollet, exporten och admin —
+// den måste förbli läsbar svenska och överleva en tur genom poängbladet.
+describe('snabbnoteringar', () => {
+  test('lägga till och ta bort är symmetriskt', () => {
+    let t = '';
+    t = laggTillNotering(t, 'Regelbrott');
+    assert.equal(t, 'Regelbrott');
+    t = laggTillNotering(t, 'Sen ankomst');
+    assert.equal(t, 'Regelbrott. Sen ankomst');
+    t = taBortNotering(t, 'Regelbrott');
+    assert.equal(t, 'Sen ankomst');
+    assert.equal(taBortNotering(t, 'Sen ankomst'), '');
+  });
+
+  test('kontrollantens egen fritext överlever och hamnar sist', () => {
+    const t = laggTillNotering('Tappade kompassen i bäcken', 'Utrustning saknades');
+    assert.equal(t, 'Utrustning saknades. Tappade kompassen i bäcken');
+    assert.ok(t.includes('Tappade kompassen i bäcken'));
+    // ...och att slå av chipet får inte ta fritexten med sig.
+    assert.equal(taBortNotering(t, 'Utrustning saknades'), 'Tappade kompassen i bäcken');
+  });
+
+  test('dubbeltryck lägger inte till två gånger', () => {
+    const en = laggTillNotering('', 'Skada/olycka');
+    assert.equal(laggTillNotering(en, 'Skada/olycka'), en);
+  });
+
+  test('matchar hela etiketten, inte delsträngar', () => {
+    // "skada" i en mening får inte tända Skada/olycka-chipet.
+    assert.equal(harNotering('Patrullen rapporterade ingen skada', 'Skada/olycka'), false);
+    assert.equal(harNotering('Skada/olycka', 'Skada/olycka'), true);
+  });
+
+  test('en handskriven etikett tänder sitt chip', () => {
+    assert.equal(harNotering('Regelbrott. Gick fel väg', 'Regelbrott'), true);
+  });
+
+  test('alla chips går en full tur utan att texten förfaller', () => {
+    let t = 'Egen kommentar';
+    for (const c of NOTE_CHIPS) t = laggTillNotering(t, c);
+    for (const c of NOTE_CHIPS) assert.ok(harNotering(t, c), c + ' saknas');
+    for (const c of NOTE_CHIPS) t = taBortNotering(t, c);
+    assert.equal(t, 'Egen kommentar');
   });
 });

@@ -908,3 +908,40 @@ export function mergeBeacons(docs, nu = Date.now()) {
     enheter: farska.length
   };
 }
+
+// --- Snabbnoteringar på rapportsidan -----------------------------------------
+// Kontrollantens fritextfält fylls sällan i: att skriva på en telefon i regn,
+// med vantar, mellan två patruller, kostar för mycket. Chipsen skriver in
+// FÄRDIG SVENSK TEXT i samma fält — noteringen följer med till admin, exporten
+// och reservprotokollet, och där ska det stå läsbar svenska, inte koder.
+// Ordningen är den kontrollanten oftast behöver först.
+export const NOTE_CHIPS = [
+  'Regelbrott',
+  'Sen ankomst',
+  'Utrustning saknades',
+  'Fick hjälp utifrån',
+  'Skada/olycka',
+  'Bra samarbete'
+];
+
+// Etiketten avgränsas av punkt+mellanslag. Matchningen är på hela ord så att
+// "Skada/olycka" inte råkar tändas av ordet "skada" i en fritext.
+const notDelar = (text) => String(text || '').split('. ').map(d => d.trim()).filter(Boolean);
+
+export function harNotering(text, etikett) {
+  return notDelar(text).includes(etikett);
+}
+
+export function laggTillNotering(text, etikett) {
+  if (harNotering(text, etikett)) return String(text || '');
+  const delar = notDelar(text);
+  // Etiketterna först, fritexten sist — den som läser noteringen ska se
+  // avvikelsen direkt, inte leta i slutet av en mening.
+  const kanda = NOTE_CHIPS.filter(t => delar.includes(t) || t === etikett);
+  const ovrigt = delar.filter(d => !NOTE_CHIPS.includes(d));
+  return [...kanda, ...ovrigt].join('. ');
+}
+
+export function taBortNotering(text, etikett) {
+  return notDelar(text).filter(d => d !== etikett).join('. ');
+}
