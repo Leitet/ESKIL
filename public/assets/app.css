@@ -1058,3 +1058,13 @@ table.t tr.sf-row.park-row td {
   font-size: 11px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
   color: var(--upp-blue);
 }
+
+/* Hård-raderingsgrinden — två steg som måste klaras innan knappen tänds. */
+.hd-step { border: 1px solid var(--border); border-radius: var(--r-md); padding: 12px 14px; }
+.hd-step-head { font-weight: 700; color: var(--scout-blue); display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.hd-num {
+  width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--scout-blue-100); color: var(--scout-blue);
+  font-size: 12px; font-weight: 800;
+}

@@ -5,7 +5,7 @@ import {
   updateCompetition
 } from '../store.js';
 import {
-  AVDELNINGAR, allowedAvdelningar, escapeHtml, toast, confirmDialog, withBusy, startFinishPoints,
+  AVDELNINGAR, allowedAvdelningar, escapeHtml, toast, confirmDialog, confirmHardDelete, withBusy, startFinishPoints,
   isCompAdminUser, normEmail
 } from '../utils.js';
 import { navigate } from '../router.js';
@@ -660,7 +660,18 @@ export function openControlModal(cid, control, onSaved, { manageAnsvariga = true
   if (isEdit && manageAnsvariga) {
     const delBtn = overlay.querySelector('#del');
     delBtn.addEventListener('click', async () => {
-      if (!(await confirmDialog(`Ta bort kontroll "${control.name}"? Alla rapporterade poäng försvinner också.`))) return;
+      // Kontrollens poäng följer med i raderingen — samma grind som tävlingen:
+      // färsk backup (hela tävlingen) + kontrollnamnet skrivet.
+      const bekräftat = await confirmHardDelete({
+        what: 'kontrollen',
+        name: control.name || `Kontroll ${control.nummer ?? ''}`,
+        hint: 'Alla rapporterade poäng på kontrollen försvinner också.',
+        onBackup: async () => {
+          const { downloadBackup } = await import('../backup.js');
+          await downloadBackup(cid);
+        }
+      });
+      if (!bekräftat) return;
       await withBusy(delBtn, 'Tar bort…', async () => {
         try { await deleteControl(cid, control.id); close(); toast('Borttagen'); onSaved?.(null); }
         catch (e) { toast(e.message, 'error'); }

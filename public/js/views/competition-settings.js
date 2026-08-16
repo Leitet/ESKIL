@@ -16,7 +16,7 @@ import {
   db, doc, getDoc, getDocs, collection, query, where
 } from '../firebase.js';
 import {
-  escapeHtml, toast, withBusy, confirmDialog, wireOverlayClose,
+  escapeHtml, toast, withBusy, confirmDialog, confirmHardDelete, wireOverlayClose,
   registrationSettings, REG_PRICING_MODELS, registrationUrl, copyToClipboard,
   AVDELNINGAR, allowedAvdelningar,
   isCompAdminUser, normEmail, ekonomiFromManagement,
@@ -580,7 +580,18 @@ function renderBasicTab(comp, cid, refresh, readOnly, isSuperAdmin, user) {
       <button class="btn btn-danger mt-4" id="delete-comp">${icon('trash', { size: 16 })} Ta bort tävling</button>
     `;
     danger.querySelector('#delete-comp').addEventListener('click', async () => {
-      if (!(await confirmDialog(`Ta bort "${comp.name}" för gott? Detta går inte att ångra.`))) return;
+      // Grinden: färsk backup + namnet skrivet. Ett felklick här raderade
+      // annars en hel tävlings poäng utan kopia.
+      const ok = await confirmHardDelete({
+        what: 'tävlingen',
+        name: comp.name,
+        hint: 'Patruller, kontroller och alla poäng försvinner.',
+        onBackup: async () => {
+          const { downloadBackup } = await import('../backup.js');
+          await downloadBackup(cid);
+        }
+      });
+      if (!ok) return;
       try {
         await deleteCompetition(cid);
         toast('Tävling borttagen');

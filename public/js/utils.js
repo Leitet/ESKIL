@@ -216,6 +216,68 @@ export function confirmDialog(message, { okLabel = 'Ta bort', danger = true } = 
   });
 }
 
+// Hård radering av något med poäng i sig (tävling, kontroll) går genom den
+// här grinden: en FÄRSK backup måste laddas ner och namnet skrivas in innan
+// knappen ens tänds. Ett felklick i farliga zonen mitt under tävlingsdagen
+// raderade annars data utan kopia och utan spår — och "är du säker?" har
+// aldrig stoppat en stressad tumme. Backupen är obligatorisk med flit: den
+// är enda vägen tillbaka när raderingen ändå var fel.
+export function confirmHardDelete({ what, name, hint = '', onBackup }) {
+  return new Promise(resolve => {
+    const overlay = el('div', { class: 'modal-overlay' });
+    const modal = el('div', { class: 'modal' });
+    modal.innerHTML = `
+      <div class="modal-head"><h3 style="color:var(--utm-pink);">Ta bort ${escapeHtml(what)}</h3></div>
+      <div class="modal-body field-group">
+        <p style="margin:0;">Det här går inte att ångra.${hint ? ' ' + escapeHtml(hint) : ''}</p>
+        <div class="hd-step">
+          <div class="hd-step-head"><span class="hd-num">1</span> Ladda ner en färsk backup</div>
+          <p class="muted t-sm" style="margin:2px 0 8px;">Backupen är enda vägen tillbaka om det här visar sig vara fel. Den går att återskapa från under Inställningar → Backup.</p>
+          <button type="button" class="btn btn-secondary btn-sm" data-backup>Ladda ner backup</button>
+          <span class="t-sm" data-backup-status style="margin-left:8px;"></span>
+        </div>
+        <div class="hd-step">
+          <div class="hd-step-head"><span class="hd-num">2</span> Skriv namnet för att bekräfta</div>
+          <input class="input mono" data-name autocomplete="off" spellcheck="false"
+            placeholder="${escapeHtml(name)}">
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-cancel>Avbryt</button>
+        <button class="btn btn-danger" data-ok disabled>Ta bort permanent</button>
+      </div>`;
+    overlay.appendChild(modal);
+
+    let backupKlar = false;
+    const ok = modal.querySelector('[data-ok]');
+    const inp = modal.querySelector('[data-name]');
+    const uppdatera = () => {
+      ok.disabled = !(backupKlar && inp.value.trim() === String(name).trim());
+    };
+    inp.addEventListener('input', uppdatera);
+
+    modal.querySelector('[data-backup]').addEventListener('click', async (e) => {
+      const b = e.currentTarget, st = modal.querySelector('[data-backup-status]');
+      b.disabled = true; st.textContent = 'Skapar…'; st.style.color = '';
+      try {
+        await onBackup();
+        backupKlar = true;
+        st.textContent = 'Nedladdad ✓'; st.style.color = 'var(--spaer-green)';
+      } catch (err) {
+        st.textContent = 'Misslyckades: ' + (err?.message || err); st.style.color = 'var(--utm-pink)';
+        b.disabled = false;
+      }
+      uppdatera();
+    });
+
+    wireOverlayClose(overlay, () => { overlay.remove(); resolve(false); });
+    modal.querySelector('[data-cancel]').onclick = () => { overlay.remove(); resolve(false); };
+    ok.onclick = () => { overlay.remove(); resolve(true); };
+    document.body.appendChild(overlay);
+    setTimeout(() => inp.focus(), 40);
+  });
+}
+
 // Like confirmDialog but with a text input. Resolves the entered string on
 // OK (possibly ''), or null on cancel — callers must check for null.
 export function promptDialog(message, { okLabel = 'Spara', placeholder = '', value = '', danger = false } = {}) {
