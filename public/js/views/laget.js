@@ -19,8 +19,9 @@ import { compPlaces, placeKind, drawPlaces } from '../places.js';
 import { courseLegs, drawCourseOnMap, courseEtaCalibrated, patrolFinishEtaMs } from '../course.js';
 import {
   escapeHtml, toast, copyToClipboard, formatTime, patrolStartTime, patrolStartDateTime, avdShort, patrolLabel,
-  isCompAdminUser, withBusy, confirmDialog, promptDialog
+  isCompAdminUser, withBusy, confirmDialog, promptDialog, startFinishPoints
 } from '../utils.js';
+import { solnedgang } from '../sol.js';
 import { ensureLeaflet } from '../leaflet.js';
 import { renderQrToImg } from '../pdf.js';
 import { icon } from '../icons.js';
@@ -127,6 +128,7 @@ export async function renderLaget(app, user, cid) {
     <div id="broadcast-card"></div>
     <div id="station-card"></div>
     <div class="kpi-row" id="kpis"></div>
+    <div id="tidslinje"></div>
 
     <div class="grid" style="grid-template-columns:1fr;gap:var(--sp-6);">
       <div>
@@ -444,6 +446,49 @@ export async function renderLaget(app, user, cid) {
         <div class="k-value" style="${warns.length ? 'color:var(--utm-pink);' : ''}">${warns.length}</div>
       </div>
     `;
+
+    // --- Dagens tidslinje -----------------------------------------------------
+    // Svaret på tävlingsledarens två klockfrågor: "hinner vi prisutdelningen?"
+    // och "hinner alla ur skogen innan det blir mörkt?". Sista väntade målgång
+    // är max av de aktiva patrullernas kalibrerade mål-ETA (samma siffra som
+    // redan står per patrull i tabellen — här hopslagen till EN). Solnedgången
+    // räknas astronomiskt (sol.js) — inget väder-API, inget nätberoende.
+    (() => {
+      const host = wrap.querySelector('#tidslinje');
+      if (!host) return;
+      const aktiva = perPatrol.filter(pp => pp.active && pp.finishEtaMs);
+      const sistaMål = aktiva.length ? Math.max(...aktiva.map(pp => pp.finishEtaMs)) : null;
+
+      // Platsen: start/mål om utsatt, annars första kontrollen med position.
+      const sf = startFinishPoints(comp)[0];
+      const punkt = sf || controls.find(c => Number.isFinite(c.lat) && Number.isFinite(c.lng));
+      const ned = punkt ? solnedgang(comp.date ? new Date(comp.date + 'T12:00:00') : now, punkt.lat, punkt.lng) : null;
+      // Solnedgången gäller bara om den är TÄVLINGSDAGENS — ett datum långt
+      // fram säger inget om ikväll. Jämför mot ETA bara när dagen är samma.
+      const nedIdag = ned && ned.toDateString() === now.toDateString() ? ned : null;
+      const mörkerGräns = nedIdag ? nedIdag.getTime() - 30 * 60000 : null;
+      const iMörker = mörkerGräns ? aktiva.filter(pp => pp.finishEtaMs > mörkerGräns) : [];
+
+      if (!sistaMål && !ned) { host.innerHTML = ''; return; }
+      const kl = (ms) => new Date(ms).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
+      host.innerHTML = `
+        <div class="card tidslinje${iMörker.length ? ' is-varning' : ''}">
+          <div class="tidslinje-rad">
+            ${sistaMål ? `
+              <div><span class="muted t-sm">Sista väntade målgång</span><strong class="mono">${kl(sistaMål)}</strong></div>
+              <div><span class="muted t-sm">Prisutdelning tidigast ca</span><strong class="mono">${kl(sistaMål + 15 * 60000)}</strong></div>` : `
+              <div><span class="muted t-sm">Sista väntade målgång</span><strong>—</strong></div>`}
+            ${ned ? `
+              <div><span class="muted t-sm">Solnedgång${punkt === sf ? '' : ' (vid kontroll ' + (punkt.nummer ?? '?') + ')'}</span><strong class="mono">${ned.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })}</strong></div>` : ''}
+          </div>
+          ${iMörker.length ? `
+            <div class="tidslinje-varning">
+              ${iMörker.length} patrull${iMörker.length === 1 ? '' : 'er'} väntas i mål mindre än 30 min före solnedgången:
+              ${escapeHtml(iMörker.map(pp => pp.patrol.name || '#' + pp.patrol.number).slice(0, 5).join(', '))}${iMörker.length > 5 ? '…' : ''}
+              — överväg att korta banan eller möta upp.
+            </div>` : ''}
+        </div>`;
+    })();
 
     // Controls table
     wrap.querySelector('#ctrl-table').innerHTML = ctrlStats.length ? `

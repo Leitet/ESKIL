@@ -1088,3 +1088,15 @@ table.t tr.sf-row.park-row td {
   width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
   background: var(--avent-orange); position: relative; top: -1px;
 }
+
+/* Dagens tidslinje i Läget — de två klockfrågorna på en rad. */
+.tidslinje { margin-bottom: var(--sp-5); }
+.tidslinje.is-varning { border-left: 4px solid var(--utm-pink); }
+.tidslinje-rad { display: flex; gap: var(--sp-7); flex-wrap: wrap; }
+.tidslinje-rad > div { display: flex; flex-direction: column; gap: 2px; }
+.tidslinje-rad strong { font-size: 22px; color: var(--scout-blue); }
+.tidslinje-varning {
+  margin-top: var(--sp-4); padding-top: var(--sp-3);
+  border-top: 1px solid var(--border);
+  color: var(--utm-pink); font-weight: 600; font-size: 14px;
+}

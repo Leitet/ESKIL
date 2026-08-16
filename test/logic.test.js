@@ -999,3 +999,31 @@ describe('Startklar-förkontrollen', () => {
     assert.ok(!v.includes('startordning'), 'första startplatsen är 0 — inte "saknas"');
   });
 });
+
+import { solnedgang } from '../public/js/sol.js';
+
+describe('Solnedgång (mörkerlarmet i Läget)', () => {
+  const utcHM = (d) => d.toISOString().slice(11, 16);
+
+  test('kända värden: Stockholm sommar- och vintersolstånd', () => {
+    // Facit från NOAA:s egna tabeller, ±5 min.
+    assert.equal(utcHM(solnedgang(new Date(2026, 5, 21), 59.33, 18.07)), '20:08');
+    assert.equal(utcHM(solnedgang(new Date(2026, 11, 21), 59.33, 18.07)), '13:48');
+  });
+
+  test('teckenfelet som gav soluppgången i stället är dött', () => {
+    // Första implementationen räknade +ha och gav 01:30 UTC — Stockholms
+    // SOLUPPGÅNG midsommartid. Nedgången måste ligga på kvällen.
+    const d = solnedgang(new Date(2026, 5, 21), 59.33, 18.07);
+    assert.ok(d.getUTCHours() >= 18, `solnedgången ska vara på kvällen, fick ${utcHM(d)} UTC`);
+  });
+
+  test('polarnatt och midnattssol ger null i stället för nonsens', () => {
+    assert.equal(solnedgang(new Date(2026, 11, 21), 67.86, 20.22), null, 'Kiruna i december');
+    assert.equal(solnedgang(new Date(2026, 5, 21), 67.86, 20.22), null, 'Kiruna i juni');
+  });
+
+  test('ogiltiga koordinater ger null', () => {
+    assert.equal(solnedgang(new Date(2026, 9, 4), NaN, 15), null);
+  });
+});
