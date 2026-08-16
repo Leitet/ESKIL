@@ -315,7 +315,19 @@ BÅDA ställena.
 - `.../messages/{msgId}` — driftmeddelanden v2 (the Meddelanden tab):
   `{text, level: info|varning|kritisk, at, target: {kontroller, patruller},
   requireAck, active}`. Publicly readable (field pages are anonymous — the
-  composer warns against personal data), admin-written. Multiple messages
+  composer warns against personal data), admin-written.
+  **`target.publikt` är en TREDJE mottagarkanal** — den publika anslagstavlan
+  på /t. Uttryckligt opt-in i composern; "Alla" betyder alla i FÄLTET och
+  sätter den aldrig (anhöriga är inte en mottagare man får på köpet).
+  `publicNotices()` (utils.js, testad) filtrerar på `=== true`, ALDRIG
+  `!== false`: ett fältmeddelande saknar fältet helt, och den slappa
+  jämförelsen hade lagt det på en sida vem som helst kan läsa. Den VITLISTAR
+  dessutom id/text/level/at i stället för att sprida dokumentet — `target` bär
+  kontroll- och patrull-id:n, och ett id ÄR den hemliga länken. Båda
+  mutationsverifierade. /t prenumererar på det UPPLÖSTA cid:t (se
+  slug-bulleten) och anropar ALDRIG `updateBroadcast()` — bannerstacken är
+  fältchrome, och dess `if (!t || !ctx) return true` skulle visa gamla
+  mållösa meddelanden för anhöriga. Multiple messages
   stack on clients via `public/js/broadcast.js` (which also owns the 🔔
   bell, localStorage history and the Notification-API plumbing; kritisk
   alarms with sound/vibration). `messages/{id}/acks/{kind-refId}` holds

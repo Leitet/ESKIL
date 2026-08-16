@@ -863,3 +863,31 @@ a.pub-brand:hover { opacity: 0.85; }
   color: var(--scout-blue);
   font-weight: 600; font-size: 14px;
 }
+
+/* --- Publik anslagstavla -------------------------------------------------- */
+/* Ligger ÖVER hjälten: det ledningen skriver när starten är försenad ska vara
+   det första en förälder ser, inte något man scrollar fram. */
+.anslag { background: var(--bg2); border-bottom: 1px solid var(--border); }
+.anslag .page { padding-top: var(--sp-3); padding-bottom: var(--sp-3); }
+.anslag-lugn {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 14px; color: var(--fg2);
+}
+.anslag-lugn .lucide { color: var(--success); flex-shrink: 0; }
+.anslag-item {
+  border-left: 4px solid var(--scout-blue);
+  background: var(--bg1); border-radius: var(--r-md);
+  padding: 10px 14px; margin-bottom: var(--sp-2);
+}
+.anslag-item:last-child { margin-bottom: 0; }
+.anslag-huvud { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; }
+.anslag-niva { font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.anslag-tid { font-size: 12px; color: var(--fg3); font-variant-numeric: tabular-nums; }
+/* pre-wrap: ett anslag är ofta flera rader, och radbrytningarna bär meningen. */
+.anslag-text { font-size: 15px; color: var(--fg1); white-space: pre-wrap; word-break: break-word; }
+.anslag-info    { border-left-color: var(--scout-blue); }
+.anslag-info    .anslag-niva { color: var(--scout-blue); }
+.anslag-varning { border-left-color: var(--avent-orange); }
+.anslag-varning .anslag-niva { color: var(--avent-orange); }
+.anslag-kritisk { border-left-color: var(--utm-pink); }
+.anslag-kritisk .anslag-niva { color: var(--utm-pink); }

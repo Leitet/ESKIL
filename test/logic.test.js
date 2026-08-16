@@ -12,7 +12,8 @@ import {
 import {
   patrolStartDateTime, normSlug, isValidSlug, suggestSlug,
   effectiveIntervalSec, swishAppUrl, swishQrString, patrolLabel, linkifyText, isNumSet, mergeBeacons,
-  NOTE_CHIPS, harNotering, laggTillNotering, taBortNotering, kapaNotering
+  NOTE_CHIPS, harNotering, laggTillNotering, taBortNotering, kapaNotering,
+  publicNotices, anslagSynlig
 } from '../public/js/utils.js';
 import { hasIcon } from '../public/js/icons.js';
 import { AVD_FÄRG, textPå, accentMotBlått, hjälte } from '../public/js/share-card.js';
@@ -1214,5 +1215,73 @@ describe('snabbnoteringarnas invarianter', () => {
   test('kort text rörs inte alls', () => {
     const t = laggTillNotering('Gick fel vid dammen', 'Sen ankomst');
     assert.equal(kapaNotering(t, 500), t);
+  });
+});
+
+// --- Publik anslagstavla ------------------------------------------------------
+// Anslagen delar kollektion med FÄLTETS driftmeddelanden. Filtret är därför
+// det enda som står mellan ett meddelande till kontrollanterna och en sida som
+// vem som helst med länken kan läsa.
+describe('publicNotices', () => {
+  const falt   = { id: 'a', text: 'Kontroll 4: ta in skylten', level: 'info', at: '2026-08-16T10:00:00Z', target: { kontroller: true } };
+  const publikt = { id: 'b', text: 'Starten är försenad ca 30 min', level: 'varning', at: '2026-08-16T09:00:00Z', target: { publikt: true } };
+
+  test('ett fältmeddelande når ALDRIG tavlan', () => {
+    // Mutationsverifiera: byt `=== true` mot `!== false` i utils.js och det
+    // här testet ska falla — fältmeddelandet saknar fältet helt.
+    assert.deepEqual(publicNotices([falt]), []);
+    assert.deepEqual(publicNotices([{ ...falt, target: {} }]), []);
+    assert.deepEqual(publicNotices([{ ...falt, target: { publikt: false } }]), []);
+  });
+
+  test('bara det som uttryckligen märkts publikt släpps igenom', () => {
+    const ut = publicNotices([falt, publikt]);
+    assert.equal(ut.length, 1);
+    assert.equal(ut[0].id, 'b');
+  });
+
+  test('returobjektet bär INTE target — id:n är hemliga länkar', () => {
+    const ut = publicNotices([{ ...publikt, target: { publikt: true, kontroller: ['hemligt-id'] } }]);
+    assert.equal(ut[0].target, undefined);
+    assert.deepEqual(Object.keys(ut[0]).sort(), ['at', 'id', 'level', 'text']);
+    assert.ok(!JSON.stringify(ut).includes('hemligt-id'));
+  });
+
+  test('avslutat och tomt faller bort', () => {
+    assert.deepEqual(publicNotices([{ ...publikt, active: false }]), []);
+    assert.deepEqual(publicNotices([{ ...publikt, text: '   ' }]), []);
+  });
+
+  test('kritisk först, sedan varning, sedan info — nyast först inom nivå', () => {
+    const g = (id, level, at) => ({ id, level, at, text: id, target: { publikt: true } });
+    const ut = publicNotices([
+      g('i1', 'info', '2026-08-16T08:00:00Z'),
+      g('k',  'kritisk', '2026-08-16T07:00:00Z'),
+      g('i2', 'info', '2026-08-16T09:00:00Z'),
+      g('v',  'varning', '2026-08-16T06:00:00Z')
+    ]);
+    assert.deepEqual(ut.map(x => x.id), ['k', 'v', 'i2', 'i1']);
+  });
+
+  test('okänd nivå faller tillbaka på info i stället för att kasta', () => {
+    const ut = publicNotices([{ ...publikt, level: 'hittepå' }]);
+    assert.equal(ut[0].level, 'info');
+  });
+});
+
+describe('anslagSynlig', () => {
+  const comp = { date: '2026-08-16' };
+  test('finns anslag syns tavlan alltid — även långt före', () => {
+    assert.equal(anslagSynlig({ date: '2026-12-24' }, [{ id: 'x' }], new Date('2026-08-16T09:00:00')), true);
+  });
+  test('tom tavla göms utom på och kring tävlingsdagen', () => {
+    assert.equal(anslagSynlig(comp, [], new Date('2026-08-16T09:00:00')), true, 'tävlingsdagen');
+    assert.equal(anslagSynlig(comp, [], new Date('2026-08-15T09:00:00')), true, 'dagen före');
+    assert.equal(anslagSynlig(comp, [], new Date('2026-08-10T09:00:00')), false, 'en vecka före');
+    assert.equal(anslagSynlig(comp, [], new Date('2026-08-17T09:00:00')), false, 'dagen efter');
+  });
+  test('demo och tävling utan datum visas alltid', () => {
+    assert.equal(anslagSynlig({ demo: true }, [], new Date('2026-01-01')), true);
+    assert.equal(anslagSynlig({}, [], new Date('2026-01-01')), true);
   });
 });

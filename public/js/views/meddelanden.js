@@ -111,11 +111,15 @@ export async function renderMeddelanden(app, user, cid) {
 
     // Målgruppen på datamodellens form: true = hela kanalen, [] = utvalda,
     // false = kanalen berörs inte.
+    // Publikt är ALLTID ett eget, uttryckligt val. "Alla" betyder alla i
+    // FÄLTET — anhöriga är inte en mottagare man råkar få på köpet.
+    let publikt = false;
+
     const targetFromUI = () => {
-      if (audience === 'alla') return { kontroller: true, patruller: true };
-      if (audience === 'kontroller') return { kontroller: true, patruller: false };
-      if (audience === 'patruller') return { kontroller: false, patruller: true };
-      return { kontroller: kIds.size ? [...kIds] : false, patruller: pIds.size ? [...pIds] : false };
+      if (audience === 'alla') return { kontroller: true, patruller: true, publikt };
+      if (audience === 'kontroller') return { kontroller: true, patruller: false, publikt };
+      if (audience === 'patruller') return { kontroller: false, patruller: true, publikt };
+      return { kontroller: kIds.size ? [...kIds] : false, patruller: pIds.size ? [...pIds] : false, publikt };
     };
 
     // Klartext om vem som faktiskt nås — mottagarvalet ska aldrig behöva gissas.
@@ -181,6 +185,10 @@ export async function renderMeddelanden(app, user, cid) {
               <input type="checkbox" id="msg-clear" ${clearOthers ? 'checked' : ''} style="margin:0;">
               Avsluta alla andra aktiva samtidigt ${help('msg.clearOthers')}
             </label>
+            <label class="t-sm" style="display:inline-flex;gap:8px;align-items:center;font-weight:600;cursor:pointer;">
+              <input type="checkbox" id="msg-publikt" ${publikt ? 'checked' : ''} style="margin:0;">
+              Visa även på tävlingssidan ${help('msg.publikt')}
+            </label>
           </div>
           <p class="field-hint" style="margin:10px 0 8px;">Meddelandet är publikt — skriv inga personuppgifter.
           Kritisk nivå larmar med ljud och vibration. Med "Begär bekräftelse" ser du här vilka som tagit
@@ -202,6 +210,7 @@ export async function renderMeddelanden(app, user, cid) {
         rerenderKeeping(() => { audience = b.dataset.aud; })));
       composerHost.querySelector('#msg-ack').addEventListener('change', (e) => { requireAck = e.target.checked; });
       composerHost.querySelector('#msg-clear').addEventListener('change', (e) => { clearOthers = e.target.checked; });
+      composerHost.querySelector('#msg-publikt').addEventListener('change', (e) => { publikt = e.target.checked; });
       // Chipsen uppdaterar sammanfattningen direkt — man ska se följden av
       // sitt val utan att först trycka Skicka.
       const refreshSummary = () => {
@@ -219,7 +228,7 @@ export async function renderMeddelanden(app, user, cid) {
         const text = keepText().trim();
         if (!text) { toast('Skriv ett meddelande först.', 'error'); return; }
         const target = targetFromUI();
-        if (target.kontroller === false && target.patruller === false) {
+        if (target.kontroller === false && target.patruller === false && !target.publikt) {
           toast('Välj minst en mottagare.', 'error');
           return;
         }
@@ -240,6 +249,8 @@ export async function renderMeddelanden(app, user, cid) {
             const cleared = clearOthers;
             clearOthers = false;
             composerHost.querySelector('#msg-clear').checked = false;
+            publikt = false;
+            composerHost.querySelector('#msg-publikt').checked = false;
             toast(cleared ? 'Meddelandet skickat — övriga avslutade' : 'Meddelandet skickat', 'success');
           } catch (err) { toast('Fel: ' + err.message, 'error'); }
         });

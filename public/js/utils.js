@@ -966,3 +966,43 @@ export function kapaNotering(text, max = 500) {
 export function taBortNotering(text, etikett) {
   return notDelar(text).filter(d => d !== etikett).join('. ');
 }
+
+// --- Publik anslagstavla på tävlingssidan -------------------------------------
+// Anhöriga såg ingenting när starten försenades. Anslagen återanvänder
+// driftmeddelandena (competitions/{cid}/messages) med en TREDJE mottagarkanal,
+// `target.publikt`, i stället för en egen kollektion — de är redan publikt
+// läsbara och admin-skrivna, så ingen ny regelyta öppnas.
+//
+// Grinden är `=== true`, ALDRIG `!== false`. Ett fältmeddelande till
+// kontrollerna saknar fältet helt, och med den slappa jämförelsen hade det
+// hamnat på en sida som vem som helst med länken kan läsa.
+const ANSLAG_VIKT = { kritisk: 0, varning: 1, info: 2 };
+
+export function publicNotices(msgs) {
+  return (msgs || [])
+    .filter(m => m && m.target && m.target.publikt === true
+                 && m.active !== false && String(m.text || '').trim())
+    .sort((a, b) =>
+      (ANSLAG_VIKT[a.level] ?? 2) - (ANSLAG_VIKT[b.level] ?? 2)
+      || String(b.at || '').localeCompare(String(a.at || '')))
+    // VITLISTNING, inte spridning. `target` bär kontroll- och patrull-id:n,
+    // och ett id ÄR den hemliga länken — det får aldrig nå den publika DOM:en.
+    .map(m => ({
+      id: m.id,
+      text: String(m.text),
+      level: ANSLAG_VIKT[m.level] != null ? m.level : 'info',
+      at: m.at || null
+    }));
+}
+
+// Tavlan tar plats på sidan, så den visas inte i onödan: finns det anslag syns
+// den alltid, annars bara på och kring tävlingsdagen (då "allt lugnt" faktiskt
+// betyder något). Utan datum, och för demo, visas den alltid.
+export function anslagSynlig(comp, anslag, nu = new Date()) {
+  if ((anslag || []).length) return true;
+  if (!comp || comp.demo) return true;
+  if (!comp.date) return true;
+  const dag = new Date(comp.date + 'T00:00:00');
+  const diff = Math.round((dag - new Date(nu.getFullYear(), nu.getMonth(), nu.getDate())) / 86400000);
+  return diff >= 0 && diff <= 1;
+}

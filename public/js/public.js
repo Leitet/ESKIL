@@ -4,10 +4,10 @@
 // Tabs: overview (default), patrols, scoreboard.
 
 import { db, doc, getDoc, onSnapshot, collection, auth, onAuthStateChanged } from './firebase.js';
-import { getCompetition, getCompetitionBySlug, listPatrols, listControls, getTrack } from './store.js';
+import { getCompetition, getCompetitionBySlug, listPatrols, listControls, getTrack, watchBroadcastMessages } from './store.js';
 import { courseLegs, drawCourseOnMap, addCourseChip, competitionArea, courseDistance, fmtDist, courseEtaCalibrated, patrolFinishEtaMs } from './course.js';
 import {
-  AVDELNINGAR, escapeHtml, formatDate, publicManagement, patrolStartTime,
+  AVDELNINGAR, escapeHtml, publicNotices, anslagSynlig, linkifyText, formatDate, publicManagement, patrolStartTime,
   patrolStartDateTime, startTimeSettings, allowedAvdelningar,
   registrationSettings, registrationState,
   startFinishPoints, rankPatrols, rankKarer, RANKING_RULES_TEXT,
@@ -72,6 +72,8 @@ let scoresByControl = {}; // ctrlId -> score[]
 let adminAccess = false; // signed-in visitor may administer → "Administrera" in hero
 let realCid = null;      // resolved competition id (the URL may carry the slug)
 const subscribedScoreCtrls = new Set();
+let anslag = [];                 // publika anslag från tävlingsledningen
+let anslagSeedat = false;        // första server-snapshoten notiserar inte
 let unsubs = [];
 
 function cleanup() {
@@ -133,6 +135,23 @@ async function boot() {
   });
 
   // Live updates for competition, patrols, and every control's scores
+  // Anslagstavlan. Prenumerationen går på det UPPLÖSTA id:t — nås sidan via
+  // kortadressen (/t/ah26, normalvägen) är parsed.cid slugen, och en lyssnare
+  // på den hade pekat på en tävling som inte finns: inga anslag, ingen felkod.
+  unsubs.push(watchBroadcastMessages(cid, (msgs) => {
+    const nya = publicNotices(msgs);
+    const fanns = new Set(anslag.map(a => a.id));
+    anslag = nya;
+    renderAnslag();
+    // Tyst seedning: den som öppnar sidan mitt under dagen ska inte få en
+    // notis per anslag som redan står uppe.
+    if (!anslagSeedat) { anslagSeedat = true; return; }
+    for (const a of nya) {
+      if (fanns.has(a.id)) continue;
+      showSystemNotification(`${comp?.shortName || 'Tävlingen'}`, { body: a.text, tag: `eskil-anslag-${a.id}` });
+    }
+  }));
+
   unsubs.push(onSnapshot(doc(db, 'competitions', cid), snap => {
     if (!snap.exists()) return;
     const prevShown = controlsPublic();
@@ -396,6 +415,8 @@ function favStar(pid, favs) {
 
 function render() {
   const parsed = parsePath(); if (!parsed) return;
+  // renderAnslag() anropas sist i den här funktionen: render() skriver om
+  // hela sidan, inklusive tavlans värdelement.
   const tab = parsed.tab;
   const cid = parsed.cid;
 
@@ -488,6 +509,9 @@ function render() {
       if (withPos.length || sfPoints.length || places.length) renderLeafletMap(withPos, sfPoints, places);
     }
   }
+
+  // Sist: render() skrev om sidan och därmed tavlans värdelement.
+  renderAnslag();
 }
 
 // True when the signed-in visitor can open this competition's admin app:
@@ -543,6 +567,7 @@ function renderHero() {
   const regSettings = registrationSettings(comp);
   const cid = parsePath()?.cid;
   return `
+    <div id="anslagstavla"></div>
     <header class="pub-hero">
       <div class="pub-hero-pattern"></div>
       <img class="pub-hero-symbol" src="/assets/scout-symbol.svg" alt="" aria-hidden="true">
@@ -577,6 +602,38 @@ function renderHero() {
       </div>
     </header>
   `;
+}
+
+// Anslagstavlan. Egen renderare så ett nytt anslag inte bygger om hela sidan
+// — kartan och listorna ska stå still. Fritexten går genom linkifyText: en
+// länk till t.ex. en ny samlingsplats ska gå att trycka på.
+function renderAnslag() {
+  const host = document.getElementById('anslagstavla');
+  if (!host) return;
+  if (!anslagSynlig(comp, anslag)) { host.innerHTML = ''; return; }
+  if (!anslag.length) {
+    host.innerHTML = `<div class="anslag"><div class="page">
+      <div class="anslag-lugn">${icon('check', { size: 16 })}
+        <span>Allt lugnt — tävlingsledningen har inget att meddela just nu.</span>
+      </div></div></div>`;
+    return;
+  }
+  const ETIKETT = { kritisk: 'Viktigt', varning: 'Observera', info: 'Information' };
+  host.innerHTML = `<div class="anslag"><div class="page">
+    ${anslag.map(a => `
+      <div class="anslag-item anslag-${escapeHtml(a.level)}" role="status">
+        <div class="anslag-huvud">
+          <span class="anslag-niva">${escapeHtml(ETIKETT[a.level] || 'Information')}</span>
+          ${a.at ? `<span class="anslag-tid">${escapeHtml(klockslag(a.at))}</span>` : ''}
+        </div>
+        <div class="anslag-text">${linkifyText(a.text)}</div>
+      </div>`).join('')}
+  </div></div>`;
+}
+
+function klockslag(at) {
+  const d = at?.toDate ? at.toDate() : new Date(at);
+  return Number.isFinite(d?.getTime?.()) ? d.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' }) : '';
 }
 
 function renderFooter() {

@@ -550,6 +550,15 @@ export const HELP = {
     warn: 'Kvittenserna rapporteras av fältenheterna utan inloggning. Använd dem som lägesbild — vid kritiska lägen, bekräfta muntligt via telefonlistan i Läget.'
   },
 
+  'msg.publikt': {
+    title: 'Visa även på tävlingssidan',
+    body: [
+      'Meddelandet hamnar då också på tävlingssidan (/t), som anhöriga och åskådare läser — utöver de mottagare du valt i fältet.',
+      'Använd det för sådant de behöver veta: "Starten är försenad ca 30 min", "Prisutdelningen börjar 15:30".',
+      'Fältets meddelanden hamnar ALDRIG här av sig själv. Du måste kryssa i rutan varje gång.'
+    ],
+    warn: 'Tävlingssidan kan läsas av vem som helst som har länken. Skriv aldrig personuppgifter, en enskild patrull i känsligt sammanhang, eller något som avslöjar en hemlig kontroll- eller startkortslänk.'
+  },
   'msg.clearOthers': {
     title: 'Avsluta alla andra samtidigt',
     body: [
