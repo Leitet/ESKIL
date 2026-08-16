@@ -4,7 +4,7 @@
 
 import { layout, setTopbarCompetition } from '../app.js';
 import {
-  getCompetition, listRegistrations, updateRegistration, deleteRegistration,
+  getCompetition, listRegistrations, getRegistration, updateRegistration, deleteRegistration,
   listPatrols, createPatrol, createUtskick, listUtskick
 } from '../store.js';
 import { downloadReceiptPdf } from '../pdf.js';
@@ -40,6 +40,16 @@ const PM_MALLAR = [
     body: `Hej!\n\nTyvärr måste vi ställa in {comp}. [ANLEDNING]\n\nErlagda anmälningsavgifter återbetalas — vi återkommer med detaljer om hur.\n\nVi beklagar det inträffade och hoppas få se er vid ett annat tillfälle.`
   }
 ];
+
+// Speglar ANDRING_SORTER i anmalan.js. Hålls som en egen karta här eftersom
+// admin-vyn och den publika anmälningssidan inte delar modul.
+const ANDRING_ETIKETT = {
+  antal: 'Antal deltagare ändras',
+  patrullnamn: 'Patrullens namn ändras',
+  kontakt: 'Ny kontaktperson',
+  allergi: 'Allergi eller specialkost',
+  annat: 'Annat'
+};
 
 export async function renderAnmalanAdmin(app, user, cid) {
   const wrap = document.createElement('div');
@@ -337,6 +347,22 @@ export async function renderAnmalanAdmin(app, user, cid) {
           </div>
         </div>
 
+        ${(r.andringar || []).length ? `
+          <div class="mt-3" style="padding:var(--sp-3) var(--sp-4);background:var(--bg2);border-left:3px solid var(--avent-orange);border-radius:var(--r-sm);">
+            <div class="t-over" style="color:var(--avent-orange);margin-bottom:4px;">Begärda ändringar</div>
+            ${r.andringar.map((a, i) => `
+              <div class="t-sm" style="margin-bottom:6px;${a.hanterad ? 'opacity:.55;' : ''}">
+                <strong>${escapeHtml(ANDRING_ETIKETT[a.sort] || 'Ändring')}</strong>
+                ${a.patrol ? `· ${escapeHtml(a.patrol)}` : ''}
+                <span class="muted">· ${escapeHtml((a.at || '').slice(0, 10))}</span>
+                ${a.hanterad ? '<span class="badge badge-green">Hanterad</span>' : (isAdmin
+                  ? `<button class="btn btn-ghost btn-sm" data-andring="${escapeHtml(r.id)}:${i}">Markera hanterad</button>` : '')}
+                <div>${escapeHtml(a.message)}</div>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+
         ${(r.forhinder || []).length ? `
           <div class="mt-3" style="padding:var(--sp-3) var(--sp-4);background:var(--scout-blue-50);border-left:3px solid var(--utm-pink);border-radius:var(--r-sm);">
             <div class="t-over" style="color:var(--utm-pink);margin-bottom:4px;">Anmälda förhinder</div>
@@ -413,6 +439,23 @@ export async function renderAnmalanAdmin(app, user, cid) {
   }
 
   function wireContent() {
+    // Markera en ändring som hanterad. Läser om anmälan färskt först: kåren
+    // kan ha hunnit skicka en till från sin länk, och en förlegad kopia hade
+    // raderat den.
+    content.querySelectorAll('[data-andring]').forEach(b => b.addEventListener('click', () => withBusy(b, '…', async () => {
+      const [regId, idx] = b.dataset.andring.split(':');
+      try {
+        const fresh = await getRegistration(cid, regId);
+        const lista = [...(fresh?.andringar || [])];
+        const i = Number(idx);
+        if (!lista[i]) { toast('Ändringen hittades inte — ladda om sidan', 'error'); return; }
+        lista[i] = { ...lista[i], hanterad: true, hanteradAt: new Date().toISOString() };
+        await updateRegistration(cid, regId, { andringar: lista });
+        toast('Markerad som hanterad', 'success');
+        await load();
+      } catch (e) { toast('Fel: ' + e.message, 'error'); }
+    })));
+
     content.querySelectorAll('[data-pay]').forEach(b => b.addEventListener('click', () => withBusy(b, '…', async () => {
       const [regId, payId] = b.dataset.pay.split(':');
       const email = regs.find(x => x.id === regId)?.contact?.email;

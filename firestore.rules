@@ -680,7 +680,12 @@ service cloud.firestore {
           // skyddet. Lägg aldrig till paidRefs här.
              registrationEnabled(cid) && !compIsDemo(cid) && !compClosed(cid)
           && request.resource.data.diff(resource.data).affectedKeys()
-               .hasOnly(['kar','contact','patrols','answers','mode','totalAmount','payments','cancelled','forhinder','paymentClaims','updatedAt'])
+               .hasOnly(['kar','contact','patrols','answers','mode','totalAmount','payments','cancelled','forhinder','paymentClaims','andringar','updatedAt'])
+          // Ändringsförfrågningar efter stängd anmälan. Samma .get()-med-default
+          // som paymentClaims: en direktläsning på en anmälan utan fältet är ett
+          // evalueringsFEL som tyst nekar HELA redigeringen.
+          && request.resource.data.get('andringar', []) is list
+          && request.resource.data.get('andringar', []).size() <= 30
           // ALLTID .get() med default: en anmälan som saknar fältet (alla
           // befintliga) gör en direktläsning till ett evalueringsFEL som tyst
           // nekar HELA redigeringen. Den fällan har gått till prod två gånger.

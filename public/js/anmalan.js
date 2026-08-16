@@ -907,6 +907,19 @@ function renderManage() {
     ` : ''}
 
     ${!open ? renderForhinderCard() : ''}
+    ${!open ? renderAndringCard() : ''}
+    ${(reg.andringar || []).length ? `
+      <div class="anm-card">
+        <h2>Skickade ändringar</h2>
+        ${reg.andringar.map(a => `
+          <div class="anm-sum-row">
+            <span>${escapeHtml(ANDRING_SORTER.find(o => o.v === a.sort)?.t || 'Ändring')}${a.patrol ? ' · ' + escapeHtml(a.patrol) : ''}</span>
+            <span class="meta">${escapeHtml((a.at || '').slice(0, 10))}${a.hanterad ? ' · hanterad' : ''}</span>
+          </div>
+          <p class="t-sm muted" style="margin:2px 0 10px;">${escapeHtml(a.message)}</p>
+        `).join('')}
+      </div>
+    ` : ''}
     ${(reg.forhinder || []).length ? `
       <div class="anm-card">
         <h2>Anmälda förhinder</h2>
@@ -919,6 +932,53 @@ function renderManage() {
         `).join('')}
       </div>
     ` : ''}
+  `;
+}
+
+// Ändringsförfrågan efter stängd anmälan. Sista-minuten-ändringar gick förut
+// som fri mejlkorrespondens till tävlingsledningen — spridd över flera
+// inkorgar, utan spår i systemet och lätt att missa i tävlingsveckan.
+//
+// SORTEN är det som gör den strukturerad: ledningen kan se "tre ändrade antal
+// och en allergi" i stället för att läsa fyra fritexter. Fritexten finns kvar,
+// för verkligheten ryms inte i en lista.
+const ANDRING_SORTER = [
+  { v: 'antal',       t: 'Antal deltagare ändras' },
+  { v: 'patrullnamn', t: 'Patrullens namn ändras' },
+  { v: 'kontakt',     t: 'Ny kontaktperson' },
+  { v: 'allergi',     t: 'Allergi eller specialkost' },
+  { v: 'annat',       t: 'Något annat' }
+];
+
+function renderAndringCard() {
+  return `
+    <div class="anm-card">
+      <h2>Behöver ni ändra något?</h2>
+      <p class="muted t-sm" style="margin-top:-8px;">Anmälan är stängd, men ni kan fortfarande
+      skicka en ändring till tävlingsledningen. Den hamnar i deras lista — ni behöver inte mejla.</p>
+      <div class="field-group">
+        <div>
+          <label class="field" for="an-sort">Vad gäller det?</label>
+          <select class="select" id="an-sort">
+            ${ANDRING_SORTER.map(o => `<option value="${o.v}">${escapeHtml(o.t)}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="field" for="an-patrol">Gäller</label>
+          <select class="select" id="an-patrol">
+            <option value="">Hela anmälan</option>
+            ${(reg.patrols || []).map(p => `<option value="${escapeHtml(p.name)}">${escapeHtml(p.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="field" for="an-msg">Beskriv ändringen</label>
+          <textarea class="textarea" id="an-msg" required placeholder="Ex. Vi blir 5 i stället för 6 — en har brutit benet."></textarea>
+        </div>
+      </div>
+      <div class="btn-row mt-4" style="justify-content:flex-end;">
+        <button class="btn btn-primary" id="an-send">Skicka ändringen</button>
+      </div>
+    </div>
   `;
 }
 
@@ -1015,6 +1075,33 @@ function wireManage() {
       render();
     } catch (e) { toast('Kunde inte spara: ' + (e?.message || e), 'error'); }
   })));
+
+  document.getElementById('an-send')?.addEventListener('click', (e) => withBusy(e.currentTarget, 'Skickar…', async () => {
+    const msg = document.getElementById('an-msg').value.trim();
+    if (!msg) { toast('Beskriv ändringen först', 'error'); return; }
+    const entry = {
+      sort: document.getElementById('an-sort').value || 'annat',
+      patrol: document.getElementById('an-patrol').value || '',
+      message: msg.slice(0, 1000),
+      at: isoNow()
+    };
+    try {
+      // Läs om färskt före append — annars skriver den här sidans förlegade
+      // ögonblicksbild över en ändring som skickats från en annan flik, eller
+      // ledningens hanterad-markering. Samma mönster som förhinder.
+      const fresh = await getRegistration(cid, reg.id).catch(() => null) || reg;
+      await updateRegistration(cid, reg.id, {
+        andringar: [...(fresh.andringar || []), entry],
+        updatedAt: isoNow()
+      });
+      reg = await getRegistration(cid, reg.id);
+      document.getElementById('an-msg').value = '';
+      toast('Ändringen är skickad till tävlingsledningen', 'success');
+      render();
+    } catch (err) {
+      toast('Fel: ' + err.message, 'error');
+    }
+  }));
 
   document.getElementById('fh-send')?.addEventListener('click', (e) => withBusy(e.currentTarget, 'Skickar…', async () => {
     const msg = document.getElementById('fh-msg').value.trim();

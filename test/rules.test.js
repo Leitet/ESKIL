@@ -735,6 +735,17 @@ describe('Anmälans betalning: påstående kontra facit', () => {
       { paidRefs: ['SA26-1'] }, OTHER, { merge: true }), 'utomstående prickar av');
   });
 
+  test('länkinnehavaren får skicka ändringsförfrågan — men listan har tak', async () => {
+    allow(await write(`competitions/${REG_CID}/registrations/${RID}`,
+      { ...bas, andringar: [{ sort: 'antal', patrol: 'Rävarna', message: 'Vi blir 5 i stället för 6', at: new Date().toISOString() }] },
+      null, { merge: true }), 'anonym ändringsförfrågan');
+    deny(await write(`competitions/${REG_CID}/registrations/${RID}`,
+      { ...bas, andringar: 'inte-en-lista' }, null, { merge: true }), 'sträng i stället för lista');
+    deny(await write(`competitions/${REG_CID}/registrations/${RID}`,
+      { ...bas, andringar: Array.from({ length: 31 }, (_, i) => ({ sort: 'annat', message: 'x' + i })) },
+      null, { merge: true }), '31 förfrågningar');
+  });
+
   test('formen på påståendet vaktas', async () => {
     deny(await write(`competitions/${REG_CID}/registrations/${RID}`,
       { ...bas, paymentClaims: 'inte-en-lista' }, null, { merge: true }), 'sträng i stället för lista');

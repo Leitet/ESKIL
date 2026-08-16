@@ -354,6 +354,12 @@ BÅDA ställena.
   `ekonomiEmails[]` (mirror of `ekonomi: [{email, name}]`, in private/access
   only — write via store.setCompetitionEkonomi) marks ekonomiansvariga/
   kassörer: member-level read + may update ONLY `paidRefs` on registrations.
+  **`andringar[]`** är strukturerade ändringsförfrågningar efter stängd
+  anmälan (sort + patrull + fritext), samma append-mönster som `forhinder`:
+  läs om anmälan FÄRSKT före append, annars skriver en förlegad ögonblicksbild
+  över ledningens hanterad-markering eller en ändring från en annan flik.
+  Reglerna kan inte tvinga append-only på en array — courtesyn är
+  klientsidig och det är ett medvetet val, inte en glömska.
   **`paidRefs` är FACIT, `paymentClaims` är PÅSTÅENDE.** Anmälaren (den som har
   länken) får skriva `paymentClaims` — "vi har betalat" — men aldrig `paidRefs`.
   Uppdelningen ÄR skyddet: `paidRefs` står medvetet inte i anmälarens
