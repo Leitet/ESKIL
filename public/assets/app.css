@@ -1068,3 +1068,23 @@ table.t tr.sf-row.park-row td {
   background: var(--scout-blue-100); color: var(--scout-blue);
   font-size: 12px; font-weight: 800;
 }
+
+/* Startklar-panelen på tävlingsöversikten. */
+.startklar-ok {
+  border-left: 4px solid var(--spaer-green);
+  color: var(--fg2); font-size: 14.5px;
+  margin-bottom: var(--sp-5);
+}
+.startklar-panel { border-left: 4px solid var(--avent-orange); margin-bottom: var(--sp-5); }
+.startklar-rad {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 9px 2px;
+  border-top: 1px solid var(--border);
+  color: var(--fg); text-decoration: none;
+  font-size: 14.5px; line-height: 1.45;
+}
+.startklar-rad:hover { color: var(--scout-blue); }
+.startklar-prick {
+  width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
+  background: var(--avent-orange); position: relative; top: -1px;
+}

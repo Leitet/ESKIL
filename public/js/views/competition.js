@@ -1,5 +1,6 @@
 import { layout, setTopbarCompetition } from '../app.js';
-import { getCompetition, listPatrols, listControls, migrateCompetitionAccess } from '../store.js';
+import { getCompetition, listPatrols, listControls, getControlMeta, migrateCompetitionAccess } from '../store.js';
+import { startklarChecks } from '../startklar.js';
 import { escapeHtml, formatDate, activeManagement, isCompAdminUser } from '../utils.js';
 import { compTabs, compCrumbs, setDocTitle } from '../nav.js';
 
@@ -46,6 +47,8 @@ export async function renderCompetition(app, user, cid) {
     </div>
 
     ${compTabs(cid, 'oversikt', comp, user)}
+
+    <div id="startklar"></div>
 
     <div class="kpi-row">
       <div class="kpi"><div class="k-label">Patruller</div><div class="k-value">${patrols.length}</div></div>
@@ -105,6 +108,42 @@ export async function renderCompetition(app, user, cid) {
     </div>
   `;
 
+  if (isAdmin && !comp.closed && !comp.demo) {
+    renderStartklar(wrap.querySelector('#startklar'), comp, cid, controls, patrols)
+      .catch(() => { /* panelen är en bonus — översikten står ändå */ });
+  }
+}
+
+// Startklar-panelen: härledda förkontroller (startklar.js) med direktlänkar.
+// Bara för admins på en levande tävling — en avslutad eller demo behöver
+// ingen packlista. Grön enradare när allt är grönt; annars listas varje
+// avvikelse med länk till fliken där den rättas.
+async function renderStartklar(host, comp, cid, controls, patrols) {
+  let metas = null;
+  try { metas = await Promise.all(controls.map(c => getControlMeta(cid, c.id).catch(() => ({})))); }
+  catch { /* medlem utan meta-läsning — telefonkollen hoppar över sig */ }
+  const checks = startklarChecks(comp, controls, patrols, metas);
+  const varningar = checks.filter(c => c.status === 'varning');
+  const flikHref = { controls: `/app/c/${cid}/controls`, patrols: `/app/c/${cid}/patrols`, settings: `/app/c/${cid}/settings` };
+
+  if (!varningar.length) {
+    host.innerHTML = `
+      <div class="card startklar-ok">
+        ${'✓'} <strong>Startklar</strong> — inga avvikelser i förkontrollen
+        (position, nummerserie, telefon, start/mål, startordning).
+      </div>`;
+    return;
+  }
+  host.innerHTML = `
+    <div class="card startklar-panel">
+      <h3 class="t-h3" style="margin-top:0;">Inför tävlingsdagen — ${varningar.length} sak${varningar.length === 1 ? '' : 'er'} att titta på</h3>
+      <p class="muted t-sm" style="margin:-4px 0 10px;">Härlett ur det som redan är upplagt. Rätta gärna innan tävlingsdagen — varje rad länkar dit den fixas.</p>
+      ${varningar.map(v => `
+        <a class="startklar-rad" href="${flikHref[v.flik] || flikHref.settings}" data-link>
+          <span class="startklar-prick"></span>
+          <span>${escapeHtml(v.text)}</span>
+        </a>`).join('')}
+    </div>`;
 }
 
 function row(label, value) {

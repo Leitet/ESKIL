@@ -926,3 +926,76 @@ describe('Offline-kön: förlegad flush får inte skriva över en rättelse', ()
     rensa();
   });
 });
+
+import { startklarChecks } from '../public/js/startklar.js';
+
+describe('Startklar-förkontrollen', () => {
+  const helComp = {
+    date: '2026-10-04',
+    startTimes: { enabled: true, firstStart: '09:00', intervalMinutes: 5 },
+    startFinish: { enabled: true, lat: 58.4, lng: 15.6 }
+  };
+  const helaKontroller = [
+    { id: 'a', nummer: 1, name: 'Elden', lat: 58.4, lng: 15.6 },
+    { id: 'b', nummer: 2, name: 'Knopar', lat: 58.41, lng: 15.61 }
+  ];
+  const helaPatruller = [
+    { id: 'p1', number: 1, name: 'Rävarna', startOrder: 0 },
+    { id: 'p2', number: 2, name: 'Ugglorna', startOrder: 1 }
+  ];
+  const varningar = (checks) => checks.filter(c => c.status === 'varning').map(c => c.id);
+
+  test('en komplett tävling får inga varningar', () => {
+    const v = varningar(startklarChecks(helComp, helaKontroller, helaPatruller, [{ telefon: '070' }, { telefon: '070' }]));
+    assert.deepEqual(v, []);
+  });
+
+  test('kontroll utan position flaggas', () => {
+    const v = varningar(startklarChecks(helComp, [{ id: 'a', nummer: 1, name: 'Utan' }], helaPatruller));
+    assert.ok(v.includes('position'));
+  });
+
+  test('hål och dubbletter i nummerserien flaggas', () => {
+    const hål = startklarChecks(helComp, [
+      { nummer: 1, lat: 1, lng: 1 }, { nummer: 3, lat: 1, lng: 1 }
+    ], helaPatruller);
+    assert.ok(varningar(hål).includes('nummer-hal'));
+    const dubbel = startklarChecks(helComp, [
+      { nummer: 2, lat: 1, lng: 1 }, { nummer: 2, lat: 1, lng: 1 }
+    ], helaPatruller);
+    assert.ok(varningar(dubbel).includes('nummer-dubblett'));
+  });
+
+  test('saknad telefon flaggas bara när metas skickats med', () => {
+    const utan = startklarChecks(helComp, helaKontroller, helaPatruller, [{ telefon: '070' }, {}]);
+    assert.ok(varningar(utan).includes('telefon'));
+    const utanMetas = startklarChecks(helComp, helaKontroller, helaPatruller, null);
+    assert.ok(!varningar(utanMetas).includes('telefon'), 'ingen meta-läsning → ingen falsk varning');
+  });
+
+  test('start/mål och starttider och datum flaggas när de saknas', () => {
+    const v = varningar(startklarChecks({}, helaKontroller, helaPatruller));
+    assert.ok(v.includes('startmal'));
+    assert.ok(v.includes('starttider'));
+    assert.ok(v.includes('datum'));
+  });
+
+  test('patrull utan startordning flaggas — men utgångna undantas', () => {
+    const v = varningar(startklarChecks(helComp, helaKontroller, [
+      { id: 'p1', number: 1, startOrder: 0 },
+      { id: 'p2', number: 2 },                       // saknar ordning → flagga
+      { id: 'p3', number: 3, utgatt: { at: 'x' } }   // utgått → ok
+    ]));
+    assert.ok(v.includes('startordning'));
+    const utanUtgatt = startklarChecks(helComp, helaKontroller, [
+      { id: 'p1', number: 1, startOrder: 0 },
+      { id: 'p3', number: 3, utgatt: { at: 'x' } }
+    ]);
+    assert.ok(!varningar(utanUtgatt).includes('startordning'));
+  });
+
+  test('startOrder 0 är en giltig ordning (falsy-fällan)', () => {
+    const v = varningar(startklarChecks(helComp, helaKontroller, [{ id: 'p1', number: 1, startOrder: 0 }]));
+    assert.ok(!v.includes('startordning'), 'första startplatsen är 0 — inte "saknas"');
+  });
+});
