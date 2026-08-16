@@ -12,7 +12,7 @@ import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import {
   getCompetition, listPatrols, listStations, createStation, watchPassages, watchSelfPassages, clearSelfPassage,
   watchControls, watchScoresForControl, getTrack, getControlMeta, watchControlBeacon,
-  updateCompetition, updateControl, setPatrolUtgatt
+  updateCompetition, updateControl, setPatrolUtgatt, createBroadcastMessage
 } from '../store.js';
 import { deleteField } from '../firebase.js';
 import { compPlaces, placeKind, drawPlaces } from '../places.js';
@@ -22,6 +22,7 @@ import {
   isCompAdminUser, withBusy, confirmDialog, promptDialog, startFinishPoints
 } from '../utils.js';
 import { solnedgang } from '../sol.js';
+import { hamtaVader, vaderMeddelande } from '../vader.js';
 import { ensureLeaflet } from '../leaflet.js';
 import { renderQrToImg } from '../pdf.js';
 import { icon } from '../icons.js';
@@ -58,6 +59,7 @@ export async function renderLaget(app, user, cid) {
 
   let patrols = [];
   let controls = [];
+  let vaderHamtat = false;   // prognosen hämtas en gång per sidladdning
   // Start och mål kan komma från tre håll: start/mål-stationens av-
   // prickningar, patrullens egna knappar på startkortet, och — om tävlingen
   // slagit på det — en målgång HÄRLEDD ur sista kontrollrapporten. Råformerna
@@ -129,6 +131,7 @@ export async function renderLaget(app, user, cid) {
     <div id="station-card"></div>
     <div class="kpi-row" id="kpis"></div>
     <div id="tidslinje"></div>
+    <div id="vader"></div>
 
     <div class="grid" style="grid-template-columns:1fr;gap:var(--sp-6);">
       <div>
@@ -457,6 +460,51 @@ export async function renderLaget(app, user, cid) {
     return `<span class="t-sm mono" style="white-space:nowrap;${farg}" title="${escapeHtml(titel)}">${delar.join(' · ')}</span>`;
   }
 
+  // Väderkortet. Åska är kritisk och får en knapp som FÖRIFYLLER ett
+  // driftmeddelande — ledningen skickar det själv. Ett automatiskt utskick vid
+  // varje prognosryck är precis det som får folk att sluta läsa meddelanden.
+  function ritaVader(host, v) {
+    // Bara ikonnamn som FINNS i icons.js — en saknad symbol renderar tomt.
+    const ikon = v.varsta === 'kritisk' ? 'triangle-alert' : v.varsta === 'varning' ? 'droplet' : 'sun';
+    const klass = v.varsta === 'kritisk' ? ' is-kritisk' : v.varsta === 'varning' ? ' is-varning' : '';
+    host.innerHTML = `
+      <div class="card vader${klass}">
+        <div class="vader-huvud">
+          ${icon(ikon, { size: 18 })}
+          <h3>Vädret på banan</h3>
+          <span class="muted t-sm">kommande dygnet</span>
+        </div>
+        ${v.larm.length
+          ? `<ul class="vader-larm">${v.larm.map(l =>
+              `<li class="vader-${escapeHtml(l.niva)}"><strong>${escapeHtml(l.rubrik)}</strong> ${escapeHtml(l.text)}</li>`
+            ).join('')}</ul>`
+          : '<p class="muted t-sm" style="margin:6px 0 0;">Inget oväder i prognosen — regn under 5 mm och byvindar under 15 m/s.</p>'}
+        <div class="vader-fot muted t-sm">
+          Nederbörd ${v.regnMm} mm · byvind upp till ${v.maxByMs} m/s · prognos från Open-Meteo
+        </div>
+        ${v.aska ? '<button class="btn btn-primary" id="vader-msg" style="margin-top:10px;">Förbered meddelande till fältet</button>' : ''}
+      </div>`;
+
+    host.querySelector('#vader-msg')?.addEventListener('click', (e) => withBusy(e.currentTarget, 'Skickar…', async () => {
+      const text = vaderMeddelande(v);
+      if (!text) return;
+      const ok = await confirmDialog({
+        title: 'Skicka åskvarning till fältet?',
+        body: `Går som KRITISKT meddelande till alla kontroller och alla patrullers startkort — med ljud och vibration.\n\n"${text}"`,
+        confirmLabel: 'Skicka', danger: true
+      });
+      if (!ok) return;
+      try {
+        await createBroadcastMessage(cid, {
+          text, level: 'kritisk',
+          target: { kontroller: true, patruller: true, publikt: false },
+          requireAck: true
+        });
+        toast('Åskvarningen är skickad', 'success');
+      } catch (err) { toast('Kunde inte skicka: ' + (err?.message || err), 'error'); }
+    }));
+  }
+
   // --- Render ------------------------------------------------------------------
   function renderStats() {
     if (!wrap.isConnected) return;
@@ -482,6 +530,26 @@ export async function renderLaget(app, user, cid) {
         <div class="k-value" style="${warns.length ? 'color:var(--utm-pink);' : ''}">${warns.length}</div>
       </div>
     `;
+
+    // --- Väder ---------------------------------------------------------------
+    // Åska upptäcks annars genom fönstret, och den som står på en kontroll har
+    // inget fönster. Hämtas EN gång per sidladdning — renderStats kör var 30:e
+    // sekund och vid varje snapshot, och därifrån hade det blivit hundratals
+    // anrop mot en gratistjänst under en tävlingsdag.
+    if (!vaderHamtat) {
+      vaderHamtat = true;
+      (async () => {
+        const sf = startFinishPoints(comp)[0]
+          || controls.find(c => Number.isFinite(c.lat) && Number.isFinite(c.lng));
+        if (!sf) return;
+        const v = await hamtaVader(sf.lat, sf.lng);
+        const host = wrap.querySelector('#vader');
+        // Tyst degradering: utan svar visas inget kort alls. En tävlingsdag
+        // får aldrig hänga på en utomstående tjänst.
+        if (!v || !host || !wrap.isConnected) return;
+        ritaVader(host, v);
+      })();
+    }
 
     // --- Dagens tidslinje -----------------------------------------------------
     // Svaret på tävlingsledarens två klockfrågor: "hinner vi prisutdelningen?"

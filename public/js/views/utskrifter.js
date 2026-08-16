@@ -18,6 +18,7 @@ import { icon } from '../icons.js';
 import { downloadFieldPackPdf, downloadManualStartPdf } from '../pdf.js';
 import { downloadResultsPdf, attachTrackStats } from '../results-export.js';
 import { help } from '../help.js';
+import { layout, setTopbarCompetition } from '../app.js';
 
 // Avbockningen lever i localStorage per tävling: den handlar om FYSISKA
 // högar papper på ett bord, inte om data, och ska inte skrivas till Firestore
@@ -33,19 +34,27 @@ const sparaBockar = (cid, set) => {
 
 export async function renderUtskrifter(app, user, cid) {
   setDocTitle('Utskrifter');
-  app.innerHTML = '<div class="loading">Laddar…</div>';
+  // Vyn bygger i ett eget element och lämnar över till layout(), precis som
+  // övriga admin-vyer. Skriver man rakt i app.innerHTML hoppar man över topbar,
+  // sidmarginaler och sidfot — sidan ser då ut att tillhöra en annan app.
+  const wrap = document.createElement('div');
+  wrap.innerHTML = '<div class="muted">Laddar…</div>';
+  layout(wrap);
 
   let comp, patrols, controls, track;
   try {
     comp = await getCompetition(cid);
-    if (!comp) { app.innerHTML = '<div class="empty"><h3>Tävlingen hittades inte</h3></div>'; return; }
+    if (!wrap.isConnected) return;   // navigerade bort medan vi laddade
+    if (!comp) { wrap.innerHTML = '<div class="empty"><h3>Tävlingen hittades inte</h3></div>'; return; }
     [patrols, controls, track] = await Promise.all([
       listPatrols(cid), listControls(cid), getTrack(cid).catch(() => null)
     ]);
   } catch (e) {
-    app.innerHTML = `<div class="empty"><h3>Kunde inte ladda</h3><p>${escapeHtml(e.message)}</p></div>`;
+    wrap.innerHTML = `<div class="empty"><h3>Kunde inte ladda</h3><p>${escapeHtml(e.message)}</p></div>`;
     return;
   }
+  if (!wrap.isConnected) return;
+  setTopbarCompetition(cid, comp, user);
 
   const isAdmin = isCompAdminUser(comp, user);
   const bockar = lasBockar(cid);
@@ -106,7 +115,7 @@ export async function renderUtskrifter(app, user, cid) {
     }
   ];
 
-  app.innerHTML = `
+  wrap.innerHTML = `
     ${compCrumbs(cid, comp, 'Utskrifter')}
     ${compTabs(cid, 'utskrifter', comp, user)}
 
@@ -159,27 +168,27 @@ export async function renderUtskrifter(app, user, cid) {
   `;
 
   // Nedladdningarna — samma funktioner som de ursprungliga flikarna anropar.
-  app.querySelectorAll('[data-kor]').forEach(btn => {
+  wrap.querySelectorAll('[data-kor]').forEach(btn => {
     const post = poster.find(p => p.id === btn.dataset.kor);
     btn.addEventListener('click', () => withBusy(btn, 'Skapar…', async () => {
       try {
         await post.kor(btn);
         // Bocka av automatiskt: den som just laddat ner har gjort momentet.
         const b = lasBockar(cid); b.add(post.id); sparaBockar(cid, b);
-        app.querySelector(`[data-bock="${post.id}"]`).checked = true;
-        app.querySelector(`[data-post="${post.id}"]`)?.classList.add('is-klar');
+        wrap.querySelector(`[data-bock="${post.id}"]`).checked = true;
+        wrap.querySelector(`[data-post="${post.id}"]`)?.classList.add('is-klar');
       } catch (e) {
         toast('Kunde inte skapa PDF:en: ' + (e?.message || e), 'error');
       }
     }));
   });
 
-  app.querySelectorAll('[data-bock]').forEach(cb => {
+  wrap.querySelectorAll('[data-bock]').forEach(cb => {
     cb.addEventListener('change', () => {
       const b = lasBockar(cid);
       if (cb.checked) b.add(cb.dataset.bock); else b.delete(cb.dataset.bock);
       sparaBockar(cid, b);
-      app.querySelector(`[data-post="${cb.dataset.bock}"]`)?.classList.toggle('is-klar', cb.checked);
+      wrap.querySelector(`[data-post="${cb.dataset.bock}"]`)?.classList.toggle('is-klar', cb.checked);
     });
   });
 }

@@ -1121,3 +1121,18 @@ table.t tr.sf-row.park-row td {
   .utskrift-knapp { width: 100%; }
   .utskrift-knapp .btn { width: 100%; }
 }
+
+/* --- Väderkortet i Läget -------------------------------------------------- */
+.vader.is-varning { border-left: 4px solid var(--avent-orange); }
+.vader.is-kritisk { border-left: 4px solid var(--utm-pink); }
+.vader-huvud { display: flex; align-items: center; gap: 8px; }
+.vader-huvud h3 { margin: 0; }
+.vader-huvud .lucide { flex: none; }
+.vader.is-kritisk .vader-huvud .lucide { color: var(--utm-pink); }
+.vader.is-varning .vader-huvud .lucide { color: var(--avent-orange); }
+.vader-larm { list-style: none; padding: 0; margin: 10px 0 0; }
+.vader-larm li { padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+.vader-larm li:last-child { border-bottom: 0; }
+.vader-kritisk strong { color: var(--utm-pink); }
+.vader-varning strong { color: var(--avent-orange); }
+.vader-fot { margin-top: 8px; }

@@ -16,6 +16,7 @@ import {
   publicNotices, anslagSynlig, isPaymentPaid, isPaymentClaimed, paymentClaimAt
 } from '../public/js/utils.js';
 import { hasIcon } from '../public/js/icons.js';
+import { tolkaVader, vaderMeddelande, BY_VARNING_MS } from '../public/js/vader.js';
 import { AVD_FÄRG, textPå, accentMotBlått, hjälte } from '../public/js/share-card.js';
 
 // WCAG-kontrast — testets egen räknare, så det inte mäter med samma kod som
@@ -1321,5 +1322,87 @@ describe('betalningspåstående', () => {
     assert.equal(isPaymentClaimed({ paymentClaims: [null] }, p), false);
     assert.equal(isPaymentClaimed({ paymentClaims: [{ reference: 'AH26-1' }] }, null), false);
     assert.equal(paymentClaimAt({}, p), null);
+  });
+});
+
+// --- Väder ---------------------------------------------------------------------
+// Tolkningen är ren och testas utan nät. Den enda extern-beroende delen
+// (hamtaVader) svarar null vid ALLA fel — en tävlingsdag får inte hänga på en
+// utomstående tjänst.
+describe('tolkaVader', () => {
+  const NU = new Date('2026-08-16T08:00:00');
+  // Open-Meteo svarar med LOKAL tid utan zonsuffix när timezone anges
+  // ("2026-08-16T09:00"). toISOString() hade konverterat till UTC och gjort
+  // testdatan två timmar fel — produktionskoden parsar strängen som lokal.
+  const pad = (n) => String(n).padStart(2, '0');
+  const timmar = (n) => Array.from({ length: n }, (_, i) =>
+    `2026-08-16T${pad(8 + i)}:00`);
+  const bygg = ({ kod = [], regn = [], by = [], n = 6 } = {}) => ({
+    hourly: {
+      time: timmar(n),
+      weather_code: Array.from({ length: n }, (_, i) => kod[i] ?? 0),
+      precipitation: Array.from({ length: n }, (_, i) => regn[i] ?? 0),
+      wind_gusts_10m: Array.from({ length: n }, (_, i) => by[i] ?? 3)
+    }
+  });
+
+  test('utan underlag finns ingen panel — inte ett tomt kort', () => {
+    assert.equal(tolkaVader(null, NU), null);
+    assert.equal(tolkaVader({}, NU), null);
+    assert.equal(tolkaVader({ hourly: { time: [] } }, NU), null);
+  });
+
+  test('lugnt väder ger inga larm', () => {
+    const v = tolkaVader(bygg(), NU);
+    assert.equal(v.varsta, 'lugnt');
+    assert.deepEqual(v.larm, []);
+    assert.equal(v.aska, false);
+  });
+
+  test('åska är kritisk och bär klockslaget', () => {
+    const v = tolkaVader(bygg({ kod: [0, 0, 95] }), NU);
+    assert.equal(v.aska, true);
+    assert.equal(v.varsta, 'kritisk');
+    assert.equal(v.larm[0].niva, 'kritisk');
+    assert.match(v.larm[0].text, /kl 10:00/);
+  });
+
+  test('åska med hagel räknas också som åska', () => {
+    for (const k of [95, 96, 99]) {
+      assert.equal(tolkaVader(bygg({ kod: [k] }), NU).aska, true, 'kod ' + k);
+    }
+    assert.equal(tolkaVader(bygg({ kod: [80] }), NU).aska, false, 'skur är inte åska');
+  });
+
+  test('byvind larmar först vid tröskeln — enheten är m/s', () => {
+    // Open-Meteo svarar i km/h som standard. Hade vi läst 14 km/h som m/s
+    // skulle en normal bris larma varje dag.
+    assert.equal(tolkaVader(bygg({ by: [BY_VARNING_MS - 1] }), NU).larm.length, 0);
+    const v = tolkaVader(bygg({ by: [BY_VARNING_MS + 2] }), NU);
+    assert.equal(v.larm[0].rubrik, 'Kraftiga vindbyar');
+    assert.equal(v.varsta, 'varning');
+  });
+
+  test('en åska som redan passerat larmar inte igen', () => {
+    // Åskan låg kl 08. Kl 12 är den över och ska inte längre stå som "väntas"
+    // — annars larmar panelen resten av dagen om något som varit.
+    const v = tolkaVader(bygg({ kod: [95] }), new Date('2026-08-16T12:00:00'));
+    assert.equal(v.aska, false);
+    assert.equal(v.varsta, 'lugnt');
+    // ...men samma data kl 08 ger larm.
+    assert.equal(tolkaVader(bygg({ kod: [95] }), NU).aska, true);
+  });
+
+  test('ligger hela prognosen bakåt finns inget att visa', () => {
+    const v = tolkaVader(bygg({ kod: [95] }), new Date('2026-08-17T09:00:00'));
+    assert.equal(v, null);
+  });
+
+  test('meddelandet förifylls bara vid åska', () => {
+    assert.equal(vaderMeddelande(tolkaVader(bygg(), NU)), null);
+    assert.equal(vaderMeddelande(null), null);
+    const m = vaderMeddelande(tolkaVader(bygg({ kod: [0, 95] }), NU));
+    assert.match(m, /Åska väntas från cirka kl 09:00/);
+    assert.match(m, /enstaka träd/);
   });
 });
