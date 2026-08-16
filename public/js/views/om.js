@@ -3,6 +3,10 @@
 // Biografin är Johans egna uppgifter, ordagrant det han lämnat. Lägg inte till
 // meriter, årtal eller kårnamn som inte står här: det är en presentation av en
 // verklig person, och den ska stämma.
+//
+// Den ska inte heller DRA SLUTSATSER åt läsaren. En tidigare version knöt ihop
+// meriterna med produkten ("rapportsidan fungerar utan täckning för att jag
+// stått på kontrollerna") — sant, men på näsan. Fakta står, läsaren kopplar.
 
 import { publikHeader, publikFooter } from '../publik-nav.js';
 import { icon } from '../icons.js';
@@ -39,21 +43,19 @@ export function renderOm(app, user) {
           </figure>
           <div class="om-bio-text">
             <h3 class="om-namn">Johan Leitet</h3>
-            <p class="om-roll">Scoutledare och utvecklare — bygger ESKIL på fritiden.</p>
+            <p class="om-roll">Scoutledare och utvecklare.</p>
 
             <p>Jag har varit ledare för spårare, upptäckare och äventyrare. Tävlingsledare
             för DM, suttit i sekretariatet på Älghornsjakter, stått på otaliga kontroller
             och varit kassör i många år.</p>
 
-            <p>Vid sidan av scouterna har jag utvecklat programvara i snart fyrtio år.
-            Jag har arbetat som universitetsadjunkt inom datavetenskap med inriktning mot
-            att bygga webbaserade system och mot datorsäkerhet och integritetsfrågor.
-            I dag är jag egenföretagare inom förnybar energi.</p>
+            <p>Till vardags har jag utvecklat programvara i snart fyrtio år. Jag har
+            arbetat som universitetsadjunkt inom datavetenskap med inriktning mot att bygga
+            webbaserade system och mot datorsäkerhet och integritetsfrågor. I dag är jag
+            nyföretagare med eget bolag inom förnybar energi.</p>
 
-            <p>Det märks i ESKIL: rapportsidan fungerar utan täckning för att jag stått
-            på kontrollerna, anmälan räknar ut referenserna för att jag varit kassör, och
-            personuppgifterna gallras när tävlingen avslutas för att det är den delen av
-            datavetenskapen jag undervisat i.</p>
+            <p>Jag poddar också om generativ AI i
+            <a href="https://generativet.se" target="_blank" rel="noopener">Generativet</a>.</p>
           </div>
         </div>
       </section>
