@@ -99,6 +99,21 @@ Email extension). Production domain: https://eskilscout.se.
   `--field-top` (report.css) är summan av båda — sticky-remsor och
   `scroll-padding-top` måste utgå från den, annars hamnar det de scrollar
   fram under headern.
+- **Systemnotiser går ALLTID via service workern** (`showSystemNotification`
+  i broadcast.js, som äger notisplumbingen). Android Chrome KASTAR på
+  `new Notification()` — där finns bara `registration.showNotification()`. /t:s
+  favoritnotiser hade en egen konstruktor och nådde därför aldrig en enda
+  förälder på Android; t.html laddar nu också `sw-register.js`, annars finns
+  ingen registration att fråga. Notiser seedas dessutom på första SERVER-
+  snapshoten (`snap.metadata.fromCache`), inte första snapshoten: den första
+  kommer ur den lokala cachen och kan vara tom, och då levererades hela dagens
+  avprickningar som "nya".
+- **Fritext från fältet renderas med `linkifyText()`** (utils.js, testad), inte
+  `escapeHtml()`. Nödropet bär en kartlänk till patrullens position, och i
+  ledningens inkorg stod den som text man fick markera och klistra in för hand
+  — precis när minuterna räknas. Escapningen görs styckvis så att `&` i URL:en
+  inte förvanskas, och regexen tar bara http/https (aldrig `javascript:`).
+  Behållaren måste ha `white-space: pre-wrap` — nödropet är tre rader.
 - **Återkoppling: toast eller notis i bladet.** `toast()` (utils.js, admin +
   publika sidor) skapar sin egen `.toast-wrap` om sidan saknar `#toasts` —
   utan wrapen blir toasten ett statiskt block sist i dokumentet och syns
@@ -184,6 +199,15 @@ See `README.md` for the layout — every file there is load-bearing.
   (store.isSlugTaken — also against existing doc ids, which shadow slugs).
   Never change a slug after creation — printed QR codes and references
   depend on it.
+  **`parsePath()` ger det RÅA segmentet — aldrig det upplösta id:t.** Nås en
+  sida via kortadressen (`/s/ah26/<patrolId>` är NORMALVÄGEN från
+  tävlingssidan) är segmentet slugen. Sidor som löser upp den måste hålla det
+  upplösta id:t i EN variabel som skrivvägarna läser (`start.js` har `cid` på
+  modulnivå); räknar en render-funktion om `parsePath().cid` skriver den på
+  slugen. Verifierat i emulatorn: en sådan skrivning NEKAS inte — den skapar
+  ett föräldralöst dokumentträd under en tävling som inte finns, och avsändaren
+  får "skickat". Ett nödrop försvann så. Endast VISNINGSlänkar (`/t/<slug>`)
+  ska använda det råa segmentet.
 
 ## Who may create a competition
 
@@ -229,6 +253,18 @@ meddelanden från länken: det stänger både tjatet och möjligheten att använ
 en läckt länk för att mata ut notismail. Ett skickat meddelande går varken att
 ändra eller radera — det ligger redan i någons inkorg. Alla sju guards är
 mutationsverifierade i `test/rules.test.js`.
+
+## Backup och radering hänger ihop
+
+Raderingsskyddet KRÄVER en färsk backup, så backupen avgör vad som går att få
+tillbaka — allt `deleteCompetition` sveper måste finnas i `dumpCompetition`.
+BACKUP_VERSION 3 bär `selfPassages` och överlämningsdokumentet; importen
+skriver tillbaka båda med samma doc-id (rundturstestat). `deleteCompetition`
+sveper varje subkollektion appen skriver, inklusive tävlingens EGNA
+`private/`-dokument — `private/access` bär adminEmails/userEmails/
+ekonomiEmails, och personuppgift kvar efter "radera tävlingen" är precis det
+raderingen ska göra slut på. Lägger du till en subkollektion: lägg till den på
+BÅDA ställena.
 
 ## Firestore rules model
 
@@ -352,6 +388,20 @@ mutationsverifierade i `test/rules.test.js`.
   −12 h…+2 min of `request.time`; that start can't be confirmed before the
   patrol's start time, and finish not before the last control, is UI-level —
   rules can compute neither startOrder × interval nor read every score doc.
+- `.../controls/{ctrlId}/beacon/{enhetsId}` — **kontrollens livstecken**, EN
+  doc per telefon (id:t slumpas till localStorage `eskil-enhet`). Delad
+  `status`-doc gick inte: en kontroll bemannas ofta av två telefoner och den
+  friska skrev över den döende, så Läget lyste grönt medan batteriet som
+  faktiskt rapporterade gick mot noll. `mergeBeacons()` (utils.js, testad)
+  slår ihop dem: senaste `at` vinner, men batteriet är det LÄGSTA bland
+  enheter hörda senaste kvarten, och kön den största. `at` är klient-tid men
+  TIDSBUNDEN i reglerna (−12 h…+2 min) — annars kunde den som har den hemliga
+  länken skriva ett `at` långt fram och få kontrollen att se vaken ut för
+  alltid. Skrivningen är strypt till 1/min (utan strypning: 200 väckningar ×
+  30 kontroller ≈ 44 % av dygnskvoten bara för hjärtslag) och `pagehide`/
+  `pageshow` är ett PAR — utan andra halvan dog intervallet vid första
+  app-växlingen. I Läget är TYSTNAD dämpad, inte röd: en låst telefon är
+  normalt, och en kolumn som är rosa för varje kontroll slutar man läsa.
 - **Målgång har tre källor**, merged in Läget (`mergePassages`, called from
   `renderStats` because the derived one depends on score data):
   1. the start/finish station's check-in (`passages`),

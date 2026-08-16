@@ -6,6 +6,29 @@ tre: **åtgärdat & driftsatt**, **manuella konsolsteg som återstår** och
 
 ## Åtgärdat och driftsatt
 
+- **Kontrollens livstecken kan inte förfalskas till evig tystnad.** `at` är
+  klient-tid (så ett offline-buffrat livstecken bär rätt tidpunkt) men
+  TIDSBUNDEN i reglerna: −12 h…+2 min mot `request.time`. Utan spärren kunde
+  den som har den hemliga kontroll-länken skriva ett `at` långt fram i tiden —
+  kontrollen skulle för evigt se ut att just ha hörts av, och Läget skulle
+  aldrig visa att den tystnat. Doc-id:t är per enhet med ett tak på 64 tecken.
+  Läsning är member-only: ack- och beacondokument bär station- och
+  kontroll-id:n som ÄR hemligheten. Båda vakterna mutationsverifierade.
+- **Nödropet från startkortet skrevs på kortadressen.** `parsePath()` ger det
+  råa URL-segmentet; nås startkortet via `/s/<slug>/<patrolId>` var det
+  slugen. Firestore NEKAR inte en sådan skrivning — den skapar ett
+  föräldralöst dokumentträd under en tävling som inte finns, patrullen får
+  "skickat" och ledningen ser aldrig nödropet. Samma fel träffade
+  självbekräftad start/mål. Se slug-bulleten i CLAUDE.md.
+- **Fritext från fältet linkifieras, inte bara escapas.** `linkifyText()`
+  escapar styckvis (så `&` i en URL inte förvanskas) och gör bara http/https
+  till ankare — `javascript:` förblir text. Regressionstestat.
+- **En "raderad" tävling lämnade personuppgifter kvar.** `deleteCompetition`
+  missade tävlingens egna `private/`-dokument, där `private/access` bär
+  adminEmails/userEmails/ekonomiEmails, plus `selfPassages`,
+  `stations/*/passages`, `track`, `utskick` och kontrollernas `beacon`.
+  Verifierat: efter en radering finns inget föräldralöst kvar.
+
 - **Säkerhetsheaders (CSP, X-Frame-Options, nosniff, Referrer-Policy,
   Permissions-Policy)** i `firebase.json`. `script-src` är låst till self +
   gstatic/jsdelivr/unpkg/cdnjs; inga inline-script (läge-boot och
