@@ -103,7 +103,7 @@ function komIgang() {
   ];
   return `
     <div class="pub-section-head"><h2 class="t-h2">Så kommer ni igång</h2>
-      <span class="muted">Tre steg — och det kostar ingenting</span></div>
+      <span class="muted">Tre steg</span></div>
     <div class="landing-steg">
       ${steg.map(([rubrik, text], i) => `
         <div class="landing-steg-kort">
@@ -113,9 +113,10 @@ function komIgang() {
         </div>`).join('')}
     </div>
     <div class="landing-kostnad">
-      <p><strong>Vad kostar det?</strong> Ingenting. ESKIL drivs av scouter och körs inom
-      Google Firebase gratisnivå — den enda kostnaden är utskicken av e-post, som ryms i samma
-      budget. Det finns ingen licens, inget abonnemang och ingen uppsägningstid.</p>
+      <p><strong>Vad kostar det?</strong> Ingenting i dag. Det finns ingen licens, inget
+      abonnemang och ingen uppsägningstid. Skulle användningen växa så att kostnaderna drar
+      iväg kan det behöva finnas en modell som ger kostnadstäckning — men så ser det inte ut
+      nu, och i så fall sägs det i förväg.</p>
       <p class="t-sm" style="margin:var(--sp-3) 0 0;">Er data är er. Ladda ner hela tävlingen som
       en fil när ni vill. Kontaktuppgifter, allergier och fältets meddelanden raderas automatiskt
       när tävlingen avslutas — <a href="/integritet">så här hanteras personuppgifter</a>.</p>

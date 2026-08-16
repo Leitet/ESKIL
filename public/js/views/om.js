@@ -68,9 +68,11 @@ export function renderOm(app, user) {
 
       <section>
         <h2 class="t-h2">Vad det kostar</h2>
-        <p>Ingenting. ESKIL körs inom Google Firebase gratisnivå — den enda löpande kostnaden
-        är utskicken av e-post. Det finns ingen licens, inget abonnemang och ingen
-        uppsägningstid. Er data är er: hela tävlingen går att ladda ner som en fil när ni vill.</p>
+        <p>Ingenting i dag — och jag hoppas att det får förbli så.</p>
+        <p>Växer användningen så att kostnaderna drar iväg kan jag bli tvungen att hitta en
+        modell som åtminstone ger kostnadstäckning. Så ser det inte ut nu, och blir det
+        aktuellt säger jag det i förväg.</p>
+        <p>Er data är er oavsett. Hela tävlingen går att ladda ner som en fil när ni vill.</p>
       </section>
 
       <section>
