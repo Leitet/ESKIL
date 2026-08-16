@@ -347,7 +347,7 @@ async function main() {
         listControls(cid),
         getTrack(cid).catch(() => null),
         // Kalibrering: verkliga mellantider (inkl. köer) skärper fönstret
-        // så fort tre patruller passerat ett ben.
+        // så fort tre patruller passerat en sträcka.
         listAllScoresForEta(cid).catch(() => null)
       ]);
       const w = controlEtaWindow(comp, allControls, track, patrols, ctrlId, new Date(), allScores);

@@ -52,9 +52,9 @@ export async function renderTrack(app, user, cid) {
   const { nodes, legs } = courseLegs(comp, controls, stored);
 
   let speedKmh = SPEEDS.includes(stored && stored.speedKmh) ? stored.speedKmh : DEFAULT_SPEED;
-  // -1 = inget ben valt. Det är UTGÅNGSLÄGET: kartan är då inert (inga
+  // -1 = ingen sträcka vald. Det är UTGÅNGSLÄGET: kartan är då inert (inga
   // punkthandtag, ingen orange markering, klick gör ingenting) så spåret går
-  // att titta på och skärmdumpa i lugn och ro. Först när ett ben är valt
+  // att titta på och skärmdumpa i lugn och ro. Först när en sträcka är vald
   // blir kartan en rityta.
   let activeIdx = -1;
   let dirty = false;
@@ -86,8 +86,8 @@ export async function renderTrack(app, user, cid) {
     </div>
     <p class="muted t-sm" style="margin-top:8px;">
       ${canEdit
-        ? 'Välj ett ben i panelen eller klicka på dess linje. Klicka sedan i kartan för att lägga till punkter — nära linjen justeras spåret där du klickar, längre bort förlängs det från slutet. Dra punkter för att flytta, dubbelklicka för att ta bort. Klicka långt utanför benet eller tryck <kbd>Esc</kbd> för att avmarkera.'
-        : 'Skrivskyddad vy — endast administratörer kan ändra spåret. Klicka på ett ben för att lyfta fram det, i kartan utanför för att avmarkera.'}
+        ? 'Välj en sträcka i panelen eller klicka på dess linje. Klicka sedan i kartan för att lägga till punkter — nära linjen justeras spåret där du klickar, längre bort förlängs det från slutet. Dra punkter för att flytta, dubbelklicka för att ta bort. Klicka långt utanför sträckan eller tryck <kbd>Esc</kbd> för att avmarkera.'
+        : 'Skrivskyddad vy — endast administratörer kan ändra spåret. Klicka på en sträcka för att lyfta fram den, i kartan utanför för att avmarkera.'}
     </p>`}
   `;
 
@@ -131,7 +131,7 @@ export async function renderTrack(app, user, cid) {
   // Punkter läggs in DIREKT vid klick — ingen fördröjning. Tidigare väntade
   // varje klick 230 ms för att kunna ångras av en dubbelklickzoomning, vilket
   // dels gjorde ritandet trögt, dels svalde den första av två snabba klick.
-  // I stället stängs dubbelklickzoomen av så länge ett ben är valt (se
+  // I stället stängs dubbelklickzoomen av så länge en sträcka är vald (se
   // setActive): dubbelklick i kartan har ingen annan uppgift under ritning,
   // och zoom finns kvar på hjul, nyp och +/-.
   const polys = [];
@@ -207,11 +207,11 @@ export async function renderTrack(app, user, cid) {
   const nearestSegment = (leg, latlng) =>
     nearestSegmentIndex(legPixels(leg), map.latLngToLayerPoint(latlng));
 
-  // "Utanför benet" måste vara generöst tilltaget: en omväg runt ett kärr
+  // "Utanför sträckan" måste vara generöst tilltaget: en omväg runt ett kärr
   // ligger långt från fågelvägen men är fortfarande ritning, inte ett
   // felklick. Därför krävs BÅDE att klicket ligger utanför benets område
   // (ändpunkterna + redan ritade punkter, med marginal) OCH en bit från
-  // själva linjen innan vi tolkar det som "klar med benet".
+  // själva linjen innan vi tolkar det som "klar med sträckan".
   function isOutsideLeg(leg, latlng) {
     const s = map.getSize();
     const farFromLine = nearestSegment(leg, latlng).dist > Math.max(120, Math.min(s.x, s.y) / 3);
@@ -228,7 +228,7 @@ export async function renderTrack(app, user, cid) {
   map.on('click', (e) => {
     if (activeIdx < 0) return;                       // inget valt → kartan är inert
     const leg = legs[activeIdx];
-    // Klick långt utanför benet betyder "jag är klar med det här benet",
+    // Klick långt utanför sträckan betyder "jag är klar med den här sträckan",
     // inte "lägg en punkt hit ut".
     if (!canEdit || isOutsideLeg(leg, e.latlng)) { setActive(-1); return; }
     insertWaypoint(leg, e.latlng);
@@ -240,8 +240,8 @@ export async function renderTrack(app, user, cid) {
     // skulle bara krocka med punktutsättningen.
     if (canEdit && i >= 0) map.doubleClickZoom.disable();
     else map.doubleClickZoom.enable();
-    // Där två ben möts vid en kontroll överlappar träffytorna. Det valda
-    // benet ska vinna — annars byter man ben mitt i ritningen.
+    // Där två sträckor möts vid en kontroll överlappar träffytorna. Det valda
+    // sträckan ska vinna — annars byter man sträcka mitt i ritningen.
     if (i >= 0) hits[i].bringToFront();
     styleLegs();
     drawWaypoints();
@@ -296,7 +296,7 @@ export async function renderTrack(app, user, cid) {
         ${active ? '<button class="btn btn-ghost btn-sm" id="track-deselect">Avmarkera</button>' : ''}
         ${canEdit ? `
           <button class="btn btn-ghost btn-sm" id="track-undo" ${active && active.wps.length ? '' : 'disabled'}>Ångra punkt</button>
-          <button class="btn btn-ghost btn-sm" id="track-clear" ${active && active.wps.length ? '' : 'disabled'}>Rensa ben</button>
+          <button class="btn btn-ghost btn-sm" id="track-clear" ${active && active.wps.length ? '' : 'disabled'}>Rensa sträckan</button>
           <button class="btn btn-primary btn-sm" id="track-save" ${dirty ? '' : 'disabled'}>Spara spår</button>` : ''}
       </div>
     `;
@@ -304,7 +304,7 @@ export async function renderTrack(app, user, cid) {
     panel.querySelectorAll('[data-leg]').forEach(b => {
       b.addEventListener('click', () => {
         const i = Number(b.dataset.leg);
-        // Klick på ett redan valt ben stänger av markeringen — samma knapp,
+        // Klick på en redan vald sträcka stänger av markeringen — samma knapp,
         // fram och tillbaka.
         if (i === activeIdx) { setActive(-1); return; }
         setActive(i);

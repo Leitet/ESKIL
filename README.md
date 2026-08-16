@@ -123,16 +123,16 @@ att köra gratis på Spark-planen.
 - **Spårdragning** (flik "Spår") — rita spåret mellan kontrollerna på en stor
   karta (växla karta/satellit, fullskärmsläge). Bensekvensen härleds ur
   kontrollernas nummerordning (start → 1 → 2 → … → mål när start/mål är
-  konfigurerat); klick i kartan lägger punkter på det aktiva benet, punkterna
+  konfigurerat); klick i kartan lägger punkter på den aktiva sträckan, punkterna
   dras för att justera och tas bort med dubbelklick. Panelen visar längd och
-  gångtid per ben samt total spårlängd och beräknad vandringstid med valbart
+  gångtid per sträcka samt total spårlängd och beräknad vandringstid med valbart
   promenadtempo (3/4/5 km/h), exklusive och inklusive kontrolltid
   (5 min/kontroll). Ben utan ritade punkter räknas som fågelväg (streckad).
   Finns ett ritat spår används det alltid på alla kartor: offentliga sidan,
   startkortets översiktskarta (med chip "Spår X km · ca Y min gång") och
   Läget-kartan (dämpad bakgrundslinje). Delade hjälpare i `js/course.js`.
 - **Start och mål** sätts i kontrollistan, tillsammans med resten av banan —
-  de är banans ändpunkter (ETA:n räknar ben från dem, spåret hänger på dem).
+  de är banans ändpunkter (ETA:n räknar sträckor från dem, spåret hänger på dem).
   Normalt samma plats; "Målet ligger någon annanstans" ger ett eget mål med
   eget slutben.
 - **Platser** (Inställningar → Platser) — allt annat som ska pekas ut på
@@ -143,7 +143,7 @@ att köra gratis på Spark-planen.
   Noteringen visas publikt. Äldre tävlingars parkering följer med automatiskt.
   En plats kan också **ingå i spåret** — kryssa i det och välj vilken kontroll
   den passeras efter, så vävs den in i banan (Start → 1 → 2 → 3 → Matplats →
-  4) och spårdragningen får ett ben dit. Ange gärna hur länge patrullen står
+  4) och spårdragningen får en sträcka dit. Ange gärna hur länge patrullen står
   still där; tiden räknas in i banans totaltid och i ETA:n. Banplatser ger
   inga poäng och räknas aldrig som avklarade kontroller.
 - **Tävlingsområde** — per-tävlingsinställning (Inställningar → Regler & info:
@@ -181,7 +181,7 @@ att köra gratis på Spark-planen.
 - **Kopiera tävling till nästa år** (Inställningar → Grund) — skapar nästa
   års tävling från årets: kontroller (instruktioner, positioner,
   utslagsfrågor — nya hemliga rapportlänkar, facit/telefon/ansvariga
-  nollställda, allt stängt), spåret (ben-nycklarna mappas om till de nya
+  nollställda, allt stängt), spåret (sträck-nycklarna mappas om till de nya
   kontroll-id:na), inställningar, prismodell (anmälan avstängd med rensad
   period) och tävlingsledning. Patruller, poäng, anmälningar och användare
   kopieras inte; skaparen blir ensam admin.

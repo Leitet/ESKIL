@@ -2,7 +2,7 @@
 // tävling behöver peka ut på kartan.
 //
 // Start och mål ligger INTE här. De är banans ändpunkter: ETA-motorn räknar
-// ben från dem, spårdragningen hänger på dem och stationssidan checkar av mot
+// sträckor från dem, spårdragningen hänger på dem och stationssidan checkar av mot
 // dem. En plats är ren utmärkning på en karta och får aldrig blandas ihop med
 // bandata. Start/mål sätts därför i kontrollistan (se views/controls.js).
 //

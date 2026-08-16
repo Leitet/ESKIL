@@ -187,7 +187,7 @@ export async function renderControls(app, user, cid) {
       openStartFinishModal(btn.dataset.editSf);
     }));
     // Dela upp start och mål. Läget lagras i comp.startFinish.mode och styr
-    // banans sista ben — därför en uttrycklig handling, inte en dold flagga.
+    // banans sista sträcka — därför en uttrycklig handling, inte en dold flagga.
     tbl.querySelector('[data-split-sf]')?.addEventListener('click', async () => {
       const nytt = { ...(comp.startFinish || {}), mode: 'separate' };
       await updateCompetition(cid, { startFinish: nytt });

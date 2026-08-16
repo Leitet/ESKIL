@@ -145,7 +145,7 @@ async function main() {
 
   // ETA-motorn: "mål ca HH:MM" per patrull ute i skogen. Kalibrerad —
   // verkliga mellantider ur poängdatan (inkl. köer på kontrollerna)
-  // ersätter modellantagandet så fort tre patruller passerat ett ben.
+  // ersätter modellantagandet så fort tre patruller passerat en sträcka.
   // Poängen följs via onSnapshot (initial läsning + bara ändringar därefter
   // — ingen polling som dränerar läskvot och batteri); själva motorbygget
   // är en billig lokal beräkning som görs per render.
@@ -191,7 +191,7 @@ function rebuildEtaEngine() {
 
 // Beräknad målgång (ms-epok) för en patrull som är ute: ankrad i senaste
 // rapporterade kontrollen (positionsmedveten) eller faktisk starttid, plus
-// kvarvarande ben ur den kalibrerade motorn. null när ETA saknas eller
+// kvarvarande sträckor ur den kalibrerade motorn. null när ETA saknas eller
 // patrullen inte är ute.
 function etaFinishMs(p) {
   if (!etaEngine || p.utgatt) return null;

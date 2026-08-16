@@ -34,6 +34,12 @@ Email extension). Production domain: https://eskilscout.se.
   extend via semantic class names in `app.css` or `report.css`.
 - **Night mode** on the reporter page is a red palette. Don't swap it for a
   gray dark mode — preserving night vision is the requirement.
+- **Banans delar heter STRÄCKA i all svensk text** — aldrig "ben". Ordet är en
+  översättning av `leg`, och identifierarna (`courseLegs`, `legIn`, `legOut`,
+  `track/main`-nycklarna) förblir engelska; det är prosan som är svensk.
+  Obs genus: en sträcka, sträckan, två sträckor — "ett ben" blir "en sträcka",
+  inte "ett sträcka". Där längden avses heter det längd eller avstånd, så att
+  samma ord inte betyder två saker i samma mening.
 - **The ETA engine lives in `public/js/course.js`.** `courseEta` (model:
   walking time + fixed stationstid), `courseEtaCalibrated` (the median of
   patrols' REAL leg times from score data replaces a leg's model estimate at
@@ -564,7 +570,7 @@ BÅDA ställena.
   `district` (scoutdistrikt — see below).
 - **Platser och banans ändpunkter är två olika saker.**
   `comp.startFinish` (start/mål) är BANDATA: `courseLegs` bygger `__start`/
-  `__mal`-noderna ur den, ETA räknar första och sista benet från dem och
+  `__mal`-noderna ur den, ETA räknar första och sista sträckan från dem och
   stationssidan checkar av mot dem. Den redigeras därför i KONTROLLISTAN
   (`views/controls.js` → `openStartFinishModal`), inte i inställningarna, och
   har en fast gul look på alla kartor.
@@ -585,7 +591,7 @@ BÅDA ställena.
   rapportsida, kalibreras aldrig (de rapporterar inget) men kostar sin
   `dwellMin` i ETA:n. En plats som pekar på ett kontrollnummer som inte finns
   hamnar sist före mål i stället för att tyst falla ur banan. Att lägga in en
-  plats DELAR ett ben — waypoints ritade på det gamla benet blir föräldralösa
+  plats DELAR en sträcka — waypoints ritade på den gamla sträckan blir föräldralösa
   (hjälptexten säger det).
 - **Scoutdistrikt.** `public/js/districts.js` holds Scouterna's 26 districts
   plus `annat`. Every competition carries a `district` id: it is REQUIRED in

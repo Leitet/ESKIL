@@ -166,7 +166,7 @@ export const HELP = {
     faq: [
       { q: 'Vad gör "Ingår i spåret"?', a: 'Platsen blir en punkt i banan. Väljer du att den passeras efter kontroll 3 blir ordningen Start → 1 → 2 → 3 → Matplats → 4, och du drar spåret dit i två steg i stället för ett. Platsen ger fortfarande inga poäng och räknas aldrig som en avklarad kontroll.' },
       { q: 'Vad är "Tid på platsen"?', a: 'Hur länge patrullen står still där — lunchen tar den tid arrangören planerat, och vi gissar inte åt dig. Tiden räknas in i banans totaltid och i ETA:n som sekretariatet planerar prisutdelningen efter. Lämna tomt om man bara passerar.' },
-      { q: 'Jag har redan ritat spåret — vad händer?', a: 'Benet som platsen läggs in i delas i två. Punkterna du ritat på det gamla benet följer inte med, så den biten blir streckad igen och får ritas om. Resten av spåret är orört.' },
+      { q: 'Jag har redan ritat spåret — vad händer?', a: 'Sträckan som platsen läggs in i delas i två. Punkterna du ritat på den gamla sträckan följer inte med, så den biten blir streckad igen och får ritas om. Resten av spåret är orört.' },
       { q: 'Var sätter jag start och mål?', a: 'I kontrollistan, tillsammans med resten av banan. Start och mål är banans ändpunkter, så de hör hemma där du bygger banan — inte bland platserna på kartan.' },
       { q: 'Var tog parkeringsinställningen vägen?', a: 'Parkeringen är en plats som alla andra nu, och finns i listan här. Har du redan satt ut en ligger den kvar på kartorna precis som förut.' },
       { q: 'Syns platserna innan tävlingsdagen?', a: 'Ja. Till skillnad från kontrollerna är de inte hemliga — de är till för att folk ska hitta.' }
@@ -422,8 +422,8 @@ export const HELP = {
   'comp.startFinish': {
     title: 'Start- och målplats',
     body: [
-      'Banans ändpunkter. De sätts i kontrollistan, tillsammans med resten av banan: ETA-motorn räknar första och sista benet från dem, spårdragningen hänger på dem och start/mål-stationen checkar av mot dem.',
-      'Normalt är start och mål samma plats. Ligger målet någon annanstans väljer du "Målet ligger någon annanstans" i listan — då blir det ett eget ben in i mål, och sträckan räknas om.'
+      'Banans ändpunkter. De sätts i kontrollistan, tillsammans med resten av banan: ETA-motorn räknar första och sista sträckan från dem, spårdragningen hänger på dem och start/mål-stationen checkar av mot dem.',
+      'Normalt är start och mål samma plats. Ligger målet någon annanstans väljer du "Målet ligger någon annanstans" i listan — då blir det en egen sträcka in i mål, och längden räknas om.'
     ],
     faq: [
       { q: 'Behöver jag sätta start och mål?', a: 'Nej, men utan dem räknas banan bara mellan kontrollerna. Startkortets "Så tar ni er till starten" blir också tommare.' },

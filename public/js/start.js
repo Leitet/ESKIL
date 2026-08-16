@@ -439,7 +439,7 @@ function lyssnaKompass() {
 // ETA-raden under KPI:erna: hur mycket bana som är kvar och när patrullen
 // beräknas vara i mål. Kalibrerad motor: verkliga mellantider ur poängdatan
 // (inkl. köer på kontrollerna) ersätter gångtid + stationstid så fort tre
-// patruller passerat ett ben. Målgången ankras i patrullens senaste rapport
+// patruller passerat en sträcka. Målgången ankras i patrullens senaste rapport
 // — inte i klockan — så en lång paus inte "försvinner" ur estimatet.
 function renderEtaLine(t) {
   try {
@@ -1494,7 +1494,7 @@ function openStartFinishSheet(kind) {
     // the way OUT (to the first control), for Mål the way IN (from the last
     // control), for a combined S/M both. Parking stays a plain marker (it
     // isn't on the course). Före positionssläppet ritas INGEN bankontext —
-    // benen avslöjar kontrollernas platser.
+    // sträckorna avslöjar kontrollernas platser.
     let litBounds = null;
     if (!isPlace && positionsVisible()) {
       const { nodes, legs } = courseLegs(comp, controls, track);

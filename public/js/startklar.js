@@ -3,7 +3,7 @@
 // En ensam förstagångsarrangör upptäcker annars felen först när det smäller:
 // en kontroll utan position hamnar i havet på kartan, en kontroll utan
 // telefon gör nödinfon i fältpaketet tom, ett hål i nummerordningen bryter
-// ett ETA-ben, och patruller utan startordning får ingen starttid. Panelen
+// en ETA-sträcka, och patruller utan startordning får ingen starttid. Panelen
 // räknar fram avvikelserna ur data som redan finns och länkar rakt till
 // stället där de rättas.
 //
@@ -39,7 +39,7 @@ export function startklarChecks(comp, controls = [], patrols = [], metas = null)
     } else ok('position', 'Alla kontroller har en position.');
 
     // Nummerserien: dubbletter förvirrar allt som sorterar på nummer, och ett
-    // hål bryter antagandet att banan går i nummerordning (ETA-benen).
+    // hål bryter antagandet att banan går i nummerordning (ETA-sträckorna).
     const nummer = controls.filter(c => isNumSet(c.nummer)).map(c => Number(c.nummer)).sort((a, b) => a - b);
     const dubbletter = nummer.filter((n, i) => i > 0 && n === nummer[i - 1]);
     if (dubbletter.length) {
@@ -52,7 +52,7 @@ export function startklarChecks(comp, controls = [], patrols = [], metas = null)
     }
     if (hål.length) {
       varning('nummer-hal',
-        `Nummerserien har hål (saknar ${hål.join(', ')}) — banan antas gå i nummerordning, så ETA:n räknar fel ben.`, 'controls');
+        `Nummerserien har hål (saknar ${hål.join(', ')}) — banan antas gå i nummerordning, så ETA:n räknar fel sträckor.`, 'controls');
     }
     if (!dubbletter.length && !hål.length) ok('nummer', 'Kontrollernas nummerserie är hel.');
 
@@ -70,7 +70,7 @@ export function startklarChecks(comp, controls = [], patrols = [], metas = null)
   // startFinishPoints är samma härledning som kartorna och ETA:n använder —
   // en egen tolkning här hade kunnat säga "klart" om något kartan inte ser.
   if (!startFinishPoints(comp).length) {
-    varning('startmal', 'Start/mål är inte utsatt — ETA:ns första och sista ben och stationssidans avprickning bygger på den.', 'controls');
+    varning('startmal', 'Start/mål är inte utsatt — ETA:ns första och sista sträcka och stationssidans avprickning bygger på den.', 'controls');
   } else ok('startmal', 'Start/mål är utsatt.');
 
   // --- Patruller ------------------------------------------------------------

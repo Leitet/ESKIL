@@ -1163,7 +1163,7 @@ function renderAnmalanTab(comp, cid, refresh, readOnly) {
 
 // Platser — allt som ska pekas ut på kartan UTOM banans ändpunkter.
 //
-// Start och mål bor i kontrollistan: de är bandata (ETA-motorn räknar ben från
+// Start och mål bor i kontrollistan: de är bandata (ETA-motorn räknar sträckor från
 // dem, spåret hänger på dem), inte utmärkning. Här finns parkeringen och
 // resten — sekretariat, toaletter, vatten, egna punkter med egen symbol och
 // färg.

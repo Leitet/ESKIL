@@ -1012,7 +1012,7 @@ function drawBlankFillerPage(pdf) {
 export async function generateFieldPackPdf(comp, controls, patrols, mgmt = [], { onProgress = null, track = null } = {}) {
   await ensureLibs();
   const ordered = [...controls].sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0));
-  // Banans ben ger kartorna sin "väg in / väg ut"-kontext, precis som när en
+  // Banans sträckor ger kartorna sin "väg in / väg ut"-kontext, precis som när en
   // enskild kontroll skrivs ut från sin egen sida.
   const { nodes, legs } = courseLegs(comp, ordered, track);
 

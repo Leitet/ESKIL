@@ -168,9 +168,9 @@ export function courseEta(comp, controls, track) {
 // Modellantagandet (gångtid + fast stationstid) är bra på morgonen men vet
 // inget om köer. Verkligheten finns dock redan i poängdatan: tiden mellan en
 // patrulls två på varandra följande rapporter ÄR gångtid + kö + uppgift för
-// det benet. När minst ETA_MIN_SAMPLES patruller passerat ett ben ersätter
-// medianen av deras mellantider modellantagandet för just det benet — kön
-// bakas in automatiskt, och estimatet skärps ju längre dagen går. Ben utan
+// den sträckan. När minst ETA_MIN_SAMPLES patruller passerat en sträcka ersätter
+// medianen av deras mellantider modellantagandet för just den sträckan — kön
+// bakas in automatiskt, och estimatet skärps ju längre dagen går. Sträckor utan
 // underlag behåller modellen, så motorn är alltid definierad.
 //
 // Semantik per nod i byKey:
@@ -188,7 +188,7 @@ const tsToMs = (ts) => {
 };
 
 // `startMsByPatrol` (valfri, {pid: ms}): FAKTISKA starttider när anroparen
-// har dem (station/Läget via passages). Utan den mäts första benet från
+// har dem (station/Läget via passages). Utan den mäts första sträckan från
 // planerad start, och en systematisk startförsening skulle dubbelräknas för
 // patruller som ankras i sin faktiska start.
 export function courseEtaCalibrated(comp, controls, track, scores = [], patrols = [], now = new Date(), startMsByPatrol = null) {
@@ -229,12 +229,12 @@ export function courseEtaCalibrated(comp, controls, track, scores = [], patrols 
   };
 
   // Observerad mellantid fram till en kontrollnod: från förra kontrollens
-  // rapport (eller start när benet börjar vid start/första nod). `capMin`
+  // rapport (eller start när sträckan börjar vid start/första nod). `capMin`
   // är plausibilitetsvakten: deltan långt över modellens förväntan är nästan
   // alltid dataartefakter (kvarvarande synkklumpar, klockfel) — de får inte
   // fånga medianen.
   const observedSeg = (node, prev, capMin) => {
-    // Ett ben som börjar vid en banplats går inte att kalibrera: platsen
+    // En sträcka som börjar vid en banplats går inte att kalibrera: platsen
     // rapporterar inget, och att då ankra mot starttiden ger den KUMULATIVA
     // tiden från start — som huvudloopen felaktigt skulle addera som ett
     // inkrement ovanpå ett cum som redan passerat platsen (dubbelräkning av
@@ -298,7 +298,7 @@ export function courseEtaCalibrated(comp, controls, track, scores = [], patrols 
 
 // Beräknad målgång (ms-epok) för EN patrull, ankrad i verkligheten: senaste
 // rapporterade kontrollen är patrullens senaste kända avfärd, och kvarvarande
-// ben summeras ur den (kalibrerade) motorn. Utan rapporter: startMs + hela
+// sträckor summeras ur den (kalibrerade) motorn. Utan rapporter: startMs + hela
 // banan. Returnerar RÅTT värde — kan ligga i det förflutna, vilket betyder
 // "borde redan vara här". Varje vy väljer själv hur det visas (förseningsflagg
 // på stationen, "väntas i mål" för anhöriga).
