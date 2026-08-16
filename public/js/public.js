@@ -17,6 +17,7 @@ import {
 import { ensureLeaflet } from './leaflet.js';
 import { compPlaces, placeKind, drawPlaces } from './places.js';
 import { icon } from './icons.js';
+import { buildIcs } from './ics.js';
 import { showSystemNotification } from './broadcast.js';
 
 const root = document.getElementById('root');
@@ -73,6 +74,12 @@ let adminAccess = false; // signed-in visitor may administer → "Administrera" 
 let realCid = null;      // resolved competition id (the URL may carry the slug)
 const subscribedScoreCtrls = new Set();
 let anslag = [];                 // publika anslag från tävlingsledningen
+// Följ-länkens markering. /t renderar om vid VARJE poäng- och anslagssnapshot,
+// så en klass som sätts en gång rivs av nästa render. Markeringen hålls därför
+// i modulstate och sätts tillbaka efter varje render, i ett kort fönster.
+let foljdPatrull = null;
+let foljdTill = 0;
+const FOLJD_MS = 12000;
 let anslagSeedat = false;        // första server-snapshoten notiserar inte
 let unsubs = [];
 
@@ -233,6 +240,16 @@ async function boot() {
   }));
 
   render();
+
+  // Följ-länken konsumeras efter första renderingen, så raden finns att
+  // scrolla till. Görs i en rAF eftersom listan just skrivits till DOM:en.
+  const foljd = konsumeraFoljLank();
+  if (foljd) {
+    foljdPatrull = foljd;
+    foljdTill = Date.now() + FOLJD_MS;
+    render();
+    requestAnimationFrame(() => markeraFoljd({ scrolla: true }));
+  }
 }
 
 window.addEventListener('popstate', () => render());
@@ -337,6 +354,46 @@ async function renderLeafletMap(withPos, sfPoints = [], places = []) {
 }
 
 // --- Render -----------------------------------------------------------------
+// Följ-länk. En mor- eller farförälder ska kunna få EN länk som redan följer
+// rätt patrull: /t/<slug>?folj=<patrolId>. patrolId är publikt läsbart och /t
+// är en publik sida, så länken avslöjar ingenting — till skillnad från
+// startkortets /s/<cid>/<patrolId>, som ALDRIG får delas så här.
+//
+// Parametern konsumeras EN gång och plockas ur adressfältet. Annars skulle
+// varje omladdning stjärnmärka patrullen på nytt, och den som medvetet tagit
+// bort stjärnan får tillbaka den — en inställning man inte kan stänga av är
+// inte en inställning.
+// Patrullen visas olika på olika flikar: startlistan har en stjärna
+// (`data-fav`), patrullfliken kort med `data-patrol`, poängtabellen en rad med
+// `data-patrol`. Sök därför på båda handtagen — en följ-länk som landar utan
+// att peka ut raden är halva funktionen.
+function markeraFoljd({ scrolla = false } = {}) {
+  if (!foljdPatrull || Date.now() > foljdTill) { foljdPatrull = null; return; }
+  const id = CSS.escape(foljdPatrull);
+  const träff = document.querySelector(`[data-patrol="${id}"]`)
+    || document.querySelector(`[data-fav="${id}"]`);
+  const rad = träff?.closest('.start-row, .pat-card, tr') || träff;
+  if (!rad) return;
+  rad.classList.add('folj-blink');
+  if (scrolla) rad.scrollIntoView({ block: 'center', behavior: 'smooth' });
+}
+
+function konsumeraFoljLank() {
+  let pid = null;
+  try {
+    const u = new URL(location.href);
+    pid = u.searchParams.get('folj');
+    if (!pid) return null;
+    u.searchParams.delete('folj');
+    history.replaceState({}, '', u.pathname + (u.search || '') + u.hash);
+  } catch { return null; }
+  if (!patrols.some(p => p.id === pid)) return null;   // gammal eller påhittad länk
+  const s = getFavs();
+  s.add(pid);
+  try { localStorage.setItem(favKey(), JSON.stringify([...s])); } catch { /* privat läge */ }
+  return pid;
+}
+
 // Favoritpatrull — anhörigas stjärnmärkning. Ligger bara i webbläsarens
 // localStorage (ingen server), en lista patrull-id per tävling.
 function favKey() { return `eskil.fav.${parsePath()?.cid || ''}`; }
@@ -512,6 +569,7 @@ function render() {
 
   // Sist: render() skrev om sidan och därmed tavlans värdelement.
   renderAnslag();
+  markeraFoljd();
 }
 
 // True when the signed-in visitor can open this competition's admin app:
@@ -1311,7 +1369,11 @@ function openPatrolModal(patrolId) {
             ${patrol.antal ? ' · ' + escapeHtml(String(patrol.antal)) + ' deltagare' : ''}
             ${stime ? ' · <span class="mono" style="color:var(--scout-blue);">' + escapeHtml(stime) + '</span>' : ''}
           </div>
-          <a class="t-sm" style="display:inline-flex;align-items:center;gap:5px;margin-top:8px;color:var(--scout-blue);font-weight:600;" href="/s/${escapeHtml(parsePath()?.cid || '')}/${escapeHtml(patrol.id)}" target="_blank" rel="noopener">${icon('external', { size: 14 })} Öppna patrullens startkort</a>
+          <div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;">
+            <a class="t-sm" style="display:inline-flex;align-items:center;gap:5px;color:var(--scout-blue);font-weight:600;" href="/s/${escapeHtml(parsePath()?.cid || '')}/${escapeHtml(patrol.id)}" target="_blank" rel="noopener">${icon('external', { size: 14 })} Öppna patrullens startkort</a>
+            <button type="button" class="t-sm" id="pub-folj-lank" style="display:inline-flex;align-items:center;gap:5px;color:var(--scout-blue);font-weight:600;background:none;border:0;padding:0;cursor:pointer;font-family:inherit;">${icon('copy', { size: 14 })} Kopiera följ-länk</button>
+            <button type="button" class="t-sm" id="pub-kalender" style="display:inline-flex;align-items:center;gap:5px;color:var(--scout-blue);font-weight:600;background:none;border:0;padding:0;cursor:pointer;font-family:inherit;">${icon('clock', { size: 14 })} Påminn mig före mål</button>
+          </div>
         </div>
         <button type="button" class="icon-btn" id="pub-modal-close" aria-label="Stäng">${icon('x', { size: 20 })}</button>
       </div>
@@ -1389,6 +1451,58 @@ function openPatrolModal(patrolId) {
     document.removeEventListener('keydown', onKey);
   };
   wireOverlayClose(overlay, close);
+  // Följ-länk att skicka vidare. Bygger på tävlingens PUBLIKA adress och
+  // patrull-id:t — aldrig startkortets hemliga länk, som ligger precis ovanför
+  // i samma modal och är lätt att förväxla.
+  overlay.querySelector('#pub-folj-lank')?.addEventListener('click', (e) => {
+    const bas = `${location.origin}/t/${comp?.slug || parsePath()?.cid || ''}`;
+    copyToClipboard(`${bas}?folj=${encodeURIComponent(patrol.id)}`);
+    e.currentTarget.innerHTML = `${icon('check', { size: 14 })} Länk kopierad`;
+  });
+
+  // Kalenderpåminnelse. Notisen kräver att sidan är öppen och att man tillåtit
+  // notiser; en kalenderpost ringer utan täckning och överlever att fliken
+  // stängs. Tiden kommer ur SAMMA ETA-motor som resten av sidan.
+  overlay.querySelector('#pub-kalender')?.addEventListener('click', () => {
+    // patrolLabel används medvetet INTE här: enligt CLAUDE.md hör den inte
+    // hemma på /t, där kåren redan står på egen rad. I kalenderposten bär
+    // rubriken patrullnamnet och beskrivningen kåren — en kalenderpost läses
+    // utanför sitt sammanhang, så kåren behövs, men inte i rubriken.
+    const namn = patrol.name || 'Patrullen';
+    const dt = patrolStartDateTime(comp, patrol);
+    const reports = {};
+    for (const { control, score } of perCtrl) {
+      const t = score && (tsMs(score.clientReportedAt) ?? tsMs(score.reportedAt));
+      if (t) reports[control.id] = new Date(t);
+    }
+    // courseEtaCalibrated vill ha en PLATT lista, inte objektet per kontroll —
+    // samma platt-tryckning som startlistans ETA-rad gör.
+    const platta = Object.entries(scoresByControl).flatMap(([ctrlId, list]) =>
+      (list || []).map(x => ({ ...x, controlId: ctrlId, patrolId: x.patrolId || x.id })));
+    const eta = courseEtaCalibrated(comp, controls, track, platta, patrols);
+    const ms = dt ? patrolFinishEtaMs(eta, reports, dt.getTime()) : null;
+    if (!ms) {
+      alert('Ingen beräknad måltid än — den dyker upp när patrullen startat och passerat sin första kontroll.');
+      return;
+    }
+    const ics = buildIcs({
+      uid: `eskil-${parsePath()?.cid || ''}-${patrol.id}@eskilscout.se`,
+      title: `${namn} väntas i mål`,
+      description: `Beräknad målgång för ${namn}${patrol.kar ? ` (${patrol.kar})` : ''} i ${comp?.name || 'tävlingen'}. `
+        + 'Tiden är ett estimat ur tävlingens ETA och kan ändras under dagen.',
+      location: comp?.location || '',
+      url: `${location.origin}/t/${comp?.slug || parsePath()?.cid || ''}`,
+      start: new Date(ms),
+      alarmMinutes: 30
+    });
+    const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${(patrol.name || 'patrull').toLowerCase().replace(/[^a-z0-9åäö]+/gi, '-')}-mal.ics`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
   overlay.querySelector('#pub-modal-close').onclick = close;
   document.addEventListener('keydown', onKey);
 }

@@ -891,3 +891,13 @@ a.pub-brand:hover { opacity: 0.85; }
 .anslag-varning .anslag-niva { color: var(--avent-orange); }
 .anslag-kritisk { border-left-color: var(--utm-pink); }
 .anslag-kritisk .anslag-niva { color: var(--utm-pink); }
+
+/* Följ-länken landar mitt i en lista — en kort markering visar VILKEN rad som
+   är din, utan att man behöver leta efter stjärnan. */
+@media (prefers-reduced-motion: no-preference) {
+  .folj-blink { animation: folj-blink 2.4s ease-out 1; border-radius: var(--r-md); }
+  @keyframes folj-blink {
+    0%, 60% { background: var(--scout-blue-50); }
+    100%    { background: transparent; }
+  }
+}

@@ -18,6 +18,7 @@ import {
 import { hasIcon } from '../public/js/icons.js';
 import { tolkaVader, vaderMeddelande, BY_VARNING_MS } from '../public/js/vader.js';
 import { byggDagskopia } from '../public/js/dagskopia.js';
+import { buildIcs, icsText, icsDate, foldLine } from '../public/js/ics.js';
 import { AVD_FÄRG, textPå, accentMotBlått, hjälte } from '../public/js/share-card.js';
 
 // WCAG-kontrast — testets egen räknare, så det inte mäter med samma kod som
@@ -1453,5 +1454,72 @@ describe('byggDagskopia', () => {
     const k = byggDagskopia(indata, NU);
     assert.equal(k.avprickningar[0].selfStarted, true);
     assert.equal(k.avprickningar[0].finishAt, null);
+  });
+});
+
+// --- Kalenderpåminnelse ---------------------------------------------------------
+// Kalenderappar vägrar öppna en trasig .ics och säger sällan varför, så
+// formatets tre kinkiga regler testas var för sig.
+describe('ics', () => {
+  const start = new Date('2026-08-16T13:45:00Z');
+
+  test('escapar de reserverade tecknen — och bakstrecket FÖRST', () => {
+    assert.equal(icsText('a,b;c'), 'a\\,b\\;c');
+    assert.equal(icsText('rad1\nrad2'), 'rad1\\nrad2');
+    // Bakstrecket måste escapas före de andra, annars escapas de bakstreck
+    // funktionen själv just lagt till.
+    assert.equal(icsText('a\\b'), 'a\\\\b');
+  });
+
+  test('tidsstämpeln är UTC med Z — inte lokal tid', () => {
+    assert.equal(icsDate(start), '20260816T134500Z');
+    assert.equal(icsDate(new Date('2026-01-05T07:03:09Z')), '20260105T070309Z');
+  });
+
+  test('viker rader över 75 OKTETTER, inte 75 tecken', () => {
+    // å/ä/ö är två oktetter i UTF-8. Räknade vi tecken skulle en rad med
+    // svenska namn bli för lång trots att antalet såg rätt ut.
+    const svensk = 'SUMMARY:' + 'å'.repeat(40);
+    const vikt = foldLine(svensk);
+    assert.ok(vikt.includes('\r\n '), 'ska ha vikts');
+    for (const rad of vikt.split('\r\n')) {
+      assert.ok(new TextEncoder().encode(rad).length <= 75, 'rad för lång: ' + rad.length);
+    }
+    // ...och innehållet får inte förvanskas av vikningen
+    assert.equal(vikt.split('\r\n ').join(''), svensk);
+  });
+
+  test('korta rader lämnas i fred', () => {
+    assert.equal(foldLine('VERSION:2.0'), 'VERSION:2.0');
+  });
+
+  test('hela filen har CRLF och de obligatoriska fälten', () => {
+    const ics = buildIcs({
+      uid: 'patrull-1@eskilscout.se', title: 'Rävarna väntas i mål',
+      start, url: 'https://eskilscout.se/t/ah26', now: new Date('2026-08-16T10:00:00Z')
+    });
+    assert.ok(ics.startsWith('BEGIN:VCALENDAR\r\n'));
+    assert.ok(ics.trimEnd().endsWith('END:VCALENDAR'));
+    assert.ok(!/[^\r]\n/.test(ics), 'hittade ett LF utan CR');
+    for (const krav of ['VERSION:2.0', 'UID:', 'DTSTAMP:', 'DTSTART:', 'DTEND:', 'SUMMARY:']) {
+      assert.ok(ics.includes(krav), 'saknar ' + krav);
+    }
+  });
+
+  test('påminnelsen ligger FÖRE händelsen', () => {
+    const ics = buildIcs({ uid: 'x', title: 'T', start, alarmMinutes: 30 });
+    assert.ok(ics.includes('TRIGGER:-PT30M'), 'minus = före; utan minustecknet ringer den efter målgången');
+    assert.ok(ics.includes('BEGIN:VALARM') && ics.includes('END:VALARM'));
+  });
+
+  test('utan sluttid får händelsen en kvart', () => {
+    const ics = buildIcs({ uid: 'x', title: 'T', start });
+    assert.ok(ics.includes('DTSTART:20260816T134500Z'));
+    assert.ok(ics.includes('DTEND:20260816T140000Z'));
+  });
+
+  test('ett patrullnamn med komma spräcker inte filen', () => {
+    const ics = buildIcs({ uid: 'x', title: 'Rävarna, Lindsdals Scoutkår', start });
+    assert.ok(ics.includes('SUMMARY:Rävarna\\, Lindsdals Scoutkår'));
   });
 });
