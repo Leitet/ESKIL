@@ -6,9 +6,18 @@
 # can explore the app. Non-super-admins cannot write to it (Firestore rules
 # enforce).
 #
-# Runs against the Firestore emulator by default; override via env:
-#   FIRESTORE_HOST=https://firestore.googleapis.com scripts/seed-demo.sh
-# (auth for prod writes is your concern — the emulator accepts Bearer owner.)
+# Kör mot emulatorn som standard. MOT PRODUKTION krävs en riktig OAuth-token —
+# emulatorns "Bearer owner" accepteras bara av emulatorn:
+#
+#   AUTH="Bearer $(gcloud auth print-access-token)" \
+#   FIRESTORE_HOST=https://firestore.googleapis.com \
+#   FIREBASE_PROJECT=eskil-scout \
+#   scripts/seed-demo.sh
+#
+# Token från `gcloud auth login` bär scopet cloud-platform, vilket räcker för
+# Firestore, och lever ~1 timme. Skriptet avbryter på FÖRSTA felsvaret — kör
+# man med en ogiltig token får man ett tydligt fel på första skrivningen, inte
+# en halvseedad tävling.
 
 set -e
 HOST="${FIRESTORE_HOST:-http://127.0.0.1:8080}"
@@ -42,6 +51,23 @@ from datetime import datetime, timedelta, timezone
 print((datetime.now(timezone.utc) - timedelta(minutes=$1)).strftime('%Y-%m-%dT%H:%M:%SZ'))"
 }
 echo "  firstStart: $FIRST_START (anchored 150 min before now, 10-min interval × 30 patruller)"
+
+# Enstaka fältuppdatering. Egen hjälpare för att den KONTROLLERAR statuskoden:
+# de två anropen som fanns här förut skickade till /dev/null, och mot skarp
+# Firestore hade ett 401 sett ut precis som en lyckad skrivning.
+patch() {
+  local doc_path="$1"; local field="$2"; local fields_json="$3"
+  local resp status
+  resp=$(curl -sS -w "\n__HTTP__:%{http_code}" -X PATCH \
+    "$HOST/v1/$DBPATH/$doc_path?updateMask.fieldPaths=$field" \
+    -H 'Content-Type: application/json' -H "Authorization: ${AUTH:-Bearer owner}" \
+    --data "{\"fields\":$fields_json}")
+  status=$(echo "$resp" | tail -n1 | sed 's/__HTTP__://')
+  if [ "$status" != "200" ]; then
+    echo "ERROR patching $doc_path.$field: $(echo "$resp" | sed '$d')" >&2
+    exit 1
+  fi
+}
 
 write() {
   local doc_path="$1"; local fields_json="$2"
@@ -466,10 +492,8 @@ write "competitions/$CID/controls/demo-c05" "{
 # Gissningarna skiljer det oavgjorda paret åt: p05 (1380, 40 fel) slår p06 (1500, 80 fel).
 for pair in "demo-p05 1380" "demo-p06 1500" "demo-p01 1400" "demo-p02 1250" "demo-p03 1600" "demo-p04 2100"; do
   set -- $pair
-  curl -sS -X PATCH \
-    "$HOST/v1/$DBPATH/competitions/$CID/controls/demo-c05/scores/$1?updateMask.fieldPaths=utslagGissning" \
-    -H 'Content-Type: application/json' -H 'Authorization: Bearer owner' \
-    -d "{\"fields\":{\"utslagGissning\":{\"integerValue\":\"$2\"}}}" > /dev/null
+  patch "competitions/$CID/controls/demo-c05/scores/$1" utslagGissning \
+    "{\"utslagGissning\":{\"integerValue\":\"$2\"}}"
 done
 echo "  ✓ utslagsfråga med facit + 6 gissningar"
 
@@ -526,10 +550,8 @@ echo "  ✓ 2 fälttrådar (en besvarad, en oläst)"
 # --- Utgången patrull (DNF) ---------------------------------------------------
 # BARA flaggan. Ledningens anteckning bor i patrols/{id}/private/meta och är
 # member-only med flit — den kan innehålla hälsouppgifter om ett barn.
-curl -sS -X PATCH \
-  "$HOST/v1/$DBPATH/competitions/$CID/patrols/demo-p27?updateMask.fieldPaths=utgatt" \
-  -H 'Content-Type: application/json' -H 'Authorization: Bearer owner' \
-  -d "{\"fields\":{\"utgatt\":{\"mapValue\":{\"fields\":{\"at\":{\"timestampValue\":\"$(iso_min 65)\"}}}}}}" > /dev/null
+patch "competitions/$CID/patrols/demo-p27" utgatt \
+  "{\"utgatt\":{\"mapValue\":{\"fields\":{\"at\":{\"timestampValue\":\"$(iso_min 65)\"}}}}}"
 echo "  ✓ 1 utgången patrull"
 
 # --- Anmälningar (Anmälan-fliken + kassörens betalningsunderlag) --------------
