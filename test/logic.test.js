@@ -13,7 +13,8 @@ import {
   patrolStartDateTime, normSlug, isValidSlug, suggestSlug,
   effectiveIntervalSec, swishAppUrl, swishQrString, patrolLabel, linkifyText, isNumSet, mergeBeacons,
   NOTE_CHIPS, harNotering, laggTillNotering, taBortNotering, kapaNotering,
-  publicNotices, anslagSynlig, isPaymentPaid, isPaymentClaimed, paymentClaimAt
+  publicNotices, anslagSynlig, isPaymentPaid, isPaymentClaimed, paymentClaimAt,
+  sparlagesBeslut, SPAR_PA_UNDER, SPAR_AV_VID
 } from '../public/js/utils.js';
 import { hasIcon } from '../public/js/icons.js';
 import { tolkaVader, vaderMeddelande, BY_VARNING_MS } from '../public/js/vader.js';
@@ -1521,5 +1522,34 @@ describe('ics', () => {
   test('ett patrullnamn med komma spräcker inte filen', () => {
     const ics = buildIcs({ uid: 'x', title: 'Rävarna, Lindsdals Scoutkår', start });
     assert.ok(ics.includes('SUMMARY:Rävarna\\, Lindsdals Scoutkår'));
+  });
+});
+
+// --- Sparläge vid lågt batteri --------------------------------------------------
+describe('sparlagesBeslut', () => {
+  test('slår på under tröskeln, av över den övre', () => {
+    assert.equal(sparlagesBeslut(false, { level: 0.15, charging: false }), true);
+    assert.equal(sparlagesBeslut(true,  { level: 0.55, charging: false }), false);
+  });
+
+  test('hysteres: fladdrar inte kring gränsen', () => {
+    // Med EN tröskel skulle 0.20/0.21 slå av och på om vartannat — skärmlåset
+    // tas och släpps hela tiden, vilket kostar mer ström än det sparar.
+    assert.equal(sparlagesBeslut(true, { level: 0.21, charging: false }), true, 'strax över på-tröskeln: stannar på');
+    assert.equal(sparlagesBeslut(true, { level: 0.29, charging: false }), true, 'under av-tröskeln: stannar på');
+    assert.equal(sparlagesBeslut(false, { level: 0.25, charging: false }), false, 'mellan trösklarna: stannar av');
+    assert.ok(SPAR_AV_VID > SPAR_PA_UNDER, 'av-tröskeln måste ligga över på-tröskeln');
+  });
+
+  test('laddning stänger av sparläget oavsett nivå', () => {
+    assert.equal(sparlagesBeslut(true, { level: 0.05, charging: true }), false);
+    assert.equal(sparlagesBeslut(false, { level: 0.05, charging: true }), false);
+  });
+
+  test('okänt batteri ändrar ingenting', () => {
+    // iOS saknar API:t. Att gissa en nivå vore värre än att låta bli.
+    assert.equal(sparlagesBeslut(false, {}), false);
+    assert.equal(sparlagesBeslut(true, { level: null, charging: false }), true);
+    assert.equal(sparlagesBeslut(false, undefined), false);
   });
 });

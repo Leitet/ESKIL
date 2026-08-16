@@ -5,7 +5,8 @@
 import { db, doc, onSnapshot } from './firebase.js';
 import { getCompetition, getControl, listPatrols, watchScoresForControl, upsertScore, deleteScore, listControls, getTrack, listAllScores, sendControlBeacon } from './store.js';
 import { AVDELNINGAR, escapeHtml, allInstructionGroups, internalManagement,
-  NOTE_CHIPS, harNotering, laggTillNotering, taBortNotering, kapaNotering } from './utils.js';
+  NOTE_CHIPS, harNotering, laggTillNotering, taBortNotering, kapaNotering,
+  sparlagesBeslut } from './utils.js';
 import { controlEtaWindow } from './course.js';
 import { ensureLeaflet } from './leaflet.js';
 import { icon } from './icons.js';
@@ -914,9 +915,58 @@ async function main() {
   // och en släckt skärm mitt i ett halvifyllt poängblad är hur rapporter
   // tappas. Låset släpps av webbläsaren när fliken göms; ta det igen när den
   // syns. Tyst no-op där API:t saknas (äldre Safari) — sidan fungerar som förr.
+  // --- Sparläge vid lågt batteri --------------------------------------------
+  // En kontroll längst ut på banan har ingen laddning, och telefonen ska räcka
+  // hela dagen. Under tröskeln stängs det som kostar ström och INTE är
+  // rapportering av: skärmlåset släpps och hjärtslaget glesas ut.
+  //
+  // Rapporteringen och offline-kön rörs ALDRIG. De är hela skälet till att
+  // sidan finns; en optimering som gör dem långsammare eller osäkrare har
+  // missat vad den optimerar för. Sparläget säger heller aldrig ifrån mer än
+  // en gång — en banner som tjatar är en banner man slutar läsa.
+  // Tröskelbeslutet (med hysteres) ligger i utils.sparlagesBeslut — rent och
+  // testat. Här bara följderna.
+  let sparlage = false;
+  let sparlageSagt = false;
+  let wakeSentinel = null;
+
   const keepAwake = async () => {
-    try { await navigator.wakeLock?.request('screen'); } catch { /* t.ex. batterisparläge */ }
+    if (sparlage) return;
+    try { wakeSentinel = await navigator.wakeLock?.request('screen') ?? null; }
+    catch { /* t.ex. batterisparläge */ }
   };
+  const slappAwake = () => {
+    try { wakeSentinel?.release?.(); } catch { /* redan släppt */ }
+    wakeSentinel = null;
+  };
+
+  function sattSparlage(pa) {
+    if (pa === sparlage) return;
+    sparlage = pa;
+    if (pa) {
+      slappAwake();
+      if (!sparlageSagt) {
+        sparlageSagt = true;
+        rtoast('Lågt batteri — sparläge på. Skärmen släcks som vanligt och livstecknet glesas ut. Rapporteringen påverkas inte.');
+      }
+    } else {
+      keepAwake();
+    }
+    document.body.classList.toggle('is-sparlage', pa);
+  }
+
+  // Batteri-API:t saknas på iOS. Där finns inget sparläge — och det är rätt:
+  // att gissa batterinivå vore värre än att låta bli.
+  (async () => {
+    let b = null;
+    try { b = await navigator.getBattery?.(); } catch { /* stöds inte */ }
+    if (!b) return;
+    const bedom = () => sattSparlage(sparlagesBeslut(sparlage, { level: b.level, charging: b.charging }));
+    bedom();
+    b.addEventListener?.('levelchange', bedom);
+    b.addEventListener?.('chargingchange', bedom);
+  })();
+
   keepAwake();
   document.addEventListener('visibilitychange', () => { if (!document.hidden) keepAwake(); });
 
@@ -938,7 +988,10 @@ async function main() {
   let sistaBeacon = 0;
   const skickaLivstecken = async ({ tvinga = false } = {}) => {
     if (document.hidden || comp?.demo || !control.open) return;
-    if (!tvinga && Date.now() - sistaBeacon < BEACON_MIN_MS) return;
+    // I sparläge glesas hjärtslaget till en fjärdedel. Det stängs INTE av:
+    // en kontroll med lågt batteri är precis den ledningen behöver se.
+    const minsta = sparlage ? BEACON_MIN_MS * 4 : BEACON_MIN_MS;
+    if (!tvinga && Date.now() - sistaBeacon < minsta) return;
     sistaBeacon = Date.now();
     let batteri = null, laddar = null;
     try {

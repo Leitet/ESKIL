@@ -1020,3 +1020,23 @@ export function anslagSynlig(comp, anslag, nu = new Date()) {
   const diff = Math.round((dag - new Date(nu.getFullYear(), nu.getMonth(), nu.getDate())) / 86400000);
   return diff >= 0 && diff <= 1;
 }
+
+// --- Sparläge vid lågt batteri på rapportsidan --------------------------------
+// En kontroll längst ut på banan har ingen laddning och telefonen ska räcka
+// hela dagen. Beslutet är rent så det går att testa utan ett batteri-API.
+//
+// HYSTERES: läget slår PÅ vid 20 % men AV först vid 30 %. Med en enda tröskel
+// fladdrar det fram och tillbaka kring gränsen — skärmlåset tas och släpps om
+// vartannat, vilket kostar mer ström än det sparar och dessutom blinkar för
+// kontrollanten.
+export const SPAR_PA_UNDER = 0.20;
+export const SPAR_AV_VID = 0.30;
+
+export function sparlagesBeslut(nuvarande, { level, charging } = {}) {
+  // Laddar telefonen finns ingen anledning att spara — oavsett nivå.
+  if (charging) return false;
+  if (!Number.isFinite(level)) return nuvarande;   // okänt batteri ändrar inget
+  if (!nuvarande && level <= SPAR_PA_UNDER) return true;
+  if (nuvarande && level >= SPAR_AV_VID) return false;
+  return nuvarande;
+}
