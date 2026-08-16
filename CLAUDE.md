@@ -49,6 +49,18 @@ Email extension). Production domain: https://eskilscout.se.
   station, startkort, /t, Läget) must go through these — never hand-roll an
   ETA in a view. Passage time is `clientReportedAt`, NOT `reportedAt` (see
   the scores bullet below).
+- **De OFFICIELLA sidorna delar huvud via `public/js/publik-nav.js`** — start,
+  Om ESKIL, kontakt och integritet. `publikHeader({aktiv, titel, ingress})` ger
+  varumärke, meny, brödsmulor och rubrik; `publikFooter({extra})` sidfoten.
+  Samma skäl som nav.js finns: förut nåddes sidorna bara via en rad i sidfoten
+  och byggde var sitt huvud, så Integritet blev en återvändsgränd utan väg
+  vidare. Integritet.html är STATISK (den ska gå att läsa utan att SPA:n
+  startar) och injicerar huvudet via `js/integritet-nav.js` — en egen fil, för
+  CSP:n tillåter inga inline-skript. `data-link` sätts bara på det routern kan
+  rendera; /integritet ligger utanför den.
+  **`.page` bor i tokens.css**, inte app.css. Integritet.html laddar inte
+  app.css, och när sidbredden bodde där låg hjältens innehåll klistrat i
+  vänsterkanten medan brödtexten var centrerad.
 - **Navigation lives in `public/js/nav.js`.** Competition tab bar
   (`compTabs`), breadcrumbs (`crumbs`/`compCrumbs`) and browser-tab titles
   (`setDocTitle`) are shared — never hand-roll a `.tabs` bar in a view.

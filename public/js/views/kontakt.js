@@ -11,6 +11,7 @@
 
 import { escapeHtml } from '../utils.js';
 import { icon } from '../icons.js';
+import { publikHeader } from '../publik-nav.js';
 import { setDocTitle } from '../nav.js';
 import { watchFeedbackThread, watchFeedbackMessages, sendFeedbackMessage, markFeedbackSeenByUser } from '../store.js';
 
@@ -35,14 +36,12 @@ export function renderKontakt(app, user) {
   const epost = utkast.email || user?.email || '';
 
   app.innerHTML = `
-    <header class="pub-hero pub-hero-slim">
-      <div class="page">
-        <a class="pub-back" href="/" data-link>${icon('arrow-left', { size: 15 })} ESKIL:s startsida</a>
-        <h1 class="t-d2">Skriv till oss</h1>
-        <p class="lede">Har du ett förbättringsförslag, hittat ett fel eller undrar över något?
-        Meddelandet går till dem som ansvarar för ESKIL, och du får svar på adressen du anger.</p>
-      </div>
-    </header>
+    ${publikHeader({
+      aktiv: 'kontakt',
+      titel: 'Skriv till oss',
+      ingress: 'Har du ett förbättringsförslag, hittat ett fel eller undrar över något? '
+             + 'Meddelandet går till dem som ansvarar för ESKIL, och du får svar på adressen du anger.'
+    })}
 
     <main class="page page-narrow">
       <div id="kontakt-pagaende"></div>

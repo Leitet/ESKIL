@@ -1051,3 +1051,45 @@ a.pub-brand:hover { opacity: 0.85; }
   .landing-demo { grid-template-columns: 1fr; }
   .landing-proof { padding-top: var(--sp-5); }
 }
+
+/* --- Officiella sidornas huvud (publik-nav.js) -----------------------------
+   Start, Om, Kontakt och Integritet delar meny, smulor och sidfot. Förut nåddes
+   de bara via en rad längst ned på startsidan, och den som klickade in på
+   Integritet hamnade i en återvändsgränd utan väg vidare. */
+.pub-meny { display: flex; flex-wrap: wrap; gap: var(--sp-1); align-items: center; }
+.pub-meny a {
+  color: var(--scout-blue-200); text-decoration: none;
+  font-size: 14px; font-weight: 600;
+  padding: 6px 12px; border-radius: 999px;
+  transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease);
+}
+.pub-meny a:hover { color: var(--white); background: rgba(255, 255, 255, .10); }
+.pub-meny a.is-aktiv { color: var(--scout-blue-900); background: var(--rover-yellow); }
+
+.pub-smulor {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: var(--sp-5); font-size: 13px; color: var(--scout-blue-200);
+}
+.pub-smulor a { color: var(--scout-blue-200); text-decoration: none; }
+.pub-smulor a:hover { color: var(--white); text-decoration: underline; }
+.pub-smulor span[aria-hidden] { opacity: .6; }
+
+.pub-foot-lankar { display: flex; flex-wrap: wrap; gap: var(--sp-4); align-items: center; }
+.pub-foot-lankar a { color: var(--scout-blue-300); text-decoration: none; font-size: 14px; }
+.pub-foot-lankar a:hover { color: var(--white); text-decoration: underline; }
+
+/* Om-sidan: luftiga avsnitt, och en tydlig markering för det som inte är
+   skrivet än — hellre ärligt tomt än utfyllt med floskler. */
+.om-sida section { margin-bottom: var(--sp-8); }
+.om-sida h2 { color: var(--scout-blue); margin: 0 0 var(--sp-3); }
+.om-sida p { line-height: 1.65; color: var(--fg2); margin: 0 0 var(--sp-3); }
+.om-sida a { color: var(--scout-blue); }
+.om-tom {
+  border-left: 3px solid var(--border); padding-left: var(--sp-4);
+  color: var(--fg3) !important; font-style: italic;
+}
+
+@media (max-width: 640px) {
+  .pub-meny { gap: 0; }
+  .pub-meny a { padding: 6px 9px; font-size: 13px; }
+}

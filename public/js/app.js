@@ -24,6 +24,7 @@ const vy = (fil, namn) => async (...args) => (await import(fil))[namn](...args);
 import { renderLogin } from './views/login.js';
 import { renderLanding } from './views/landing.js';
 import { renderKontakt, renderKontaktArende } from './views/kontakt.js';
+import { renderOm } from './views/om.js';
 
 const app = document.getElementById('app');
 let currentUser = null;
@@ -34,6 +35,8 @@ let startskarmVisad = false;   // styr om startskärmen behöver rivas vid ruttb
 // open for registration / ongoing / finished, and links to login.
 route('/',             () => renderLanding(app, currentUser));
 // Publik kontaktsida — meddelanden till dem som ansvarar för ESKIL.
+// Om ESKIL — officiell sida, samma meny och smulor som de övriga.
+route('/om',           () => renderOm(app, currentUser));
 route('/kontakt',      () => renderKontakt(app, currentUser));
 // Ärendet — id:t är hemligheten, precis som anmälningarnas ändringslänk.
 route('/kontakt/:id',  (p) => renderKontaktArende(app, p.id));
@@ -348,7 +351,7 @@ async function runMagicLinkFlow() {
   //
   // Auth-callbacken nedan anropar dispatch() när den kommer, så sidan ritas
   // om med rätt identitet — knappen "Logga in" byts då mot "Dina tävlingar".
-  const publikVag = /^\/(kontakt(\/|$)|$)/.test(location.pathname);
+  const publikVag = /^\/$|^\/(om|kontakt)(\/|$)/.test(location.pathname);
   if (publikVag) { routerStarted = true; startRouter(); }
 
   watchAuth(async (fbUser) => {

@@ -7,6 +7,7 @@
 import { listAllCompetitions } from '../store.js';
 import { escapeHtml, formatDate, registrationState } from '../utils.js';
 import { icon } from '../icons.js';
+import { publikHeader, publikFooter } from '../publik-nav.js';
 
 export async function renderLanding(app, user) {
   document.title = 'ESKIL — Scouttävlingssystem';
@@ -301,7 +302,12 @@ function heroHtml(user) {
             <span class="divider"></span>
             <span class="sublabel">ESKIL</span>
           </a>
-          <div class="btn-row">
+          <div class="pub-hero-actions">
+            <nav class="pub-meny" aria-label="ESKIL:s sidor">
+              <a href="/om" data-link>Om ESKIL</a>
+              <a href="/kontakt" data-link>Kontakt</a>
+              <a href="/integritet">Integritet</a>
+            </nav>
             ${user
               ? `<a class="btn btn-secondary btn-sm" href="/app" data-link>Dina tävlingar ${icon('arrow-right', { size: 14 })}</a>`
               : `<a class="btn btn-secondary btn-sm" href="/app" data-link>Logga in</a>`}
@@ -322,19 +328,7 @@ function heroHtml(user) {
 }
 
 function footHtml(user) {
-  return `
-    <footer class="pub-foot">
-      <div class="page">
-        <div style="display:flex;align-items:center;gap:var(--sp-4);">
-          <img src="/assets/logo-scouterna-tagline-white.svg" alt="Scouterna">
-          <span>· ESKIL</span>
-        </div>
-        <span class="muted">${user
-          ? '<a href="/app" data-link style="color:#a7bccf;">Till dina tävlingar</a>'
-          : 'Vill din kår använda ESKIL? <a href="/app" data-link style="color:#a7bccf;">Logga in</a>.'}
-          · <a href="/kontakt" data-link style="color:#a7bccf;">Skriv till oss</a>
-          · <a href="/integritet" style="color:#a7bccf;">Integritet &amp; GDPR</a></span>
-      </div>
-    </footer>
-  `;
+  return publikFooter({ extra: user
+    ? '<a href="/app" data-link>Till dina tävlingar</a>'
+    : '<a href="/app" data-link>Logga in</a>' });
 }
