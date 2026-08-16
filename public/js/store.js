@@ -476,6 +476,12 @@ export async function closeCompetition(cid) {
     });
     await batch.commit();
   }
+  // Papperskorgen bär hela raderade patruller och kontroller: namn, kår,
+  // noteringar, telefonnummer. Ångra-fönstret sträcker sig fram till avslut —
+  // sedan är den bara personuppgifter. Töms helt.
+  const korgSnap = await getDocs(collection(db, 'competitions', cid, 'papperskorg'));
+  await deleteRefs(korgSnap.docs.map(d => d.ref));
+
   // Kompletteringarna bär ALLERGIER — hälsouppgifter — och kontaktpersoner.
   // De fyller sitt syfte fram till tävlingsdagen; efter avslut är de bara
   // personuppgifter. Raderas helt, som fälttrådarna.
@@ -591,7 +597,7 @@ export async function deleteCompetition(cid) {
   await deleteRefs(stationsSnap.docs.map(d => d.ref));
   // Platta kollektioner. `selfPassages`, `track` och `utskick` saknades och
   // låg kvar som föräldralösa dokument efter en "raderad" tävling.
-  for (const sub of ['registrations', 'invites', 'selfPassages', 'track', 'utskick', 'logg', 'kompletteringar']) {
+  for (const sub of ['registrations', 'invites', 'selfPassages', 'track', 'utskick', 'logg', 'kompletteringar', 'papperskorg']) {
     const snap = await getDocs(collection(db, 'competitions', cid, sub));
     await deleteRefs(snap.docs.map(d => d.ref));
   }
@@ -1039,6 +1045,116 @@ export async function attachPatrolMeta(cid, patrols) {
 
 export async function deleteControl(cid, ctrlId) {
   await deleteDoc(doc(db, 'competitions', cid, 'controls', ctrlId));
+}
+
+// --- Papperskorg ---------------------------------------------------------------
+// deletePatrol och deleteControl var hårda: ett felklick mitt under
+// tävlingsdagen raderade en patrull och allt den rapporterat, spårlöst.
+//
+// Papperskorgen FLYTTAR dokumentet i stället för att flagga det. Det är ett
+// medvetet val framför en `deleted: true`-flagga, av tre skäl:
+//
+//  1. Ingen filtrering. En flagga hade krävt `!deleted` på ~30 ställen som
+//     listar patruller och kontroller — köer, ETA, larm, PDF:er, exporten. En
+//     enda missad yta betyder att en "raderad" patrull dyker upp i en kö.
+//  2. Den hemliga länken dör direkt. Kontrollens /k-länk vaktas av
+//     `open == true`, inte av någon deleted-flagga — en flaggad kontroll hade
+//     fortsatt ta emot poäng från sin QR-kod.
+//  3. Ingen .get()-fälla. En direktläsning av ett saknat `deleted` i reglerna
+//     är ett evalueringsFEL som tyst nekar skrivningen.
+//
+// Priset är att poängen måste bäras med i papperskorgsposten och skrivas
+// tillbaka vid återställning. Det är ett litet pris för att resten av
+// systemet inte behöver veta att papperskorgen finns.
+export async function flyttaTillPapperskorg(cid, sort, id) {
+  const ref = sort === 'patrull'
+    ? doc(db, 'competitions', cid, 'patrols', id)
+    : doc(db, 'competitions', cid, 'controls', id);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return null;
+
+  const post = {
+    sort, ursprungsId: id, data: snap.data(),
+    raderadAt: Timestamp.fromDate(new Date()),
+    poang: []
+  };
+
+  if (sort === 'kontroll') {
+    // Kontrollens egna poäng. De var FÖRÄLDRALÖSA förut: deleteControl
+    // raderade bara kontrolldokumentet och lämnade scores-subkollektionen kvar.
+    const sc = await getDocs(collection(db, 'competitions', cid, 'controls', id, 'scores'));
+    post.poang = sc.docs.map(d => ({ id: d.id, ...toPlainish(d.data()) }));
+    await deleteRefs(sc.docs.map(d => d.ref));
+    const meta = await getDoc(doc(db, 'competitions', cid, 'controls', id, 'private', 'meta'));
+    if (meta.exists()) post.meta = meta.data();
+    await deleteDoc(doc(db, 'competitions', cid, 'controls', id, 'private', 'meta')).catch(() => {});
+  } else {
+    // Patrullens poäng ligger utspridda under varje kontroll.
+    const ctrls = await getDocs(collection(db, 'competitions', cid, 'controls'));
+    for (const c of ctrls.docs) {
+      const sref = doc(db, 'competitions', cid, 'controls', c.id, 'scores', id);
+      const ss = await getDoc(sref);
+      if (!ss.exists()) continue;
+      post.poang.push({ controlId: c.id, id, ...toPlainish(ss.data()) });
+      await deleteDoc(sref);
+    }
+    const meta = await getDoc(doc(db, 'competitions', cid, 'patrols', id, 'private', 'meta'));
+    if (meta.exists()) post.meta = meta.data();
+    await deleteDoc(doc(db, 'competitions', cid, 'patrols', id, 'private', 'meta')).catch(() => {});
+  }
+
+  await addDoc(collection(db, 'competitions', cid, 'papperskorg'), post);
+  await deleteDoc(ref);
+  return post;
+}
+
+// Timestamps kan inte ligga nästlade i en array i Firestore — de blir tysta
+// null:ar. Görs om till ISO-strängar här och tillbaka vid återställning.
+function toPlainish(o) {
+  const ut = {};
+  for (const [k, v] of Object.entries(o || {})) {
+    ut[k] = (v && typeof v.toDate === 'function') ? v.toDate().toISOString() : v;
+  }
+  return ut;
+}
+
+export async function listaPapperskorg(cid) {
+  const snap = await getDocs(collection(db, 'competitions', cid, 'papperskorg'));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (b.raderadAt?.toMillis?.() ?? 0) - (a.raderadAt?.toMillis?.() ?? 0));
+}
+
+// Skriver tillbaka med SAMMA doc-id. Kontrollens QR-koder och patrullens
+// startkortslänk pekar på id:t — ett nytt id hade gjort tryckta koder döda.
+export async function aterstallFranPapperskorg(cid, korgId) {
+  const ref = doc(db, 'competitions', cid, 'papperskorg', korgId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return null;
+  const post = snap.data();
+  const bas = post.sort === 'patrull' ? 'patrols' : 'controls';
+  await setDoc(doc(db, 'competitions', cid, bas, post.ursprungsId), post.data);
+  if (post.meta) {
+    await setDoc(doc(db, 'competitions', cid, bas, post.ursprungsId, 'private', 'meta'), post.meta);
+  }
+  for (const p of (post.poang || [])) {
+    const { controlId, id, ...rest } = p;
+    const cId = post.sort === 'kontroll' ? post.ursprungsId : controlId;
+    const pId = post.sort === 'kontroll' ? id : post.ursprungsId;
+    if (!cId || !pId) continue;
+    const data = { ...rest };
+    for (const nyckel of ['reportedAt', 'clientReportedAt']) {
+      if (typeof data[nyckel] === 'string') data[nyckel] = Timestamp.fromDate(new Date(data[nyckel]));
+    }
+    await setDoc(doc(db, 'competitions', cid, 'controls', cId, 'scores', pId), data);
+  }
+  await deleteDoc(ref);
+  return post;
+}
+
+export async function tommPapperskorg(cid) {
+  const snap = await getDocs(collection(db, 'competitions', cid, 'papperskorg'));
+  await deleteRefs(snap.docs.map(d => d.ref));
+  return snap.docs.length;
 }
 
 // --- Scores ----------------------------------------------------------------

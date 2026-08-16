@@ -296,6 +296,14 @@ service cloud.firestore {
         allow write: if isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid));
       }
 
+      // Papperskorgen. Bär hela dokumentet OCH dess poäng — patrullnamn, kår,
+      // noteringar, telefonnummer. Enbart admin, aldrig anonymt och aldrig
+      // medlem: en raderad patrull ska inte vara läsbarare än en levande.
+      // Tömms av closeCompetition (GDPR) och deleteCompetition.
+      match /papperskorg/{korgId} {
+        allow read, write: if isSuperAdmin() || isCompAdmin(cid);
+      }
+
       // Sekretariatets logg. Vem stängde kontrollen, vem tog bort patrullen,
       // vem ändrade maxtiden — det saknade spår helt, och dagen efter minns
       // ingen. Loggen namnger patruller och bär ledningens anteckningar, så

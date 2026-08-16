@@ -10,7 +10,8 @@ import { layout, setTopbarCompetition } from '../app.js';
 import {
   getCompetition, updateCompetition, deleteCompetition, copyCompetition,
   setCompetitionUsers, setCompetitionEkonomi, listControls, attachControlMeta,
-  closeCompetition, reopenCompetition, isSlugTaken
+  closeCompetition, reopenCompetition, isSlugTaken,
+  listaPapperskorg, aterstallFranPapperskorg
 } from '../store.js';
 import {
   db, doc, getDoc, getDocs, collection, query, where
@@ -563,6 +564,52 @@ function renderBasicTab(comp, cid, refresh, readOnly, isSuperAdmin, user) {
     });
     host.appendChild(buCard);
   }
+
+  // Klockslag för papperskorgen. Egen liten hjälpare i stället för att dra in
+  // ytterligare en import — posten är alltid från samma dygn eller nyss.
+  const korgTid = (ts) => {
+    const d = ts?.toDate ? ts.toDate() : (ts ? new Date(ts) : null);
+    return d && Number.isFinite(d.getTime())
+      ? d.toLocaleString('sv-SE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+      : '';
+  };
+
+  // Papperskorgen. Ligger FÖRE farliga zonen: den är motsatsen till en farlig
+  // knapp, och den som just råkat radera fel patrull letar här.
+  (async () => {
+    if (!isCompAdminUser(comp, user)) return;
+    const korg = document.createElement('section');
+    korg.className = 'card mt-6';
+    wrap.appendChild(korg);
+    const rita = async () => {
+      let poster = [];
+      try { poster = await listaPapperskorg(cid); } catch { korg.remove(); return; }
+      if (!poster.length) { korg.innerHTML = ''; return; }
+      korg.innerHTML = `
+        <h3 class="t-h3" style="margin-top:0;">${icon('trash', { size: 16 })} Papperskorg</h3>
+        <p class="muted t-sm">Borttagna patruller och kontroller ligger kvar här tills tävlingen
+        avslutas. Poängen följde med och kommer tillbaka vid återställning — med samma id, så
+        tryckta QR-koder och startkortslänkar fungerar igen.</p>
+        <div class="mt-3">
+          ${poster.map(k => `
+            <div class="anm-sum-row">
+              <span><strong>${escapeHtml(k.data?.name || k.ursprungsId)}</strong>
+                <span class="muted">· ${k.sort === 'patrull' ? 'patrull' : 'kontroll'}${
+                  (k.poang || []).length ? ` · ${k.poang.length} rapport${k.poang.length === 1 ? '' : 'er'}` : ''}
+                  · ${escapeHtml(korgTid(k.raderadAt))}</span></span>
+              <button class="btn btn-secondary btn-sm" data-ater="${escapeHtml(k.id)}">Återställ</button>
+            </div>`).join('')}
+        </div>`;
+      korg.querySelectorAll('[data-ater]').forEach(b => b.addEventListener('click', () => withBusy(b, 'Återställer…', async () => {
+        try {
+          const post = await aterstallFranPapperskorg(cid, b.dataset.ater);
+          toast(`${post?.data?.name || 'Posten'} är återställd`, 'success');
+          await rita();
+        } catch (e) { toast('Kunde inte återställa: ' + (e?.message || e), 'error'); }
+      })));
+    };
+    await rita();
+  })();
 
   // Danger zone (delete) — super-admin only
   if (isSuperAdmin) {

@@ -373,6 +373,34 @@ hen är anonym. Create tillåter därför anonym skrivning, men bara av en TOM r
 `isCompMember` sant och den list-operation som nekar en riktig kårledare gick
 igenom. Funktionen var död i produktion och testet visade grönt.
 
+## Papperskorgen FLYTTAR, den flaggar inte
+
+`deletePatrol`/`deleteControl` gick förut rakt på `deleteDoc`. Nu flyttar
+`flyttaTillPapperskorg` hela dokumentet plus dess poäng till
+`.../papperskorg/{id}` och raderar originalet. Att FLYTTA i stället för att
+sätta `deleted: true` är ett medvetet val:
+
+1. **Ingen filtrering.** En flagga hade krävt `!deleted` på ~30 ställen som
+   listar patruller och kontroller — köer, ETA, larm, PDF:er, exporten. En
+   missad yta betyder att en "raderad" patrull dyker upp i en kö.
+2. **Den hemliga länken dör direkt.** Kontrollens anonyma poängväg vaktas av
+   `open == true`, inte av någon deleted-flagga: en flaggad kontroll hade
+   fortsatt ta emot rapporter från sin QR-kod. Regressionstestat — en poäng
+   till en kontroll som inte finns NEKAS.
+3. **Ingen `.get()`-fälla.** En direktläsning av ett saknat `deleted` i
+   reglerna är ett evalueringsfel som tyst nekar skrivningen.
+
+Priset är att poängen bärs med i korgposten. Timestamps kan inte ligga nästlade
+i en array — de blir tysta null — så de görs om till ISO-strängar och tillbaka
+vid återställning (`toPlainish`). Rundturstestat: 10 poäng ut, 10 tillbaka,
+tidsstämpeln bevarad.
+
+Återställning skriver tillbaka med SAMMA doc-id: tryckta QR-koder och
+startkortslänkar pekar på id:t. Korgen är admin-only (den bär namn, kår,
+noteringar, telefonnummer) och töms av `closeCompetition` och
+`deleteCompetition`. `deleteControl` sveper dessutom numera sina poäng — förut
+lämnade den dem föräldralösa.
+
 ## Backup och radering hänger ihop
 
 Raderingsskyddet KRÄVER en färsk backup, så backupen avgör vad som går att få

@@ -1,6 +1,6 @@
 import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import {
-  getCompetition, watchPatrols, createPatrol, updatePatrol, deletePatrol,
+  getCompetition, watchPatrols, createPatrol, updatePatrol, flyttaTillPapperskorg,
   updatePatrolOrders, getPatrolMeta, migratePatrolMeta, listControls, getTrack
 } from '../store.js';
 import {
@@ -184,9 +184,13 @@ export async function renderPatrols(app, user, cid) {
       tbl.querySelectorAll('[data-del]').forEach(b => {
         b.addEventListener('click', async () => {
           const row = state.rows.find(r => r.id === b.dataset.del);
-          if (await confirmDialog(`Ta bort patrull "${row?.name || ''}"?`)) {
-            try { await deletePatrol(cid, row.id); toast('Borttagen'); }
-            catch (e) { toast(e.message, 'error'); }
+          if (await confirmDialog(
+            `Flytta patrull "${row?.name || ''}" till papperskorgen? Poängen följer med och går att återställa tills tävlingen avslutas.`,
+            { okLabel: 'Flytta till papperskorgen', danger: true })) {
+            try {
+              await flyttaTillPapperskorg(cid, 'patrull', row.id);
+              toast('Flyttad till papperskorgen — går att återställa under Inställningar');
+            } catch (e) { toast(e.message, 'error'); }
           }
         });
       });

@@ -1,6 +1,6 @@
 import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import {
-  getCompetition, watchControls, createControl, updateControl, deleteControl,
+  getCompetition, watchControls, createControl, updateControl, flyttaTillPapperskorg,
   updateControlNumbers, setCompetitionUsers, getControlMeta, migrateControlMeta,
   updateCompetition
 } from '../store.js';
@@ -667,7 +667,12 @@ export function openControlModal(cid, control, onSaved, { manageAnsvariga = true
       });
       if (!bekräftat) return;
       await withBusy(delBtn, 'Tar bort…', async () => {
-        try { await deleteControl(cid, control.id); close(); toast('Borttagen'); onSaved?.(null); }
+        try {
+          await flyttaTillPapperskorg(cid, 'kontroll', control.id);
+          close();
+          toast('Flyttad till papperskorgen — går att återställa under Inställningar');
+          onSaved?.(null);
+        }
         catch (e) { toast(e.message, 'error'); }
       });
     });

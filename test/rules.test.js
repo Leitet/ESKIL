@@ -857,3 +857,41 @@ describe('Komplettering per patrull', () => {
     assert.equal((await read(path, null)).ok, true, 'anonym med token läser sin egen');
   });
 });
+
+describe('Papperskorgen', () => {
+  const path = `competitions/${CID}/papperskorg/${uniq('k')}`;
+  const post = { sort: 'patrull', ursprungsId: PATROL, raderadAt: new Date(),
+                 data: { name: 'Rävarna', number: 1 }, poang: [] };
+
+  test('bara admin når den — en raderad patrull är inte läsbarare än en levande', async () => {
+    allow(await write(path, post, USER), 'admin skriver');
+    assert.equal((await read(path, USER)).ok, true, 'admin läser');
+    assert.equal((await read(path, null)).ok, false, 'anonym läser');
+    assert.equal((await read(path, OTHER)).ok, false, 'utomstående läser');
+    deny(await write(`competitions/${CID}/papperskorg/${uniq('k')}`, post, null), 'anonym skriver');
+    deny(await write(`competitions/${CID}/papperskorg/${uniq('k')}`, post, OTHER), 'utomstående skriver');
+  });
+
+  test('en kontroll i papperskorgen tar INTE emot poäng — hela skälet till flytten', async () => {
+    // Papperskorgen FLYTTAR dokumentet i stället för att flagga det. En
+    // `deleted: true`-flagga hade lämnat kontrolldokumentet kvar, och den
+    // anonyma poängvägen vaktas av `open == true` — inte av någon flagga. Den
+    // hemliga QR-länken hade alltså fortsatt ta emot rapporter från en
+    // kontroll ledningen tagit bort.
+    const BORTA = uniq('ctrl');
+    deny(await write(`competitions/${CID}/controls/${BORTA}/scores/${PATROL}`,
+      { patrolId: PATROL, poang: 5, reportedAt: new Date() }, null),
+      'poäng till en kontroll som inte finns');
+
+    // ...och för jämförelse: samma skrivning mot en LEVANDE öppen kontroll går.
+    allow(await write(`competitions/${CID}/controls/${CTRL}/scores/${PATROL}`,
+      { patrolId: PATROL, poang: 5, reportedAt: new Date() }, null),
+      'poäng till en öppen kontroll');
+  });
+
+  test('list är inte öppen — korgen namnger patruller och bär telefonnummer', async () => {
+    assert.equal((await list(`competitions/${CID}/papperskorg`, null)).ok, false, 'anonym listar');
+    assert.equal((await list(`competitions/${CID}/papperskorg`, OTHER)).ok, false, 'utomstående listar');
+    assert.equal((await list(`competitions/${CID}/papperskorg`, USER)).ok, true, 'admin listar');
+  });
+});
