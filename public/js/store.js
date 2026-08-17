@@ -1856,3 +1856,60 @@ export function watchControlBeacon(cid, ctrlId, cb) {
   return onSnapshot(collection(db, 'competitions', cid, 'controls', ctrlId, 'beacon'),
     snap => cb(mergeBeacons(snap.docs.map(d => d.data()))), () => cb(null));
 }
+
+// --- MCP-nyckeln ------------------------------------------------------------
+//
+// En kårledare kopplar sin egen LLM till EN tävling. Nyckeln ligger i
+// adressen (/mcp/<cid>/<nyckel>) eftersom Claude.ai:s webbkoppling inte kan
+// sätta en Authorization-header alls — bara OAuth — medan Claude Code och
+// Desktop kan. Ska det fungera oavsett klient måste hemligheten stå i URL:en,
+// vilket dessutom är samma idiom som /k, /s och /a redan använder.
+//
+// BARA HASHEN SPARAS. Skälet är en escalation i reglerna:
+// competitions/{cid}/private/{doc} har `allow read: if isCompMember(cid)` —
+// alltså läsbar för VARJE funktionär, inte bara admin. En nyckel i klartext
+// där hade låtit en vanlig medlem läsa ut den och skriva som admin via
+// servern. En hash ger dem ingenting. Priset är att nyckeln visas EN gång;
+// tappas den skapar man en ny, och den gamla slutar fungera.
+
+const MCP_PREFIX = 'eskil_';
+
+async function sha256Hex(text) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** Skapar en ny nyckel och återkallar den gamla. Returneras EN gång. */
+export async function myntaMcpNyckel(cid) {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  // base64url utan padding — måste tåla att stå i en sökväg.
+  const nyckel = MCP_PREFIX + btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  await setDoc(doc(db, 'competitions', cid, 'private', 'mcp'), {
+    hash: await sha256Hex(nyckel),
+    skapad: serverTimestamp(),
+    revokedAt: deleteField()
+  }, { merge: true });
+  return nyckel;
+}
+
+/** Status utan att avslöja något: finns en nyckel, och användes den nyligen? */
+export async function mcpNyckelStatus(cid) {
+  try {
+    const snap = await getDoc(doc(db, 'competitions', cid, 'private', 'mcp'));
+    if (!snap.exists()) return { finns: false };
+    const d = snap.data() || {};
+    if (!d.hash || d.revokedAt) return { finns: false };
+    return {
+      finns: true,
+      skapad: d.skapad?.toDate?.() || null,
+      senastAnvand: d.lastUsedAt?.toDate?.() || null
+    };
+  } catch { return { finns: false }; }
+}
+
+/** Återkallar nyckeln. Servern nekar direkt — inget behöver städas. */
+export async function aterkallaMcpNyckel(cid) {
+  await setDoc(doc(db, 'competitions', cid, 'private', 'mcp'),
+    { revokedAt: serverTimestamp() }, { merge: true });
+}

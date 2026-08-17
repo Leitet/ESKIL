@@ -11,7 +11,10 @@ import {
   getCompetition, updateCompetition, deleteCompetition, copyCompetition,
   setCompetitionUsers, setCompetitionEkonomi, listControls, attachControlMeta,
   closeCompetition, reopenCompetition, isSlugTaken,
-  listaPapperskorg, aterstallFranPapperskorg
+  listaPapperskorg, aterstallFranPapperskorg,
+  myntaMcpNyckel,
+  mcpNyckelStatus,
+  aterkallaMcpNyckel
 } from '../store.js';
 import {
   db, doc, getDoc, getDocs, collection, query, where
@@ -21,7 +24,8 @@ import {
   registrationSettings, REG_PRICING_MODELS, registrationUrl, copyToClipboard,
   AVDELNINGAR, allowedAvdelningar,
   isCompAdminUser, normEmail, ekonomiFromManagement,
-  normSlug, isValidSlug, suggestSlug, startFinishPoints
+  normSlug, isValidSlug, suggestSlug, startFinishPoints,
+  formatDate
 } from '../utils.js';
 import { createManagementForm } from '../managementform.js';
 import { icon } from '../icons.js';
@@ -39,7 +43,8 @@ const TABS = [
   { key: 'anmalan',    label: 'Anmälan'         },
   { key: 'platser',   label: 'Platser'         },
   { key: 'management', label: 'Tävlingsledning' },
-  { key: 'members',    label: 'Användare'       }
+  { key: 'members',    label: 'Användare'       },
+  { key: 'mcp',        label: 'AI-koppling'     }
 ];
 
 // The active section lives in the URL hash (#basic, #members, …) so sections
@@ -116,6 +121,7 @@ export async function renderCompetitionSettings(app, user, cid) {
     if (activeTab === 'platser')     body.appendChild(renderPlacesTab(comp, cid, refresh, isDemoReadOnly));
     if (activeTab === 'management')  body.appendChild(renderManagementTab(comp, cid, refresh, isDemoReadOnly));
     if (activeTab === 'members')     body.appendChild(renderMembersTab(comp, cid, user, refresh));
+    if (activeTab === 'mcp')         body.appendChild(renderMcpTab(comp, cid, refresh, isDemoReadOnly));
   };
 
   renderAll();
@@ -1509,4 +1515,156 @@ async function lookupEmailsForUids(uids) {
     } catch { out.push(null); }
   }
   return out;
+}
+
+
+// ---------------------------------------------------------------------------
+// AI-koppling (MCP). Kårledaren kopplar sin egen LLM till EN tävling och
+// konfigurerar den i ett samtal.
+//
+// Sidan har tre uppgifter, i den ordningen: säga vad som INTE går att läsa
+// (annars tror man att något är sönder när modellen svarar "(ifyllt)"), ge
+// inkopplingsraden, och ge färdiga prompter att klistra in. Nyckeln visas EN
+// gång — bara hashen sparas.
+// ---------------------------------------------------------------------------
+function renderMcpTab(comp, cid, refresh, readOnly) {
+  const host = document.createElement('div');
+  const bas = location.origin;
+
+  const kort = document.createElement('section');
+  kort.className = 'card';
+  kort.innerHTML = `
+    <h3 class="t-h3" style="margin-top:0;">Koppla en AI-assistent</h3>
+    <p class="muted">Du kan låta en AI-assistent lägga upp tävlingen åt dig — skapa kontroller,
+    lägga in patruller, sätta inställningar. Du pratar med din egen assistent; ESKIL skickar
+    ingenting till någon AI-tjänst av sig själv.</p>
+
+    <div class="no-cookies" style="border-left-color: var(--scout-blue);">
+      <strong>Assistenten kan inte läsa kontaktuppgifter.</strong>
+      Telefonnummer, e-postadresser och personnamn svarar alltid <em>”ifyllt”</em> eller
+      <em>”saknas”</em> — aldrig värdet. Den kan däremot <em>sätta</em> dem, och då passerar
+      uppgiften din AI-leverantör på vägen in. Patrullnamn och kårnamn är läsbara; de står
+      redan på den publika tävlingssidan.
+      <br><br>
+      Assistenten når inte anmälningar, utskick, säkerhetskopior, PDF:er, fältets meddelanden
+      eller papperskorgen, och kan inte avsluta eller radera tävlingen.
+      <a href="/integritet">Så hanteras personuppgifter</a>.
+    </div>
+
+    <div id="mcp-nyckel"></div>
+  `;
+  host.appendChild(kort);
+
+  const nyckelHost = kort.querySelector('#mcp-nyckel');
+
+  const ritaStatus = async () => {
+    const st = await mcpNyckelStatus(cid);
+    nyckelHost.innerHTML = st.finns
+      ? `<p><strong>En nyckel finns.</strong>${st.senastAnvand
+            ? ` Senast använd ${formatDate(st.senastAnvand)}.`
+            : ' Den har inte använts ännu.'}</p>
+         <p class="muted t-sm">Nyckeln visades bara när den skapades. Har du tappat bort den
+         skapar du en ny — då slutar den gamla fungera direkt.</p>
+         <div class="btn-row">
+           <button class="btn btn-secondary" id="mcp-ny">Skapa ny nyckel</button>
+           <button class="btn btn-danger" id="mcp-aterkalla">Återkalla</button>
+         </div>`
+      : `<p>Ingen nyckel är skapad. Utan nyckel kan ingen assistent nå tävlingen.</p>
+         <div class="btn-row"><button class="btn btn-primary" id="mcp-ny">Skapa nyckel</button></div>`;
+
+    nyckelHost.querySelector('#mcp-ny')?.addEventListener('click', (e) =>
+      withBusy(e.currentTarget, 'Skapar…', async () => {
+        const nyckel = await myntaMcpNyckel(cid);
+        visaNyckel(nyckel);
+      }));
+    nyckelHost.querySelector('#mcp-aterkalla')?.addEventListener('click', async (e) => {
+      if (!await confirmDialog(
+        'Återkalla nyckeln? Assistenten tappar åtkomsten direkt. Tävlingens data påverkas inte.',
+        { okLabel: 'Återkalla', danger: true })) return;
+      await withBusy(e.currentTarget, 'Återkallar…', async () => {
+        await aterkallaMcpNyckel(cid);
+        toast('Nyckeln återkallad', 'success');
+        await ritaStatus();
+      });
+    });
+  };
+
+  const visaNyckel = (nyckel) => {
+    const url = `${bas}/mcp/${cid}/${nyckel}`;
+    nyckelHost.innerHTML = `
+      <div class="no-cookies" style="border-left-color: var(--rover-yellow);">
+        <strong>Kopiera nu — nyckeln visas bara den här gången.</strong>
+        Vi sparar bara ett avtryck av den, aldrig nyckeln själv, så vi kan inte visa den igen.
+      </div>
+      <label class="field">Inkopplingsadress</label>
+      <input class="input" id="mcp-url" readonly value="${escapeHtml(url)}"
+             style="font-family:monospace;font-size:12px;">
+      <div class="btn-row" style="margin-top:var(--sp-3);">
+        <button class="btn btn-primary" id="mcp-kopiera">Kopiera adressen</button>
+        <button class="btn btn-secondary" id="mcp-klar">Jag har sparat den</button>
+      </div>
+      <h4 class="t-h4" style="margin-top:var(--sp-6);">Så kopplar du in den</h4>
+      <p class="muted t-sm">I Claude Code, kör raden nedan i tävlingens mapp. I Claude Desktop
+      eller på claude.ai lägger du till en egen koppling och klistrar in adressen.</p>
+      <pre style="background:var(--bg-muted);padding:10px 12px;border-radius:var(--r-sm);font-family:ui-monospace,monospace;font-size:12px;white-space:pre-wrap;word-break:break-all;">claude mcp add --transport http eskil ${escapeHtml(url)}</pre>
+    `;
+    nyckelHost.querySelector('#mcp-kopiera').addEventListener('click', async () => {
+      await copyToClipboard(url);
+      toast('Adressen kopierad', 'success');
+    });
+    nyckelHost.querySelector('#mcp-klar').addEventListener('click', () => ritaStatus());
+    nyckelHost.querySelector('#mcp-url').select?.();
+  };
+
+  ritaStatus();
+
+  // --- Färdiga prompter ---
+  const namn = comp.name || 'tävlingen';
+  const PROMPTER = [
+    { rubrik: 'Kom igång',
+      text: `Du är kopplad till ${namn} i ESKIL. Börja med att läsa tävlingens inställningar och `
+        + `lista kontrollerna och patrullerna, och sammanfatta för mig vad som är ifyllt och vad `
+        + `som saknas inför tävlingsdagen.` },
+    { rubrik: 'Lägg ut en bana',
+      text: `Skapa kontroller ${'\u2116'}1–10 för ${namn}. Jag ger dig koordinaterna en och en. `
+        + `Sätt maxpoäng 25 på varje och lämna dem stängda tills vidare. Bekräfta med en lista `
+        + `när du är klar.` },
+    { rubrik: 'Lägg in patrullerna',
+      text: `Lägg in de här patrullerna i ${namn}. Format: namn, kår, avdelning. Sätt startordning `
+        + `i den ordning jag skriver dem. Läs tillbaka listan när du är klar så jag kan kontrollera `
+        + `stavningen.` },
+    { rubrik: 'Sätt upp tävlingsledningen',
+      text: `Sätt tävlingsledningen för ${namn}. Jag dikterar roller och kontaktuppgifter. Kom ihåg `
+        + `att du inte kan läsa tillbaka uppgifterna efteråt — skriv därför hela uppsättningen på `
+        + `en gång, och säg till mig att kontrollera dem i ESKIL när du är klar.` },
+    { rubrik: 'Kontrollera inför tävlingsdagen',
+      text: `Gå igenom ${namn} och säg vad som ser ofullständigt ut: kontroller utan koordinater `
+        + `eller poäng, patruller utan kår eller startordning, inställningar som verkar `
+        + `motsägelsefulla. Föreslå åtgärder men gör ingenting utan att fråga först.` }
+  ];
+
+  const promptKort = document.createElement('section');
+  promptKort.className = 'card';
+  promptKort.innerHTML = `
+    <h3 class="t-h3" style="margin-top:0;">Färdiga prompter</h3>
+    <p class="muted t-sm" style="margin-top:-6px;">Klistra in i din assistent och ändra fritt.</p>
+    ${PROMPTER.map((p, i) => `
+      <div style="margin-bottom:var(--sp-5);">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:var(--sp-3);">
+          <strong>${escapeHtml(p.rubrik)}</strong>
+          <button class="btn btn-secondary btn-sm" data-prompt="${i}">Kopiera</button>
+        </div>
+        <p class="muted t-sm" style="margin:6px 0 0;">${escapeHtml(p.text)}</p>
+      </div>`).join('')}
+  `;
+  promptKort.querySelectorAll('[data-prompt]').forEach(b => {
+    b.addEventListener('click', async () => {
+      await copyToClipboard(PROMPTER[Number(b.dataset.prompt)].text);
+      toast('Prompten kopierad', 'success');
+    });
+  });
+  host.appendChild(promptKort);
+
+  if (readOnly) host.setAttribute('inert', '');
+  return host;
 }
