@@ -437,7 +437,8 @@ export const HELP = {
   'comp.management': {
     title: 'Tävlingsledning',
     body: [
-      'Rollerna med kontaktuppgifter. Publika roller visas på tävlingssidan så att kårer och anhöriga vet vem de ska kontakta. Interna roller visas bara för funktionärerna — på kontrollernas rapportsidor och i fältpaketets PDF.',
+      'Rollerna med kontaktuppgifter. PUBLIKA roller visas på tävlingssidan så att kårer och anhöriga vet vem de ska höra av sig till, och deras uppgifter ligger öppet — det är avsikten.',
+      'INTERNA roller visas inte där. Deras uppgifter ligger utanför den publika tävlingssidan och når bara den som har en kontrolls hemliga fältlänk — alltså kontrollanterna, och var de än råkar ha delat länken vidare. Det är ett mycket mindre spridningsområde än tidigare, men det är inte samma sak som "bara ledningen": välj intern för att slippa stå på den publika sidan, inte för att skydda ett hemligt nummer.',
       'Rollen ekonomiansvarig ger dessutom behörighet: personen får läsa hela tävlingen och pricka av betalningar, men kan inte ändra något annat.'
     ],
     warn: 'Kontaktuppgifterna rensas automatiskt när tävlingen avslutas — rollen finns kvar, men namn, telefon och e-post tas bort.',

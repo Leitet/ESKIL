@@ -129,8 +129,8 @@ write "competitions/$CID" '{
   "management": {"arrayValue":{"values":[
     {"mapValue":{"fields":{"id":{"stringValue":"leader"},       "label":{"stringValue":"Tävlingsledare"},"visibility":{"stringValue":"public"},  "name":{"stringValue":"Tävlingsledare"},"phone":{"stringValue":"070-000 00 01"},"email":{"stringValue":""}}}},
     {"mapValue":{"fields":{"id":{"stringValue":"registrations"},"label":{"stringValue":"Anmälningar"},   "visibility":{"stringValue":"public"},  "name":{"stringValue":"Anmälningar"},   "phone":{"stringValue":""},                "email":{"stringValue":"anmalan@example.se"}}}},
-    {"mapValue":{"fields":{"id":{"stringValue":"secretariat"},  "label":{"stringValue":"Sekretariat"},   "visibility":{"stringValue":"internal"},"name":{"stringValue":"Sekretariat"},   "phone":{"stringValue":"070-000 00 02"},"email":{"stringValue":""}}}},
-    {"mapValue":{"fields":{"id":{"stringValue":"banlaggare"},   "label":{"stringValue":"Banläggare"},    "visibility":{"stringValue":"internal"},"name":{"stringValue":"Erik Eriksson"}, "phone":{"stringValue":"070-000 00 03"},"email":{"stringValue":""}}}}
+    {"mapValue":{"fields":{"id":{"stringValue":"secretariat"},  "label":{"stringValue":"Sekretariat"},   "visibility":{"stringValue":"internal"},"name":{"stringValue":""},   "phone":{"stringValue":""},"email":{"stringValue":""}}}},
+    {"mapValue":{"fields":{"id":{"stringValue":"banlaggare"},   "label":{"stringValue":"Banläggare"},    "visibility":{"stringValue":"internal"},"name":{"stringValue":""}, "phone":{"stringValue":""},"email":{"stringValue":""}}}}
   ]}},
   "admins": {"arrayValue":{"values":[]}},
   "users":  {"arrayValue":{"values":[]}},
@@ -450,12 +450,44 @@ ctrlmeta() {
     ]}},
     \"ansvarigaEmails\": {\"arrayValue\":{\"values\":[{\"stringValue\":\"kontroll@example.se\"}]}}
   }"
+  # Ledningens INTERNA kontakter, speglade på kontrollens token. Utan den här
+  # skrivningen står Tävlingsledning tom på demots /k — och demot är
+  # skyltfönstret. Speglarna är härledda ur private/ledning nedan; de seedas
+  # här bara för att token är hårdkodade i det här skriptet.
+  write "competitions/$CID/faltinfo/$token" "{
+    \"internPii\": {\"mapValue\":{\"fields\":{
+      \"secretariat\": {\"mapValue\":{\"fields\":{
+        \"name\":  {\"stringValue\":\"Sekretariatet\"},
+        \"phone\": {\"stringValue\":\"070-000 00 03\"},
+        \"email\": {\"stringValue\":\"\"}}}},
+      \"banlaggare\": {\"mapValue\":{\"fields\":{
+        \"name\":  {\"stringValue\":\"Banläggaren\"},
+        \"phone\": {\"stringValue\":\"070-000 00 04\"},
+        \"email\": {\"stringValue\":\"\"}}}}
+    }}},
+    \"uppdaterad\": {\"stringValue\":\"$(iso_min 0)\"}
+  }"
   # Trådhuvudet måste finnas innan fältet får skriva i en tokentråd.
   write "competitions/$CID/threads/$token" "{
     \"kind\":  {\"stringValue\":\"kontroll\"},
     \"refId\": {\"stringValue\":\"$id\"}
   }"
 }
+# Tävlingsledningens INTERNA roller. Ligger i private/ledning, ALDRIG på det
+# världsläsbara tävlingsdokumentet — kryssrutan "intern" ska betyda något.
+write "competitions/$CID/private/ledning" "{
+  \"internPii\": {\"mapValue\":{\"fields\":{
+    \"secretariat\": {\"mapValue\":{\"fields\":{
+      \"name\":  {\"stringValue\":\"Sekretariatet\"},
+      \"phone\": {\"stringValue\":\"070-000 00 03\"},
+      \"email\": {\"stringValue\":\"\"}}}},
+    \"banlaggare\": {\"mapValue\":{\"fields\":{
+      \"name\":  {\"stringValue\":\"Banläggaren\"},
+      \"phone\": {\"stringValue\":\"070-000 00 04\"},
+      \"email\": {\"stringValue\":\"\"}}}}
+  }}}
+}"
+
 ctrlmeta demo-c01 "070-000 01 01" "Materiel: spårband, 6 st markörer."       demotokenc01aaaaaaaaaaaa
 ctrlmeta demo-c02 "070-000 01 02" "Extra rep finns i lådan vid stigen."      demotokenc02aaaaaaaaaaaa
 ctrlmeta demo-c03 "070-000 01 03" "Sjukvårdsväskan står vid kontrollen."     demotokenc03aaaaaaaaaaaa

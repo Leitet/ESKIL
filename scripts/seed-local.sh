@@ -57,7 +57,7 @@ write "competitions/$CID" '{
   "management": {"arrayValue":{"values":[
     {"mapValue":{"fields":{"id":{"stringValue":"leader"},       "label":{"stringValue":"Tävlingsledare"},"visibility":{"stringValue":"public"},  "name":{"stringValue":"Anna Andersson"},       "phone":{"stringValue":"070-000 00 01"},"email":{"stringValue":"tavlingsledare@example.com"}}}},
     {"mapValue":{"fields":{"id":{"stringValue":"registrations"},"label":{"stringValue":"Anmälningar"},   "visibility":{"stringValue":"public"},  "name":{"stringValue":"Anmälningar Lindsdal"}, "phone":{"stringValue":""},             "email":{"stringValue":"anmalan@example.com"}}}},
-    {"mapValue":{"fields":{"id":{"stringValue":"secretariat"},  "label":{"stringValue":"Sekretariatet"}, "visibility":{"stringValue":"internal"},"name":{"stringValue":"Sekretariatet"},        "phone":{"stringValue":"070-000 00 02"},"email":{"stringValue":""}}}}
+    {"mapValue":{"fields":{"id":{"stringValue":"secretariat"},  "label":{"stringValue":"Sekretariatet"}, "visibility":{"stringValue":"internal"},"name":{"stringValue":""},        "phone":{"stringValue":""},"email":{"stringValue":""}}}}
   ]}},
   "admins":      {"arrayValue":{"values":[]}},
   "users":       {"arrayValue":{"values":[]}}

@@ -111,6 +111,38 @@ Email extension). Production domain: https://eskilscout.se.
   är exakt den URL kårerna klistrar in i sina grupper. Den texten måste vara
   GENERISK — skalet delas av varje /t-URL, så en tävlingsspecifik text där vore
   både fel för de andra och en läcka.
+- **Tävlingsledningens INTERNA roller bor i `private/ledning`, aldrig på
+  tävlingsdokumentet.** `competitions/{cid}` har `allow read: if true`, och
+  kryssrutan "intern" filtrerade en gång BARA i UI:t (`publicManagement`) — så
+  varje besökare på /t fick sekretariatets och banläggarens namn och
+  telefonnummer i svaret. Mätt i produktion. PUBLIKA rollers uppgifter STANNAR
+  på det publika dokumentet; de ska vara publika. Uppdelningen görs av
+  `splitManagement()` i utils.js och sker i `createCompetition` och
+  `updateCompetition` — INTE i en egen sparfunktion. Därför blir
+  inställningarna, home.js, årgångskopieringen och backupimporten korrekta utan
+  att ändras, och årgångskopian kan inte skriva tillbaka intern PII publikt.
+  Gränsen är densamma som `closeCompetition` redan drar: id/label/visibility/
+  ekonomi stannar, name/phone/email flyttas.
+  **`faltinfo/{threadToken}` är en HÄRLEDD spegel**, en per kontroll, så att
+  den anonyma rapportsidan kan visa nödkontakterna via sin hemliga fältlänk.
+  Att den är härledd är hela poängen: driftar den kostar det ett inaktuellt
+  nummer som repareras av en omskrivning, aldrig dataförlust.
+  **`get` och `list` är DELADE i reglerna, och det är ingen finess:** doc-id:t
+  ÄR kontrollens threadToken, så en listbar `faltinfo` räknar upp nycklarna
+  till fältsamtalen — nödropens GPS och bilderna från skogen. `allow read: if
+  true` vore en artskillnad, inte en gradskillnad. Mutationsverifierat.
+  Tre vakter som måste sitta: `kind === 'kontroll'` när spegeln skrivs (samma
+  `ensureThreadToken` myntar PATRULLERNAS tokens, och /t länkar publikt till
+  startkorten); åter-mint-spärren står orörd men spegeln måste ändå kunna
+  skapas för en kontroll som REDAN har token; och fan-outen enumererar
+  `faltinfo` DIREKT, aldrig via kontrollistan — papperskorgen raderar
+  kontrolldokumentet och lämnar annars en föräldralös världsläsbar spegel.
+  `/k` läser spegeln UTANFÖR `Promise.all` (en fjärde läsning i den kritiska
+  kedjan dödar hela sidan vid kall cache) och skiljer "kunde inte hämtas" från
+  "finns inga" på `snap.metadata.fromCache`. Cloud Functions måste väva in
+  mastern i `getComp` — `managementEmails` är MOTTAGARlista för förhinder och
+  avanmälan, inte bara Reply-To. Migrering: `scripts/migrate-management.sh`,
+  idempotent, och ordningen är **functions → hosting+rules → migrering**.
 - **Night mode** on the reporter page is a red palette. Don't swap it for a
   gray dark mode — preserving night vision is the requirement.
 - **Banans delar heter STRÄCKA i all svensk text** — aldrig "ben". Ordet är en

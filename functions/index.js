@@ -70,7 +70,38 @@ function compLabel(comp) {
 
 async function getComp(cid) {
   const snap = await db.doc(`competitions/${cid}`).get();
-  return snap.exists ? { id: cid, ...snap.data() } : null;
+  if (!snap.exists) return null;
+  const comp = { id: cid, ...snap.data() };
+  // Tävlingsledningens INTERNA kontaktuppgifter ligger sedan PII-flytten i
+  // private/ledning, inte på det världsläsbara dokumentet. Sammanslagningen
+  // här är inte kosmetik: managementEmails() nedan används inte bara som
+  // Reply-To utan som MOTTAGARlista för förhinder och avanmälan, och
+  // Sekretariat är visibility:'internal' som standard. Utan den här raden
+  // slutar de mailen skickas, med ett logger.warn som enda spår.
+  const led = await db.doc(`competitions/${cid}/private/ledning`).get().catch(() => null);
+  const internPii = led && led.exists ? (led.data() || {}).internPii : null;
+  if (internPii && Array.isArray(comp.management)) {
+    comp.management = comp.management.map(r => {
+      const pii = internPii[r.id];
+      return pii ? { ...r, name: pii.name || '', phone: pii.phone || '', email: pii.email || '' } : r;
+    });
+  }
+  return comp;
+}
+
+// Skriver om kontrollernas faltinfo-speglar ur mastern. Speglarna är HÄRLEDDA
+// — en glidning kostar ett inaktuellt nummer, aldrig data.
+async function syncFaltinfo(cid, internPii) {
+  const snap = await db.collection(`competitions/${cid}/faltinfo`).get();
+  if (snap.empty) return 0;
+  const pii = internPii || {};
+  let batch = db.batch(), n = 0;
+  for (const d of snap.docs) {
+    batch.set(d.ref, { internPii: pii, uppdaterad: new Date().toISOString() });
+    if (++n % 400 === 0) { await batch.commit(); batch = db.batch(); }
+  }
+  await batch.commit();
+  return snap.size;
 }
 
 // Management entries with an email address. Handles both the array form and
@@ -294,7 +325,14 @@ async function accountFootprint(uid, email) {
     const isAdmin = adminEmails.includes(email) || adminUids.includes(uid);
     const isEkonomi = ekonomiEmails.includes(email);
     const isUser = userEmails.includes(email);
-    const inManagement = (c.management || []).some(r => lower(r.email) === email);
+    // Interna rollers uppgifter ligger i private/ledning. Utan den läsningen
+    // får den som BARA är sekretariat eller banläggare svaret "du finns inte i
+    // den här tävlingen" i bekräftelsemodalen, bekräftar — och lämnar kvar
+    // namn och telefonnummer.
+    const ledSnap = await db.doc(`competitions/${doc.id}/private/ledning`).get().catch(() => null);
+    const ledPii = ledSnap && ledSnap.exists ? (ledSnap.data() || {}).internPii || {} : {};
+    const inManagement = (c.management || []).some(r => lower(r.email) === email)
+      || Object.values(ledPii).some(r => lower(r.email) === email);
 
     // Kontrollansvarig — bara värt att läsa när kontot rör tävlingen alls.
     const ansvarigControls = [];
@@ -413,6 +451,24 @@ exports.deleteMyAccount = onCall(async (req) => {
         lower(r.email) === email ? { ...r, name: '', phone: '', email: '' } : r);
     }
     await compRef.update(compPatch);
+
+    // Mastern OCH speglarna. Missas de lämnar en GDPR-radering personens
+    // nummer live i N världsläsbara dokument — alltså precis tvärtemot vad
+    // raderingen är till för.
+    const ledRef = db.doc(`competitions/${c.id}/private/ledning`);
+    const ledDoc = await ledRef.get().catch(() => null);
+    if (ledDoc && ledDoc.exists) {
+      const pii = { ...((ledDoc.data() || {}).internPii || {}) };
+      let rord = false;
+      for (const [rollId, r] of Object.entries(pii)) {
+        if (lower(r.email) === email) { delete pii[rollId]; rord = true; }
+      }
+      if (rord) {
+        if (Object.keys(pii).length) await ledRef.set({ internPii: pii });
+        else await ledRef.delete().catch(() => {});
+        await syncFaltinfo(c.id, pii);
+      }
+    }
 
     // Kontrollansvarig — listorna är append-only för klienter, admin-SDK:n
     // går förbi den spärren.
@@ -1005,6 +1061,21 @@ exports.onControlMetaWritten = onDocumentWritten('competitions/{cid}/controls/{c
     await db.doc(`competitions/${cid}/threads/${samtalsToken}`)
       .set({ kind: 'kontroll', refId: ctrlId }, { merge: true });
   }
+  // Spegeln med ledningens interna kontakter. Den ligger i en ANNAN
+  // kollektion och triggar därför ingenting — till skillnad från en set() på
+  // det egna dokumentet, som skulle skicka välkomstmailet två gånger.
+  // Skrivs alltid, inte bara vid ny token: en kontroll som fick token före
+  // flytten hade annars aldrig fått sina nödkontakter.
+  try {
+    const ledDoc = await db.doc(`competitions/${cid}/private/ledning`).get();
+    await db.doc(`competitions/${cid}/faltinfo/${samtalsToken}`).set({
+      internPii: ledDoc.exists ? (ledDoc.data() || {}).internPii || {} : {},
+      uppdaterad: new Date().toISOString()
+    });
+  } catch (e) {
+    logger.warn(`Kunde inte skriva faltinfo för ${cid}/${ctrlId}: ${e.message}`);
+  }
+
   const reportUrl = `${APP_URL}/k/${cid}/${ctrlId}/${samtalsToken}`;
   const qrBase64 = (await QRCode.toBuffer(reportUrl, { width: 240, margin: 1 })).toString('base64');
   const replyTo = managementEmails(comp)[0] || undefined;
