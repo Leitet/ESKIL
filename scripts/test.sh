@@ -3,6 +3,7 @@
 #
 #   scripts/test.sh          allt (kräver igång-varande emulator)
 #   scripts/test.sh logic    bara den rena logiken (ingen emulator behövs)
+#                            — logic.test.js + mcp.test.js
 #   scripts/test.sh rules    bara säkerhetsreglerna
 #
 # Emulatorn startas separat:
@@ -12,7 +13,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 case "${1:-all}" in
-  logic) exec node --test test/logic.test.js ;;
+  logic) exec node --test test/logic.test.js test/mcp.test.js ;;
   rules) FILES=(test/rules.test.js) ;;
   all)   FILES=(test/*.test.js) ;;
   *) echo "Okänt argument: $1 (använd: all | logic | rules)"; exit 2 ;;

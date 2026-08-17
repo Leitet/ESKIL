@@ -1288,7 +1288,7 @@ export function scoreHistoryEntry(existing) {
     if (!isNaN(d)) entry.reportedAt = d.toISOString();
   }
   if (existing.utslagGissning != null) entry.utslagGissning = existing.utslagGissning;
-  if (existing.adjustNote) { entry.adjustNote = existing.adjustNote; entry.adjustedBy = existing.adjustedBy || ''; }
+  if (existing.adjustNote) entry.adjustNote = existing.adjustNote;
   return entry;
 }
 
@@ -1333,7 +1333,13 @@ export async function adjustScore(cid, ctrlId, patrolId, existing, { poang, extr
     reportedAt: existing?.reportedAt ?? serverTimestamp(),
     reporter: 'sekretariat',
     adjustNote: adjustNote || '',
-    adjustedBy: adjustedBy || ''
+    // adjustedBy SKRIVS INTE HIT. Poängdokumentet har `allow read: if true`
+    // (firestore.rules:406), så sekretariatets e-postadress låg publikt
+    // läsbar — och `reporter: 'sekretariat'` ovan säger redan det vyn behöver
+    // visa ("rättad av sekretariatet"). Attributionen bor i sekretariatets
+    // logg, som är member-only och gallras med tävlingen. Argumentet finns
+    // kvar i signaturen med flit: anroparen ska fortsätta skicka adressen, men
+    // till loggen, inte till det publika dokumentet.
   };
   if (existing?.clientReportedAt) data.clientReportedAt = existing.clientReportedAt;
   if (existing?.utslagGissning != null) data.utslagGissning = existing.utslagGissning;

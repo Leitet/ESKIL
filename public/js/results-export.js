@@ -7,7 +7,7 @@
 import { ensureLibs, BLUE, ORANGE, YELLOW } from './pdf.js';
 import {
   AVDELNINGAR, rankPatrols, rankKarer, utslagControls, utslagRows,
-  RANKING_RULES_TEXT, activeManagement, formatDate, isNumSet
+  RANKING_RULES_TEXT, publicManagement, formatDate, isNumSet
 } from './utils.js';
 import { courseLegs, courseDistance, fmtDist, fmtMin } from './course.js';
 
@@ -310,7 +310,11 @@ export async function downloadResultsPdf(comp, patrols, controls, scores, regist
     const lines = pdf.splitTextToSize(comp.description, W - 30);
     pdf.text(lines, 15, y + 5); y += lines.length * 5 + 2;
   }
-  const mgmt = activeManagement(comp);
+  // publicManagement, INTE activeManagement: den senare filtrerar inte
+  // visibility (utils.js:115-122), så en intern rolls privata mobilnummer
+  // följde med i en "resultatlista" som delas ut och läggs upp. De interna
+  // rollerna finns just för att INTE stå på papper som sprids.
+  const mgmt = publicManagement(comp);
   if (mgmt.length) {
     y += 4;
     y = heading(pdf, y, 'Tävlingsledning');

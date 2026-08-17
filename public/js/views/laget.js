@@ -805,8 +805,14 @@ export async function renderLaget(app, user, cid) {
       if (note === null) return;
       try {
         await setPatrolUtgatt(cid, p.id, { note });
+        // Anteckningen bäddas INTE in i loggtexten. Dialogen ovan lovar att
+        // den "syns bara för ledningen här", och den innehåller i praktiken
+        // varför patrullen bröt — alltså ofta en hälsouppgift om ett barn.
+        // Den bor i patrols/{id}/private/meta.utgattNote, som closeCompetition
+        // nollar vid gallringen. Låg den ordagrant i loggen överlevde den
+        // gallringen, och loggen har sin egen livslängd.
         loggHandelse(cid, { vad: 'patrull-utgatt', av: user?.email || '',
-          text: `Markerade ${patrolLabel(p)} som utgången${note ? ' — ' + note : ''}` });
+          text: `Markerade ${patrolLabel(p)} som utgången${note ? ' (med anteckning)' : ''}` });
         p.utgatt = { at: new Date(), note }; // patrols hämtas inte live — spegla lokalt
         toast(`${p.name} markerad som utgått`);
         renderStats();

@@ -2,7 +2,7 @@ import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import {
   getCompetition, getControl, updateControl, attachControlMeta,
   watchScoresForControl, listPatrols, listControls, getTrack,
-  deleteScore, adjustScore, ensureThreadToken
+  deleteScore, adjustScore, ensureThreadToken, loggHandelse
 } from '../store.js';
 import { courseLegs, legStub, legLatLngs, controlEtaWindow } from '../course.js';
 import { escapeHtml, toast, copyToClipboard, reportUrl, confirmDialog, formatTime, allInstructionGroups, withBusy, wireOverlayClose, isCompAdminUser, canEditControl } from '../utils.js';
@@ -308,9 +308,15 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
         await adjustScore(cid, ctrlId, s.patrolId, s, {
           poang: Number(overlay.querySelector('#adj-poang').value) || 0,
           extraPoang: Number(overlay.querySelector('#adj-extra').value) || 0,
-          adjustNote,
-          adjustedBy: user?.email || ''
+          adjustNote
         });
+        // Vem som rättade hör i LOGGEN, inte på poängdokumentet: det senare är
+        // världsläsbart. Loggningen görs här i vyn och inte inne i
+        // adjustScore, av samma skäl som CLAUDE.md anger för deleteScore —
+        // store-mutationerna anropas även anonymt, och en anonym klient kan
+        // inte skriva till en member-only logg.
+        loggHandelse(cid, { vad: 'poang-justerad', av: user?.email || '',
+          text: `Justerade poäng för patrull på kontroll ${control?.nummer ?? ctrlId} — ${adjustNote}` });
         toast('Poängen justerad', 'success');
         close();
       } catch (err) { toast('Fel: ' + err.message, 'error'); }
