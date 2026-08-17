@@ -15,9 +15,14 @@ svg/
   - eskil-symbol-inverted.svg             Enbart symbol, vit
   - eskil-symbol-primary-on-white.svg     Enbart symbol med vit bakgrund
   - eskil-symbol-inverted-on-scoutbla.svg Enbart symbol på Scoutblå bakgrund
+  - eskil-favicon.svg                     Webbläsarikon, 64x64 (se nedan)
+  - eskil-appicon.svg                     Hemskärmsikon, raka hörn (se nedan)
 
 png/
   - Motsvarande PNG-versioner av alla varianter ovan.
+  - eskil-favicon-32.png                  Webbläsarikon, 32x32
+  - eskil-favicon-512.png                 Webbläsarikon, 512x512
+  - eskil-appicon-180.png                 apple-touch-icon (opak, raka hörn)
 
 previews/
   - eskil-designbibliotek.png             Översiktsbild
@@ -73,3 +78,42 @@ igen: behåll de tre punkterna, annars kommer felen tillbaka.
 
 PNG-versionerna av de fyra logotyperna är omgenererade ur SVG:erna efter
 detta (2400x873). Symbolfilerna är orörda.
+
+Webbläsarikonen (favicon)
+-------------------------
+eskil-favicon.svg är en EGEN teckning, inte eskil-symbol-*.svg nedskalad. Det
+är avsiktligt: originalsymbolens bas består av en ellips och två streck som är
+6 av 240 enheter höga, alltså 0,4 px vid 16 px. Nedskalad blir den grå gröt —
+uppmätt genom att rendera i 16 px och titta på en pixelförstoring.
+
+Tre beslut, alla fattade genom rendering i 16/24/32/48 px:
+
+  PLATTA I SCOUTBLÅ, inte en fristående mark. En favicon-SVG KAN byta färg med
+  flikraden via prefers-color-scheme — men Safari ignorerar media-frågan i
+  favicons i alla versioner, så en temaväxlande mark visar sin reservfärg för
+  varje Apple-användare, och den färgen måste kompromissa mellan ljus och mörk
+  flikrad. Plattan bär kontrasten själv: vit lilja mot Scoutblå är 12,38:1, och
+  ikonen ser likadan ut i Safari, i äldre webbläsare och i PNG-export.
+  Lyftet till #17456B i mörkt läge är en FÖRBÄTTRING ovanpå en fungerande
+  grund, aldrig mekanismen (vit mot lyftet: 10,00:1).
+
+  SVEPTA BLAD, feta med en kontur i samma färg. Räta INTE ut dem för att vinna
+  skärpa: en provskiss som gjorde det läste som en KRONA vid 32 px. Fetare än
+  stroke-width 10 provades också — då slöts mellanrummen och marken blev en
+  klump.
+
+  BASEN SMALNAR NEDÅT och ligger på pixelrutnätet (1 px = 4 enheter i den
+  64-enheters viewBoxen). Ett rakt streck under tre spröt läser som en
+  kronbas; en skål gör det inte.
+
+eskil-appicon.svg är samma mark för hemskärmen: raka hörn (iOS maskar själv,
+och egen rundning ger genomskinliga hörn mot vitt), ingen media-fråga (en PNG
+kan inte växla), lättare kontur (vid 180 px finns inget antialias-problem) och
+större marginal (Androids maskable-form kan beskära 10 % per kant).
+
+PNG-filerna renderas ur SVG:erna i VARJE storlek för sig — låt aldrig ett
+verktyg skala ner en stor PNG till 16 och 32 px, det är precis det som ger
+grå gröt. public/favicon.ico i projektroten packar 16/32/48.
+
+Bygg om hela uppsättningen med scripts/bygg-ikoner.sh efter varje ändring i
+de två SVG-filerna. PNG:erna och .ico:n är genererade, inte handgjorda.

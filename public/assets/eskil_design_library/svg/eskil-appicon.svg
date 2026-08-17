@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180" viewBox="0 0 64 64" role="img" aria-label="ESKIL">
+  <!--
+    Hemskärmsikonen — källan till apple-touch-icon.png. Skiljer sig från
+    eskil-favicon.svg på exakt tre punkter, alla för att iOS och Android
+    behandlar den annorlunda:
+
+    1. RAKA HÖRN. iOS maskar ikonen själv med sin egen radie. En egen
+       rundning ger genomskinliga hörn som läggs på vitt — alltså precis den
+       vita ram vi tog bort från favicon:en.
+    2. INGEN media-fråga. Hemskärmsikonen exporteras till PNG, och ett
+       PNG-läge kan inte växla. Den kör alltid Scoutblå.
+    3. LÄTTARE KONTUR än favicon:en (5 mot 10). Uppfetningen finns för att
+       tunna former blir grå antialias vid 16 px — vid 180 px finns inget
+       sådant problem, och samma fetma gör då bladen tjockare än logotypens.
+       Optisk storleksanpassning, inte en inkonsekvens.
+    4. STÖRRE MARGINAL runt marken (bladen börjar 10 i stället för 8): iOS
+       rundar bort hörnen och Androids maskable-form kan beskära upp till
+       10 % från varje kant.
+  -->
+  <rect width="64" height="64" fill="#003660"/>
+  <g fill="#FFFFFF">
+    <g transform="translate(8.15,6.8) scale(0.235)" stroke="#FFFFFF" stroke-width="5" stroke-linejoin="round">
+      <path d="M100 12 C 92 38, 90 60, 90 92 C 90 118, 95 138, 100 158 C 105 138, 110 118, 110 92 C 110 60, 108 38, 100 12 Z"/>
+      <path d="M38 32 C 44 62, 52 86, 68 108 C 78 122, 84 132, 82 152 C 78 138, 70 132, 58 128 C 44 124, 34 118, 30 102 C 26 82, 28 58, 38 32 Z"/>
+      <path d="M162 32 C 156 62, 148 86, 132 108 C 122 122, 116 132, 118 152 C 122 138, 130 132, 142 128 C 156 124, 166 118, 170 102 C 174 82, 172 58, 162 32 Z"/>
+    </g>
+    <path d="M18 46 H46 L42.5 53 H21.5 Z"/>
+  </g>
+</svg>

@@ -48,6 +48,19 @@ Email extension). Production domain: https://eskilscout.se.
   form efter besökare. Detaljerna och de tre reglerna för att röra filerna
   står i bibliotekets `README.txt`. Ändras namnet eller taglinen måste
   teckendelmängden hämtas om — nya tecken finns inte i den.
+- **Webbläsarikonen är en EGEN teckning** (`eskil-favicon.svg`), aldrig
+  symbolen nedskalad: originalets bas är en ellips plus två streck som är
+  6/240 av höjden, alltså 0,4 px vid 16 px, och nedskalad blir den grå gröt.
+  Den har en platta i Scoutblå med liljan i vitt (12,38:1) — inte en
+  temaväxlande mark, för Safari ignorerar `prefers-color-scheme` i favicons i
+  ALLA versioner och en sådan mark hade visat sin kompromissfärg för varje
+  Apple-användare. Lyftet till `#17456B` i mörkt läge är en förbättring ovanpå
+  en fungerande grund, aldrig mekanismen. `eskil-appicon.svg` är hemskärmens
+  variant: raka hörn, ingen media-fråga, större marginal. Alla sju HTML-filer
+  länkar SVG först, `/favicon.ico` (16/32/48) som reserv för Safari före 16.4,
+  och apple-touch-icon. Rör du geometrin: rendera i 16 px och titta på en
+  pixelförstoring — en utjämnad uppskalning döljer precis det som går sönder.
+  Skälen till varje val står i bibliotekets `README.txt`.
 - **Night mode** on the reporter page is a red palette. Don't swap it for a
   gray dark mode — preserving night vision is the requirement.
 - **Banans delar heter STRÄCKA i all svensk text** — aldrig "ben". Ordet är en
