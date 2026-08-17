@@ -10,6 +10,13 @@
     "trailingSlash": false,
     "rewrites": [
       {
+        "source": "/mcp/**",
+        "function": {
+          "functionId": "mcp",
+          "region": "europe-west1"
+        }
+      },
+      {
         "source": "/k/**",
         "destination": "/k.html"
       },

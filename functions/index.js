@@ -16,7 +16,7 @@
 //  - utskick created                 → PM fan-out to every active registration
 
 const { onDocumentCreated, onDocumentUpdated, onDocumentWritten } = require('firebase-functions/v2/firestore');
-const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const { setGlobalOptions } = require('firebase-functions/v2');
 const { logger } = require('firebase-functions');
 const admin = require('firebase-admin');
@@ -1193,4 +1193,42 @@ exports.onUtskickCreated = onDocumentCreated('competitions/{cid}/utskick/{utskic
     recipients: regs.length
   });
   logger.info(`Utskick ${utskickId} queued to ${regs.length} recipient(s) (${cid})`);
+});
+
+
+// ---------------------------------------------------------------------------
+// MCP-servern. En kårledare kopplar sin egen LLM till EN tävling och
+// konfigurerar den i ett samtal.
+//
+// Detta är det ANDRA undantaget från invarianten "Cloud Functions finns enbart
+// för transaktionsmail", och det är inte valfritt: Firestore-regler kan inte
+// dölja enskilda FÄLT, så något måste läsa och redigera bort. Det är hela
+// skälet till att servern finns här och inte i klienten.
+//
+// enforceAppCheck står MEDVETET AV: en MCP-klient är inte en webbläsare och kan
+// inte mynta ett reCAPTCHA-token. Autentiseringen är nyckeln i adressen, som
+// verifieras mot en hash — se mcp/auth.js.
+// ---------------------------------------------------------------------------
+const { hanteraMcp } = require('./mcp/transport');
+const mcpAuth = require('./mcp/auth');
+const mcpVerktyg = require('./mcp/verktyg');
+
+exports.mcp = onRequest({ cors: false }, async (req, res) => {
+  const kontroll = await mcpAuth.verifiera(req.path);
+  if (!kontroll.ok) {
+    res.status(kontroll.status).json({
+      jsonrpc: '2.0', id: null,
+      error: { code: -32001, message: kontroll.meddelande }
+    });
+    return;
+  }
+  mcpAuth.stamplaAnvand(kontroll.cid).catch(() => {});
+  const ctx = { db, cid: kontroll.cid, comp: kontroll.comp };
+  await hanteraMcp(req, res, {
+    namn: 'eskil',
+    version: '1.0.0',
+    instruktioner: mcpVerktyg.INSTRUKTIONER,
+    listaVerktyg: () => mcpVerktyg.listaVerktyg(),
+    anropaVerktyg: (namn, args) => mcpVerktyg.anropaVerktyg(namn, args, ctx)
+  });
 });

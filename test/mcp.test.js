@@ -284,3 +284,106 @@ describe('NÄSTLADE fält — de fem läckor som fanns när maskera() inte rekur
     assert.ok(!JSON.stringify(ut).includes('a@b.se'));
   });
 });
+
+describe('delaLedning (functions, CJS) och splitManagement (public, ESM)', () => {
+  // Den ENDA dubbletten i hela flytten, och den är medveten: functions är
+  // CommonJS, publikkoden är ES-moduler. Testet är priset — det bevisar att de
+  // två är överens, så att en ändring i den ena inte kan glida isär från den
+  // andra tyst.
+  const { delaLedning } = require('../functions/mcp/ledning.js');
+
+  const FALL = [
+    [],
+    null,
+    [{ id: 'a', label: 'Ledare', visibility: 'public', name: 'Anna', phone: '070-1', email: 'a@b.se' }],
+    [{ id: 'b', label: 'Sekretariat', visibility: 'internal', name: 'Bo', phone: '070-2', email: '' }],
+    [{ id: 'c', label: 'Kassör', visibility: 'internal', ekonomi: true, name: '', phone: '', email: '' }],
+    [{ label: 'Utan id', visibility: 'internal', name: 'X' }],
+    [{ id: 'd', label: 'Blandat', visibility: 'internal', name: '  Cecilia  ', phone: ' 070-3 ', email: '' },
+     { id: 'e', label: 'Publik', name: 'Erik', phone: '', email: 'e@f.se' }]
+  ];
+
+  test('samma utfall för varje indata', async () => {
+    const { splitManagement } = await import('../public/js/utils.js');
+    for (const fall of FALL) {
+      const cjs = delaLedning(fall);
+      const esm = splitManagement(fall);
+      assert.deepEqual(cjs, esm, `divergerar för ${JSON.stringify(fall)}`);
+    }
+  });
+});
+
+describe('verktygsytan', () => {
+  const v = require('../functions/mcp/verktyg.js');
+  const namn = v.VERKTYG.map(x => x.namn);
+
+  test('inga förbjudna verktyg finns', () => {
+    // Var och en av de här skulle vara en fullständig läcka. Listan står i
+    // filhuvudet till verktyg.js med skälen.
+    const förbjudna = [
+      'backup', 'export', 'import', 'dump',
+      'pdf', 'qr', 'utskick', 'broadcast',
+      'anmalan', 'registration', 'komplettering',
+      'papperskorg', 'logg', 'thread', 'trad', 'meddelande',
+      'ansvarig', 'station', 'radera_tavling', 'avsluta'
+    ];
+    for (const n of namn) {
+      for (const f of förbjudna) {
+        assert.ok(!n.toLowerCase().includes(f),
+          `verktyget "${n}" ser ut att röra en förbjuden yta ("${f}")`);
+      }
+    }
+  });
+
+  test('inget verktyg tar ett fritt fältnamn, filter eller sortering', () => {
+    // where('contact.email','>=',x).limit(1) är binärsökning tecken för tecken.
+    const farliga = ['falt', 'field', 'filter', 'sok', 'query', 'where', 'operator', 'sortera', 'orderby', 'path', 'sokvag'];
+    for (const verk of v.VERKTYG) {
+      const nycklar = Object.keys(verk.schema.properties || {});
+      for (const k of nycklar) {
+        assert.ok(!farliga.includes(k.toLowerCase()),
+          `${verk.namn} tar argumentet "${k}" — ett fritt fältnamn eller filter`);
+      }
+    }
+  });
+
+  test('alla scheman är stängda (additionalProperties: false)', () => {
+    // Ett öppet schema låter modellen skicka fält som kontrollera() aldrig ser.
+    for (const verk of v.VERKTYG) {
+      assert.equal(verk.schema.additionalProperties, false,
+        `${verk.namn} har ett öppet schema`);
+    }
+  });
+
+  test('kontrollera() avvisar fält utanför listan', () => {
+    assert.throws(() => v.kontrollera({ demo: true }, { name: 'str' }, 'tävlingen'),
+      /går inte att sätta/);
+    assert.throws(() => v.kontrollera({ closed: true }, { name: 'str' }, 'tävlingen'));
+    assert.throws(() => v.kontrollera({ slug: 'x' }, { name: 'str' }, 'tävlingen'));
+    assert.throws(() => v.kontrollera({ lastBackupAt: 'x' }, { name: 'str' }, 'tävlingen'));
+  });
+
+  test('tavling_uppdatera kan INTE sätta demo, closed, slug eller lastBackupAt', () => {
+    // demo: true öppnar fem läsgrenar i reglerna för hela internet, och
+    // "sätt upp ett demo av tävlingen" låter som konfiguration.
+    const p = v.VERKTYG.find(x => x.namn === 'tavling_uppdatera').schema.properties;
+    for (const spärrat of ['demo', 'closed', 'slug', 'lastBackupAt', 'admins', 'createdBy', 'imported']) {
+      assert.ok(!(spärrat in p), `${spärrat} går att sätta via MCP`);
+    }
+  });
+
+  test('varje verktyg har en beskrivning som modellen kan agera på', () => {
+    for (const verk of v.VERKTYG) {
+      assert.ok(verk.beskrivning && verk.beskrivning.length > 20, `${verk.namn} saknar beskrivning`);
+    }
+  });
+
+  test('instruktionerna säger rakt ut vad som INTE går att läsa', () => {
+    // Utan det försöker modellen om och om igen, och kårledaren tror att något
+    // är sönder.
+    const i = v.INSTRUKTIONER;
+    assert.ok(/telefonnummer/i.test(i) && /e-postadress/i.test(i));
+    assert.ok(/\(ifyllt\)/.test(i), 'nämner inte det faktiska svaret');
+    assert.ok(/patrullnamn/i.test(i), 'säger inte vad som ÄR läsbart');
+  });
+});
