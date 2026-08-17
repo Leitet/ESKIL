@@ -497,9 +497,19 @@ function render() {
   // vilken som är aktiv.
   if (comp) {
     const delar = [comp.name || 'Tävling', FLIKNAMN[tab]].filter(Boolean);
+    // Description MÅSTE skickas med. Utan den faller setSeo tillbaka på
+    // skalets standardtext — alltså STARTSIDANS — och skriver över t.html:s
+    // egen, bättre formulering så fort JS kör.
+    //
+    // Här får den vara tävlingsspecifik, till skillnad från den statiska i
+    // t.html: den taggen delas av varje /t-URL, den här sätts i EN besökares
+    // DOM. Namn, datum och plats står redan synligt på sidan.
+    const ort = [formatDate(comp.date), comp.place].filter(Boolean).join(' · ');
     setSeo({
       sokvag: kanoniskSokvag(tab),
-      titel: `${delar.join(' · ')} — ESKIL`
+      titel: `${delar.join(' · ')} — ESKIL`,
+      description: `${comp.name || 'Patrulltävling'}${ort ? ' — ' + ort : ''}. `
+        + 'Följ patrullerna live: startlista, poängtabell och besked från tävlingsledningen.'
     });
   }
 
