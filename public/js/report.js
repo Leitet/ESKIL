@@ -72,15 +72,26 @@ let chatPanel = null;        // samtalspanelen mot tävlingsledningen
 let flipMap = null;          // active Leaflet instance (or null)
 let flipStopLocate = null;   // stops the geolocation watch of that instance
 let infoSheet = null;        // öppet informationsblad, om något
+// Ledningens INTERNA kontaktuppgifter, ur faltinfo-spegeln. Modulnivå med
+// flit: läsningen ligger UTANFÖR den kritiska kedjan och kan komma efter att
+// huvudet ritats, så klickhandlaren måste läsa den VID KLICK.
+//   null      = ännu inte hämtad, eller kunde inte hämtas
+//   {}        = hämtad, inga interna roller konfigurerade
+let internPii = null;
+let internPiiStatus = 'vantar';   // vantar | klar | okant
 
-function wireInfoButton(control, groups, generalInfo, mgmt, harInnehåll) {
+function wireInfoButton(control, groups, generalInfo, hamtaMgmt, harInnehåll) {
   const btn = document.getElementById('info-btn');
   if (!btn) return;
   btn.hidden = !harInnehåll;
   btn.innerHTML = icon('info', { size: 20 });
+  // `dataset.wired` gör att klickhandlaren stänger om det FÖRSTA anropets
+  // värden, medan `btn.hidden` ovan uppdateras varje gång. Ritades huvudet
+  // innan spegeln kommit visades knappen med ett TOMT blad — den värsta
+  // varianten. Därför tar funktionen numera en HÄMTARE, inte en färdig array,
+  // och den anropas vid klick.
   if (!harInnehåll || btn.dataset.wired) return;
   btn.dataset.wired = '1';
-
   btn.addEventListener('click', () => {
     if (infoSheet) { infoSheet.close(); return; }
     infoSheet = openSheet({
@@ -110,17 +121,7 @@ function wireInfoButton(control, groups, generalInfo, mgmt, harInnehåll) {
         ${generalInfo ? `
           <h3>Allmän information</h3>
           <div class="flip-placement"><p>${escapeHtml(generalInfo)}</p></div>` : ''}
-        ${mgmt.length ? `
-          <h3>Tävlingsledning</h3>
-          <div class="flip-mgmt">
-            ${mgmt.map(r => `
-              <div class="flip-mgmt-row">
-                <div class="flip-mgmt-label">${escapeHtml(r.label)}</div>
-                ${r.name ? `<div class="flip-mgmt-name">${escapeHtml(r.name)}</div>` : ''}
-                ${r.phone ? `<a class="flip-mgmt-contact" href="tel:${escapeHtml(r.phone)}">${icon('phone', { size: 16 })} ${escapeHtml(r.phone)}</a>` : ''}
-                ${r.email ? `<a class="flip-mgmt-contact" href="mailto:${escapeHtml(r.email)}">${icon('mail', { size: 16 })} ${escapeHtml(r.email)}</a>` : ''}
-              </div>`).join('')}
-          </div>` : ''}`,
+        <div id="flip-mgmt-host">${ledningsHtml(hamtaMgmt())}</div>`,
       onClose: () => {
         infoSheet = null;
         // Kartan följer med bladet ut — annars ligger en GPS-vakt kvar och
@@ -135,6 +136,36 @@ function wireInfoButton(control, groups, generalInfo, mgmt, harInnehåll) {
       setTimeout(() => loadFlipMap(control.lat, control.lng), 220);
     }
   });
+}
+
+/**
+ * Ledningsavsnittet i informationsbladet.
+ *
+ * Egen funktion så att ett ÖPPET blad kan fyllas i på plats när spegeln
+ * landar — kontrollanten ska inte behöva stänga och öppna igen, och bladet
+ * ska aldrig slängas under fingret på någon.
+ */
+function ledningsHtml(roller) {
+  if (internPiiStatus === 'okant' && !roller.length) {
+    // Skilj "kunde inte hämtas" från "finns inga". Ett tomt avsnitt på ett
+    // nödblad läser som att ledningen saknar telefonnummer. Samma ärlighet som
+    // chat.js använder när fältlänken saknar token.
+    return `<h3>Tävlingsledning</h3>
+      <p class="r-muted">Kontaktuppgifterna kunde inte hämtas. Har telefonen varit
+      uppkopplad någon gång sedan länken öppnades finns de här nästa gång.</p>`;
+  }
+  if (!roller.length) return '';
+  return `
+    <h3>Tävlingsledning</h3>
+    <div class="flip-mgmt">
+      ${roller.map(r => `
+        <div class="flip-mgmt-row">
+          <div class="flip-mgmt-label">${escapeHtml(r.label)}</div>
+          ${r.name ? `<div class="flip-mgmt-name">${escapeHtml(r.name)}</div>` : ''}
+          ${r.phone ? `<a class="flip-mgmt-contact" href="tel:${escapeHtml(r.phone)}">${icon('phone', { size: 16 })} ${escapeHtml(r.phone)}</a>` : ''}
+          ${r.email ? `<a class="flip-mgmt-contact" href="mailto:${escapeHtml(r.email)}">${icon('mail', { size: 16 })} ${escapeHtml(r.email)}</a>` : ''}
+        </div>`).join('')}
+    </div>`;
 }
 
 async function loadFlipMap(lat, lng) {
@@ -295,6 +326,36 @@ async function main() {
     return;
   }
 
+  // Ledningens interna kontakter. Läses SEPARAT och aldrig i Promise.all
+  // ovan: en fjärde läsning i den kritiska kedjan hade dödat HELA sidan när
+  // just det dokumentet saknas i cachen, trots att allt annat är varmt.
+  //
+  // onSnapshot, inte getDoc: comp har redan en live-lyssnare för
+  // driftmeddelanden, så byter sekretariatet nummer mitt under dagen ska en
+  // flik som stått öppen sedan morgonen få det. Priset är att ett saknat
+  // dokument ur en kall cache ser likadant ut som "finns inte" — därför
+  // skiljs de åt på metadata.fromCache.
+  if (samtalsToken) {
+    onSnapshot(doc(db, 'competitions', cid, 'faltinfo', samtalsToken),
+      { includeMetadataChanges: true },
+      (snap) => {
+        if (snap.exists()) {
+          internPii = snap.data()?.internPii || {};
+          internPiiStatus = 'klar';
+        } else {
+          internPii = null;
+          internPiiStatus = snap.metadata.fromCache ? 'okant' : 'klar';
+        }
+        const host = document.getElementById('flip-mgmt-host');
+        if (host) host.innerHTML = ledningsHtml(internalManagement(comp, internPii));
+      },
+      () => { internPiiStatus = 'okant'; });
+  } else {
+    // Länk utan token (tryckt före token infördes): publika roller, och
+    // samma ärliga besked som chat.js ger i stället för en tom ruta.
+    internPiiStatus = 'okant';
+  }
+
   if (!control) {
     root.innerHTML = `<div class="r-empty">Kontrollen hittades inte.</div>`;
     return;
@@ -367,8 +428,12 @@ async function main() {
 
     const groups = allInstructionGroups(control);
     const generalInfo = (comp?.generalInfo || '').trim();
-    const mgmt = internalManagement(comp);
-    const hasBackContent = groups.length > 0 || (control.lat && control.lng) || !!control.placement || !!generalInfo || mgmt.length > 0;
+    // hasBackContent får INTE hänga på den asynkrona spegeln: gör den det
+    // hoppar knappen fram när spegeln landar, eller — värre — ritas huvudet om
+    // med knappen dold medan bladet står öppet.
+    const hasBackContent = groups.length > 0 || (control.lat && control.lng)
+      || !!control.placement || !!generalInfo || internalManagement(comp).length > 0
+      || !!samtalsToken;
     head.innerHTML = `
       ${closedBanner}
       <div class="r-head">
@@ -381,7 +446,8 @@ async function main() {
       </div>
     `;
 
-    wireInfoButton(control, groups, generalInfo, mgmt, hasBackContent);
+    wireInfoButton(control, groups, generalInfo,
+      () => internalManagement(comp, internPii), hasBackContent);
   }
 
   // --- Avdelning chips ---

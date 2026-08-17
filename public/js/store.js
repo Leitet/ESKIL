@@ -7,7 +7,7 @@ import {
   serverTimestamp, deleteField, writeBatch, Timestamp
 } from './firebase.js';
 import { normDistrict } from './districts.js';
-import { mergeBeacons } from './utils.js';
+import { mergeBeacons, splitManagement, mergeManagement } from './utils.js';
 
 // --- System config (super-admin) --------------------------------------------
 // A single config/system doc holding operational settings that are useful to
@@ -86,6 +86,16 @@ async function readAccess(cid) {
     const snap = await getDoc(doc(db, 'competitions', cid, 'private', 'access'));
     return snap.exists() ? snap.data() : null;
   } catch { return null; } // not a member — denied read is expected
+}
+
+// Tävlingsledningens INTERNA kontaktuppgifter. Mastern; faltinfo-speglarna
+// härleds ur den. Sväljer fel av samma skäl som readAccess: en nekad läsning
+// betyder "inte medlem", inte "något gick sönder".
+async function readLedning(cid) {
+  try {
+    const snap = await getDoc(doc(db, 'competitions', cid, 'private', 'ledning'));
+    return snap.exists() ? (snap.data()?.internPii || null) : null;
+  } catch { return null; }
 }
 
 // --- Tävlingsförfrågningar ---------------------------------------------------
@@ -252,6 +262,17 @@ export async function getCompetition(cid) {
     const a = await readAccess(cid);
     if (a) for (const k of PII_ACCESS_FIELDS) if (a[k] !== undefined) comp[k] = a[k];
   }
+  // De interna rollernas uppgifter vävs tillbaka in i comp.management, så att
+  // varje inloggad yta (inställningar, översikt, utskrifter) ser samma array
+  // som förut och inte behöver ändras.
+  //
+  // Demogrenen är INTE kosmetisk: DEMO_VIEWER i app.js är ett vanligt objekt,
+  // inte auth.currentUser, så utan den tappar demots fältpaket och kontrollista
+  // sina seedade interna roller — och demot är skyltfönstret.
+  if (auth.currentUser || comp.demo === true) {
+    const internPii = await readLedning(cid);
+    if (internPii) comp.management = mergeManagement(comp, internPii);
+  }
   return comp;
 }
 
@@ -275,12 +296,21 @@ export async function createCompetition(data, user) {
   // Keep PII permission fields off the public doc — they go to private/access.
   const docData = { ...data };
   for (const k of PII_ACCESS_FIELDS) delete docData[k];
+  // Tävlingsledningen delas på samma sätt: rollstrukturen och de PUBLIKA
+  // rollernas uppgifter på det världsläsbara dokumentet, de INTERNA rollernas
+  // i private/ledning. Att det sker HÄR och inte i en egen
+  // setCompetitionManagement är avsiktligt — då blir home.js, copyCompetition
+  // (som går via den här) och backupimporten korrekta utan att ändras, och
+  // årgångskopian kan inte skriva tillbaka intern PII på den publika ytan.
+  const delad = data.management !== undefined ? splitManagement(data.management) : null;
+  if (delad) docData.management = delad.publikt;
   const ref = await addDoc(collection(db, 'competitions'), {
     ...docData,
     admins: [user.uid],
     createdBy: user.uid,
     createdAt: serverTimestamp()
   });
+  if (delad) await skrivLedning(ref.id, delad.internPii);
   await mirrorAccess(ref.id, {
     admins: [user.uid], users: [],
     adminEmails: data.adminEmails || [], userEmails: data.userEmails || [],
@@ -296,8 +326,53 @@ export async function updateCompetition(cid, data) {
   for (const [k, v] of Object.entries(data)) {
     docData[k] = PII_ACCESS_FIELDS.includes(k) ? deleteField() : v;
   }
+  const delad = data.management !== undefined ? splitManagement(data.management) : null;
+  if (delad) docData.management = delad.publikt;
   await updateDoc(doc(db, 'competitions', cid), docData);
+  if (delad) {
+    await skrivLedning(cid, delad.internPii);
+    // Speglarna är HÄRLEDDA och måste skrivas om när mastern ändras. Fel här
+    // kostar ett inaktuellt nummer på en kontroll, inte förlorad data — men
+    // det får inte gå tyst.
+    await syncFaltinfo(cid, delad.internPii);
+  }
   await mirrorAccess(cid, data);
+}
+
+/** Skriver mastern. Tom uppsättning raderar dokumentet hellre än att lämna ett
+ *  tomt objekt kvar — gallringen ska kunna se skillnad. */
+async function skrivLedning(cid, internPii) {
+  const ref = doc(db, 'competitions', cid, 'private', 'ledning');
+  if (!internPii || !Object.keys(internPii).length) {
+    await deleteDoc(ref).catch(() => {});
+    return;
+  }
+  await setDoc(ref, { internPii }, { merge: false });
+}
+
+/**
+ * Skriver om VARJE faltinfo-spegel ur mastern.
+ *
+ * Enumererar kollektionen DIREKT, aldrig via kontrollistan:
+ * flyttaTillPapperskorg raderar kontrolldokumentet, och en spegel som bara nås
+ * via sin kontroll blir då föräldralös OCH världsläsbar. `list` är member-only,
+ * så admin får den.
+ *
+ * Batchen delas vid 400 — Firestore tar 500 operationer, och en halvfärdig
+ * omskrivning skulle lämna några kontroller med det gamla numret.
+ */
+export async function syncFaltinfo(cid, internPii) {
+  const pii = internPii || await readLedning(cid) || {};
+  const snap = await getDocs(collection(db, 'competitions', cid, 'faltinfo'));
+  const dokument = snap.docs;
+  for (let i = 0; i < dokument.length; i += 400) {
+    const batch = writeBatch(db);
+    for (const d of dokument.slice(i, i + 400)) {
+      batch.set(d.ref, { internPii: pii, uppdaterad: new Date().toISOString() }, { merge: false });
+    }
+    await batch.commit();
+  }
+  return dokument.length;
 }
 
 // Mirror the competition doc's permission fields into private/access, then
@@ -482,6 +557,16 @@ export async function closeCompetition(cid) {
   const korgSnap = await getDocs(collection(db, 'competitions', cid, 'papperskorg'));
   await deleteRefs(korgSnap.docs.map(d => d.ref));
 
+  // Ledningens interna kontaktuppgifter: mastern OCH varje härledd spegel.
+  // RADERAS, inte nollas — precis som trådar, logg och kompletteringar. Missas
+  // speglarna ligger interna telefonnummer kvar VÄRLDSLÄSBARA efter
+  // GDPR-gallringen, alltså värre än före flytten. Speglarna enumereras direkt
+  // ur kollektionen: en kontroll som flyttats till papperskorgen har inget
+  // kontrolldokument kvar att hitta sin spegel via.
+  const faltinfoSnap = await getDocs(collection(db, 'competitions', cid, 'faltinfo'));
+  await deleteRefs(faltinfoSnap.docs.map(d => d.ref));
+  await deleteDoc(doc(db, 'competitions', cid, 'private', 'ledning')).catch(() => {});
+
   // Kompletteringarna bär ALLERGIER — hälsouppgifter — och kontaktpersoner.
   // De fyller sitt syfte fram till tävlingsdagen; efter avslut är de bara
   // personuppgifter. Raderas helt, som fälttrådarna.
@@ -602,7 +687,7 @@ export async function deleteCompetition(cid) {
   await deleteRefs(stationsSnap.docs.map(d => d.ref));
   // Platta kollektioner. `selfPassages`, `track` och `utskick` saknades och
   // låg kvar som föräldralösa dokument efter en "raderad" tävling.
-  for (const sub of ['registrations', 'invites', 'selfPassages', 'track', 'utskick', 'logg', 'kompletteringar', 'papperskorg']) {
+  for (const sub of ['registrations', 'invites', 'selfPassages', 'track', 'utskick', 'logg', 'faltinfo', 'kompletteringar', 'papperskorg']) {
     const snap = await getDocs(collection(db, 'competitions', cid, sub));
     await deleteRefs(snap.docs.map(d => d.ref));
   }
@@ -1168,6 +1253,12 @@ export async function flyttaTillPapperskorg(cid, sort, id) {
     const meta = await getDoc(doc(db, 'competitions', cid, 'controls', id, 'private', 'meta'));
     if (meta.exists()) post.meta = meta.data();
     await deleteDoc(doc(db, 'competitions', cid, 'controls', id, 'private', 'meta')).catch(() => {});
+    // Kontrollens faltinfo-spegel MÅSTE med. Kvar blir den föräldralös OCH
+    // världsläsbar — ingen kontroll pekar längre på den, så varken
+    // syncFaltinfo eller en okulär genomgång hittar den, medan doc-id:t
+    // (kontrollens threadToken) fortfarande öppnar den för vem som helst.
+    const tok = meta.exists() ? meta.data()?.threadToken : null;
+    if (tok) await deleteDoc(doc(db, 'competitions', cid, 'faltinfo', tok)).catch(() => {});
   } else {
     // Patrullens poäng ligger utspridda under varje kontroll.
     const ctrls = await getDocs(collection(db, 'competitions', cid, 'controls'));
@@ -1215,6 +1306,13 @@ export async function aterstallFranPapperskorg(cid, korgId) {
   await setDoc(doc(db, 'competitions', cid, bas, post.ursprungsId), post.data);
   if (post.meta) {
     await setDoc(doc(db, 'competitions', cid, bas, post.ursprungsId, 'private', 'meta'), post.meta);
+    // Spegeln återskapas när token skrivs tillbaka. Utan detta står den
+    // återställda kontrollens /k utan nödkontakter fram till att någon råkar
+    // öppna kontrollistan — och det är just en återställd kontroll som
+    // sannolikt är på väg ut i skogen igen.
+    if (post.sort === 'kontroll' && post.meta.threadToken) {
+      await sakerstallFaltinfo(cid, post.meta.threadToken);
+    }
   }
   for (const p of (post.poang || [])) {
     const { controlId, id, ...rest } = p;
@@ -1464,7 +1562,15 @@ export async function ensureThreadToken(cid, kind, refId) {
   // utskrivna QR-koden inte pekar på.
   const snap = await getDoc(metaRef);
   const redan = snap.exists() ? snap.data()?.threadToken : null;
-  if (redan) return redan;
+
+  // ÅTER-MINT-SPÄRREN står kvar orörd: en ny token hade dödat en tryckt QR.
+  // Men spegeln måste ändå kunna skapas för en kontroll som REDAN har token,
+  // annars får ingen befintlig fältlänk någonsin nödkontakterna. Därför
+  // returneras inte tidigt förrän spegeln är avklarad.
+  if (redan) {
+    if (kind === 'kontroll') await sakerstallFaltinfo(cid, redan);
+    return redan;
+  }
   // Samma generator som kompletteringarnas token: 24 tecken bas36, inga
   // bindestreck — kan alltså aldrig se ut som den härledda formen.
   const token = slumpToken();
@@ -1472,7 +1578,25 @@ export async function ensureThreadToken(cid, kind, refId) {
   batch.set(metaRef, { threadToken: token }, { merge: true });
   batch.set(doc(db, 'competitions', cid, 'threads', token), { kind, refId }, { merge: true });
   await batch.commit();
+  if (kind === 'kontroll') await sakerstallFaltinfo(cid, token);
   return token;
+}
+
+/**
+ * Skapar kontrollens faltinfo-spegel om den saknas.
+ *
+ * VAKTEN kind === 'kontroll' hos anroparna är inte valfri: samma
+ * ensureThreadToken mintar PATRULLERNAS tokens, och tävlingssidan länkar
+ * publikt till startkorten. En spegel på en patrulltoken hade gjort ledningens
+ * interna nummer effektivt publika — /s behöver bara de publika rollerna.
+ */
+async function sakerstallFaltinfo(cid, token) {
+  const ref = doc(db, 'competitions', cid, 'faltinfo', token);
+  try {
+    if ((await getDoc(ref)).exists()) return;
+    const internPii = await readLedning(cid) || {};
+    await setDoc(ref, { internPii, uppdaterad: new Date().toISOString() }, { merge: false });
+  } catch { /* spegeln får aldrig hindra att länken byggs */ }
 }
 
 // Mintar för en hel lista och hänger på `threadToken` på varje post, så
