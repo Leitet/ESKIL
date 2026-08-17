@@ -36,6 +36,19 @@ export function dispatch() {
     }
   }
   // No match — show a simple not-found with routes back to both start pages.
+  //
+  // Titeln och noindexen är inte kosmetik. Grenen når aldrig onChange (den
+  // ligger efter loopens return), så utan de här raderna bär en påhittad
+  // adress STARTSIDANS titel och description — mätt: /finns-inte-xyz
+  // renderade "Sidan hittades inte" i body medan document.title stod kvar på
+  // "ESKIL — spår och tävlingar för scouter" och meta[name=robots] var null.
+  // Firebase serverar numera ett äkta 404 för adresser som ingen rewrite
+  // fångar, men SPA:ns egna rutter fångas (t.ex. /app/nonsens) och landar här.
+  // Google renderar före indexering, så en JS-satt noindex räknas.
+  onChange?.(path);
+  import('./seo.js')
+    .then(m => m.setSeo({ titel: 'Sidan finns inte — ESKIL', noindex: true }))
+    .catch(() => { document.title = 'Sidan finns inte — ESKIL'; });
   const app = document.getElementById('app');
   if (app) app.innerHTML = `
     <div class="page" style="text-align:center;padding-top:10vh;">

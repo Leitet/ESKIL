@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ESKIL:s sitemap. HANDSKRIVEN med flit: projektet har inget byggsteg, så det
+  finns inget som kan generera den. Fyra URL:er som ändras sällan är inte ett
+  underhållsproblem.
+
+  Sitemapen är dessutom hela ersättningen för länkgrafen. Den råa HTML:en
+  innehåller NOLL <a>-element — navigationen byggs av JS — så en robot som inte
+  renderar och startar på / har inga URL:er att följa. Mätt: curl på /, /om och
+  /kontakt ger tre byte-identiska svar utan en enda länk.
+
+  TÄVLINGSSIDOR (/t/<slug>) STÅR MEDVETET INTE HÄR, av två skäl:
+  1. De renderar inte för en robot. App Check kräver en attesterad klient, och
+     reCAPTCHA v3 fullbordas aldrig i en automatiserad webbläsare — sidan
+     hänger på "Laddar tävling…". Att lista dem vore att bjuda in till en
+     hämtning som inte kan ge något innehåll.
+  2. De bär patrullnamn och kårtillhörighet. I dag är det de facto skyddat av
+     attesteringen. Skulle App Check-läget någon gång ändras blir de
+     uppgifterna indexerbara samtidigt — och då ska det vara ett aktivt beslut,
+     inte något en sitemap-rad redan har förberett.
+
+  Lägg ALDRIG en fältlänk (/k, /s, /m, /a) eller en ärendelänk (/kontakt/<id>)
+  här. Sökvägen är hemligheten.
+
+  Ingen <lastmod>: ett påhittat datum är sämre än inget, och det finns inget
+  byggsteg som kan sätta ett sant.
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://eskilscout.se/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://eskilscout.se/om</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://eskilscout.se/kontakt</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://eskilscout.se/integritet</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+</urlset>

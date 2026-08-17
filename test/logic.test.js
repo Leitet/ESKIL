@@ -3,6 +3,7 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync, existsSync } from 'node:fs';
 
 import {
   courseEta, courseEtaCalibrated, patrolFinishEtaMs, controlEtaWindow, courseLegs,
@@ -1584,5 +1585,99 @@ describe('Fältlänkens sökväg (token)', () => {
 
   test('extra skräp efter token ignoreras', () => {
     assert.equal(parseFieldPath('/k/c/x/tok/extra', 'k').token, 'tok');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sökmotor- och upptäcktsfilerna. Testas för att felen här är TYSTA: de syns
+// först i ett sökresultat eller i en 404 hos en besökare, aldrig i en konsol.
+// ---------------------------------------------------------------------------
+
+describe('robots.txt och sitemap.xml', () => {
+  const robots = readFileSync(new URL('../public/robots.txt', import.meta.url), 'utf8');
+  const sitemap = readFileSync(new URL('../public/sitemap.xml', import.meta.url), 'utf8');
+  const locs = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map(m => m[1]);
+  // Direktiven, alltså raderna — kommentarerna NÄMNER /k och /s med flit.
+  const direktiv = robots.split('\n').filter(r => !r.trim().startsWith('#'));
+
+  test('robots.txt pekar ut sitemapen', () => {
+    assert.ok(direktiv.some(r => /^Sitemap:\s*https:\/\/eskilscout\.se\/sitemap\.xml\s*$/.test(r)),
+      'utan Sitemap-raden finns ingen upptäcktsväg som inte kräver JS');
+  });
+
+  test('robots.txt har INGEN Disallow för fältlänkarna', () => {
+    // Sökvägen ÄR hemligheten, och robots.txt är offentlig: en Disallow-rad
+    // publicerar exakt det mönster den skulle skydda. De sidorna bär noindex i
+    // två lager i stället, vilket dessutom är starkare.
+    for (const rad of direktiv) {
+      assert.ok(!/^Disallow:\s*\/(k|s|m|a)\b/i.test(rad.trim()),
+        `robots.txt avslöjar ett hemligt sökvägsmönster: "${rad.trim()}"`);
+    }
+  });
+
+  test('sitemapen listar bara publika sidor på primärdomänen', () => {
+    assert.ok(locs.length > 0, 'sitemapen är tom');
+    for (const u of locs) {
+      assert.ok(u.startsWith('https://eskilscout.se/'),
+        `${u} ligger inte på primärdomänen — poängen med sitemapen är att peka ut EN adress`);
+      assert.ok(!/\/(k|s|m|a|t)\//.test(new URL(u).pathname),
+        `${u} är en hemlig eller orenderbar sida och hör inte i sitemapen`);
+      assert.ok(!new URL(u).pathname.startsWith('/app'),
+        `${u} är adminytan, som bär noindex`);
+      assert.ok(!/^\/kontakt\/./.test(new URL(u).pathname),
+        `${u} är en ärendetråd — id:t är hemligheten`);
+    }
+  });
+});
+
+describe('firebase.json: varje SPA-rutt har en rewrite', () => {
+  // Catch-allen "**" är BORTTAGEN för att påhittade adresser ska ge ett äkta
+  // 404 i stället för 200 med startsidans HTML. Priset är att en ny rutt i
+  // app.js måste få en rad i firebase.json — annars 404:ar den i produktion
+  // fast den fungerar lokalt i klientroutern. Det är precis vad det här testet
+  // fångar.
+  const cfg = JSON.parse(readFileSync(new URL('../firebase.json', import.meta.url), 'utf8'));
+  const rewrites = cfg.hosting.rewrites;
+  const appJs = readFileSync(new URL('../public/js/app.js', import.meta.url), 'utf8');
+  const rutter = [...appJs.matchAll(/route\('(\/[^']*)'/g)].map(m => m[1]);
+
+  const träffar = (sokvag) => {
+    // "/" behöver ingen rewrite: Firebase Hosting serverar public/index.html
+    // som indexfil för roten. Verifierat i hosting-emulatorn — / svarar 200
+    // utan att någon rewrite matchar.
+    if (sokvag === '/') return existsSync(new URL('../public/index.html', import.meta.url));
+    return rewrites.some(r => {
+      const s = r.source;
+      if (s === sokvag) return true;
+      if (s.endsWith('/**')) return sokvag.startsWith(s.slice(0, -2));
+      if (s === '**') return true;
+      return false;
+    });
+  };
+
+  test('app.js:s rutter hittades', () => {
+    assert.ok(rutter.length >= 20, `hittade bara ${rutter.length} rutter — har regexen slutat matcha?`);
+  });
+
+  test('varje rutt fångas av en rewrite', () => {
+    for (const r of rutter) {
+      // Byt ut :param mot ett värde, som en riktig adress ser ut
+      const konkret = r.replace(/:[a-zA-Z]+/g, 'x');
+      assert.ok(träffar(konkret),
+        `rutten ${r} har ingen rewrite i firebase.json — den ger 404 i produktion`);
+    }
+  });
+
+  test('hemliga och publika ytor har rätt noindex-läge', () => {
+    const noindex = cfg.hosting.headers
+      .filter(h => h.headers.some(k => k.key === 'X-Robots-Tag' && /noindex/.test(k.value)))
+      .map(h => h.source);
+    assert.ok(noindex.includes('/@(k|s|m|a)/**'), 'fältlänkarnas noindex är borta');
+    assert.ok(noindex.includes('/kontakt/**'),
+      'ärendetrådarnas noindex är borta — /kontakt/<id> är en hemlig länk');
+    assert.ok(noindex.includes('/app{,/**}'),
+      'adminytans noindex är borta. Formen {,/**} är avsiktlig: /app** missar /app/c/x TYST');
+    assert.ok(!noindex.some(s => s === '/kontakt' || s === '/' || s === '/om'),
+      'en publik sida har fått noindex');
   });
 });

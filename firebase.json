@@ -34,11 +34,23 @@
         "destination": "/integritet.html"
       },
       {
+        "source": "/app",
+        "destination": "/index.html"
+      },
+      {
         "source": "/app/**",
         "destination": "/index.html"
       },
       {
-        "source": "**",
+        "source": "/om",
+        "destination": "/index.html"
+      },
+      {
+        "source": "/kontakt",
+        "destination": "/index.html"
+      },
+      {
+        "source": "/kontakt/**",
         "destination": "/index.html"
       }
     ],
@@ -70,6 +82,24 @@
       },
       {
         "source": "/@(k|s|m|a)/**",
+        "headers": [
+          {
+            "key": "X-Robots-Tag",
+            "value": "noindex, nofollow"
+          }
+        ]
+      },
+      {
+        "source": "/kontakt/**",
+        "headers": [
+          {
+            "key": "X-Robots-Tag",
+            "value": "noindex, nofollow"
+          }
+        ]
+      },
+      {
+        "source": "/app{,/**}",
         "headers": [
           {
             "key": "X-Robots-Tag",

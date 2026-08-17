@@ -1,0 +1,24 @@
+# ESKIL — eskilscout.se
+#
+# Den här filen fanns inte förut, och då svarade /robots.txt 200 med SPA:ns
+# HTML-dokument (catch-all-rewriten fångade den). En robot som ber om
+# robots.txt fick alltså en webbsida. Statiska filer serveras före rewrites,
+# så filen behöver bara finnas.
+#
+# INGEN Disallow för /k/, /s/, /m/ eller /a/ — och lägg aldrig till en.
+# Fältlänkarnas hemlighet ÄR sökvägen (/k/<cid>/<ctrlId> är kontrollens
+# rapportlänk), och robots.txt är offentlig: en Disallow-rad publicerar exakt
+# det mönster den skulle skydda. De sidorna bär i stället noindex i två lager
+# — X-Robots-Tag i firebase.json och <meta name="robots"> i filen — vilket är
+# starkare, eftersom noindex FAKTISKT tar bort en sida ur indexet medan
+# Disallow bara hindrar hämtning (en disallowad URL kan ligga kvar i indexet
+# som ren URL-post, just för att roboten aldrig får se noindexen).
+#
+# Av samma skäl står /app inte här. Den är publikt länkad från startsidan, och
+# en disallowad men länkad sida hamnar i indexet utan att Google får se
+# noindexen. /app{,/**} och /kontakt/** har X-Robots-Tag i firebase.json.
+
+User-agent: *
+Allow: /
+
+Sitemap: https://eskilscout.se/sitemap.xml

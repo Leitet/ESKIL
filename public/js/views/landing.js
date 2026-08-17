@@ -8,9 +8,15 @@ import { listAllCompetitions } from '../store.js';
 import { escapeHtml, formatDate, registrationState } from '../utils.js';
 import { icon } from '../icons.js';
 import { publikHeader, publikFooter } from '../publik-nav.js';
+import { setSeo } from '../seo.js';
 
 export async function renderLanding(app, user) {
-  document.title = 'ESKIL — spår och tävlingar för scouter';
+  setSeo({
+    sokvag: '/',
+    titel: 'ESKIL — patrulltävling för scouter, anmälan till målgång',
+    description: 'Lägg upp och genomför scoutkårens patrulltävling: anmälan på webben, '
+      + 'poängrapportering i mobilen även utan täckning och live-resultat för anhöriga.'
+  });
   app.innerHTML = `
     ${heroHtml(user)}
     <main class="page" id="landing-body">
@@ -312,7 +318,7 @@ function heroHtml(user) {
               : `<a class="btn btn-secondary btn-sm" href="/app" data-link>Logga in</a>`}
           </div>
         </div>
-        <h1>Allt ett scoutspår behöver — <em style="font-family:var(--font-serif, Georgia, serif);">från anmälan till målgång.</em></h1>
+        <h1>Allt en patrulltävling behöver — <em style="font-family:var(--font-serif, Georgia, serif);">från anmälan till målgång.</em></h1>
         <p class="lede">Kårerna anmäler sig på webben. Kontrollanterna rapporterar i mobilen, även utan
         täckning. Sekretariatet ser hela banan i realtid och vet vilka som fortfarande är ute i skogen.
         Ska spåret räknas som tävling finns poäng, placeringar och prisutdelning — annars låter ni bli.</p>

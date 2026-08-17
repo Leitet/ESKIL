@@ -19,6 +19,7 @@ import { compPlaces, placeKind, drawPlaces } from './places.js';
 import { icon } from './icons.js';
 import { buildIcs } from './ics.js';
 import { showSystemNotification } from './broadcast.js';
+import { setSeo } from './seo.js';
 
 const root = document.getElementById('root');
 
@@ -470,12 +471,37 @@ function favStar(pid, favs) {
     title="${favs.has(pid) ? 'Ta bort favorit' : 'Följ patrullen — överst i listorna, och en notis när den prickar av en kontroll (om du tillåter notiser)'}">${icon('star', { size: 16 })}</button>`;
 }
 
+// Tävlingens KANONISKA adress: alltid kortadressen, aldrig det råa segmentet.
+// Kommer besökaren in via doc-id (/t/gwIbmwOTUwx9bdsga7dZ) ska canonical och
+// dela-länken ändå peka på /t/ah26 — annars sprids doc-id-formen vidare, och
+// två URL:er för samma sida delar på sina signaler.
+function kanoniskSokvag(tab) {
+  const kort = comp?.slug || realCid;
+  if (!kort) return null;
+  return `/t/${kort}${tab && tab !== 'overview' ? '/' + tab : ''}`;
+}
+
+const FLIKNAMN = { overview: '', patrols: 'Patruller', scoreboard: 'Poängtabell' };
+
 function render() {
   const parsed = parsePath(); if (!parsed) return;
   // renderAnslag() anropas sist i den här funktionen: render() skriver om
   // hela sidan, inklusive tavlans värdelement.
   const tab = parsed.tab;
   const cid = parsed.cid;
+
+  // Titel per FLIK, inte per tävling. Förut sattes den en gång ur comp.name,
+  // så /t/demo, /t/demo/patrols och /t/demo/scoreboard fick samma titel — en
+  // förälder med tre flikar öppna såg tre identiska. Canonical sätts här av
+  // samma skäl: den ska följa fliken, och render() är det enda stället som vet
+  // vilken som är aktiv.
+  if (comp) {
+    const delar = [comp.name || 'Tävling', FLIKNAMN[tab]].filter(Boolean);
+    setSeo({
+      sokvag: kanoniskSokvag(tab),
+      titel: `${delar.join(' · ')} — ESKIL`
+    });
+  }
 
   const totals = computeTotals();
 
@@ -522,9 +548,17 @@ function render() {
   // Dela sidan — native share på mobil, kopiera länken annars.
   root.querySelector('#pub-share')?.addEventListener('click', async (e) => {
     e.preventDefault();
-    const url = `${location.origin}/t/${cid}`;
+    // Kortadressen, aldrig det råa segmentet: den som fått doc-id-formen ska
+    // inte sprida den vidare.
+    const url = `${location.origin}${kanoniskSokvag(parsed.tab) || '/t/' + cid}`;
     if (navigator.share) {
-      try { await navigator.share({ title: comp?.name || 'ESKIL', url }); } catch { /* avbrutet */ }
+      try {
+        await navigator.share({
+          title: comp?.name || 'ESKIL',
+          text: comp?.name ? `Följ ${comp.name} live` : 'Följ tävlingen live',
+          url
+        });
+      } catch { /* avbrutet */ }
     } else {
       await copyToClipboard(url);
       toast('Länk kopierad', 'success');

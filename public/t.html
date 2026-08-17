@@ -3,8 +3,38 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Tävling — ESKIL</title>
+<title>Patrulltävling för scouter — ESKIL</title>
 <meta name="theme-color" content="#003660">
+
+<!-- Delningsförhandsvisning. Det här är den ENDA SEO-relaterade åtgärden på /t
+     som fungerar, och skälet är att den inte handlar om sökmotorer:
+     OG-skrapor i WhatsApp, Facebook, iMessage, Slack och Discord kör INGEN JS
+     och bryr sig inte om App Check-attestering — de läser den här statiska
+     filen och inget annat. /t är exakt den URL kårerna klistrar in i sina
+     grupper. Tävlingens innehåll kan däremot ALDRIG indexeras: App Check
+     kräver en attesterad klient, reCAPTCHA v3 fullbordas aldrig i en
+     automatiserad webbläsare, och sidan hänger då på "Laddar tävling…".
+     Mätt: 45 s virtual-time-budget ger fortfarande två ord.
+
+     TEXTEN MÅSTE VARA GENERISK. Skalet delas av VARJE /t-URL, så allt som
+     bakas in här gäller alla tävlingar samtidigt — en tävlingsspecifik text
+     vore både fel för de andra och en läcka. Den tävlingsspecifika titeln
+     sätts av public.js när datat finns, för människor i en riktig webbläsare.
+
+     Ingen og:url: den skulle behöva vara tävlingsspecifik, och en skrapa
+     faller tillbaka på den adress den faktiskt hämtade — vilket är rätt. -->
+<meta name="description" content="Följ patrullernas väg genom banan: startlista, poängtabell och besked från tävlingsledningen. Sidan uppdateras löpande under tävlingsdagen.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ESKIL">
+<meta property="og:locale" content="sv_SE">
+<meta property="og:title" content="Patrulltävling för scouter — följ läget live">
+<meta property="og:description" content="Startlista, poängtabell och besked från tävlingsledningen. Sidan uppdateras löpande under tävlingsdagen.">
+<meta property="og:image" content="https://eskilscout.se/assets/eskil_design_library/png/eskil-logo-primary-on-white.png">
+<meta property="og:image:width" content="2400">
+<meta property="og:image:height" content="873">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Patrulltävling för scouter — följ läget live">
+<meta name="twitter:description" content="Startlista, poängtabell och besked från tävlingsledningen. Uppdateras löpande under tävlingsdagen.">
 <link rel="icon" type="image/svg+xml" href="/assets/eskil_design_library/svg/eskil-favicon.svg">
 <link rel="icon" type="image/x-icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
 <link rel="apple-touch-icon" href="/assets/eskil_design_library/png/eskil-appicon-180.png">

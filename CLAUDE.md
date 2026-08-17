@@ -61,6 +61,56 @@ Email extension). Production domain: https://eskilscout.se.
   och apple-touch-icon. Rör du geometrin: rendera i 16 px och titta på en
   pixelförstoring — en utjämnad uppskalning döljer precis det som går sönder.
   Skälen till varje val står i bibliotekets `README.txt`.
+- **Sökmotorer och upptäckbarhet.** `public/robots.txt` och
+  `public/sitemap.xml` är RIKTIGA filer (statiska filer serveras före
+  rewrites). Förut svarade båda 200 med SPA:ns HTML, och eftersom den råa
+  HTML:en inte innehåller ett enda `<a>` — navigationen byggs av JS — hade en
+  robot som inte renderar noll URL:er att följa. Sitemapen ÄR alltså
+  ersättningen för länkgrafen. **Lägg ALDRIG en Disallow för `/k`, `/s`, `/m`
+  eller `/a` i robots.txt**: sökvägen är hemligheten och filen är offentlig, så
+  raden publicerar precis det mönster den skulle skydda — de sidorna bär
+  noindex i två lager i stället, vilket dessutom tar bort en sida ur indexet i
+  stället för att bara hindra hämtning. Av samma skäl står ingen tävlingssida i
+  sitemapen: de renderar inte för robotar (App Check) och bär patrullnamn.
+  Regressionstestat, mutationsverifierat.
+- **Catch-all-rewriten är BORTTAGEN.** `"**" → /index.html` gjorde varje
+  påhittad adress till ett 200-svar med startsidans titel och description —
+  obegränsat många indexerbara sidor. SPA:n har bara fyra toppsegment (`/`,
+  `/om`, `/kontakt`, `/app`), så de har explicita rewrites och allt annat får
+  ett ÄKTA 404 via `public/404.html`. **Priset: en ny rutt i app.js MÅSTE få en
+  rad i firebase.json**, annars fungerar den lokalt i klientroutern men 404:ar
+  i produktion. Ett test i `test/logic.test.js` läser `route()`-anropen och
+  kontrollerar att var och en fångas — mutationsverifierat. `/` behöver ingen
+  rewrite; den serveras som indexfil.
+- **Metadatan per rutt bor i `public/js/seo.js`** (`setSeo` / `resetSeo`) —
+  canonical, description, Open Graph och noindex. `ORIGIN` är HÅRDKODAD till
+  `https://eskilscout.se` med flit: fyra värdnamn svarar 200 med identiskt
+  innehåll (även `www.`, `eskil-scout.web.app` och `.firebaseapp.com`), Firebase
+  kan inte omdirigera per värdnamn, och `location.origin` hade gjort varje
+  dubblett självrefererande. `resetSeo()` anropas i app.js route-change-hook
+  där titeln redan nollställs — `<head>` töms aldrig (layout() byter bara
+  `<main>`), så utan den läcker en vys description och noindex till nästa sida.
+  Robots-taggen märks `data-seo` och bara en märkt tagg tas bort igen; annars
+  hade återställningen kunnat riva en STATISK noindex.
+  **På /t byggs sökvägen ur `comp.slug || realCid`, aldrig ur
+  `parsePath()`-segmentet** — kommer besökaren in via doc-id ska canonical och
+  dela-länken ändå peka på kortadressen. Verifierat i emulatorn: in via
+  `/t/alg2026`, ut med `https://eskilscout.se/t/ah26test`.
+  **`index.html` har varken statisk canonical eller `og:url`**, och det är inte
+  en glömska: filen levereras på `/`, `/om`, `/kontakt` OCH `/app/**`, så vilken
+  sökväg en fast tagg än pekade på vore den fel för tre av dem. Förut var
+  `og:url` låst till `/`, och den som delade `/kontakt` fick ett kort som utgav
+  sig för att vara startsidan. `integritet.html` har dem statiskt — den har en
+  enda adress.
+- **`/t` kan aldrig indexeras, och det är avsiktligt.** App Check kräver en
+  attesterad klient och reCAPTCHA v3 fullbordas aldrig i en automatiserad
+  webbläsare, så sidan hänger på "Laddar tävling…" (mätt: 45 s ger två ord).
+  Öppna INTE publika läsningar för oattesterade klienter för att fixa det.
+  Det som ändå går är `t.html`:s STATISKA og-taggar: OG-skrapor i WhatsApp,
+  Facebook och iMessage kör ingen JS och bryr sig inte om attestering, och /t
+  är exakt den URL kårerna klistrar in i sina grupper. Den texten måste vara
+  GENERISK — skalet delas av varje /t-URL, så en tävlingsspecifik text där vore
+  både fel för de andra och en läcka.
 - **Night mode** on the reporter page is a red palette. Don't swap it for a
   gray dark mode — preserving night vision is the requirement.
 - **Banans delar heter STRÄCKA i all svensk text** — aldrig "ben". Ordet är en

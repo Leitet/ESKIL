@@ -10,13 +10,19 @@
 
 import { publikHeader, publikFooter } from '../publik-nav.js';
 import { icon } from '../icons.js';
+import { setSeo } from '../seo.js';
 
 // Porträttet ligger inte i repot förrän det lagts dit. Filnamnet är fast så
 // bilden kan bytas utan kodändring.
 const PORTRATT = '/assets/johan-leitet.jpg';
 
 export function renderOm(app, user) {
-  document.title = 'Om ESKIL — ESKIL';
+  setSeo({
+    sokvag: '/om',
+    titel: 'Om ESKIL — vem som byggt det och vad det kostar',
+    description: 'ESKIL är byggt av en scoutledare för kårer som arrangerar patrulltävlingar. '
+      + 'Gratis att använda. Här står vem som står bakom och hur uppgifter hanteras.'
+  });
   app.innerHTML = `
     ${publikHeader({
       aktiv: 'om',

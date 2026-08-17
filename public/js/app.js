@@ -9,6 +9,7 @@ import { ensureUser, getUser, getCompetition } from './store.js';
 import { route, startRouter, dispatch, navigate, setRouteChangeHandler } from './router.js';
 import { toast, escapeHtml, isCompAdminUser } from './utils.js';
 import { compLabel } from './nav.js';
+import { resetSeo } from './seo.js';
 
 import { icon } from './icons.js';
 
@@ -101,6 +102,11 @@ async function guard(render, cid = null) {
 // page — views set their own via setDocTitle() once their data loads.
 setRouteChangeHandler(() => {
   document.title = 'ESKIL — spår och tävlingar för scouter';
+  // Samma skäl som titeln ovan, och samma läckagemönster: <head> töms aldrig
+  // (layout() återanvänder topbar och sidfot och byter bara <main>), så utan
+  // en aktiv återställning bär nästa sida föregående sidas description,
+  // canonical och eventuella noindex.
+  resetSeo();
   document.querySelectorAll('.tabs a').forEach(a => {
     if (a.getAttribute('href') === location.pathname) a.classList.add('active');
     else a.classList.remove('active');

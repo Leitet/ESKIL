@@ -14,6 +14,7 @@ import { icon } from '../icons.js';
 import { publikHeader } from '../publik-nav.js';
 import { setDocTitle } from '../nav.js';
 import { watchFeedbackThread, watchFeedbackMessages, sendFeedbackMessage, markFeedbackSeenByUser } from '../store.js';
+import { setSeo } from '../seo.js';
 
 const SORTER = [
   { id: 'forslag', label: 'Förbättringsförslag', hint: 'Något som skulle göra ESKIL bättre' },
@@ -29,7 +30,12 @@ const SENASTE = 'eskil:kontakt-arende';
 
 export function renderKontakt(app, user) {
   setDocTitle('Kontakta ESKIL');
-  document.title = 'Kontakta ESKIL';
+  setSeo({
+    sokvag: '/kontakt',
+    titel: 'Kontakta ESKIL — frågor om systemet',
+    description: 'Skriv till dem som ansvarar för ESKIL. Du får svar på adressen du anger. '
+      + 'Frågor om att arrangera en patrulltävling, fel i systemet eller önskemål.'
+  });
 
   let utkast = {};
   try { utkast = JSON.parse(sessionStorage.getItem(UTKAST) || '{}'); } catch { /* privat läge */ }
@@ -198,7 +204,11 @@ const klocka = (ts) => {
 
 export function renderKontaktArende(app, fbId) {
   setDocTitle('Ditt ärende');
-  document.title = 'Ditt ärende — ESKIL';
+  // Ingen sokvag och därmed ingen canonical: id:t i adressen ÄR hemligheten
+  // (avsändaren får länken i svarsmailet), och en canonical hade skrivit ut
+  // den i sidans HTML. noindexen är dubbel — firebase.json sätter
+  // X-Robots-Tag på /kontakt/** också.
+  setSeo({ titel: 'Ditt ärende — ESKIL', noindex: true });
 
   app.innerHTML = `
     <header class="pub-hero pub-hero-slim">

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sidan finns inte — ESKIL</title>
+  <meta name="robots" content="noindex">
+  <!--
+    Firebase Hosting serverar den här filen med ett ÄKTA 404-status för varje
+    sökväg som ingen rewrite fångar. Förut fanns en catch-all ("**" →
+    /index.html) och då svarade varje påhittad adress 200 med startsidans HTML,
+    inklusive dess titel och description — obegränsat många indexerbara sidor
+    som alla utgav sig för att vara startsidan.
+
+    Sidan är HELT STATISK och laddar ingen JS med flit: den ska fungera även
+    när det är just JS som inte gick att hämta. Länkarna är riktiga href, inte
+    data-link, eftersom ingen router finns här att fånga klicket.
+  -->
+  <link rel="icon" type="image/svg+xml" href="/assets/eskil_design_library/svg/eskil-favicon.svg">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+  <link rel="apple-touch-icon" href="/assets/eskil_design_library/png/eskil-appicon-180.png">
+  <link rel="stylesheet" href="/assets/tokens.css">
+  <link rel="stylesheet" href="/assets/public.css">
+  <style>
+    .fyra { max-width: 620px; margin: 0 auto; padding: var(--sp-16) var(--sp-5); }
+    .fyra .kod {
+      font-family: var(--font-display); font-weight: 200; font-size: 72px;
+      line-height: 1; color: var(--scout-blue-200); margin-bottom: var(--sp-4);
+    }
+    .fyra h1 {
+      font-family: var(--font-display); font-weight: 200; font-size: 40px;
+      line-height: 1.1; color: var(--white); margin: 0 0 var(--sp-5);
+    }
+    .fyra p { line-height: 1.6; color: #d2dde8; margin: 0 0 var(--sp-5); }
+    .fyra nav { display: flex; flex-wrap: wrap; gap: var(--sp-4); margin-top: var(--sp-8); }
+    .fyra nav a { color: var(--rover-yellow); }
+    .fyra .logga { height: 48px; width: auto; display: block; margin-bottom: var(--sp-10); }
+  </style>
+</head>
+<body style="background: var(--scout-blue);">
+  <main class="fyra">
+    <a href="/" aria-label="Till ESKIL:s startsida">
+      <img class="logga" src="/assets/eskil_design_library/svg/eskil-logo-inverted.svg"
+           alt="ESKIL — Där spåret börjar">
+    </a>
+    <div class="kod" aria-hidden="true">404</div>
+    <h1>Den sidan finns inte</h1>
+    <p>Adressen kan vara felstavad, eller så har sidan flyttat. Är du kontrollansvarig
+    eller patrull och har fått en länk av tävlingsledningen — kontrollera att hela
+    länken kom med, den är lång och slutar med en teckenkombination som måste vara
+    exakt rätt.</p>
+    <nav aria-label="ESKIL:s sidor">
+      <a href="/">Till startsidan</a>
+      <a href="/om">Om ESKIL</a>
+      <a href="/kontakt">Kontakt</a>
+      <a href="/integritet">Integritet</a>
+    </nav>
+  </main>
+</body>
+</html>

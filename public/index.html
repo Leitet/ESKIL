@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>ESKIL — spår och tävlingar för scouter</title>
-<meta name="description" content="ESKIL — allt ett scoutspår behöver, från anmälan till målgång. Anmälan på webben, poängrapportering i mobilen även utan täckning, och live-resultat.">
+<title>ESKIL — patrulltävling för scouter, anmälan till målgång</title>
+<meta name="description" content="Lägg upp och genomför scoutkårens patrulltävling: anmälan på webben, poängrapportering i mobilen även utan täckning och live-resultat för anhöriga.">
 <meta name="theme-color" content="#003660">
 
 <!-- Delningsförhandsvisning. Kårer sprider länkar i WhatsApp- och
@@ -12,16 +12,53 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="ESKIL">
 <meta property="og:locale" content="sv_SE">
-<meta property="og:title" content="ESKIL — allt ett scoutspår behöver">
+<meta property="og:title" content="ESKIL — patrulltävling för scouter">
 <meta property="og:description" content="Anmälan på webben, poängrapportering i mobilen även utan täckning, live-resultat och en dagsvy för sekretariatet. Testa demot — inget konto behövs.">
-<meta property="og:url" content="https://eskilscout.se/">
 <meta property="og:image" content="https://eskilscout.se/assets/eskil_design_library/png/eskil-logo-primary-on-white.png">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="ESKIL — allt ett scoutspår behöver">
+<meta name="twitter:title" content="ESKIL — patrulltävling för scouter">
 <meta name="twitter:description" content="Anmälan, kontroller, poängrapportering och live-resultat för scoutspår. Testa demot — inget konto behövs.">
 <link rel="icon" type="image/svg+xml" href="/assets/eskil_design_library/svg/eskil-favicon.svg">
 <link rel="icon" type="image/x-icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
 <link rel="apple-touch-icon" href="/assets/eskil_design_library/png/eskil-appicon-180.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "@id": "https://eskilscout.se/#website",
+      "url": "https://eskilscout.se/",
+      "name": "ESKIL",
+      "inLanguage": "sv-SE",
+      "description": "System för scoutkårers patrulltävlingar — anmälan, kontroller, poängrapportering och live-resultat.",
+      "publisher": { "@id": "https://eskilscout.se/#org" }
+    },
+    {
+      "@type": "Organization",
+      "@id": "https://eskilscout.se/#org",
+      "name": "ESKIL",
+      "url": "https://eskilscout.se/",
+      "logo": "https://eskilscout.se/assets/eskil_design_library/png/eskil-logo-primary-on-white.png",
+      "slogan": "Där spåret börjar",
+      "founder": { "@type": "Person", "name": "Johan Leitet" },
+      "areaServed": { "@type": "Country", "name": "Sverige" }
+    },
+    {
+      "@type": "WebApplication",
+      "@id": "https://eskilscout.se/#app",
+      "name": "ESKIL",
+      "url": "https://eskilscout.se/",
+      "applicationCategory": "BusinessApplication",
+      "operatingSystem": "Webbläsare",
+      "inLanguage": "sv-SE",
+      "description": "Lägg upp och genomför en patrulltävling: anmälan, kontroller, poängrapportering i mobilen även utan täckning, live-resultat och prisutdelning.",
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "SEK" },
+      "publisher": { "@id": "https://eskilscout.se/#org" }
+    }
+  ]
+}
+</script>
 <link rel="stylesheet" href="/assets/tokens.css">
 <link rel="stylesheet" href="/assets/app.css">
 <link rel="stylesheet" href="/assets/public.css">
