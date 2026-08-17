@@ -125,8 +125,84 @@ export function publicManagement(comp) {
 // Roles visible on the control report card (reporter page). Shows everything
 // active — internal roles are exclusive to this surface, public roles also
 // show here for completeness so control runners reach any contact.
-export function internalManagement(comp) {
-  return activeManagement(comp);
+//
+// `internPii` är de interna rollernas kontaktuppgifter, hämtade från den
+// skyddade platsen (se splitManagement nedan). Utan dem visar sidan bara de
+// publika rollerna — vilket är exakt vad en fältlänk utan token ska få.
+export function internalManagement(comp, internPii) {
+  return activeManagement({ ...comp, management: mergeManagement(comp, internPii) });
+}
+
+// ---------------------------------------------------------------------------
+// Uppdelningen av tävlingsledningen.
+//
+// VARFÖR: comp.management låg PÅ tävlingsdokumentet, som har
+// `allow read: if true`. Kryssrutan "intern" filtrerade bara i UI:t
+// (publicManagement ovan), så varje besökare på /t fick sekretariatets och
+// banläggarens namn och telefonnummer i svaret — mätt i produktion. Produkten
+// lovar med den kryssrutan att uppgiften inte blir publik, och det löftet höll
+// inte.
+//
+// PUBLIKA rollers uppgifter STANNAR på tävlingsdokumentet: de SKA vara
+// publika, /t visar dem med flit. Bara de INTERNA rollernas name/phone/email
+// flyttas. Det gör att /t, /s och /a inte behöver ändras alls.
+//
+// Skiljelinjen är inte ny: closeCompetition (store.js) behåller redan exakt
+// id, label, visibility och ekonomi och nollar name, phone och email vid
+// GDPR-gallringen. Samma fyra fält, samma gräns.
+// ---------------------------------------------------------------------------
+
+const MGMT_STRUKTUR = ['id', 'label', 'visibility', 'ekonomi'];
+const MGMT_PII = ['name', 'phone', 'email'];
+
+/**
+ * Delar en management-array i det som får ligga publikt och det som inte får.
+ *
+ * @returns { publikt, internPii }
+ *   publikt   – hela rollstrukturen; PII kvar bara för publika roller.
+ *   internPii – { [rollId]: {name, phone, email} } för de interna rollerna,
+ *               och bara för dem som har något ifyllt.
+ */
+export function splitManagement(management) {
+  const roller = Array.isArray(management) ? management : [];
+  const publikt = [];
+  const internPii = {};
+  for (const r of roller) {
+    const bas = {};
+    for (const k of MGMT_STRUKTUR) bas[k] = k === 'ekonomi' ? (r.ekonomi === true) : (r[k] ?? '');
+    bas.visibility = r.visibility === 'internal' ? 'internal' : 'public';
+    if (bas.visibility === 'internal') {
+      const pii = {};
+      let nagot = false;
+      for (const k of MGMT_PII) {
+        const v = (r[k] || '').trim();
+        pii[k] = v;
+        if (v) nagot = true;
+      }
+      if (nagot && bas.id) internPii[bas.id] = pii;
+      // PII:n läggs medvetet INTE på bas — det är hela poängen.
+    } else {
+      for (const k of MGMT_PII) bas[k] = r[k] || '';
+    }
+    publikt.push(bas);
+  }
+  return { publikt, internPii };
+}
+
+/**
+ * Sätter ihop igen. Används av ytor som FÅR se allt: rapportsidan (via sin
+ * token), inställningarna och utskriftscentralen (inloggade).
+ *
+ * Saknas internPii returneras den publika halvan orörd — då visar ytan bara
+ * de publika rollerna, i stället för att visa tomma rader för de interna.
+ */
+export function mergeManagement(comp, internPii) {
+  const roller = normalizeManagement(comp);
+  if (!internPii || typeof internPii !== 'object') return roller;
+  return roller.map(r => {
+    const pii = internPii[r.id];
+    return pii ? { ...r, name: pii.name || '', phone: pii.phone || '', email: pii.email || '' } : r;
+  });
 }
 
 export function avdShort(avd) {

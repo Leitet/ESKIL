@@ -16,7 +16,11 @@ import {
   NOTE_CHIPS, harNotering, laggTillNotering, taBortNotering, kapaNotering,
   publicNotices, anslagSynlig, isPaymentPaid, isPaymentClaimed, paymentClaimAt,
   sparlagesBeslut, SPAR_PA_UNDER, SPAR_AV_VID,
-  parseFieldPath
+  parseFieldPath,
+  splitManagement,
+  mergeManagement,
+  publicManagement,
+  internalManagement
 } from '../public/js/utils.js';
 import { hasIcon } from '../public/js/icons.js';
 import { tolkaVader, vaderMeddelande, BY_VARNING_MS } from '../public/js/vader.js';
@@ -1679,5 +1683,110 @@ describe('firebase.json: varje SPA-rutt har en rewrite', () => {
       'adminytans noindex är borta. Formen {,/**} är avsiktlig: /app** missar /app/c/x TYST');
     assert.ok(!noindex.some(s => s === '/kontakt' || s === '/' || s === '/om'),
       'en publik sida har fått noindex');
+  });
+});
+
+describe('splitManagement — interna rollers uppgifter ur den publika ytan', () => {
+  // Bakgrunden: comp.management låg PÅ tävlingsdokumentet, som har
+  // "allow read: if true". Kryssrutan "intern" filtrerade bara i UI:t, så varje
+  // besökare på /t fick sekretariatets namn och telefonnummer i svaret. Mätt i
+  // produktion innan fixen.
+  const ROLLER = [
+    { id: 'leader', label: 'Tävlingsledare', visibility: 'public', ekonomi: false,
+      name: 'Anna Svensson', phone: '070-111 22 33', email: 'anna@lindsdal.se' },
+    { id: 'sekr', label: 'Sekretariat', visibility: 'internal', ekonomi: false,
+      name: 'Bo Berg', phone: '070-444 55 66', email: 'bo@lindsdal.se' },
+    { id: 'bana', label: 'Banläggare', visibility: 'internal', ekonomi: false,
+      name: 'Cecilia Ek', phone: '070-777 88 99', email: '' },
+    { id: 'kassor', label: 'Kassör', visibility: 'internal', ekonomi: true,
+      name: '', phone: '', email: '' }
+  ];
+
+  test('den publika halvan bär INGEN intern uppgift', () => {
+    const { publikt } = splitManagement(ROLLER);
+    const json = JSON.stringify(publikt);
+    for (const hemligt of ['Bo Berg', '070-444', 'bo@lindsdal.se',
+                           'Cecilia', '070-777']) {
+      assert.ok(!json.includes(hemligt), `${hemligt} låg kvar publikt: ${json}`);
+    }
+  });
+
+  test('publika rollers uppgifter STANNAR — /t ska visa dem', () => {
+    const { publikt } = splitManagement(ROLLER);
+    const ledare = publikt.find(r => r.id === 'leader');
+    assert.equal(ledare.name, 'Anna Svensson');
+    assert.equal(ledare.phone, '070-111 22 33');
+    assert.equal(ledare.email, 'anna@lindsdal.se');
+  });
+
+  test('hela rollstrukturen finns kvar publikt', () => {
+    // Utan strukturen kan inställningarna inte rita formuläret, och
+    // ekonomi-flaggan styr vem som får pricka av betalningar.
+    const { publikt } = splitManagement(ROLLER);
+    assert.equal(publikt.length, 4);
+    assert.deepEqual(publikt.map(r => r.id), ['leader', 'sekr', 'bana', 'kassor']);
+    assert.deepEqual(publikt.map(r => r.label),
+      ['Tävlingsledare', 'Sekretariat', 'Banläggare', 'Kassör']);
+    assert.equal(publikt.find(r => r.id === 'kassor').ekonomi, true);
+    assert.equal(publikt.find(r => r.id === 'sekr').visibility, 'internal');
+  });
+
+  test('internPii bär bara interna roller som har något ifyllt', () => {
+    const { internPii } = splitManagement(ROLLER);
+    assert.deepEqual(Object.keys(internPii).sort(), ['bana', 'sekr']);
+    assert.equal(internPii.sekr.phone, '070-444 55 66');
+    assert.equal(internPii.bana.email, '', 'tomt fält bevaras som tomt');
+    assert.ok(!('kassor' in internPii), 'en tom roll ska inte skapa en post');
+    assert.ok(!('leader' in internPii), 'en publik roll hör inte hit');
+  });
+
+  test('rundtur: split → merge ger tillbaka exakt samma uppgifter', () => {
+    const { publikt, internPii } = splitManagement(ROLLER);
+    const åter = mergeManagement({ management: publikt }, internPii);
+    for (const r of ROLLER) {
+      const m = åter.find(x => x.id === r.id);
+      assert.equal(m.name, r.name, `namn för ${r.id}`);
+      assert.equal(m.phone, r.phone, `telefon för ${r.id}`);
+      assert.equal(m.email, r.email, `e-post för ${r.id}`);
+      assert.equal(m.visibility, r.visibility);
+      assert.equal(m.ekonomi, r.ekonomi);
+    }
+  });
+
+  test('merge UTAN internPii ger bara de publika uppgifterna', () => {
+    // Det är vad en fältlänk utan token ska få: publika roller, och inga tomma
+    // rader för de interna.
+    const { publikt } = splitManagement(ROLLER);
+    const åter = mergeManagement({ management: publikt }, null);
+    assert.equal(åter.find(r => r.id === 'leader').name, 'Anna Svensson');
+    assert.equal(åter.find(r => r.id === 'sekr').name, '', 'intern roll ska vara tom');
+    const aktiva = åter.filter(r => r.name || r.phone || r.email);
+    assert.equal(aktiva.length, 1, 'bara ledaren har uppgifter utan token');
+  });
+
+  test('publicManagement på den publika halvan ger samma sak som förut', () => {
+    // Regressionsvakt: /t, /s och /a ska inte påverkas av uppdelningen alls.
+    const { publikt } = splitManagement(ROLLER);
+    const före = publicManagement({ management: ROLLER });
+    const efter = publicManagement({ management: publikt });
+    assert.deepEqual(efter.map(r => r.id), före.map(r => r.id));
+    assert.deepEqual(efter.map(r => r.phone), före.map(r => r.phone));
+  });
+
+  test('internalManagement med internPii ser allt, utan ser bara publikt', () => {
+    const { publikt, internPii } = splitManagement(ROLLER);
+    const med = internalManagement({ management: publikt }, internPii);
+    const utan = internalManagement({ management: publikt });
+    assert.equal(med.length, 3, 'tre roller har uppgifter');
+    assert.equal(utan.length, 1, 'bara den publika utan token');
+    assert.ok(JSON.stringify(med).includes('Bo Berg'));
+    assert.ok(!JSON.stringify(utan).includes('Bo Berg'));
+  });
+
+  test('tåligt mot skräpindata', () => {
+    assert.deepEqual(splitManagement(null), { publikt: [], internPii: {} });
+    assert.deepEqual(splitManagement(undefined), { publikt: [], internPii: {} });
+    const { publikt } = splitManagement([{ visibility: 'internal', name: 'X' }]);
+    assert.ok(!JSON.stringify(publikt).includes('X'), 'roll utan id får inte läcka namnet');
   });
 });

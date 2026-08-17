@@ -1059,3 +1059,93 @@ describe('Demospårets läsrättigheter', () => {
     });
   }
 });
+
+describe('faltinfo — ledningens interna kontakter mot fältet', () => {
+  // Spegeln som gör att /k kan visa nödkontakterna medan /t inte kan.
+  // Doc-id:t ÄR kontrollens threadToken, alltså "id:t är hemligheten".
+  const F = uniq('falt');
+  const STANGD = uniq('stangd');
+  const DEMO = uniq('fdemo');
+  const TOKEN = 'tok-hemlig-abc123';
+  // Identiteterna är { uid, email } — helpers.js mintar en osignerad JWT av dem.
+  const FADMIN = { uid: uniq('uid-fadmin'), email: 'fadmin@x.se' };
+  const FMEDLEM = { uid: uniq('uid-fmedlem'), email: 'fmedlem@x.se' };
+  const FUTOM = { uid: uniq('uid-futom'), email: 'futom@x.se' };
+
+  before(async () => {
+    for (const [cid, extra] of [[F, {}], [STANGD, { closed: true }], [DEMO, { demo: true }]]) {
+      await seed(`competitions/${cid}`, { name: 'T', closed: false, demo: false, ...extra });
+      await seed(`competitions/${cid}/private/access`, { adminEmails: [FADMIN.email], userEmails: [FMEDLEM.email] });
+      await seed(`competitions/${cid}/faltinfo/${TOKEN}`, {
+        internPii: { sekr: { name: 'Bo Berg', phone: '070-444 55 66', email: '' } }
+      });
+    }
+  });
+  after(async () => {
+    for (const cid of [F, STANGD, DEMO]) {
+      await remove(`competitions/${cid}/faltinfo/${TOKEN}`, 'owner');
+      await remove(`competitions/${cid}/private/access`, 'owner');
+      await remove(`competitions/${cid}`, 'owner');
+    }
+  });
+
+  test('anonym GET med token fungerar — det ÄR nödvägen på /k', async () => {
+    const r = await read(`competitions/${F}/faltinfo/${TOKEN}`, null);
+    assert.equal(r.ok, true, 'kontrollanten i skogen måste nå kontakterna');
+    assert.ok(JSON.stringify(r.data).includes('070-444'), 'numret ska faktiskt komma med');
+  });
+
+  test('anonym LIST är NEKAD — annars räknas nycklarna till fältsamtalen upp', async () => {
+    // Det här är testet som bär hela get/list-uppdelningen. Doc-id:t är
+    // kontrollens threadToken, så en listbar faltinfo lämnar ut nycklarna till
+    // trådarna — nödropens GPS-position och bilderna från skogen. Ett
+    // `allow read: if true` hade alltså inte varit en gradskillnad.
+    assert.equal((await list(`competitions/${F}/faltinfo`, null)).ok, false,
+      'faltinfo gick att räkna upp anonymt');
+  });
+
+  test('inloggad utomstående får inte heller lista', async () => {
+    assert.equal((await list(`competitions/${F}/faltinfo`, FUTOM)).ok, false);
+  });
+
+  test('medlem får lista — fan-outen behöver det', async () => {
+    assert.equal((await list(`competitions/${F}/faltinfo`, FMEDLEM)).ok, true,
+      'utan list kan speglarna inte skrivas om när ledningen ändras');
+  });
+
+  test('anonym skrivning är nekad', async () => {
+    assert.equal((await write(`competitions/${F}/faltinfo/${TOKEN}`, { internPii: {} }, null)).ok, false);
+  });
+
+  test('anonym radering är nekad', async () => {
+    assert.equal((await remove(`competitions/${F}/faltinfo/${TOKEN}`, null)).ok, false);
+  });
+
+  test('admin får skriva rätt form', async () => {
+    assert.equal((await write(`competitions/${F}/faltinfo/${TOKEN}`,
+      { internPii: { sekr: { name: 'Bo', phone: '070', email: '' } }, uppdaterad: '2026-08-17' },
+      FADMIN)).ok, true);
+  });
+
+  test('formvakten nekar främmande fält', async () => {
+    // Utan hasOnly kan en admin lägga vad som helst i ett VÄRLDSLÄSBART
+    // dokument — t.ex. anmälningarnas kontaktuppgifter.
+    assert.equal((await write(`competitions/${F}/faltinfo/${TOKEN}`,
+      { internPii: {}, allergier: 'nötter' }, FADMIN)).ok, false,
+      'ett fält utanför formen släpptes in');
+  });
+
+  test('en AVSLUTAD tävling tar inte emot skrivningar', async () => {
+    // closeCompetition raderar speglarna vid gallringen. Kunde de skrivas
+    // tillbaka efteråt vore gallringen meningslös.
+    assert.equal((await write(`competitions/${STANGD}/faltinfo/${TOKEN}`,
+      { internPii: {} }, FADMIN)).ok, false);
+  });
+
+  test('demotävlingen nekar skrivning men TILLÅTER läsning', async () => {
+    assert.equal((await write(`competitions/${DEMO}/faltinfo/${TOKEN}`,
+      { internPii: {} }, FADMIN)).ok, false, 'demo ska neka varje skrivning');
+    assert.equal((await read(`competitions/${DEMO}/faltinfo/${TOKEN}`, null)).ok, true,
+      'demots /k måste kunna visa kontakterna — get: if true täcker det utan egen demogren');
+  });
+});

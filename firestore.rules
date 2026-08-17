@@ -623,6 +623,34 @@ service cloud.firestore {
       // bekräftas FÖRE patrullens starttid, och målet inte före sista
       // kontrollen, vaktas i gränssnittet — reglerna kan varken räkna fram
       // startordning × intervall eller läsa alla poängdokument.
+      // Tävlingsledningens INTERNA kontaktuppgifter, i två delar.
+      //
+      // BAKGRUND: comp.management låg på tävlingsdokumentet, som har
+      // `allow read: if true`. Kryssrutan "intern" filtrerade bara i UI:t, så
+      // varje besökare på /t fick sekretariatets och banläggarens namn och
+      // telefonnummer i svaret. Mätt i produktion.
+      //
+      // private/ledning är MASTERN (medlemsläsbar). faltinfo/{token} är en
+      // HÄRLEDD spegel, en per kontroll, med kontrollens threadToken som
+      // doc-id — samma "id:t är hemligheten" som resten av fältvägarna. Att
+      // spegeln är härledd är hela poängen: driftar den kostar det ett
+      // inaktuellt nummer som repareras av en omskrivning, aldrig dataförlust.
+      //
+      // get OCH list är DELADE, och det är ingen finess. Doc-id:t ÄR
+      // kontrollens threadToken, så en LISTBAR faltinfo räknar upp nycklarna
+      // till fältsamtalen — alltså nödropens GPS-position och bilderna från
+      // skogen, exakt den läcka `harledd()` stängde. Ett `allow read: if true`
+      // här vore därför inte en gradskillnad utan en artskillnad. Samma skäl
+      // som i kompletteringar och logg. Mutationsverifierat.
+      match /faltinfo/{token} {
+        allow get: if true;              // hemligheten är att känna token
+        allow list: if isCompMember(cid); // aldrig uppräkningsbar
+        allow write: if (isSuperAdmin() || (isCompAdmin(cid) && !compIsDemo(cid)))
+          && !compClosed(cid)
+          && (request.method == 'delete' || request.resource.data.keys()
+                .hasOnly(['internPii', 'uppdaterad']));
+      }
+
       match /selfPassages/{patrolId} {
         function inWindow(ts) {
           return ts is timestamp
