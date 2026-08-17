@@ -1213,7 +1213,12 @@ const { hanteraMcp } = require('./mcp/transport');
 const mcpAuth = require('./mcp/auth');
 const mcpVerktyg = require('./mcp/verktyg');
 
-exports.mcp = onRequest({ cors: false }, async (req, res) => {
+// maxInstances bundet lågt MED FLIT. Det finns ingen riktig strypning i koden
+// — en sådan kräver tillstånd, och funktionen är tillståndslös — så taket är
+// det som hindrar att ett flöde av anrop mot MCP-endpointen äter Firestore-kvot
+// från de riktiga fältsidorna på en tävlingsdag. Två kårledare som
+// konfigurerar samtidigt märker ingenting; tusen anrop i sekunden köas.
+exports.mcp = onRequest({ cors: false, maxInstances: 3, timeoutSeconds: 30 }, async (req, res) => {
   const kontroll = await mcpAuth.verifiera(req.path);
   if (!kontroll.ok) {
     res.status(kontroll.status).json({
@@ -1222,7 +1227,10 @@ exports.mcp = onRequest({ cors: false }, async (req, res) => {
     });
     return;
   }
-  mcpAuth.stamplaAnvand(kontroll.cid).catch(() => {});
+  // nyckelData MÅSTE med, annars är `tidigare` undefined, `senast` blir 0 och
+  // strypningen till en stämpel per timme är i praktiken av — en Firestore-
+  // skrivning per anrop, och en LLM listar verktyg ofta.
+  mcpAuth.stamplaAnvand(kontroll.cid, kontroll.nyckelData).catch(() => {});
   const ctx = { db, cid: kontroll.cid, comp: kontroll.comp };
   await hanteraMcp(req, res, {
     namn: 'eskil',

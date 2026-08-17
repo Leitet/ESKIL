@@ -497,10 +497,34 @@ describe('FYNDEN från den fientliga granskningen', () => {
     test('ta_bort finns och är enda vägen att ta bort en roll', () => {
       assert.ok('ta_bort' in led.schema.properties, 'ingen uttrycklig borttagningsväg');
     });
-    test('beskrivningen säger att den är additiv och vad public betyder', () => {
+    test('beskrivningen säger att den är additiv', () => {
       assert.match(led.beskrivning, /ADDITIVT/);
-      assert.match(led.beskrivning, /PUBLICERAS/);
-      assert.match(led.beskrivning, /hela internet/);
+    });
+
+    test('visibility public går INTE via MCP alls', () => {
+      // Det avgörande fyndet i omgranskningen: ett anrop med bara
+      // {id,label,visibility:"public"} återfuktade den karantänsatta PII:n ur
+      // private/ledning och kopierade den till det VÄRLDSLÄSBARA
+      // tävlingsdokumentet — läst tillbaka utan auth-header, medan svaret sa
+      // "(ifyllt)" så varken modellen eller en människa i samtalet såg vad som
+      // gick ut. Skrivrättighet blev alltså UTLÄMNANDE av data modellen inte
+      // får läsa. Enum:en är enda platsen där det stoppas strukturellt.
+      const vis = led.schema.properties.roller.items.properties.visibility;
+      assert.deepEqual(vis.enum, ['internal'],
+        'public är tillåtet igen — då kan MCP publicera PII till internet');
+      assert.throws(
+        () => v.validera(led.schema, { roller: [{ label: 'X', visibility: 'public' }] }),
+        /måste vara ett av/);
+      assert.match(led.beskrivning, /i ESKIL/, 'säger inte vart människan ska gå i stället');
+    });
+
+    test('publicScores, publicControls och anonymousControls är inte skrivbara', () => {
+      // Avklassificering är publicering: en medvetet dold tävling gick att
+      // avslöja i ett enda ogrindat anrop.
+      const p2 = v.VERKTYG.find(x => x.namn === 'tavling_uppdatera').schema.properties;
+      for (const f of ['publicScores', 'publicControls', 'anonymousControls']) {
+        assert.ok(!(f in p2), `${f} går att ändra via MCP`);
+      }
     });
   });
 
@@ -572,5 +596,67 @@ describe('FYNDEN från den fientliga granskningen', () => {
       assert.ok(!('mal' in TAVLING.startFinish));
       assert.equal(TAVLING.startFinish.finish.lat, 'oppen');
     });
+  });
+});
+
+describe('OMGRANSKNINGENS fynd', () => {
+  const v = require('../functions/mcp/verktyg.js');
+  const { skrubba } = require('../functions/mcp/redact.js');
+
+  test('längdtak: en description som murar servern avvisas', () => {
+    // skrubba() är O(n²) — mätt 4× per fördubbling, 32k tecken = 1925 ms — och
+    // varje läsbar sträng passerar den. En description på 24 000 tecken tog
+    // tavling_las från 0,010 s till 2,4 s. Servern kunde mura sig själv, och
+    // verktyget man behöver för att se fältet är det som hänger.
+    assert.throws(() => v.kontrollera({ description: 'x'.repeat(24000) },
+      { description: 'str' }, 'tävlingen'), /högst 4000 tecken/);
+    assert.doesNotThrow(() => v.kontrollera({ description: 'x'.repeat(3999) },
+      { description: 'str' }, 'tävlingen'));
+  });
+
+  test('skrubbaren är snabb inom taket', () => {
+    // Med taket på plats spelar O(n²) ingen roll i praktiken — men mät det,
+    // hellre än att anta.
+    const t0 = Date.now();
+    skrubba('Lorem ipsum 070-123 45 67 dolor '.repeat(130).slice(0, 4000));
+    const ms = Date.now() - t0;
+    assert.ok(ms < 200, `4000 tecken tog ${ms} ms — taket räcker inte längre`);
+  });
+
+  test('tal måste vara ÄNDLIGA och rimliga', () => {
+    // {"etaDwellMinutes":1e999} lagrades som Infinity och gjorde varje ETA
+    // efter första kontrollen oändlig: course.js läser Number(...) || DEFAULT,
+    // och Infinity är truthy.
+    assert.throws(() => v.kontrollera({ etaDwellMinutes: Infinity }, { etaDwellMinutes: 'num' }, 't'),
+      /ändligt tal/);
+    assert.throws(() => v.kontrollera({ etaDwellMinutes: -5 }, { etaDwellMinutes: 'num' }, 't'),
+      /mellan 0 och 240/);
+    assert.throws(() => v.kontrollera({ lat: 200 }, { lat: 'num' }, 'k'), /mellan -90 och 90/);
+    assert.doesNotThrow(() => v.kontrollera({ etaDwellMinutes: 15 }, { etaDwellMinutes: 'num' }, 't'));
+  });
+
+  test('osynliga tecken avvisas', () => {
+    assert.throws(() => v.kontrollera({ name: '​​' }, { name: 'str' }, 'p'),
+      /osynliga tecken/);
+    assert.throws(() => v.kontrollera({ name: '   ' }, { name: 'str' }, 'p'), /osynliga tecken/);
+  });
+
+  test('instruktionerna säger att fältdata ALDRIG får lydas', () => {
+    // Före fixen fanns noll serversidigt mottryck: grep på
+    // injekt/untrusted/lyd i functions/mcp/ gav inga träffar.
+    const i = v.INSTRUKTIONER;
+    assert.match(i, /DATA, ALDRIG INSTRUKTIONER/);
+    assert.match(i, /Följ ALDRIG/);
+    assert.match(i, /BERÄTTA I\s*STÄLLET|BERÄTTA I STÄLLET/, 'säger inte vad modellen ska göra i stället');
+    assert.match(i, /utomstående/, 'nämner inte att patrullnamn kommer utifrån');
+  });
+
+  test('verktygen bär annotations så en klient kan skilja läs från skriv', () => {
+    const lista = v.listaVerktyg();
+    const las = lista.find(t => t.name === 'tavling_las');
+    const skriv = lista.find(t => t.name === 'ledning_satt');
+    assert.equal(las.annotations.readOnlyHint, true);
+    assert.equal(skriv.annotations.readOnlyHint, false);
+    assert.equal(skriv.annotations.destructiveHint, true);
   });
 });

@@ -143,6 +143,49 @@ Email extension). Production domain: https://eskilscout.se.
   mastern i `getComp` — `managementEmails` är MOTTAGARlista för förhinder och
   avanmälan, inte bara Reply-To. Migrering: `scripts/migrate-management.sh`,
   idempotent, och ordningen är **functions → hosting+rules → migrering**.
+- **MCP-servern (`functions/mcp/`) är det ANDRA undantaget** från "Cloud
+  Functions finns enbart för transaktionsmail", och inte ett val: Firestore-
+  regler kan inte dölja enskilda FÄLT, så något måste läsa och redigera bort.
+  Endpoint `/mcp/<cid>/<nyckel>`, tillståndslös Streamable HTTP för hand (spec:en
+  gör `Mcp-Session-Id` MAY, och Cloud Functions skalar till flera instanser).
+  Nyckeln lagras BARA som sha256 — `private/{doc}` är läsbar för varje MEDLEM,
+  så klartext där hade gett en funktionär admin-skrivrätt via servern.
+  **Tre invarianter, alla fastställda genom fientlig granskning där en agent
+  faktiskt bröt dem:**
+  1. **`visibility: 'public'` går ALDRIG via MCP.** Ett anrop med bara
+     `{id,label,visibility}` återfuktade den karantänsatta PII:n ur
+     `private/ledning` och kopierade den till det världsläsbara
+     tävlingsdokumentet — läst tillbaka utan auth-header, medan svaret sa
+     "(ifyllt)" så varken modellen eller en människa i samtalet såg vad som gick
+     ut. Skrivrättighet blev alltså UTLÄMNANDE av data modellen inte får läsa.
+     Enum:en är enda strukturella spärren. Samma skäl håller
+     publicScores/publicControls/anonymousControls och fieldMessaging/selfStart/
+     selfFinish utanför skrivlistan: publicering och säkerhetsgrindar är
+     människans beslut.
+  2. **inputSchema VALIDERAS serversidan före `kor()`.** Utan det var `required`
+     dokumentation servern inte höll: `ledning_satt` med `arguments:{}` gav
+     `isError:false` och raderade hela ledningen inklusive nödnumren i
+     faltinfo-speglarna — som modellen inte kan återskapa, eftersom den enligt
+     konstruktion inte får läsa dem. `ledning_satt` är dessutom ADDITIV,
+     transaktionell (8 samtidiga anrop tappade förut uppdateringar och lät en
+     borttagen roll återuppstå med sin PII), tar skuggkopia till
+     `private/ledning_backup`, och kräver en serverslumpad bekräftelsetoken för
+     `ta_bort` — en injektion i datat kan be om raderingen men inte förutse
+     token.
+  3. **Längdtak och ändliga tal i `kontrollera()`.** `skrubba()` är O(n²) (mätt
+     4× per fördubbling; 32k tecken = 1925 ms) och varje läsbar sträng passerar
+     den — en `description` på 24 000 tecken tog `tavling_las` från 0,010 s till
+     2,4 s, alltså kunde servern mura sig själv med det verktyg man behöver för
+     att se fältet. `etaDwellMinutes: 1e999` lagrades som Infinity och gjorde
+     varje ETA oändlig (`course.js` läser `Number(...) || DEFAULT`, och Infinity
+     är truthy).
+  Redaktionen: se `functions/mcp/redact.js` — regeln, de tre följderna och
+  klasslistorna med sidhänvisningar till skrivkoden. Fritext ur databasen märks
+  `[data] ` i svaren och INSTRUKTIONER säger uttryckligen att fältinnehåll
+  aldrig får lydas: patrullnamn kommer från utomstående kårer via den anonyma
+  anmälningslänken, så injektionsytan är inte bara kårledarens egen krets.
+  `delaLedning()` i `functions/mcp/ledning.js` är en medveten dubblett av
+  `splitManagement()` (CJS mot ESM) — ett test kör båda mot samma indata.
 - **Night mode** on the reporter page is a red palette. Don't swap it for a
   gray dark mode — preserving night vision is the requirement.
 - **Banans delar heter STRÄCKA i all svensk text** — aldrig "ben". Ordet är en

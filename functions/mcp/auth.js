@@ -20,6 +20,7 @@
 
 const crypto = require('crypto');
 const admin = require('firebase-admin');
+const { FieldValue } = require('firebase-admin/firestore');
 
 const NYCKEL_DOK = 'mcp';           // competitions/{cid}/private/mcp
 const PREFIX = 'eskil_';
@@ -77,21 +78,23 @@ async function verifiera(sokvag) {
   }
 
   const db = admin.firestore();
-  const [nyckelSnap, compSnap] = await Promise.all([
-    db.doc(`competitions/${cid}/private/${NYCKEL_DOK}`).get(),
-    db.doc(`competitions/${cid}`).get()
-  ]);
-
   // SAMMA svar för "tävlingen finns inte", "ingen nyckel skapad" och "fel
   // nyckel". Skillnaden hade gjort endpointen till ett orakel som avslöjar
   // vilka tävlings-id som finns och vilka som har MCP påslaget.
   const avvisa = { ok: false, status: 401, meddelande: 'Ogiltig nyckel.' };
-  if (!compSnap.exists || !nyckelSnap.exists) return avvisa;
 
+  // EN läsning för ett avvisat anrop, inte två. Endpointen är oautentiserad
+  // fram till hit, och en mätning visade 373 anrop/s med fel nyckel från en
+  // laptop — à två dokumentläsningar var. Tävlingsdokumentet läses därför
+  // först EFTER att hashen stämmer. Formatkontrollen ovan kostar noll.
+  const nyckelSnap = await db.doc(`competitions/${cid}/private/${NYCKEL_DOK}`).get();
+  if (!nyckelSnap.exists) return avvisa;
   const d = nyckelSnap.data() || {};
   if (!d.hash || !likaHash(d.hash, hasha(nyckel))) return avvisa;
   if (d.revokedAt) return avvisa;
 
+  const compSnap = await db.doc(`competitions/${cid}`).get();
+  if (!compSnap.exists) return avvisa;
   const comp = compSnap.data() || {};
   // En avslutad tävling är läsbar men oföränderlig för alla utom admin — och
   // stängningen sveper personuppgifterna. Att låta en MCP skriva där hade
@@ -106,7 +109,7 @@ async function verifiera(sokvag) {
     return { ok: false, status: 403, meddelande: 'Det här är demotävlingen. Den går att utforska men inte att ändra.' };
   }
 
-  return { ok: true, cid, comp };
+  return { ok: true, cid, comp, nyckelData: d };
 }
 
 /**
@@ -119,9 +122,15 @@ async function stamplaAnvand(cid, tidigare) {
   const nu = Date.now();
   const senast = tidigare?.lastUsedAt?.toMillis?.() ?? 0;
   if (nu - senast < 3600 * 1000) return;
-  await admin.firestore().doc(`competitions/${cid}/private/${NYCKEL_DOK}`)
-    .set({ lastUsedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
-    .catch(() => { /* en utebliven stämpel får aldrig stoppa anropet */ });
+  try {
+    // FieldValue ur firebase-admin/firestore, INTE admin.firestore.FieldValue:
+    // den senare är odefinierad i den modulära stilen, och felet kastas
+    // SYNKRONT när argumentet byggs — så stämpeln skrevs aldrig och
+    // "senast använd" i adminvyn förblev tom, tyst. Samma fälla som i
+    // verktyg.js loggskrivning.
+    await admin.firestore().doc(`competitions/${cid}/private/${NYCKEL_DOK}`)
+      .set({ lastUsedAt: FieldValue.serverTimestamp() }, { merge: true });
+  } catch { /* en utebliven stämpel får aldrig stoppa anropet */ }
 }
 
 module.exports = { myntaNyckel, hasha, verifiera, stamplaAnvand, tolkaSokvag, NYCKEL_DOK, PREFIX };
