@@ -41,6 +41,7 @@
 //    för tecken — ~5 anrop per tecken, utan mail och utan spår.
 
 const admin = require('firebase-admin');
+const { FieldValue } = require('firebase-admin/firestore');
 const { maskera, skrubba, TAVLING, KONTROLL, PATRULL } = require('./redact.js');
 const { delaLedning } = require('./ledning.js');
 
@@ -50,9 +51,12 @@ const TAVLING_SKRIVBART = {
   name: 'str', shortName: 'str', date: 'str', location: 'str', organizer: 'str',
   description: 'str', generalInfo: 'str', district: 'str',
   publicScores: 'bool', publicControls: 'bool', controlsAutoReleased: 'bool',
-  anonymousControls: 'bool', selfStart: 'bool', selfFinish: 'bool',
-  autoFinish: 'bool', fieldMessaging: 'bool', etaDwellMinutes: 'num'
+  anonymousControls: 'bool', autoFinish: 'bool', etaDwellMinutes: 'num'
 };
+// selfStart, selfFinish och fieldMessaging står medvetet INTE här. De är inte
+// bara inställningar utan GRINDAR: fieldMessaging av tar bort fältets enda
+// kanal till ledningen — samma kanal som nödropet går i. Att en modell kan
+// stänga den som en följd av "städa upp inställningarna" är fel sorts makt.
 // demo, closed, slug, lastBackupAt, admins, createdBy och imported står
 // medvetet INTE här. Se filhuvudet.
 
@@ -66,7 +70,9 @@ const PATRULL_SKRIVBART = { name: 'str', kar: 'str', avdelning: 'str', startOrde
 function kontrollera(varden, tillatna, yta) {
   const ut = {};
   for (const [k, v] of Object.entries(varden || {})) {
-    const typ = tillatna[k];
+    // hasOwnProperty, inte tillatna[k]: annars matchar 'constructor' och
+    // 'toString' mot Object.prototype och hoppar över typkontrollen.
+    const typ = Object.prototype.hasOwnProperty.call(tillatna, k) ? tillatna[k] : null;
     if (!typ) {
       const kanda = Object.keys(tillatna).join(', ');
       throw fel(`Fältet "${k}" går inte att sätta på ${yta}. Tillåtna: ${kanda}.`);
@@ -253,10 +259,14 @@ const VERKTYG = [
   },
   {
     namn: 'ledning_satt',
-    beskrivning: 'Sätt tävlingsledningens roller och kontaktuppgifter. '
-      + 'VIKTIGT: uppgifterna går INTE att läsa tillbaka — servern svarar bara '
-      + '"(ifyllt)" eller "(saknas)". Skriv därför hela uppsättningen på en gång, '
-      + 'och be människan kontrollera i ESKIL efteråt.',
+    beskrivning: 'Lägg till eller ändra roller i tävlingsledningen. ADDITIVT: '
+      + 'roller du inte nämner lämnas orörda. För att ta bort en roll måste du '
+      + 'ange dess id i ta_bort. '
+      + 'visibility MÅSTE anges: "internal" = uppgifterna når bara den som har '
+      + 'en kontrolls hemliga fältlänk. "public" = namn, telefon och e-post '
+      + 'PUBLICERAS på tävlingssidan för hela internet, och det går inte att '
+      + 'ångra för den som redan sett dem — fråga människan uttryckligen först. '
+      + 'Uppgifterna går inte att läsa tillbaka; servern svarar "(ifyllt)".',
     schema: {
       type: 'object', additionalProperties: false, required: ['roller'],
       properties: {
@@ -264,7 +274,10 @@ const VERKTYG = [
           type: 'array',
           items: {
             type: 'object', additionalProperties: false,
-            required: ['label'],
+            // visibility är REQUIRED. Utelämnad blev den förut 'public', och
+            // då hamnade namn, telefon och e-post på det världsläsbara
+            // tävlingsdokumentet — bevisat läst anonymt i granskningen.
+            required: ['label', 'visibility'],
             properties: {
               id: { type: 'string' },
               label: { type: 'string' },
@@ -273,23 +286,66 @@ const VERKTYG = [
               name: { type: 'string' }, phone: { type: 'string' }, email: { type: 'string' }
             }
           }
-        }
+        },
+        ta_bort: { type: 'array', items: { type: 'string' } }
       }
     },
     async kor(a, { db, cid }) {
-      const roller = (a.roller || []).map((r, i) => ({ ...r, id: r.id || `r-mcp-${i}-${Date.now().toString(36)}` }));
-      const { publikt, internPii } = delaLedning(roller);
-      await db.doc(`competitions/${cid}`).update({ management: publikt });
+      // ADDITIVT, inte helersättning. Förut skrev verktyget update({management})
+      // rakt över arrayen och raderade private/ledning när internPii var tom —
+      // så ett anrop som bara skulle lägga till en sjukvårdsansvarig raderade
+      // ALLT, inklusive nödnumren i faltinfo-speglarna. Och modellen kunde inte
+      // återställa dem, eftersom den enligt konstruktion inte kan läsa dem.
+      const compRef = db.doc(`competitions/${cid}`);
       const ledRef = db.doc(`competitions/${cid}/private/ledning`);
+      const [compSnap, ledSnap] = await Promise.all([compRef.get(), ledRef.get()]);
+      const befintliga = (compSnap.data() || {}).management || [];
+      const befintligPii = ledSnap.exists ? ((ledSnap.data() || {}).internPii || {}) : {};
+
+      // Väv ihop till hela roller igen, så uppdelningen kan göras om korrekt.
+      const hela = befintliga.map(r => ({ ...r, ...(befintligPii[r.id] || {}) }));
+      const perId = new Map(hela.map(r => [r.id, r]));
+
+      for (const r of (a.roller || [])) {
+        const id = r.id || `r-mcp-${Math.random().toString(36).slice(2, 10)}`;
+        perId.set(id, { ...(perId.get(id) || {}), ...r, id });
+      }
+      const taBort = new Set(a.ta_bort || []);
+      for (const id of taBort) {
+        if (!perId.has(id)) throw fel(`Det finns ingen roll med id "${id}".`);
+        perId.delete(id);
+      }
+
+      const { publikt, internPii } = delaLedning([...perId.values()]);
+      await compRef.update({ management: publikt });
       if (Object.keys(internPii).length) await ledRef.set({ internPii });
       else await ledRef.delete().catch(() => {});
       await syncSpeglar(db, cid, internPii);
+
+      // Spår i sekretariatsloggen. Skadan skedde förut UTAN spår, och loggen
+      // är member-only — modellen kan alltså inte läsa bort sina egna avtryck.
+      // try/catch, inte .catch(): felet kastades SYNKRONT när argumentet
+      // byggdes (admin.firestore.FieldValue är odefinierad i den modulära
+      // stilen), alltså innan .add() ens returnerade ett löfte — och en
+      // .catch() på ett löfte som aldrig skapas fångar ingenting. Följden var
+      // att ett LYCKAT anrop rapporterades som misslyckat, vilket är den
+      // farligaste sortens fel: modellen försöker igen.
+      try {
+        await db.collection(`competitions/${cid}/logg`).add({
+          vad: 'mcp-ledning', av: 'AI-koppling',
+          text: `Ändrade tävlingsledningen: ${[...perId.keys()].length} roller`
+            + (taBort.size ? `, tog bort ${taBort.size}` : ''),
+          at: FieldValue.serverTimestamp()
+        });
+      } catch { /* en utebliven logg får inte hindra åtgärden */ }
+
       // Svaret bekräftar STRUKTUREN, aldrig värdena.
       return {
         roller: publikt.map(r => ({
-          label: r.label, visibility: r.visibility, ekonomi: r.ekonomi,
+          id: r.id, label: r.label, visibility: r.visibility, ekonomi: r.ekonomi,
           kontaktuppgifter: (r.name || r.phone || r.email || internPii[r.id]) ? '(ifyllt)' : '(saknas)'
-        }))
+        })),
+        borttagna: [...taBort]
       };
     }
   }
@@ -317,16 +373,76 @@ function listaVerktyg() {
   }));
 }
 
+/**
+ * Validerar indata mot verktygets inputSchema INNAN kor() körs.
+ *
+ * Att det här saknades var roten till det värsta fyndet i granskningen:
+ * `ledning_satt` med arguments:{} gav isError:false och RADERADE hela
+ * tävlingsledningen, inklusive nödnumren i faltinfo-speglarna. `required` stod
+ * i schemat — men schemat var ett löfte till modellen som servern inte höll.
+ *
+ * Medvetet liten: bara required, typ, enum och additionalProperties. Det är
+ * vad verktygen faktiskt deklarerar, och en full JSON Schema-implementation
+ * vore ett beroende för något som ska vara läsbart.
+ */
+function validera(schema, varde, sokvag = 'arguments') {
+  if (!schema) return;
+  const typ = schema.type;
+  if (typ === 'object') {
+    if (!varde || typeof varde !== 'object' || Array.isArray(varde)) {
+      throw fel(`${sokvag} måste vara ett objekt.`);
+    }
+    for (const k of schema.required || []) {
+      // Object.prototype-nycklar räknas INTE som angivna: en modell som
+      // skickar {"constructor": …} ska inte kunna se ut att uppfylla required.
+      if (!Object.prototype.hasOwnProperty.call(varde, k) || varde[k] === undefined) {
+        throw fel(`${sokvag}.${k} krävs.`);
+      }
+    }
+    if (schema.additionalProperties === false) {
+      for (const k of Object.keys(varde)) {
+        if (!(schema.properties || {})[k]) {
+          throw fel(`${sokvag}.${k} är inte ett giltigt fält. Tillåtna: ${Object.keys(schema.properties || {}).join(', ')}.`);
+        }
+      }
+    }
+    for (const [k, under] of Object.entries(schema.properties || {})) {
+      if (Object.prototype.hasOwnProperty.call(varde, k) && varde[k] !== undefined) {
+        validera(under, varde[k], `${sokvag}.${k}`);
+      }
+    }
+    return;
+  }
+  if (typ === 'array') {
+    if (!Array.isArray(varde)) throw fel(`${sokvag} måste vara en lista.`);
+    varde.forEach((x, i) => validera(schema.items, x, `${sokvag}[${i}]`));
+    return;
+  }
+  if (typ === 'number' && typeof varde !== 'number') throw fel(`${sokvag} måste vara ett tal.`);
+  if (typ === 'boolean' && typeof varde !== 'boolean') throw fel(`${sokvag} måste vara true eller false.`);
+  if (typ === 'string' && typeof varde !== 'string') throw fel(`${sokvag} måste vara text.`);
+  if (schema.enum && !schema.enum.includes(varde)) {
+    throw fel(`${sokvag} måste vara ett av: ${schema.enum.join(', ')}.`);
+  }
+}
+
 async function anropaVerktyg(namn, args, ctx) {
   const v = VERKTYG.find(x => x.namn === namn);
   if (!v) return { text: `Okänt verktyg: ${namn}`, isError: true };
   try {
+    validera(v.schema, args || {});
     const svar = await v.kor(args || {}, ctx);
     // SISTA LEDET: skrubba varje strängblad i svaret. Nät under regeln, aldrig
     // i stället för den — och det som fångar en sträng vi själva formulerat ur
     // ett fält vi trodde var ofarligt.
     return { text: JSON.stringify(skrubbaTrad(svar), null, 1) };
   } catch (e) {
+    // Ett fel utan mcpSäkert är ett fel VI inte förutsett — logga det på
+    // servern (aldrig till modellen, det kan bära fältvärden) så att det går
+    // att felsöka i stället för att försvinna bakom en generisk mening.
+    if (!e.mcpSäkert) {
+      try { require('firebase-functions').logger.error('MCP-verktygsfel', { namn, fel: e.message, stack: e.stack }); } catch {}
+    }
     return { text: e.mcpSäkert || 'Åtgärden gick inte att utföra.', isError: true };
   }
 }
@@ -358,4 +474,4 @@ DET HÄR GÅR INTE VIA MCP: anmälningar, utskick, backup, PDF:er, att utse
 kontrollansvariga, att avsluta eller radera tävlingen. De kräver en människa
 i ESKIL.`;
 
-module.exports = { listaVerktyg, anropaVerktyg, INSTRUKTIONER, VERKTYG, kontrollera, fel };
+module.exports = { listaVerktyg, anropaVerktyg, INSTRUKTIONER, VERKTYG, kontrollera, validera, fel };

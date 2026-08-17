@@ -14,9 +14,12 @@
 //   • INNEHÅLL om banan och tävlingen är läsbart med skrubbning: kontrollernas
 //     instructions och placement, utslagsfrågan, tävlingens description. Ett
 //     produktbeslut, så att modellen kan korrekturläsa och förbättra texter.
-//     RESIDUALRISKEN ÄR PERSONNAMN: mönster hittar telefonnummer och
-//     e-postadresser, men "Anna står på kontroll 3" går inte att upptäcka. Den
-//     begränsningen MÅSTE stå uttryckligen i /integritet.
+//     RESIDUALRISKEN ÄR PERSONNAMN. Mönstren hittar telefonnummer och
+//     e-postadresser i flera skrivformer (bindestreck, tankstreck, punkt,
+//     snedstreck, hårda mellanslag, "(at)"), men de kan aldrig bli
+//     fullständiga — och ett PERSONNAMN går inte att upptäcka alls. "Anna står
+//     på kontroll 3" når modellen. Den begränsningen MÅSTE stå uttryckligen i
+//     /integritet, och den gör det.
 //   • ANTECKNINGAR OM PERSONER är alltid dolda, hur mycket fritext de än är:
 //     utgatt.note (hälsouppgift om ett barn), generalInfo (placeholdern ber om
 //     "ansvarig vid olycka"), places[].note ("Markägare Nils: 070-…"),
@@ -62,10 +65,42 @@ const TELEFON = /(?:\+\d|00\d|\b0\d)[\d\s()-]{5,}\d/g;
 
 const siffror = (s) => (String(s).match(/\d/g) || []).length;
 
+/**
+ * Normaliserar avskiljare INNAN mönstren körs, i stället för att bredda
+ * teckenklasserna.
+ *
+ * Granskningen fick ut "070–111 22 33" (U+2013 — det Word, Pages och iOS
+ * autokorrigerar bindestreck till), "070.444.55.66" och "070/111 22 33" i
+ * klartext. ASCII-formen skrubbades korrekt; nätet fanns, men bara för EN
+ * skrivform. Att normalisera i stället för att bredda mönstret betyder att
+ * punkten kan förbli utesluten ur TELEFON — koordinater skrivs "56.6712" och
+ * MÅSTE överleva.
+ */
+function normaliseraAvskiljare(t) {
+  return t
+    .replace(/[\u2010-\u2015\u2212]/g, '-')   // tankstreck och minustecken
+    .replace(/[\u00A0\u2007\u202F]/g, ' ');   // hårda mellanslag
+}
+
+// Vanliga sätt att skriva en adress så att en enkel regex missar den.
+const EPOST_OBFUSKERAD = /[A-Za-z0-9._%+-]+\s*(?:\(at\)|\[at\]|\s+at\s+|snabel-?a)\s*[A-Za-z0-9À-ÿ.-]+\s*(?:\(dot\)|\[dot\]|\.)\s*[A-Za-zÀ-ÿ]{2,}/gi;
+
 /** Stryker telefonnummer och e-postadresser ur fri text. Idempotent. */
 function skrubba(text) {
   if (typeof text !== 'string' || !text) return text;
-  let ut = text.replace(EPOST, '(e-postadress borttagen)');
+  let ut = normaliseraAvskiljare(text);
+  ut = ut.replace(EPOST, '(e-postadress borttagen)');
+  ut = ut.replace(EPOST_OBFUSKERAD, '(e-postadress borttagen)');
+  // Punkt och snedstreck som SIFFERavskiljare: "070.444.55.66", "070/111 22 33".
+  // Görs separat och bara mellan siffror, så koordinater ("56.6712, 16.3251")
+  // aldrig träffas — de har inget inledande 0/+ och fångas inte av mönstret.
+  ut = ut.replace(/(?:\+\d|00\d|\b0\d)[\d\s()./-]{5,}\d/g, (m) => {
+    const n = siffror(m);
+    if (n < 7 || n > 15) return m;
+    // En sträng med bara EN punkt och färre än 7 siffror före den är sannolikt
+    // en koordinat; men vi är redan förbi det via siffertaket ovan.
+    return '(telefonnummer borttaget)';
+  });
   ut = ut.replace(TELEFON, (m) => {
     const n = siffror(m);
     // 7–15 siffror är ett telefonnummer. Färre är ett kontrollnummer, en poäng
@@ -116,7 +151,18 @@ function maskera(varde, klasser) {
     const klass = Object.prototype.hasOwnProperty.call(klasser, k) ? klasser[k] : DOLD;
     if (klass === ALDRIG) continue;
     if (klass === DOLD) { ut[k] = narvaro(v); continue; }
-    if (klass && typeof klass === 'object') { ut[k] = maskera(v, klass); continue; }
+    if (klass && typeof klass === 'object') {
+      // TYPKROCK: klassen är en underlista, men värdet är inte ett objekt.
+      // maskera() returnerar då skrubba(varde) — alltså VÄRDET självt. Mätt i
+      // granskningen: startFinish som sträng gav "Nils Nilsson" i klartext,
+      // och registration.methods som sträng gav ett swishnummer som lager 2
+      // aldrig fångar. Filens premiss "ett nytt fält faller åt säkra sidan"
+      // höll för nya NYCKLAR men inte för ändrad TYP.
+      const arr = Array.isArray(v) ? v : [v];
+      if (arr.some(x => !x || typeof x !== 'object')) { ut[k] = narvaro(v); continue; }
+      ut[k] = maskera(v, klass);
+      continue;
+    }
     // OPPEN: bara skalärer och strängar hamnar här. Ett objekt med klassen
     // OPPEN vore ett fel i listan — maskera det som dolt hellre än att gissa.
     if (v && typeof v === 'object') { ut[k] = narvaro(v); continue; }
@@ -165,8 +211,12 @@ const TAVLING = {
   startTimes: { first: OPPEN, intervalSec: OPPEN, maxTimeMinutes: OPPEN },
 
   // Banans ändpunkter. note är fritext.
-  startFinish: { start: { lat: OPPEN, lng: OPPEN, name: OPPEN, note: DOLD },
-                 mal:   { lat: OPPEN, lng: OPPEN, name: OPPEN, note: DOLD } },
+  // Nyckeln heter `finish`, inte `mal` (utils.js). Fel namn gjorde målpunktens
+  // koordinater oläsbara — den föll säkert, men det är exakt felet den här
+  // filens "följd 2" varnar för: listan skriven ur minnet i stället för koden.
+  startFinish: { enabled: OPPEN, mode: OPPEN,
+                 start:  { lat: OPPEN, lng: OPPEN, name: OPPEN, note: DOLD },
+                 finish: { lat: OPPEN, lng: OPPEN, name: OPPEN, note: DOLD } },
 
   // methods[].number är ett SWISHNUMMER, alltså oftast kassörens privata
   // mobil (competition-settings.js:1004). Det heter inte "telefon" — därför
@@ -187,7 +237,7 @@ const TAVLING = {
 // (reglerna läser fortfarande en union av båda platserna, firestore.rules:102).
 const KONTROLL = {
   nummer: OPPEN, name: OPPEN, lat: OPPEN, lng: OPPEN,
-  maxPoang: OPPEN, minPoang: OPPEN, open: OPPEN, kind: OPPEN,
+  maxPoang: OPPEN, minPoang: OPPEN, extraPoang: OPPEN, open: OPPEN, kind: OPPEN,
   // Innehåll om uppgiften: läsbart med skrubbning.
   utslag: OPPEN, utslagFraga: OPPEN, utslagSvar: OPPEN,
   placement: OPPEN,
@@ -214,7 +264,8 @@ const KONTROLL_META = {
 // läsbara, annars kan modellen inte rätta ett stavfel eller hitta en dubblett.
 const PATRULL = {
   name: OPPEN, kar: OPPEN, klass: OPPEN, avdelning: OPPEN,
-  startOrder: OPPEN, startNumber: OPPEN, nummer: OPPEN, genrep: OPPEN,
+  startOrder: OPPEN, startNumber: OPPEN, nummer: OPPEN, number: OPPEN,
+  antal: OPPEN, genrep: OPPEN,
   // utgatt bär en anteckning om VARFÖR patrullen bröt — i praktiken en
   // hälsouppgift om ett barn.
   utgatt: { at: OPPEN, note: DOLD },

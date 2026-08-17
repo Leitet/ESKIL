@@ -193,6 +193,43 @@
     <p>Ett påbörjat meddelande sparas tillfälligt i din egen webbläsare (sessionStorage) så att det
     inte försvinner om du laddar om sidan. Det försvinner när du stänger fliken.</p>
 
+    <h2>AI-koppling (MCP)</h2>
+    <p>En tävlingsadministratör kan koppla en egen AI-assistent till sin tävling för att lägga
+    upp den — skapa kontroller, lägga in patruller, sätta inställningar. Kopplingen är
+    <strong>frivillig, avstängd tills någon aktivt skapar en nyckel, och gäller en enda
+    tävling</strong>. ESKIL skickar aldrig något till en AI-tjänst av sig själv.</p>
+
+    <div class="no-cookies" style="border-left-color: var(--scout-blue);">
+      <strong>Vad assistenten inte kan läsa.</strong> Telefonnummer, e-postadresser och
+      personnamn på funktionärer och kontaktpersoner lämnas aldrig ut. Servern svarar
+      ”ifyllt” eller ”saknas” — aldrig värdet. Assistenten når heller inte anmälningar,
+      allergiuppgifter, fältets meddelanden, nödrop, säkerhetskopior, PDF:er eller
+      papperskorgen, och den kan inte avsluta eller radera en tävling.
+    </div>
+
+    <p><strong>Vad assistenten kan läsa:</strong> tävlingens namn, datum, plats och
+    inställningar, kontrollernas nummer, namn, koordinater och poäng, samt patrullernas namn,
+    kår och avdelning. Patrull- och kårnamn står redan på den publika tävlingssidan.</p>
+
+    <p><strong>Vad administratören kan låta assistenten skriva:</strong> kontaktuppgifter går
+    att <em>sätta</em> via assistenten, även om de inte går att läsa tillbaka. Väljer man det
+    passerar uppgiften den egna AI-leverantörens tjänst på vägen in. Det är administratörens
+    beslut, och det står utskrivet i ESKIL där kopplingen sätts upp — men vill man undvika det
+    fyller man i uppgifterna direkt i ESKIL i stället.</p>
+
+    <p><strong>En begränsning vi vill vara tydliga med.</strong> Skyddet arbetar på två sätt:
+    fält som innehåller namn eller kontaktuppgifter lämnas aldrig ut, och telefonnummer och
+    e-postadresser stryks dessutom automatiskt ur fritext. Men <strong>ett personnamn som någon
+    skrivit mitt i en fritext</strong> — till exempel ”Anna står på kontroll 3” i en
+    instruktion — går inte att känna igen automatiskt, och kan därför nå assistenten.
+    Undvik att skriva personnamn i kontrollinstruktioner och tävlingsbeskrivningar om
+    tävlingen använder AI-koppling.</p>
+
+    <p>Nyckeln som ger åtkomst lagras aldrig i klartext, bara som ett kryptografiskt avtryck.
+    Den visas en gång när den skapas och kan när som helst återkallas under
+    Inställningar → AI-koppling. Åtkomsten upphör direkt vid återkallande, och automatiskt när
+    tävlingen avslutas.</p>
+
     <h2>Tredje parter</h2>
     <p>När du använder ESKIL laddas resurser från följande leverantörer, som då ser din
     IP-adress (nödvändigt för att leverera själva tjänsten):</p>
@@ -204,6 +241,10 @@
     </ul>
     <p>Ingen av dessa får personuppgifter från ESKIL utöver vad själva sidladdningen innebär, och
     ESKIL delar aldrig uppgifter för marknadsföring.</p>
+    <p>Använder en tävling <strong>AI-koppling</strong> tillkommer den AI-leverantör
+    administratören själv valt. Den relationen är administratörens, inte ESKIL:s — ESKIL vet
+    inte vilken leverantör som används och skickar inget dit på eget initiativ. Se avsnittet
+    ovan för vad som kan nå den.</p>
 
     <h2>Dina rättigheter</h2>
     <p>Du har rätt att begära utdrag, rättelse eller radering av dina uppgifter — kontakta

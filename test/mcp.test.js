@@ -387,3 +387,190 @@ describe('verktygsytan', () => {
     assert.ok(/patrullnamn/i.test(i), 'säger inte vad som ÄR läsbart');
   });
 });
+
+describe('klasslistan mot SKRIVKODEN — vakten mot listor skrivna ur minnet', () => {
+  // Första versionen av redact.js klassade `place`, `maxPoints`, `namn` och
+  // `ikon` — fält som inte finns. Allt föll åt säkra sidan, men bara av tur,
+  // och felet syns bara som att modellen "inte hittar" något. Frestelsen blir
+  // då att vidga OPPEN i stället för att härleda om listan.
+  //
+  // Testet läser fältnamnen ur den KOD SOM SKRIVER dem och kräver att var och
+  // en har en klass. Det faller när någon lägger till ett fält utan att
+  // bestämma om det är läsbart.
+  const { readFileSync } = require('node:fs');
+  const { KONTROLL, PATRULL, TAVLING } = require('../functions/mcp/redact.js');
+
+  const las = (f) => readFileSync(new URL(`../public/js/${f}`, import.meta.url), 'utf8');
+
+  test('kontrollens fält i copyCompetition har alla en klass', () => {
+    // store.js kopierar kontrollen fält för fält vid årgångskopiering — den
+    // listan ÄR kontrollens form.
+    const src = las('store.js');
+    const block = src.slice(src.indexOf('nummer: c.nummer'), src.indexOf('nummer: c.nummer') + 500);
+    const falt = [...block.matchAll(/^\s{8}([a-zA-Z]+):/gm)].map(m => m[1]);
+    assert.ok(falt.length >= 5, `hittade bara ${falt.length} fält — har koden ändrats?`);
+    for (const f of falt) {
+      assert.ok(f in KONTROLL, `kontrollfältet "${f}" saknar klass i redact.js`);
+    }
+  });
+
+  test('patrullformulärets fält har alla en klass', () => {
+    const src = las('views/patrols.js');
+    const i = src.indexOf('number: overlay.querySelector');
+    const falt = [...src.slice(i, i + 600).matchAll(/^\s+([a-zA-Z]+):\s*overlay/gm)].map(m => m[1]);
+    assert.ok(falt.length >= 4, `hittade bara ${falt.length} fält`);
+    for (const f of falt) {
+      assert.ok(f in PATRULL, `patrullfältet "${f}" saknar klass i redact.js`);
+    }
+  });
+
+  test('de tre fält som föll till default-deny är nu klassade', () => {
+    // Hittade genom att jämföra klasslistan mot VERKLIGT data i emulatorn.
+    assert.equal(KONTROLL.extraPoang, 'oppen');
+    assert.equal(PATRULL.number, 'oppen');
+    assert.equal(PATRULL.antal, 'oppen');
+  });
+
+  test('och de PII-bärande fälten är fortfarande dolda', () => {
+    // Vaktar mot att vidgningen ovan svepte med något den inte skulle.
+    for (const f of ['telefon', 'notering', 'ansvariga', 'ansvarigaEmails']) {
+      assert.equal(KONTROLL[f], 'dold', `${f} blev läsbar`);
+    }
+    for (const f of ['contact', 'members', 'epost', 'telefon', 'notering']) {
+      assert.equal(PATRULL[f], 'dold', `${f} blev läsbar`);
+    }
+    assert.equal(TAVLING.generalInfo, 'dold');
+  });
+});
+
+describe('FYNDEN från den fientliga granskningen', () => {
+  const v = require('../functions/mcp/verktyg.js');
+  const { maskera, skrubba, TAVLING } = require('../functions/mcp/redact.js');
+
+  describe('1. schemat valideras serversidan', () => {
+    // Roten till det värsta fyndet: anropaVerktyg körde kor() utan att läsa
+    // inputSchema, så ledning_satt med arguments:{} gav isError:false och
+    // RADERADE hela tävlingsledningen inklusive nödnumren i fältet.
+    const led = v.VERKTYG.find(x => x.namn === 'ledning_satt');
+
+    test('required krävs på riktigt', () => {
+      assert.throws(() => v.validera(led.schema, {}), /roller krävs/);
+    });
+
+    test('en roll utan visibility avvisas', () => {
+      // Utelämnad visibility blev PUBLIC, och namn/telefon/e-post hamnade på
+      // det världsläsbara tävlingsdokumentet. Läst anonymt i granskningen.
+      assert.throws(
+        () => v.validera(led.schema, { roller: [{ label: 'Sekretariat', name: 'Bo', phone: '070-1' }] }),
+        /visibility krävs/);
+    });
+
+    test('enum hålls', () => {
+      assert.throws(
+        () => v.validera(led.schema, { roller: [{ label: 'X', visibility: 'kanske' }] }),
+        /måste vara ett av/);
+    });
+
+    test('fel typ avvisas', () => {
+      const k = v.VERKTYG.find(x => x.namn === 'kontroll_skapa');
+      assert.throws(() => v.validera(k.schema, { nummer: { a: 1 }, name: 'X' }), /måste vara ett tal/);
+      assert.throws(() => v.validera(k.schema, { nummer: 1, name: 42 }), /måste vara text/);
+    });
+
+    test('okänt fält avvisas', () => {
+      const k = v.VERKTYG.find(x => x.namn === 'kontroll_skapa');
+      assert.throws(() => v.validera(k.schema, { nummer: 1, name: 'X', demo: true }),
+        /inte ett giltigt fält/);
+    });
+
+    test('prototypnycklar räknas inte som angivna', () => {
+      // {"constructor": …} ska inte kunna se ut att uppfylla required.
+      assert.throws(() => v.validera({ type: 'object', required: ['x'], properties: {} }, {}),
+        /x krävs/);
+      assert.throws(() => v.kontrollera({ constructor: 'x' }, { name: 'str' }, 'y'),
+        /går inte att sätta/);
+    });
+  });
+
+  describe('2. ledning_satt är ADDITIV', () => {
+    const led = v.VERKTYG.find(x => x.namn === 'ledning_satt');
+    test('ta_bort finns och är enda vägen att ta bort en roll', () => {
+      assert.ok('ta_bort' in led.schema.properties, 'ingen uttrycklig borttagningsväg');
+    });
+    test('beskrivningen säger att den är additiv och vad public betyder', () => {
+      assert.match(led.beskrivning, /ADDITIVT/);
+      assert.match(led.beskrivning, /PUBLICERAS/);
+      assert.match(led.beskrivning, /hela internet/);
+    });
+  });
+
+  describe('3. skrubbaren tar flera skrivformer', () => {
+    const laecker = [
+      ['070–111 22 33', 'tankstreck (Word/iOS autokorrigerar hit)'],
+      ['070.444.55.66', 'punkt'],
+      ['070/111 22 33', 'snedstreck (svensk växelform)'],
+      ['070 111 22 33', 'hårda mellanslag'],
+      ['anna (at) lindsdal.se', 'obfuskerad e-post'],
+      ['bo [at] kar [dot] se', 'obfuskerad e-post, hakparenteser']
+    ];
+    for (const [t, vad] of laecker) {
+      test(`stryker ${vad}`, () => {
+        const u = skrubba(t);
+        assert.notEqual(u, t, `${vad} gick rakt igenom: ${u}`);
+        assert.ok(!/\d{7}/.test(u.replace(/\D/g, '')) || !u.includes('@'), u);
+      });
+    }
+    test('KOORDINATER överlever fortfarande', () => {
+      // Den viktigaste raden i filen. Går den sönder kan MCP:n inte lägga ut
+      // en bana, och felet syns inte som ett fel.
+      for (const k of ['56.6712, 16.3251', '59.3293, 18.0686', 'lat 56.671234 lng 16.325123']) {
+        assert.equal(skrubba(k), k, `koordinaten åts upp: ${k}`);
+      }
+    });
+    test('datum och klockslag rörs inte', () => {
+      assert.equal(skrubba('2026-09-18'), '2026-09-18');
+      assert.equal(skrubba('kl 09:30'), 'kl 09:30');
+    });
+  });
+
+  describe('4. maskera() faller STÄNGT vid typkrock', () => {
+    // Klassen är en underlista men värdet är en sträng — maskera() returnerade
+    // då värdet självt. Mätt: startFinish som sträng gav "Nils Nilsson".
+    const fall = [
+      ['startFinish', 'Nils Nilsson 070-1234567'],
+      ['registration', 'swish 123 456 78 90'],
+      ['places', 'Markägare Nils 070-999'],
+      ['management', 'Anna Svensson']
+    ];
+    for (const [falt, varde] of fall) {
+      test(`${falt} som sträng ger (ifyllt)`, () => {
+        const ut = maskera({ [falt]: varde }, TAVLING);
+        assert.equal(ut[falt], '(ifyllt)', `${falt} läckte: ${JSON.stringify(ut[falt])}`);
+      });
+      test(`${falt} som array av strängar ger (ifyllt)`, () => {
+        const ut = maskera({ [falt]: [varde] }, TAVLING);
+        assert.ok(!JSON.stringify(ut).includes('Nils') && !JSON.stringify(ut).includes('Anna')
+          && !JSON.stringify(ut).includes('123 456'), JSON.stringify(ut));
+      });
+    }
+  });
+
+  describe('5. säkerhetsgrindar går inte att stänga via MCP', () => {
+    test('fieldMessaging, selfStart och selfFinish är inte skrivbara', () => {
+      // fieldMessaging av tar bort fältets ENDA kanal till ledningen — samma
+      // kanal som nödropet går i.
+      const p = v.VERKTYG.find(x => x.namn === 'tavling_uppdatera').schema.properties;
+      for (const grind of ['fieldMessaging', 'selfStart', 'selfFinish']) {
+        assert.ok(!(grind in p), `${grind} går att ändra via MCP`);
+      }
+    });
+  });
+
+  describe('6. startFinish-nyckeln matchar datamodellen', () => {
+    test('finish, inte mal', () => {
+      assert.ok('finish' in TAVLING.startFinish, 'målpunkten är oläsbar — fel nyckelnamn');
+      assert.ok(!('mal' in TAVLING.startFinish));
+      assert.equal(TAVLING.startFinish.finish.lat, 'oppen');
+    });
+  });
+});

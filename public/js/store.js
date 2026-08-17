@@ -566,6 +566,11 @@ export async function closeCompetition(cid) {
   const faltinfoSnap = await getDocs(collection(db, 'competitions', cid, 'faltinfo'));
   await deleteRefs(faltinfoSnap.docs.map(d => d.ref));
   await deleteDoc(doc(db, 'competitions', cid, 'private', 'ledning')).catch(() => {});
+  // MCP-nyckeln. Servern nekar redan en avslutad tävling, så åtkomsten är
+  // stängd ändå — men dokumentet raderas för att påståendet på /integritet
+  // ("åtkomsten upphör automatiskt när tävlingen avslutas") ska vara sant på
+  // ett ställe, inte bero på en kontroll någon annanstans.
+  await deleteDoc(doc(db, 'competitions', cid, 'private', 'mcp')).catch(() => {});
 
   // Kompletteringarna bär ALLERGIER — hälsouppgifter — och kontaktpersoner.
   // De fyller sitt syfte fram till tävlingsdagen; efter avslut är de bara
