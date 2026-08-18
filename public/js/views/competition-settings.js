@@ -1629,6 +1629,16 @@ function renderMcpTab(comp, cid, refresh, readOnly) {
       text: `Skapa kontroller ${'\u2116'}1–10 för ${namn}. Jag ger dig koordinaterna en och en. `
         + `Sätt maxpoäng 25 på varje och lämna dem stängda tills vidare. Bekräfta med en lista `
         + `när du är klar.` },
+    { rubrik: 'Skriv kontrollernas uppgifter',
+      text: `Skriv instruktionerna till kontrollerna i ${namn} — alltså uppgiften kontrollanten `
+        + `läser upp. Jag dikterar en kontroll i taget. Om uppgiften ska skilja sig mellan `
+        + `avdelningar säger jag det, annars gäller samma text för alla. Läs tillbaka texten `
+        + `när du skrivit den.` },
+    { rubrik: 'Sätt start och mål',
+      text: `Sätt banans start- och målplats för ${namn}. Jag ger dig koordinater, namn på platsen `
+        + `och en anvisning om hur man hittar dit. Säg till om start och mål ska ligga på samma `
+        + `plats eller på olika. Anvisningen kan du skriva men inte läsa tillbaka — säg till mig `
+        + `att kontrollera den i ESKIL efteråt.` },
     { rubrik: 'Lägg in patrullerna',
       text: `Lägg in de här patrullerna i ${namn}. Format: namn, kår, avdelning. Sätt startordning `
         + `i den ordning jag skriver dem. Läs tillbaka listan när du är klar så jag kan kontrollera `

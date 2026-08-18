@@ -660,3 +660,169 @@ describe('OMGRANSKNINGENS fynd', () => {
     assert.equal(skriv.annotations.destructiveHint, true);
   });
 });
+
+describe('FÄLTFEEDBACKEN: start/mål och instruktioner går att sätta', () => {
+  // Rapporterat efter första skarpa körningen: två saker gick inte att göra
+  // via kopplingen utan att en människa öppnade ESKIL — banans ändpunkter
+  // (namn och anvisning) och kontrollernas instruktionslistor. Kravet är att
+  // MCP:n ska kunna konfigurera hela tävlingen på samma sätt som en människa,
+  // så luckorna är buggar, inte avgränsningar.
+  const v = require('../functions/mcp/verktyg.js');
+  const { KONTROLL, maskera } = require('../functions/mcp/redact.js');
+  const { readFileSync } = require('node:fs');
+
+  // Attrapp-Firestore: fångar skrivningen så formen kan granskas.
+  function attrapp(comp = {}, kontroller = [{ nummer: 3 }]) {
+    const skrivet = {};
+    const docs = kontroller.map(d => ({
+      data: () => d,
+      ref: { update: async (p) => Object.assign(skrivet, p) }
+    }));
+    const db = {
+      collection: () => ({ get: async () => ({ docs }), add: async (d) => { skrivet.nytt = d; return { id: 'x' }; } }),
+      doc: () => ({ get: async () => ({ data: () => comp }), update: async (p) => Object.assign(skrivet, p) })
+    };
+    return { ctx: { db, cid: 'c', comp }, skrivet };
+  }
+
+  describe('instruktionerna', () => {
+    test('formen är utils.js allInstructionGroups, inte en egen', () => {
+      // allInstructionGroups() förväntar sig [{ avdelningar: [], text }].
+      // Ett annat nyckelnamn hade sparats utan fel och visats som ingenting.
+      const src = readFileSync(new URL('../public/js/utils.js', import.meta.url), 'utf8');
+      assert.match(src, /avdelningar: \[\], text: control\.information/,
+        'utils.js har ändrat form — MCP-verktyget skriver då fel nycklar');
+    });
+
+    test('grupperna skrivs till instructions', async () => {
+      const { ctx, skrivet } = attrapp();
+      const svar = await v.anropaVerktyg('kontroll_instruktioner_satt',
+        { nummer: 3, grupper: [{ avdelningar: ['Spårare'], text: 'Slå en råbandsknop' },
+                               { text: 'Slå en pålstek' }] }, ctx);
+      assert.equal(svar.isError, undefined);
+      assert.deepEqual(skrivet.instructions, [
+        { avdelningar: ['Spårare'], text: 'Slå en råbandsknop' },
+        { avdelningar: [], text: 'Slå en pålstek' }
+      ]);
+    });
+
+    test('samma avdelning i två grupper avvisas', async () => {
+      // Visningen tar första träffen, så den andra instruktionen hade tyst
+      // aldrig nått fram till kontrollanten.
+      const { ctx } = attrapp();
+      const svar = await v.anropaVerktyg('kontroll_instruktioner_satt',
+        { nummer: 3, grupper: [{ avdelningar: ['Rover'], text: 'A' }, { avdelningar: ['Rover'], text: 'B' }] }, ctx);
+      assert.equal(svar.isError, true);
+      assert.match(svar.text, /Rover står i två grupper/);
+    });
+
+    test('en avdelning som inte finns avvisas av schemat', async () => {
+      const { ctx } = attrapp();
+      const svar = await v.anropaVerktyg('kontroll_instruktioner_satt',
+        { nummer: 3, grupper: [{ avdelningar: ['Björnar'], text: 'A' }] }, ctx);
+      assert.equal(svar.isError, true);
+    });
+
+    test('en avdelning som inte deltar i TÄVLINGEN avvisas', async () => {
+      // comp.avdelningar begränsar vilka som deltar (utils.allowedAvdelningar).
+      // En instruktion till en avdelning utanför listan visas för ingen.
+      const { ctx } = attrapp({ avdelningar: ['Spårare', 'Upptäckare'] });
+      const svar = await v.anropaVerktyg('kontroll_instruktioner_satt',
+        { nummer: 3, grupper: [{ avdelningar: ['Rover'], text: 'A' }] }, ctx);
+      assert.equal(svar.isError, true);
+      assert.match(svar.text, /deltar inte i den här tävlingen/);
+    });
+
+    test('kontroll_skapa tar instruktionerna direkt', async () => {
+      const { ctx, skrivet } = attrapp({}, []);
+      await v.anropaVerktyg('kontroll_skapa',
+        { nummer: 7, name: 'Knopar', instruktioner: [{ text: 'Slå en knop' }] }, ctx);
+      assert.deepEqual(skrivet.nytt.instructions, [{ avdelningar: [], text: 'Slå en knop' }]);
+      assert.equal(skrivet.nytt.open, false, 'en ny kontroll ska inte vara öppen direkt');
+    });
+
+    test('avdelningarna i MCP:ns lista är exakt utils.js AVDELNINGAR', () => {
+      // Listan är hårdkodad i CJS-koden (utils.js är ESM). Ett namn som glider
+      // isär ger en enum som avvisar giltiga avdelningar, eller tvärtom.
+      const src = readFileSync(new URL('../public/js/utils.js', import.meta.url), 'utf8');
+      const block = src.slice(src.indexOf('export const AVDELNINGAR'), src.indexOf('// --- Permissions'));
+      const iUtils = [...block.matchAll(/key:\s*'([^']+)'/g)].map(m => m[1]);
+      const schema = v.listaVerktyg().find(t => t.name === 'kontroll_instruktioner_satt');
+      const iMcp = schema.inputSchema.properties.grupper.items.properties.avdelningar.items.enum;
+      assert.deepEqual(iMcp, iUtils);
+    });
+
+    test('avdelningarna går att LÄSA tillbaka, inte bara "(ifyllt)"', () => {
+      // De föll förut på default-deny: avdelningsnamn är sluten värdemängd och
+      // ingen personuppgift, men utan klass kunde modellen inte se VEM en
+      // instruktion gällde. En array är ett objekt, så klassen OPPEN räckte
+      // inte — den fastnade på objektvakten.
+      const ut = maskera({ instructions: [{ avdelningar: ['Spårare'], text: 'A' }] }, KONTROLL);
+      assert.deepEqual(ut.instructions[0].avdelningar, ['Spårare']);
+    });
+
+    test('men en avdelningslista som INTE är en lista faller åt säkra sidan', () => {
+      const ut = maskera({ instructions: [{ avdelningar: 'Bo Ek 070-123 45 67', text: 'A' }] }, KONTROLL);
+      assert.equal(ut.instructions[0].avdelningar, '(ifyllt)');
+    });
+  });
+
+  describe('start och mål', () => {
+    test('formen är den controls.js skriver', async () => {
+      const { ctx, skrivet } = attrapp();
+      await v.anropaVerktyg('start_mal_satt',
+        { start: { name: 'Klubbstugan', lat: 56.7, lng: 16.3, note: 'Skylt vid vägen' } }, ctx);
+      assert.deepEqual(skrivet.startFinish, {
+        enabled: true, mode: 'same',
+        start: { name: 'Klubbstugan', lat: 56.7, lng: 16.3, note: 'Skylt vid vägen' }
+      });
+    });
+
+    test('anvisningen kan sättas men inte läsas tillbaka', async () => {
+      // note är fritext och placeholdern bjuder in till "ring X på 070-…".
+      const { ctx } = attrapp();
+      const svar = await v.anropaVerktyg('start_mal_satt',
+        { start: { name: 'Klubbstugan', lat: 56.7, lng: 16.3, note: 'Ring Bo 070-123 45 67' } }, ctx);
+      assert.match(svar.text, /"anvisning": "\(ifyllt\)"/);
+      assert.doesNotMatch(svar.text, /070/);
+      assert.doesNotMatch(svar.text, /Bo/);
+    });
+
+    test('ett målpunkt utan koordinater avvisas i stället för att bli osynlig', async () => {
+      // startFinishPoints kräver ändliga lat/lng på BÅDA i läget separate —
+      // annars faller den tillbaka på en gemensam S/M-nål och målet blir
+      // liggande data ingen ser.
+      const { ctx } = attrapp({ startFinish: { enabled: true, start: { name: 'S', lat: 56.7, lng: 16.3 } } });
+      const svar = await v.anropaVerktyg('start_mal_satt', { finish: { name: 'Ängen' } }, ctx);
+      assert.equal(svar.isError, true);
+      assert.match(svar.text, /koordinater/);
+    });
+
+    test('att skriva ett mål sätter läget separate automatiskt', async () => {
+      const { ctx, skrivet } = attrapp({ startFinish: { enabled: true, mode: 'same', start: { name: 'S', lat: 56.7, lng: 16.3 } } });
+      await v.anropaVerktyg('start_mal_satt', { finish: { name: 'Ängen', lat: 56.71, lng: 16.31 } }, ctx);
+      assert.equal(skrivet.startFinish.mode, 'separate');
+      assert.equal(skrivet.startFinish.start.name, 'S', 'starten skrevs över');
+    });
+
+    test('mode "same" plockar bort målpunkten, precis som knappen i ESKIL', async () => {
+      const { ctx, skrivet } = attrapp({ startFinish: { enabled: true, mode: 'separate',
+        start: { name: 'S', lat: 56.7, lng: 16.3 }, finish: { name: 'M', lat: 56.71, lng: 16.31 } } });
+      await v.anropaVerktyg('start_mal_satt', { mode: 'same' }, ctx);
+      assert.equal(skrivet.startFinish.mode, 'same');
+      assert.equal(skrivet.startFinish.finish, null);
+    });
+
+    test('start utan koordinater avvisas — namnet ensamt syns ingenstans', async () => {
+      const { ctx } = attrapp();
+      const svar = await v.anropaVerktyg('start_mal_satt', { start: { name: 'Klubbstugan' } }, ctx);
+      assert.equal(svar.isError, true);
+    });
+
+    test('koordinaterna kontrolleras som alla andra tal', async () => {
+      const { ctx } = attrapp();
+      const svar = await v.anropaVerktyg('start_mal_satt', { start: { lat: 1e999, lng: 16.3 } }, ctx);
+      assert.equal(svar.isError, true);
+    });
+  });
+});

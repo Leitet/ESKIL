@@ -71,6 +71,23 @@ const KONTROLL_SKRIVBART = {
 
 const PATRULL_SKRIVBART = { name: 'str', kar: 'str', avdelning: 'str', startOrder: 'num' };
 
+// Avdelningarna, ordagrant som utils.js AVDELNINGAR skriver dem. En fritext
+// här skapar TYST en instruktionsgrupp som ingen patrull matchar — alltså en
+// instruktion som visas för ingen, och det syns inte förrän på tävlingsdagen.
+const AVDELNINGAR = ['Spårare', 'Upptäckare', 'Äventyrare', 'Utmanare', 'Rover', 'Ledare'];
+
+const INSTRUKTIONSSCHEMA = {
+  type: 'array',
+  items: {
+    type: 'object', additionalProperties: false,
+    required: ['text'],
+    properties: {
+      text: { type: 'string' },
+      avdelningar: { type: 'array', items: { type: 'string', enum: AVDELNINGAR } }
+    }
+  }
+};
+
 // Längdtak per strängfält. Skälet är inte prydlighet utan en MÄTT
 // självmurning: skrubba() är O(n²) (4× per fördubbling — 32k tecken tog
 // 1925 ms), varje läsbar sträng passerar den, och en description på 24 000
@@ -78,6 +95,7 @@ const PATRULL_SKRIVBART = { name: 'str', kar: 'str', avdelning: 'str', startOrde
 // enda gränsen, alltså tiotals minuter. Verktyget man behöver för att se
 // fältet är det som hänger — servern kan mura sig själv.
 const MAX_LANGD = { description: 4000, generalInfo: 4000, placement: 2000,
+                    instructionText: 4000,
                     utslagFraga: 500, utslagSvar: 500, name: 200, shortName: 60,
                     kar: 120, avdelning: 60, location: 200, organizer: 200,
                     date: 40, district: 60 };
@@ -125,6 +143,10 @@ function kontrollera(varden, tillatna, yta) {
   return ut;
 }
 
+function harKoordinat(p) {
+  return !!p && Number.isFinite(p.lat) && Number.isFinite(p.lng);
+}
+
 /** Fel som är säkert att visa modellen — bär aldrig ett fältvärde. */
 function fel(meddelande) {
   const e = new Error(meddelande);
@@ -140,6 +162,45 @@ async function hittaKontroll(db, cid, nummer) {
   if (!träff.length) throw fel(`Det finns ingen kontroll med nummer ${nummer}.`);
   if (träff.length > 1) throw fel(`Flera kontroller har nummer ${nummer}. Rätta det i ESKIL först.`);
   return träff[0];
+}
+
+/**
+ * Normaliserar och kontrollerar en kontrolls instruktionsgrupper.
+ * Formen är utils.js allInstructionGroups: [{ avdelningar: [], text }], där en
+ * grupp UTAN avdelningar gäller alla som inte har en egen.
+ */
+function normaliseraGrupper(inkomna, comp) {
+  // Tävlingen kan vara begränsad till vissa avdelningar (comp.avdelningar,
+  // utils.js allowedAvdelningar). En instruktion till en avdelning som inte
+  // deltar visas för ingen — samma tysta bortfall som ett felstavat namn.
+  const tillatna = Array.isArray(comp?.avdelningar) && comp.avdelningar.length
+    ? AVDELNINGAR.filter(a => comp.avdelningar.includes(a))
+    : AVDELNINGAR;
+  const grupper = (inkomna || []).map((g, i) => {
+    if (typeof g.text !== 'string') throw fel(`Grupp ${i + 1} saknar text.`);
+    if (g.text.length > MAX_LANGD.instructionText) {
+      throw fel(`Grupp ${i + 1}: texten får vara högst ${MAX_LANGD.instructionText} tecken (fick ${g.text.length}).`);
+    }
+    if (!g.text.trim()) throw fel(`Grupp ${i + 1} har tom text.`);
+    return { avdelningar: g.avdelningar || [], text: g.text };
+  });
+  // Högst en grupp per avdelning: visningen tar den FÖRSTA träffen, så en
+  // avdelning i två grupper betyder att den andra instruktionen tyst aldrig
+  // visas. Samma sak med två standardgrupper.
+  const sedda = new Set();
+  let standard = 0;
+  for (const g of grupper) {
+    if (!g.avdelningar.length) { standard++; continue; }
+    for (const av of g.avdelningar) {
+      if (!tillatna.includes(av)) {
+        throw fel(`${av} deltar inte i den här tävlingen. Deltagande avdelningar: ${tillatna.join(', ')}.`);
+      }
+      if (sedda.has(av)) throw fel(`${av} står i två grupper. Varje avdelning får bara en instruktion.`);
+      sedda.add(av);
+    }
+  }
+  if (standard > 1) throw fel('Bara en grupp får sakna avdelningar — den gäller alla övriga.');
+  return { grupper, avdelningarMedEgenText: [...sedda], standardgrupp: standard === 1 };
 }
 
 async function hittaPatrull(db, cid, namn, kar) {
@@ -210,18 +271,20 @@ const VERKTYG = [
       properties: {
         nummer: { type: 'number' }, name: { type: 'string' },
         lat: { type: 'number' }, lng: { type: 'number' },
-        maxPoang: { type: 'number' }, placement: { type: 'string' }
+        maxPoang: { type: 'number' }, placement: { type: 'string' },
+        instruktioner: INSTRUKTIONSSCHEMA
       }
     },
-    async kor(a, { db, cid }) {
+    async kor(a, { db, cid, comp }) {
       const snap = await db.collection(`competitions/${cid}/controls`).get();
       if (snap.docs.some(d => Number(d.data().nummer) === Number(a.nummer))) {
         throw fel(`Kontroll ${a.nummer} finns redan.`);
       }
-      const { nummer, ...rest } = a;
+      const { nummer, instruktioner, ...rest } = a;
       const data = { nummer, open: false, ...kontrollera(rest, KONTROLL_SKRIVBART, 'kontrollen') };
+      if (instruktioner) data.instructions = normaliseraGrupper(instruktioner, comp).grupper;
       await db.collection(`competitions/${cid}/controls`).add(data);
-      return { skapad: `kontroll ${nummer}` };
+      return { skapad: `kontroll ${nummer}`, instruktionsgrupper: data.instructions?.length || 0 };
     }
   },
   {
@@ -450,6 +513,92 @@ const VERKTYG = [
         borttagna: utfall.borttagna
       };
     }
+  },
+  {
+    namn: 'kontroll_instruktioner_satt',
+    beskrivning: 'Sätt kontrollens instruktioner — uppgiften kontrollanten läser upp. '
+      + 'En grupp med tom avdelningslista gäller ALLA som inte har en egen grupp. '
+      + 'ERSÄTTER hela listan för kontrollen, så skicka med de grupper som ska finnas.',
+    schema: {
+      type: 'object', additionalProperties: false,
+      required: ['nummer', 'grupper'],
+      properties: {
+        nummer: { type: 'number' },
+        grupper: INSTRUKTIONSSCHEMA
+      }
+    },
+    async kor(a, { db, cid, comp }) {
+      const doc = await hittaKontroll(db, cid, a.nummer);
+      const { grupper, avdelningarMedEgenText, standardgrupp } = normaliseraGrupper(a.grupper, comp);
+      await doc.ref.update({ instructions: grupper });
+      return { kontroll: a.nummer, grupper: grupper.length,
+               avdelningarMedEgenText, standardgrupp };
+    }
+  },
+  {
+    namn: 'start_mal_satt',
+    beskrivning: 'Sätt banans start- och målpunkt: koordinater, namn och anvisning '
+      + '(hur man hittar dit). Anvisningen kan sättas men inte läsas tillbaka. '
+      + 'mode "same" = start och mål på samma plats, "separate" = olika platser.',
+    schema: {
+      type: 'object', additionalProperties: false,
+      properties: {
+        mode: { type: 'string', enum: ['same', 'separate'] },
+        start: {
+          type: 'object', additionalProperties: false,
+          properties: { name: { type: 'string' }, note: { type: 'string' },
+                        lat: { type: 'number' }, lng: { type: 'number' } }
+        },
+        finish: {
+          type: 'object', additionalProperties: false,
+          properties: { name: { type: 'string' }, note: { type: 'string' },
+                        lat: { type: 'number' }, lng: { type: 'number' } }
+        }
+      }
+    },
+    async kor(a, { db, cid }) {
+      if (!a.start && !a.finish && !a.mode) throw fel('Ange start, finish eller mode.');
+      const PUNKT = { name: 'str', note: 'str', lat: 'num', lng: 'num' };
+      const snap = await db.doc(`competitions/${cid}`).get();
+      const nuvarande = (snap.data() || {}).startFinish || {};
+      const patch = { ...nuvarande, enabled: true };
+      // Sammanfogas per punkt, så att "flytta bara målet" inte raderar starten.
+      for (const del of ['start', 'finish']) {
+        if (!a[del]) continue;
+        if (!Object.keys(a[del]).length) throw fel(`${del} är tomt — ange name, note, lat eller lng.`);
+        patch[del] = { ...(nuvarande[del] || {}), ...kontrollera(a[del], PUNKT, `${del}punkten`) };
+      }
+      // Ett separat mål SYNS bara i läget 'separate' — startFinishPoints faller
+      // annars tillbaka på en gemensam S/M-nål och målpunkten blir liggande
+      // data ingen ser. Att skriva finish ÄR alltså att be om separate.
+      if (a.mode === 'same') { patch.mode = 'same'; patch.finish = null; }
+      else if (a.mode === 'separate' || a.finish) patch.mode = 'separate';
+      if (!patch.mode) patch.mode = 'same';
+      if (patch.mode === 'separate' && !harKoordinat(patch.finish)) {
+        throw fel('Separata start och mål kräver koordinater på målet (lat och lng).');
+      }
+      // Utan koordinater på starten renderas ingenting alls: kartorna,
+      // ETA-motorn och förkontrollen läser alla startFinishPoints, som
+      // returnerar en tom lista. Ett namn utan position ser sparat ut och är
+      // osynligt överallt.
+      if (!harKoordinat(patch.start)) {
+        throw fel('Starten behöver koordinater (lat och lng) för att synas på kartan och i ETA:n.');
+      }
+      await db.doc(`competitions/${cid}`).update({ startFinish: patch });
+      // Svaret bekräftar STRUKTUREN. Anvisningen (note) är fritext som kan bära
+      // en kontaktuppgift och redovisas därför bara som närvaro, precis som när
+      // den läses via tavling_las.
+      const beskriv = (pkt) => harKoordinat(pkt) ? {
+        name: pkt.name || '(saknas)',
+        koordinat: `${pkt.lat}, ${pkt.lng}`,
+        anvisning: (pkt.note || '').trim() ? '(ifyllt)' : '(saknas)'
+      } : '(saknas)';
+      return {
+        mode: patch.mode,
+        start: beskriv(patch.start),
+        mal: patch.mode === 'separate' ? beskriv(patch.finish) : 'samma plats som starten'
+      };
+    }
   }
 ];
 
@@ -623,6 +772,12 @@ ESKIL efteråt.
 
 ADRESSERING: kontroller pekas ut med sitt NUMMER, patruller med NAMN (och kår
 när flera heter lika). Det finns inga id:n — de är hemliga länkar.
+
+NYA KONTROLLER ÄR STÄNGDA, och det är inte ett fel. En kontroll tar emot
+rapporter först när open är true — en öppen kontroll dagarna före tävlingen
+tar emot poäng från vem som helst som hittat QR-koden. Öppna dem med
+kontroll_uppdatera när banan står, eller sätt controlsAutoReleased på
+tävlingen så släpps de automatiskt. Fråga människan vilket hen vill.
 
 DET HÄR GÅR INTE VIA MCP: anmälningar, utskick, backup, PDF:er, att utse
 kontrollansvariga, att publicera kontaktuppgifter, att ändra vad som visas

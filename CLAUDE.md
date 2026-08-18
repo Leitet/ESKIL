@@ -179,6 +179,20 @@ Email extension). Production domain: https://eskilscout.se.
      att se fältet. `etaDwellMinutes: 1e999` lagrades som Infinity och gjorde
      varje ETA oändlig (`course.js` läser `Number(...) || DEFAULT`, och Infinity
      är truthy).
+  **Nästlade strukturer får EGNA verktyg** (`kontroll_instruktioner_satt`,
+  `start_mal_satt`) — den platta `kontrollera()`-allowlisten kan inte validera
+  dem, och båda har fällor som annars slår till tyst: en avdelning i två
+  instruktionsgrupper gör att den andra aldrig visas, och `startFinishPoints()`
+  returnerar en TOM lista om starten saknar ändliga lat/lng, så ett målnamn
+  utan koordinater ser sparat ut och syns ingenstans. Verktygen avvisar båda i
+  stället. Att skriva `finish` sätter dessutom `mode: 'separate'` automatiskt —
+  i läget `same` faller målpunkten tillbaka på den gemensamma S/M-nålen och
+  blir liggande data ingen ser. Avdelningsnamnen är hårdkodade i CJS-koden
+  (utils.js är ESM) och ett test jämför de två listorna.
+  `instructions[].avdelningar` behövde en EGEN klass (`OPPEN_LISTA`): en array
+  är ett objekt, så klassen OPPEN fastnade på objektvakten och avdelningarna
+  kom ut som "(ifyllt)" — modellen kunde skriva en instruktion men inte se vem
+  den gällde.
   Redaktionen: se `functions/mcp/redact.js` — regeln, de tre följderna och
   klasslistorna med sidhänvisningar till skrivkoden. Fritext ur databasen märks
   `[data] ` i svaren och INSTRUKTIONER säger uttryckligen att fältinnehåll

@@ -115,6 +115,12 @@ function skrubba(text) {
 const OPPEN = 'oppen';      // värdet får läsas (sluten värdemängd + redan publikt)
 const DOLD = 'dold';        // bara "(ifyllt)" / "(saknas)" — BINÄRT
 const ALDRIG = 'aldrig';    // nyckeln försvinner helt ur svaret
+// En LISTA av skalärer som får läsas. Behövs som egen klass därför att en
+// array är ett objekt: med klassen OPPEN faller den på objektvakten längre ner
+// och blir "(ifyllt)". Det gällde instructions[].avdelningar — avdelningsnamn
+// ur en sluten lista, alltså inte personuppgift, men de kom ut som närvaro och
+// modellen kunde inte se VILKEN avdelning en instruktion gällde.
+const OPPEN_LISTA = 'oppen_lista';
 
 /**
  * BINÄR närvaro. Inget antal, ingen längd, ingen typ.
@@ -151,6 +157,14 @@ function maskera(varde, klasser) {
     const klass = Object.prototype.hasOwnProperty.call(klasser, k) ? klasser[k] : DOLD;
     if (klass === ALDRIG) continue;
     if (klass === DOLD) { ut[k] = narvaro(v); continue; }
+    if (klass === OPPEN_LISTA) {
+      // Typkrock faller åt säkra sidan, precis som underlistorna nedan: är det
+      // inte en array av skalärer redovisas bara närvaron.
+      ut[k] = (Array.isArray(v) && v.every(x => !x || typeof x !== 'object'))
+        ? v.map(x => (typeof x === 'string' ? skrubba(x) : x))
+        : narvaro(v);
+      continue;
+    }
     if (klass && typeof klass === 'object') {
       // TYPKROCK: klassen är en underlista, men värdet är inte ett objekt.
       // maskera() returnerar då skrubba(varde) — alltså VÄRDET självt. Mätt i
@@ -241,7 +255,10 @@ const KONTROLL = {
   // Innehåll om uppgiften: läsbart med skrubbning.
   utslag: OPPEN, utslagFraga: OPPEN, utslagSvar: OPPEN,
   placement: OPPEN,
-  instructions: { text: OPPEN, rubrik: OPPEN, title: OPPEN },
+  // avdelningar är avdelningsnamn ur AVDELNINGAR (utils.js) — sluten
+  // värdemängd, ingen personuppgift, och nödvändig för att se VEM en
+  // instruktion gäller.
+  instructions: { text: OPPEN, rubrik: OPPEN, title: OPPEN, avdelningar: OPPEN_LISTA },
   // Anteckningar och kontaktuppgifter: alltid dolda. De tre första är LEGACY
   // som lever kvar på det världsläsbara dokumentet.
   telefon: DOLD, notering: DOLD, ansvariga: DOLD, ansvarigaEmails: DOLD
