@@ -227,3 +227,68 @@ describe('felsvaren läcker ingenting', () => {
     assert.equal(res.kropp.error.message, 'Kontroll 3 finns inte.');
   });
 });
+
+describe('protokollrevisionerna — vilka klienter som släpps in', () => {
+  test('2025-11-25 släpps in: det är versionen claude.ai och Desktop talar', async () => {
+    // Anthropics HOSTADE connector-yta (claude.ai, Claude Desktop, Cowork)
+    // förhandlar 2025-11-25 och skickar den i headern. Den saknades i
+    // allowlistan, och kontrollen ligger före både body-parsning och
+    // metod-dispatch — anslutningen dog alltså på 400 vid FÖRSTA anropet,
+    // oavsett nyckel. Claude Code talar 2025-06-18 och fungerade hela tiden,
+    // vilket är precis det som gjorde felet svårt att se.
+    const res = await anrop({ headers: { 'MCP-Protocol-Version': '2025-11-25' }, body: rpc('tools/list') });
+    assert.equal(res.kod, 200);
+    assert.ok(res.kropp.result.tools.length);
+  });
+
+  test('och handskakningen svarar med samma version tillbaka', async () => {
+    const res = await anrop({ body: rpc('initialize', { protocolVersion: '2025-11-25' }) });
+    assert.equal(res.kropp.result.protocolVersion, '2025-11-25');
+  });
+
+  test('hela sekvensen från en hostad connector går igenom', async () => {
+    // Ordagrant som spåret i anthropics/claude-ai-mcp#831: initialize utan
+    // versionsheader, sedan notifications/initialized MED den, sedan
+    // tools/list. Det andra anropet var det som föll.
+    const init = await anrop({ headers: { __utan_version: '1' },
+      body: rpc('initialize', { protocolVersion: '2025-11-25', capabilities: {} }) });
+    assert.equal(init.kod, 200);
+    const notis = await anrop({ headers: { 'MCP-Protocol-Version': '2025-11-25' },
+      body: { jsonrpc: '2.0', method: 'notifications/initialized' } });
+    assert.equal(notis.kod, 202);
+    const lista = await anrop({ headers: { 'MCP-Protocol-Version': '2025-11-25' }, body: rpc('tools/list') });
+    assert.equal(lista.kod, 200);
+  });
+
+  test('2026-07-28 nekas — och MÅSTE nekas med -32600, inte -32022', async () => {
+    // Den revisionen är en annan ERA (ingen initialize, per-anrops-_meta,
+    // server/discover, resultType i svaret). Vi implementerar inget av det.
+    //
+    // Koden är fallbackmekanismen, inte en detalj: specen säger att en
+    // dual-era-klient ska läsa kroppen på ett 400-svar och backa till
+    // initialize BARA om den inte är ett känt modernt fel. Med -32022
+    // (UnsupportedProtocolVersionError) läses vi i stället som en modern
+    // server, och klienten fortsätter i modernt läge — raka motsatsen till
+    // vad bytet var tänkt att åstadkomma.
+    const res = await anrop({ headers: { 'MCP-Protocol-Version': '2026-07-28' }, body: rpc('tools/list') });
+    assert.equal(res.kod, 400);
+    assert.equal(res.kropp.error.code, -32600);
+    assert.notEqual(res.kropp.error.code, -32022);
+  });
+
+  test('felet räknar upp vad vi FAKTISKT talar, så en människa kan felsöka', async () => {
+    const res = await anrop({ headers: { 'MCP-Protocol-Version': '2027-01-01' }, body: rpc('ping') });
+    for (const v of PROTOKOLL_VI_TALAR) {
+      assert.ok(res.kropp.error.message.includes(v), `${v} nämns inte i felmeddelandet`);
+    }
+  });
+
+  test('alla revisioner vi talar är initialize-baserade (legacy)', () => {
+    // Vaktar mot att någon lägger till en modern revision i listan utan att
+    // implementera eran. Serien tar slut före 2026-07-28.
+    for (const v of PROTOKOLL_VI_TALAR) {
+      assert.ok(v < '2026-01-01', `${v} tillhör en era transporten inte implementerar`);
+    }
+    assert.equal(SENASTE, PROTOKOLL_VI_TALAR[0]);
+  });
+});

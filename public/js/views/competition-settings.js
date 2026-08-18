@@ -28,6 +28,7 @@ import {
   formatDate
 } from '../utils.js';
 import { createManagementForm } from '../managementform.js';
+import { MCP_KLIENTER, medAdress, hittaKlient } from '../mcp-klienter.js';
 import { icon } from '../icons.js';
 import { help } from '../help.js';
 import { DISTRICTS, normDistrict } from '../districts.js';
@@ -1523,13 +1524,34 @@ async function lookupEmailsForUids(uids) {
 // konfigurerar den i ett samtal.
 //
 // Sidan har tre uppgifter, i den ordningen: säga vad som INTE går att läsa
-// (annars tror man att något är sönder när modellen svarar "(ifyllt)"), ge
-// inkopplingsraden, och ge färdiga prompter att klistra in. Nyckeln visas EN
-// gång — bara hashen sparas.
+// (annars tror man att något är sönder när modellen svarar "(ifyllt)"), visa
+// hur man kopplar in den, och ge färdiga prompter att klistra in. Nyckeln
+// visas EN gång — bara hashen sparas.
+//
+// INKOPPLINGEN ÄR EN EGEN, ALLTID SYNLIG RUTA, och det är två rättelser i en:
+//
+//  1. Anvisningen låg förut INUTI engångsvisningen av nyckeln. Klickade man
+//     "Jag har sparat den" försvann den, och kom man tillbaka en vecka senare
+//     fanns ingen instruktion kvar — man fick återkalla en fungerande nyckel
+//     bara för att se hur den skulle användas. Adressen är hemlig; det HUR man
+//     kopplar in den är det inte. Utan färsk nyckel visas därför samma
+//     anvisning med DIN-NYCKEL i adressens sista led.
+//  2. Anvisningen var EN rad, `claude mcp add …`, och den gäller ett enda
+//     program. Servern fungerar med varje klient som talar Streamable HTTP, så
+//     texten var en onödig inlåsning. Katalogen bor i mcp-klienter.js.
 // ---------------------------------------------------------------------------
 function renderMcpTab(comp, cid, refresh, readOnly) {
   const host = document.createElement('div');
-  const bas = location.origin;
+  // KANONISK VÄRD, inte location.origin — samma skäl som ORIGIN i seo.js.
+  // Fyra värdnamn svarar 200 med identiskt innehåll (även www., .web.app och
+  // .firebaseapp.com), så en admin som råkat komma in via ett av dem hade fått
+  // en inkopplingsadress på den värden. Anthropics egen felsökningslista pekar
+  // ut just det som en vanlig orsak till att en koppling slutar fungera:
+  // adressen ska vara den servern faktiskt lyssnar på, inte en som kan komma
+  // att omdirigeras dit. På localhost används den lokala värden — där finns
+  // ingen prod-nyckel att koppla in med ändå.
+  const LOKALT = ['localhost', '127.0.0.1', '0.0.0.0'].includes(location.hostname);
+  const bas = LOKALT ? location.origin : 'https://eskilscout.se';
 
   const kort = document.createElement('section');
   kort.className = 'card';
@@ -1557,6 +1579,12 @@ function renderMcpTab(comp, cid, refresh, readOnly) {
 
   const nyckelHost = kort.querySelector('#mcp-nyckel');
 
+  // Sista ledet i adressen när ingen färsk nyckel finns att visa. Ett tydligt
+  // ord slår en tom lucka: kopierar man kommandot rakt av blir felet synligt i
+  // stället för att adressen tyst pekar på ingenting.
+  const NYCKEL_PLATS = 'DIN-NYCKEL';
+  let visadUrl = null;
+
   const ritaStatus = async () => {
     const st = await mcpNyckelStatus(cid);
     nyckelHost.innerHTML = st.finns
@@ -1583,6 +1611,8 @@ function renderMcpTab(comp, cid, refresh, readOnly) {
         { okLabel: 'Återkalla', danger: true })) return;
       await withBusy(e.currentTarget, 'Återkallar…', async () => {
         await aterkallaMcpNyckel(cid);
+        visadUrl = null;
+        ritaKoppling();
         toast('Nyckeln återkallad', 'success');
         await ritaStatus();
       });
@@ -1591,22 +1621,23 @@ function renderMcpTab(comp, cid, refresh, readOnly) {
 
   const visaNyckel = (nyckel) => {
     const url = `${bas}/mcp/${cid}/${nyckel}`;
+    visadUrl = url;
+    ritaKoppling();
     nyckelHost.innerHTML = `
       <div class="no-cookies" style="border-left-color: var(--rover-yellow);">
         <strong>Kopiera nu — nyckeln visas bara den här gången.</strong>
         Vi sparar bara ett avtryck av den, aldrig nyckeln själv, så vi kan inte visa den igen.
+        Hela adressen är lösenordet: mejla den inte, och lägg den inte i en chattgrupp.
       </div>
       <label class="field">Inkopplingsadress</label>
       <input class="input" id="mcp-url" readonly value="${escapeHtml(url)}"
-             style="font-family:monospace;font-size:12px;">
+             style="font-family:var(--font-mono);font-size:12px;">
       <div class="btn-row" style="margin-top:var(--sp-3);">
         <button class="btn btn-primary" id="mcp-kopiera">Kopiera adressen</button>
         <button class="btn btn-secondary" id="mcp-klar">Jag har sparat den</button>
       </div>
-      <h4 class="t-h4" style="margin-top:var(--sp-6);">Så kopplar du in den</h4>
-      <p class="muted t-sm">I Claude Code, kör raden nedan i tävlingens mapp. I Claude Desktop
-      eller på claude.ai lägger du till en egen koppling och klistrar in adressen.</p>
-      <pre style="background:var(--bg-muted);padding:10px 12px;border-radius:var(--r-sm);font-family:ui-monospace,monospace;font-size:12px;white-space:pre-wrap;word-break:break-all;">claude mcp add --transport http eskil ${escapeHtml(url)}</pre>
+      <p class="muted t-sm">Anvisningen för ditt verktyg står i rutan nedan — den är redan
+      ifylld med adressen så länge den här sidan är öppen.</p>
     `;
     nyckelHost.querySelector('#mcp-kopiera').addEventListener('click', async () => {
       await copyToClipboard(url);
@@ -1615,6 +1646,70 @@ function renderMcpTab(comp, cid, refresh, readOnly) {
     nyckelHost.querySelector('#mcp-klar').addEventListener('click', () => ritaStatus());
     nyckelHost.querySelector('#mcp-url').select?.();
   };
+
+  // --- Så kopplar du in: en anvisning per klient ---------------------------
+  const VAL_NYCKEL = 'eskil-mcp-klient';
+  let valdKlient = hittaKlient(localStorage.getItem(VAL_NYCKEL)).id;
+
+  const kopplingsKort = document.createElement('section');
+  kopplingsKort.className = 'card';
+  const sorter = [...new Set(MCP_KLIENTER.map(k => k.sort))];
+  kopplingsKort.innerHTML = `
+    <h3 class="t-h3" style="margin-top:0;">Så kopplar du in</h3>
+    <p class="muted t-sm" style="margin-top:-6px;">Adressen är densamma överallt — det är bara
+    stället man klistrar in den som skiljer.</p>
+    <label class="field" for="mcp-klient">Vilket verktyg använder du?</label>
+    <select class="input" id="mcp-klient">
+      ${sorter.map(sort => `
+        <option disabled>── ${escapeHtml(sort)} ──</option>
+        ${MCP_KLIENTER.filter(k => k.sort === sort).map(k =>
+          `<option value="${escapeHtml(k.id)}">${escapeHtml(k.namn)}</option>`).join('')}
+      `).join('')}
+    </select>
+    <div id="mcp-anvisning" style="margin-top:var(--sp-5);"></div>
+  `;
+  host.appendChild(kopplingsKort);
+
+  const anvisningHost = kopplingsKort.querySelector('#mcp-anvisning');
+  const valjaren = kopplingsKort.querySelector('#mcp-klient');
+
+  const ritaKoppling = () => {
+    valjaren.value = valdKlient;
+    const url = visadUrl || `${bas}/mcp/${cid}/${NYCKEL_PLATS}`;
+    const k = medAdress(hittaKlient(valdKlient), url);
+    anvisningHost.innerHTML = `
+      <p class="muted t-sm">${escapeHtml(k.ingress)}</p>
+      <ol style="padding-left:1.2em;margin:var(--sp-3) 0;">
+        ${k.steg.map(steg => `<li style="margin-bottom:6px;">${escapeHtml(steg)}</li>`).join('')}
+      </ol>
+      ${k.fil ? `<p class="t-sm" style="margin:0 0 6px;"><strong>Filen ligger här:</strong>
+                 <code>${escapeHtml(k.fil)}</code></p>` : ''}
+      <label class="field">${escapeHtml(k.kopiera.etikett)}</label>
+      <pre class="kodruta">${escapeHtml(k.kopiera.text)}</pre>
+      <div class="btn-row" style="margin-top:var(--sp-3);">
+        <button class="btn btn-primary" id="mcp-kopiera-anvisning">Kopiera</button>
+      </div>
+      ${visadUrl ? '' : `<p class="muted t-sm">Adressen ovan har <code>${NYCKEL_PLATS}</code> där
+        nyckeln ska stå — den visas bara när den skapas. Byt ut ordet mot nyckeln du sparade,
+        eller skapa en ny ovan så fylls anvisningen i åt dig.</p>`}
+      ${k.varning ? `<div class="no-cookies" style="border-left-color: var(--rover-yellow);">
+        ${escapeHtml(k.varning)}</div>` : ''}
+      <p class="t-sm" style="margin-bottom:0;">
+        <a href="${escapeHtml(k.lank.href)}" target="_blank" rel="noopener">${escapeHtml(k.lank.text)}</a>
+      </p>
+    `;
+    anvisningHost.querySelector('#mcp-kopiera-anvisning').addEventListener('click', async () => {
+      await copyToClipboard(k.kopiera.text);
+      toast(visadUrl ? 'Kopierat' : `Kopierat — byt ut ${NYCKEL_PLATS} mot din nyckel`, 'success');
+    });
+  };
+
+  valjaren.addEventListener('change', () => {
+    valdKlient = valjaren.value;
+    try { localStorage.setItem(VAL_NYCKEL, valdKlient); } catch { /* privat läge */ }
+    ritaKoppling();
+  });
+  ritaKoppling();
 
   ritaStatus();
 

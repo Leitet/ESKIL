@@ -22,8 +22,39 @@
 //  - Servern MÅSTE validera Origin-headern (skydd mot DNS-rebinding).
 //  - Saknas MCP-Protocol-Version ska 2025-03-26 antas. Är den ogiltig: 400.
 
-const PROTOKOLL_VI_TALAR = ['2025-06-18', '2025-03-26', '2024-11-05'];
-const SENASTE = '2025-06-18';
+// VILKA REVISIONER VI SÄGER OSS TALA — och varför listan slutar där den gör.
+//
+// Alla fyra är "legacy" i den mening specen 2026-07-28 använder: de inleds med
+// en initialize-handskakning. Vår server implementerar dem alla lika, för det
+// enda vi erbjuder är verktyg, och verktygsytan är oförändrad genom hela
+// serien. 2025-11-25 lägger till ikoner, tasks, elicitation och OAuth-detaljer
+// — inget vi har — och skärper två saker vi redan gjorde: 403 på ogiltig
+// Origin, och valideringsfel som VERKTYGSfel i stället för protokollfel.
+//
+// 2025-11-25 SAKNADES, och det var inte teoretiskt: Anthropics HOSTADE
+// connector-yta (claude.ai, Claude Desktop, Cowork — de tre lägsta trösklarna
+// för en kårledare) skickar `Mcp-Protocol-Version: 2025-11-25`. Kontrollen
+// nedan ligger före både body-parsning och metod-dispatch, och auth ligger före
+// den, så en giltig nyckel hjälpte inte: anslutningen dog på 400 vid FÖRSTA
+// anropet. Claude Code talar 2025-06-18 och fungerade hela tiden, vilket är
+// precis det som gjorde felet svårt att se.
+const PROTOKOLL_VI_TALAR = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
+const SENASTE = '2025-11-25';
+
+// 2026-07-28 STÅR MEDVETET INTE I LISTAN, och ska inte läggas till "för
+// säkerhets skull". Den revisionen är en annan ERA: initialize är borta,
+// versionen bärs per anrop i `_meta`, `server/discover` är obligatorisk,
+// Mcp-Method/Mcp-Name måste valideras mot kroppen och tools/call-svaret kräver
+// `resultType`. Att säga oss tala den utan att göra något av det vore värre än
+// att neka: klienten skulle fortsätta i modernt läge och falla på svarsformen.
+//
+// Att vi svarar 400 med JSON-RPC-koden -32600 är dessutom EXAKT det en
+// dual-era-klient behöver för att falla tillbaka. Specen säger att den ska
+// läsa kroppen på ett 400-svar och bara backa till initialize om den INTE är
+// ett känt modernt fel. Byter man därför koden till -32022
+// (UnsupportedProtocolVersionError) i tron att det är mer korrekt, tolkas vi
+// i stället som en modern server och klienten försöker igen i modernt läge —
+// alltså raka motsatsen. Koden är inte en detalj; den är fallbackmekanismen.
 // Saknas headern helt föreskriver specifikationen den här versionen.
 const UTAN_HEADER = '2025-03-26';
 
