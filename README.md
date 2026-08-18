@@ -390,12 +390,20 @@ public/
     highlights.js       # Positiva höjdpunkter på startkortet efter målgång
     places.js           # Intressepunkter (sort, symbol, färg) + kartritning
     place-modal.js      # Delad redigeringsdialog för en plats på kartan
+    seo.js              # Metadata per rutt (canonical, description, OG, noindex)
+    mcp-klienter.js     # Katalog: hur varje LLM-klient kopplar in MCP-servern
     utils.js            # Hjälpare (inkl. prisberäkning + Swish-QR-payload)
     views/              # En fil per vy (login, home, competition, patrols, ...)
 
 functions/              # Cloud Functions — transaktionsmail via Trigger Email
   index.js              # Firestore-triggers som köar mail i `mail`-collectionen
   receipt-pdf.js        # Node-port av kvitto-PDF:n (bilaga i kvittomail)
+  mcp/                  # MCP-servern — det andra undantaget från "bara mail"
+    transport.js        # Streamable HTTP för hand (tillståndslös, legacy-eran)
+    auth.js             # /mcp/<cid>/<nyckel> — nyckeln lagras bara som sha256
+    verktyg.js          # Verktygsytan: allowlistor, validering, bekräftelsetoken
+    redact.js           # Redaktionen — vad modellen får läsa, med default-deny
+    ledning.js          # CJS-dubblett av splitManagement (testad mot ESM-versionen)
 firestore.rules         # Säkerhetsregler
 firestore.indexes.json  # Index
 firebase.json           # Hosting + Firestore + Functions-config
