@@ -20,7 +20,8 @@ import {
   splitManagement,
   mergeManagement,
   publicManagement,
-  internalManagement
+  internalManagement,
+  arSpaRutt
 } from '../public/js/utils.js';
 import { hasIcon } from '../public/js/icons.js';
 import { tolkaVader, vaderMeddelande, BY_VARNING_MS } from '../public/js/vader.js';
@@ -1788,5 +1789,63 @@ describe('splitManagement — interna rollers uppgifter ur den publika ytan', ()
     assert.deepEqual(splitManagement(undefined), { publikt: [], internPii: {} });
     const { publikt } = splitManagement([{ visibility: 'internal', name: 'X' }]);
     assert.ok(!JSON.stringify(publikt).includes('X'), 'roll utan id får inte läcka namnet');
+  });
+});
+
+describe('arSpaRutt — data-link får bara sitta på det routern kan rendera', () => {
+  // BUGGEN: demokortet "Tävlingssidan" pekade på /t/demo och fick data-link,
+  // eftersom renderaren tolkade `nyFlik: false` som "är en SPA-rutt". Routern
+  // fångade klicket, hittade ingen match och visade "Sidan hittades inte" —
+  // medan en omladdning av SAMMA adress fungerade, eftersom den gick via
+  // hosting-rewriten till t.html. Ett fel som bara drabbar den som klickar.
+  //
+  // Samma sammanblandning fanns i publik-nav.js som en hårdkodad
+  // undantagslista (`href !== '/integritet'`). Regel, inte lista.
+
+  test('SPA:ns fyra toppsegment', () => {
+    for (const h of ['/', '/om', '/kontakt', '/kontakt/abc123', '/app',
+                     '/app/settings', '/app/c/x/laget', '/app/c/x/controls/y']) {
+      assert.equal(arSpaRutt(h), true, `${h} borde vara en SPA-rutt`);
+    }
+  });
+
+  test('de egna HTML-filerna är det INTE', () => {
+    // Var och en av dem ligger bakom en rewrite till en egen fil. Ett
+    // data-link här ger 404 i klienten men fungerar vid omladdning.
+    for (const h of ['/t/demo', '/t/ah26', '/t/demo/scoreboard', '/integritet',
+                     '/k/cid/ctrl/token', '/s/cid/patrull', '/m/cid/station', '/a/cid/reg']) {
+      assert.equal(arSpaRutt(h), false, `${h} är ingen SPA-rutt`);
+    }
+  });
+
+  test('prefix får inte råka matcha', () => {
+    // /omvag och /appar börjar med samma bokstäver som /om och /app.
+    assert.equal(arSpaRutt('/omvag'), false);
+    assert.equal(arSpaRutt('/appar'), false);
+    assert.equal(arSpaRutt('/kontaktformular'), false);
+  });
+
+  test('externa och konstiga adresser', () => {
+    for (const h of ['https://eskilscout.se/om', '//evil.se/om', 'mailto:a@b.se',
+                     '#ankare', '', null, undefined]) {
+      assert.equal(arSpaRutt(h), false, `${h} borde inte räknas som SPA-rutt`);
+    }
+  });
+
+  test('frågesträng och ankare räknas bort', () => {
+    assert.equal(arSpaRutt('/app/c/x/meddelanden?kontroll=abc'), true);
+    assert.equal(arSpaRutt('/kontakt#formular'), true);
+    assert.equal(arSpaRutt('/t/demo?flik=1'), false);
+  });
+
+  test('varje toppsegment har en rewrite i firebase.json', () => {
+    // Om arSpaRutt säger ja måste hosting kunna leverera SPA:n där, annars
+    // 404:ar en direktlänk eller en omladdning.
+    const cfg = JSON.parse(readFileSync(new URL('../firebase.json', import.meta.url), 'utf8'));
+    const sources = cfg.hosting.rewrites.map(r => r.source);
+    for (const seg of ['/om', '/kontakt', '/app']) {
+      assert.ok(sources.some(s => s === seg || s === `${seg}/**` || s === '**'),
+        `${seg} räknas som SPA-rutt men saknar rewrite`);
+    }
   });
 });

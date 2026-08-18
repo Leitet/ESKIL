@@ -5,7 +5,7 @@
 // button.
 
 import { listAllCompetitions } from '../store.js';
-import { escapeHtml, formatDate, registrationState } from '../utils.js';
+import { escapeHtml, formatDate, registrationState, arSpaRutt} from '../utils.js';
 import { icon } from '../icons.js';
 import { publikHeader, publikFooter } from '../publik-nav.js';
 import { setSeo } from '../seo.js';
@@ -264,7 +264,9 @@ function demoCards(c) {
             ['flag', 'Patrullens startkort', 'Banan, nästa kontroll, avstånd och egna poäng — det patrullen bär med sig.', `/s/${t(c.slug || c.id)}/demo-p12`, true]
           ] : [])
         ].map(([ikon, rubrik, text, href, nyFlik]) => `
-          <a class="card landing-card landing-demo-liten" href="${href}"${nyFlik ? ' target="_blank" rel="noopener"' : ' data-link'}>
+          <a class="card landing-card landing-demo-liten" href="${href}"${nyFlik
+            ? ' target="_blank" rel="noopener"'
+            : (arSpaRutt(href) ? ' data-link' : '')}>
             <div class="row" style="gap:8px;align-items:center;">
               <span class="landing-feature-icon landing-feature-icon-sm">${icon(ikon, { size: 16 })}</span>
               <strong>${escapeHtml(rubrik)}</strong>

@@ -1139,3 +1139,28 @@ export function sparlagesBeslut(nuvarande, { level, charging } = {}) {
   if (nuvarande && level >= SPAR_AV_VID) return false;
   return nuvarande;
 }
+
+// ---------------------------------------------------------------------------
+// Kan SPA-routern rendera den här adressen?
+//
+// `data-link` får ALDRIG sättas på något annat: routern fångar klicket, hittar
+// ingen match och visar "Sidan hittades inte" — medan en omladdning av samma
+// adress fungerar, eftersom den går via hosting-rewriten till rätt HTML-fil.
+// Ett fel som ser ut som en trasig länk men bara drabbar den som klickar.
+//
+// Buggen fanns i landing.js, där demokortens `nyFlik: false` tolkades som "är
+// en SPA-rutt": /t/demo fick data-link och 404:ade. Och i publik-nav.js, där
+// undantaget var hårdkodat till just '/integritet' — nästa statiska sida hade
+// gått i samma fälla.
+//
+// Listan är SPA:ns fyra toppsegment. Samma fyra som firebase.json har explicita
+// rewrites för sedan catch-allen togs bort; håll dem i synk.
+// ---------------------------------------------------------------------------
+export function arSpaRutt(href) {
+  const h = String(href || '');
+  // Extern adress, ankare, mailto, tel: aldrig routerns sak.
+  if (!h.startsWith('/') || h.startsWith('//')) return false;
+  const sokvag = h.split('?')[0].split('#')[0];
+  if (sokvag === '/') return true;
+  return /^\/(om|kontakt|app)(\/|$)/.test(sokvag);
+}

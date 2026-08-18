@@ -24,10 +24,15 @@ export const OFFICIELLA_SIDOR = [
 const esc = (s) => String(s ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-// Startsidan ligger i SPA:n, integritet är en egen HTML-fil. `data-link` sätts
-// bara på det som routern faktiskt hanterar — annars fångar den ett klick den
-// inte kan rendera och sidan blir stående.
-const iSpa = (href) => href !== '/integritet';
+// `data-link` sätts bara på det routern faktiskt kan rendera — annars fångar
+// den ett klick den inte kan hantera och visar "Sidan hittades inte", medan en
+// omladdning av samma adress fungerar.
+//
+// Villkoret var förut hårdkodat till `href !== '/integritet'`, alltså en lista
+// över undantag i stället för en regel. Nästa statiska sida hade gått i samma
+// fälla — vilket också hände, på /t-länken i landing.js. arSpaRutt är regeln.
+import { arSpaRutt } from './utils.js';
+const iSpa = arSpaRutt;
 
 /**
  * Sidhuvudet: varumärke, meny över de officiella sidorna, brödsmulor och
