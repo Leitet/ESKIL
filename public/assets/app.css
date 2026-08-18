@@ -150,6 +150,23 @@
 .tabs-sub a:hover { color: var(--scout-blue); border-color: var(--scout-blue); }
 .tabs-sub a.active { background: var(--scout-blue); color: var(--white); border-color: var(--scout-blue); }
 
+/* Kodruta — kommandon och konfigsnuttar som ska kopieras (AI-kopplingen).
+   Bryter ALLTID rader: adresserna är långa och en vågrät scroll i en ruta
+   inuti en sida är precis den sortens detalj som gör att man kopierar halva
+   kommandot. */
+.kodruta {
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* Breadcrumbs — the "du är här"-trail above every page heading. */
 .crumbs {
   display: flex; align-items: center; flex-wrap: wrap; gap: 2px 8px;
