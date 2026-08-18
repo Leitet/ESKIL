@@ -179,6 +179,32 @@ Email extension). Production domain: https://eskilscout.se.
      att se fältet. `etaDwellMinutes: 1e999` lagrades som Infinity och gjorde
      varje ETA oändlig (`course.js` läser `Number(...) || DEFAULT`, och Infinity
      är truthy).
+  **Protokollversionerna i `transport.js` är en ALLOWLIST, och den avgör vilka
+  klienter som kan ansluta.** Listan är `2025-11-25, 2025-06-18, 2025-03-26,
+  2024-11-05` — alla initialize-baserade ("legacy"), alla implementerade lika,
+  eftersom vi bara erbjuder verktyg. 2025-11-25 SAKNADES och det låste ute
+  Anthropics HOSTADE yta (claude.ai, Claude Desktop, Cowork), som förhandlar
+  just den: kontrollen ligger före body-parsning och metod-dispatch, och auth
+  före den, så anslutningen dog på 400 vid första anropet oavsett nyckel.
+  Claude Code talar 2025-06-18 och fungerade hela tiden — därför syntes det
+  inte. Belagt i anthropics/claude-ai-mcp#831 och mot specens ändringslogg.
+  **Lägg ALDRIG till 2026-07-28 utan att implementera eran**: den har ingen
+  initialize, bär versionen per anrop i `_meta`, kräver `server/discover`,
+  headervalidering mot kroppen och `resultType` i tools/call-svaret.
+  **Och byt ALDRIG felkoden -32600 mot -32022** i tron att den är mer korrekt:
+  en dual-era-klient backar till initialize just för att kroppen INTE är ett
+  känt modernt fel, så -32022 gör att den i stället försöker igen modernt.
+  Koden ÄR fallbackmekanismen. Allt tre är regressionstestat i
+  `test/mcp-transport.test.js`, som driver handskakningen ordagrant som en
+  klient gör den.
+  **Inkopplingsanvisningarna bor i `public/js/mcp-klienter.js`** — en post per
+  klient, med platshållaren `<ADRESS>` som vyn byter ut. Tre av dem (Claude
+  Code, Cursor, VS Code) har en PROJEKTLOKAL konfigfil som enligt respektive
+  dokumentation ska checkas in i Git; hela hemligheten ligger i adressen, så
+  varje sådan post MÅSTE varna för den och ett test kräver ordet. Adressen
+  byggs mot `https://eskilscout.se`, inte `location.origin` — samma skäl som
+  ORIGIN i seo.js, plus att en omdirigerad connector-adress är en vanlig
+  felkälla hos Anthropic.
   **Nästlade strukturer får EGNA verktyg** (`kontroll_instruktioner_satt`,
   `start_mal_satt`) — den platta `kontrollera()`-allowlisten kan inte validera
   dem, och båda har fällor som annars slår till tyst: en avdelning i två

@@ -216,7 +216,8 @@ export const MCP_KLIENTER = [
     steg: [
       'Lägg till en fjärrserver (”remote MCP server”, ”Streamable HTTP” eller bara ”HTTP”) och klistra in adressen.',
       'Välj ingen autentisering. Hemligheten ligger i adressen — sätt varken OAuth, Bearer-token eller egna headers.',
-      'Kräver klienten ett program att köra i stället för en adress, går det via bryggan mcp-remote: npx -y mcp-remote ' + PLATSHALLARE
+      'Kräver klienten ett program att köra i stället för en adress, går det via bryggan mcp-remote: npx -y mcp-remote ' + PLATSHALLARE,
+      'Säger klienten att den inte kan nå servern, eller att protokollversionen inte stöds: säg till oss. Det är då sannolikt ESKIL som behöver släppa in klientens version, och det går inte att lösa i din inställningsfil.'
     ],
     kopiera: { etikett: 'Adress', text: PLATSHALLARE },
     varning: 'Servern är tillståndslös: den svarar JSON på POST, sätter inget Mcp-Session-Id och svarar 405 på GET eftersom den inte erbjuder någon SSE-ström. Allt tre är tillåtet enligt specifikationen och ska inte hindra en klient.',
