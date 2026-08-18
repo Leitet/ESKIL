@@ -292,3 +292,45 @@ describe('protokollrevisionerna — vilka klienter som släpps in', () => {
     assert.equal(SENASTE, PROTOKOLL_VI_TALAR[0]);
   });
 });
+
+describe('handskakningen får aldrig avvisas på versionshuvudet', () => {
+  // Mätt på riktigt: Claude Code föreslår 2025-11-25 i initialize-KROPPEN men
+  // utelämnar MCP-Protocol-Version-huvudet på just den requesten. Servern
+  // passerade alltså bara för att huvudet saknades — inte för att den kunde
+  // versionen. Anthropics hostade yta skickar huvudet redan på första anropet.
+  //
+  // `initialize` ÄR förhandlingen. Avvisas den på huvudet får nedgraderingen
+  // längre ner aldrig chansen, och en versionskrock som specen har en lösning
+  // för blir i stället en död anslutning.
+
+  test('initialize med ett FRAMTIDA versionshuvud förhandlas ned i stället för att nekas', async () => {
+    const res = await anrop({
+      headers: { 'MCP-Protocol-Version': '2031-01-01' },
+      body: rpc('initialize', { protocolVersion: '2031-01-01', capabilities: {} })
+    });
+    assert.equal(res.kod, 200, 'handskakningen nekades på huvudet');
+    assert.equal(res.kropp.result.protocolVersion, SENASTE);
+  });
+
+  test('en version bara i KROPPEN, utan huvud, förhandlas som förut', async () => {
+    // Precis Claude Codes form.
+    const res = await anrop({
+      headers: { __utan_version: '1' },
+      body: rpc('initialize', { protocolVersion: '2025-11-25', capabilities: {} })
+    });
+    assert.equal(res.kropp.result.protocolVersion, '2025-11-25');
+  });
+
+  test('men undantaget gäller ENDAST initialize', async () => {
+    // Annars vore versionskontrollen verkningslös, och en dual-era-klient
+    // skulle inte längre få sitt 400 att falla tillbaka på.
+    const res = await anrop({ headers: { 'MCP-Protocol-Version': '2031-01-01' }, body: rpc('tools/list') });
+    assert.equal(res.kod, 400);
+    assert.equal(res.kropp.error.code, -32600);
+  });
+
+  test('och felet bär requestens id, så klienten kan para ihop det', async () => {
+    const res = await anrop({ headers: { 'MCP-Protocol-Version': '2031-01-01' }, body: rpc('ping', {}, 42) });
+    assert.equal(res.kropp.id, 42);
+  });
+});

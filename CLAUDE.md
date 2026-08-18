@@ -194,7 +194,17 @@ Email extension). Production domain: https://eskilscout.se.
   **Och byt ALDRIG felkoden -32600 mot -32022** i tron att den är mer korrekt:
   en dual-era-klient backar till initialize just för att kroppen INTE är ett
   känt modernt fel, så -32022 gör att den i stället försöker igen modernt.
-  Koden ÄR fallbackmekanismen. Allt tre är regressionstestat i
+  Koden ÄR fallbackmekanismen.
+  **`initialize` är UNDANTAGEN från versionskontrollen**, och därför parsas
+  kroppen först. Handskakningen ÄR förhandlingen: klienten föreslår en version
+  i kroppen och servern svarar med den eller med sin senaste. Låg
+  headerkontrollen före kunde den avvisa med 400 innan nedgraderingen — alltså
+  innan just den mekanism som finns för att lösa en versionskrock. Servern
+  hängde då på en tillfällighet: Claude Code föreslår 2025-11-25 i KROPPEN men
+  utelämnar headern på initialize (uppmätt), och passerade därför, medan den
+  hostade ytan skickar headern direkt och föll. Undantaget gör servern robust
+  mot varje FRAMTIDA revision, inte bara mot den vi råkade lägga till.
+  Allt fyra är regressionstestat i
   `test/mcp-transport.test.js`, som driver handskakningen ordagrant som en
   klient gör den.
   **Inkopplingsanvisningarna bor i `public/js/mcp-klienter.js`** — en post per

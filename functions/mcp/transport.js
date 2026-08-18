@@ -127,13 +127,6 @@ async function hanteraMcp(req, res, server) {
     return svaraFel(res, 405, FEL.ogiltigForfragan, 'Endast POST stöds.');
   }
 
-  const version = req.headers['mcp-protocol-version'] || UTAN_HEADER;
-  if (!PROTOKOLL_VI_TALAR.includes(String(version))) {
-    // Specifikationen: ogiltig eller ostödd version MÅSTE ge 400.
-    return svaraFel(res, 400, FEL.ogiltigForfragan,
-      `Protokollversion ${version} stöds inte. Servern talar ${PROTOKOLL_VI_TALAR.join(', ')}.`);
-  }
-
   let meddelande = req.body;
   if (typeof meddelande === 'string') {
     try { meddelande = JSON.parse(meddelande); }
@@ -147,6 +140,31 @@ async function hanteraMcp(req, res, server) {
   }
 
   const { method, id, params } = meddelande;
+
+  // VERSIONSKONTROLLEN HOPPAS ÖVER FÖR `initialize`, och det är hela poängen
+  // med att kroppen parsas först.
+  //
+  // `initialize` ÄR förhandlingen: klienten föreslår en version i KROPPEN och
+  // servern svarar med den eller med sin senaste (raden längre ner). Låter man
+  // headerkontrollen köra före, kan den avvisa med 400 innan nedgraderingen —
+  // alltså innan just den mekanism som finns för att lösa en versionskrock får
+  // en chans. Det gjorde servern beroende av en tillfällighet: Claude Code
+  // föreslår 2025-11-25 i kroppen men UTELÄMNAR headern på initialize, och
+  // passerade därför. En klient som skickar headern redan på första anropet
+  // hade fått 400 — vilket är exakt vad Anthropics hostade yta gör.
+  //
+  // Legacy-specen är dessutom byggd så här: headern ska följa med på anropen
+  // EFTER handskakningen, när det finns en förhandlad version att ange.
+  // Undantaget gör alltså servern robust mot varje FRAMTIDA revision, inte
+  // bara mot den vi råkade lägga till.
+  if (method !== 'initialize') {
+    const version = req.headers['mcp-protocol-version'] || UTAN_HEADER;
+    if (!PROTOKOLL_VI_TALAR.includes(String(version))) {
+      // Specifikationen: ogiltig eller ostödd version MÅSTE ge 400.
+      return svaraFel(res, 400, FEL.ogiltigForfragan,
+        `Protokollversion ${version} stöds inte. Servern talar ${PROTOKOLL_VI_TALAR.join(', ')}.`, id ?? null);
+    }
+  }
 
   // Saknas id är meddelandet en NOTIFICATION (eller ett svar). Specifikationen
   // säger 202 utan kropp — och det gäller även notifications/initialized, som
