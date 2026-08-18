@@ -179,6 +179,37 @@ Email extension). Production domain: https://eskilscout.se.
      att se fältet. `etaDwellMinutes: 1e999` lagrades som Infinity och gjorde
      varje ETA oändlig (`course.js` läser `Number(...) || DEFAULT`, och Infinity
      är truthy).
+  **Läget via MCP har EN härledning, inte två.** `public/js/laget-core.js`
+  (ESM, används av views/laget.js) och `functions/mcp/laget.js` (CJS, används
+  av `laget_las`) är samma beräkning i två språk, och ett parity-test kör båda
+  mot samma indata och kräver IDENTISKT utfall — inte "ungefär lika". Skälet
+  är skarpare än vanlig dubblering: härledningen besvarar "var står det still?"
+  mitt under en tävling, så glider de isär läser sekretariatet en siffra på
+  skärmen och hör en annan i chatten. Spegeln bär också starttidsankaret
+  (`patrolStartDateTime`) och `mergeBeacons`, båda parity-testade mot utils.js.
+  ETA-berikningen ligger KVAR i vyn med flit: den hänger på course.js
+  kalibrerade motor, och MCP:n ska hellre sakna en måltidsgissning än ha en
+  egen som säger emot skärmen.
+  **Varningarnas form är provenienskritisk**: `lage` är serverns EGNA ord och
+  får aldrig innehålla ett fältvärde; kontrollens och patrullens namn ligger i
+  egna nycklar (`name`, `patrull`) som redaktionen märker `[data] `. Första
+  versionen bakade in namnen i meningen och märkte hela strängen — då såg
+  serverns ord ut som fältinnehåll, och ett patrullnamn som försöker instruera
+  modellen låg inbäddat i något som läses som text. Patrullnamnen kommer från
+  utomstående kårer via den anonyma anmälningslänken, så det är ingen teoretisk
+  yta. Regressionstestat.
+  **`laget_las` cachas i 30 sekunder, och cachen är inte en finess.** En
+  hämtning läser 2N+4 frågor och i storleksordningen N×M dokument. En assistent
+  som pollar var 20:e sekund gör 4 320 hämtningar per dygn — med 10 kontroller
+  och 30 patruller över en miljon läsningar, mot en gratiskvot på 50 000 som
+  DELAS med rapportsidan. Att spränga kvoten stoppar inte assistenten först,
+  den stoppar kontrollanternas rapportering. Instruktionerna säger därför
+  uttryckligen POLLA INTE.
+  **Poängens `note` är OPPEN med flit**: den publiceras redan i patrullmodalen
+  på /t, och snabbnoteringarnas etiketter är enligt utils.js valda så att de
+  "tål att stå på en anslagstavla". `adjustNote` (sekretariatets motivering)
+  och `history` är däremot DOLD, och `reporter` ALDRIG — det är en slumpad
+  enhetsidentifierare, inte ett personnamn.
   **Protokollversionerna i `transport.js` är en ALLOWLIST, och den avgör vilka
   klienter som kan ansluta.** Listan är `2025-11-25, 2025-06-18, 2025-03-26,
   2024-11-05` — alla initialize-baserade ("legacy"), alla implementerade lika,

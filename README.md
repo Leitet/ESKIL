@@ -390,6 +390,7 @@ public/
     highlights.js       # Positiva höjdpunkter på startkortet efter målgång
     places.js           # Intressepunkter (sort, symbol, färg) + kartritning
     place-modal.js      # Delad redigeringsdialog för en plats på kartan
+    laget-core.js       # Lägets härledning (kö, tryck, tystnad) — delas med MCP
     seo.js              # Metadata per rutt (canonical, description, OG, noindex)
     mcp-klienter.js     # Katalog: hur varje LLM-klient kopplar in MCP-servern
     utils.js            # Hjälpare (inkl. prisberäkning + Swish-QR-payload)
@@ -404,6 +405,7 @@ functions/              # Cloud Functions — transaktionsmail via Trigger Email
     verktyg.js          # Verktygsytan: allowlistor, validering, bekräftelsetoken
     redact.js           # Redaktionen — vad modellen får läsa, med default-deny
     ledning.js          # CJS-dubblett av splitManagement (testad mot ESM-versionen)
+    laget.js            # CJS-spegel av laget-core.js + varningarna (parity-testad)
 firestore.rules         # Säkerhetsregler
 firestore.indexes.json  # Index
 firebase.json           # Hosting + Firestore + Functions-config

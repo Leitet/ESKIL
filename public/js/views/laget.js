@@ -29,15 +29,10 @@ import { renderQrToImg } from '../pdf.js';
 import { icon } from '../icons.js';
 import { help } from '../help.js';
 import { compHeader, compLabel, setDocTitle } from '../nav.js';
-
-const WARN_SILENT_MIN = 60;   // patrol out with no sign of life this long → warning
-const CTRL_STALE_MIN = 45;    // control silent this long WITH inbound patrols → red
-
-const HEAT = {
-  green:  { fill: '#41A62A', label: 'Lugnt' },
-  yellow: { fill: '#E2B100', label: 'Kö byggs upp' },
-  red:    { fill: '#DA005E', label: 'Flaskhals' }
-};
+// Härledningen bor i laget-core.js, inte här: MCP-kopplingen visar samma
+// bild via en CJS-spegel av den filen, och räknade de två var för sig skulle
+// sekretariatet och assistenten kunna säga emot varandra mitt i tävlingen.
+import { beraknaLaget, toDate, minSince, WARN_SILENT_MIN, CTRL_STALE_MIN, HEAT } from '../laget-core.js';
 
 let unsubs = [];
 function cleanup() {
@@ -311,8 +306,6 @@ export async function renderLaget(app, user, cid) {
   registerViewCleanup(() => { cleanup(); clearInterval(tick); mapInstance?.remove?.(); mapInstance = null; });
 
   // --- Derived stats -----------------------------------------------------------
-  const toDate = (ts) => ts && typeof ts.toDate === 'function' ? ts.toDate() : (ts ? new Date(ts) : null);
-  const minSince = (d, now) => d ? Math.floor((now - d) / 60000) : null;
 
   // Demospår: pin the clock to the newest timestamp in the data (+5 min).
   // The seeded snapshot is one frozen mid-race moment — with a real clock it
@@ -328,43 +321,9 @@ export async function renderLaget(app, user, cid) {
 
   function compute() {
     const now = virtualNow();
-    const ordered = [...controls].sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0));
-
-    // Per patrol: reports by control number, position (highest reported), timestamps.
-    const perPatrol = patrols.map(p => {
-      const pass = passages[p.id] || {};
-      const reports = [];
-      for (const c of ordered) {
-        const s = (scoresByCtrl[c.id] || []).find(x => x.patrolId === p.id);
-        // clientReportedAt = tryckögonblicket, reportedAt = synktiden. En
-        // offline-kö som flushas tre timmar senare gör den senare till en lögn:
-        // patrullen såg "nyss sedd" ut fast ingen sett den sedan kl 11.
-        const t = toDate(s?.clientReportedAt ?? s?.reportedAt);
-        if (t) reports.push({ nummer: c.nummer ?? 0, t });
-      }
-      reports.sort((a, b) => a.nummer - b.nummer);
-      const startAt = toDate(pass.startAt);
-      const finishAt = toDate(pass.finishAt);
-      const position = reports.length ? reports[reports.length - 1].nummer : 0;
-      const lastReport = reports.length ? reports.reduce((m, r) => r.t > m ? r.t : m, reports[0].t) : null;
-      const lastSeen = [startAt, finishAt, lastReport].filter(Boolean).sort((a, b) => b - a)[0] || null;
-      // DNF: en utgått patrull är per definition inte ute i skogen — den
-      // räknas bort ur köer, tystnadsvarningar och sen-till-start-larm.
-      const utgatt = p.utgatt || null;
-      const started = !!startAt || reports.length > 0;
-      const active = !utgatt && started && !finishAt;
-      const silentMin = active ? minSince(lastSeen, now) : null;
-      // Sen till start: planerad tid passerad (3 min marginal) utan livstecken.
-      const plannedAt = !started && !utgatt ? patrolStartDateTime(comp, p, now, patrols.length) : null;
-      const lateStartMin = plannedAt ? Math.floor((now - plannedAt) / 60000) : 0;
-      const lateStart = !utgatt && !started && lateStartMin >= 3;
-      return {
-        patrol: p, startAt, finishAt,
-        selfStarted: !!pass.selfStarted, selfFinished: !!pass.selfFinished, autoFinished: !!pass.autoFinished,
-        reports, position, lastReport, lastSeen,
-        started, active, silentMin, lateStart, lateStartMin, utgatt,
-        warn: !utgatt && ((active && silentMin != null && silentMin >= WARN_SILENT_MIN) || (!started && lateStartMin >= 3))
-      };
+    const { perPatrol, ctrlStats, ordered } = beraknaLaget({
+      comp, controls, patrols, passages, scoresByCtrl, now,
+      plannedStartAt: (p) => patrolStartDateTime(comp, p, now, patrols.length)
     });
 
     // Kalibrerad målgång per aktiv patrull — samma motor som stationens
@@ -395,48 +354,6 @@ export async function renderLaget(app, user, cid) {
         }
       }
     } catch { /* ETA är en bonus — aldrig ett fel */ }
-
-    // Per control: done count, last activity, inbound queue, leg times.
-    const ctrlStats = ordered.map((c, i) => {
-      const prevN = i > 0 ? (ordered[i - 1].nummer ?? 0) : 0;
-      const scores = scoresByCtrl[c.id] || [];
-      const lastReport = scores
-        .map(s => toDate(s.clientReportedAt ?? s.reportedAt)).filter(Boolean)
-        .sort((a, b) => b - a)[0] || null;
-      const inbound = perPatrol.filter(pp =>
-        pp.active && pp.position === prevN && (i > 0 || pp.started)
-      ).length;
-
-      // Leg time: minutes from the previous checkpoint (previous control's
-      // report, or start check-out for the first control) to this report.
-      const legs = [];
-      for (const pp of perPatrol) {
-        const here = pp.reports.find(r => r.nummer === (c.nummer ?? 0));
-        if (!here) continue;
-        const prevT = i > 0
-          ? pp.reports.filter(r => r.nummer <= prevN).map(r => r.t).sort((a, b) => b - a)[0] || null
-          : pp.startAt;
-        if (prevT && here.t > prevT) legs.push({ t: here.t, min: (here.t - prevT) / 60000 });
-      }
-      legs.sort((a, b) => a.t - b.t);
-      const median = (arr) => {
-        if (!arr.length) return null;
-        const v = arr.map(x => x.min).sort((a, b) => a - b);
-        return v[Math.floor(v.length / 2)];
-      };
-      const legMedian = median(legs);
-      const recentMedian = median(legs.slice(-3));
-      const trendUp = legs.length >= 4 && recentMedian != null && legMedian != null && recentMedian > legMedian * 1.35;
-
-      const silent = minSince(lastReport, now);
-      let heat = 'green';
-      if (inbound >= 4) heat = 'red';
-      else if (inbound >= 2) heat = 'yellow';
-      if (inbound > 0 && silent != null && silent >= CTRL_STALE_MIN) heat = 'red';
-      if (heat === 'yellow' && trendUp) heat = 'red';
-
-      return { control: c, doneCount: scores.length, lastReport, silent, inbound, legMedian, recentMedian, trendUp, heat };
-    });
 
     return { now, perPatrol, ctrlStats, ordered };
   }

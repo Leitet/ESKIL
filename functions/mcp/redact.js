@@ -264,6 +264,37 @@ const KONTROLL = {
   telefon: DOLD, notering: DOLD, ansvariga: DOLD, ansvarigaEmails: DOLD
 };
 
+// controls/{ctrlId}/scores/{patrolId} — världsläsbar (firestore.rules:406).
+// Poängen, passagetiden och kontrollantens notering står redan på den PUBLIKA
+// tävlingssidan: /t visar noteringen i patrullmodalen, och snabbnoteringarnas
+// etiketter är enligt utils.js medvetet valda så att de "tål att stå på en
+// anslagstavla" — inget om hälsa, skada eller enskilda scouters uppförande.
+// Därför OPPEN med skrubbning, precis som kontrollernas instruktioner.
+const POANG = {
+  poang: OPPEN, extraPoang: OPPEN, utslagGissning: OPPEN,
+  note: OPPEN,                        // publiceras redan på /t
+
+  // Tidsstämplarna är Firestore-Timestamp-OBJEKT, och maskerarens objektvakt
+  // gör en OPPEN-klassad sådan till "(ifyllt)" — sämre än att utelämna den.
+  // Verktygen skickar i stället med `tid` (HH:MM), redan uppslagen ur
+  // clientReportedAt, alltså tryckögonblicket och inte synktiden.
+  reportedAt: ALDRIG, clientReportedAt: ALDRIG,
+
+  // patrolId är ett doc-id. Verktygen adresserar patruller med NAMN och
+  // löser upp id:t innan svaret byggs — det får aldrig lämna servern.
+  patrolId: ALDRIG,
+  // reporter är en slumpad enhetsidentifierare ur localStorage (report.js
+  // reporterId()), inte ett personnamn. Den säger modellen ingenting och är
+  // ändå en identifierare — bort.
+  reporter: ALDRIG,
+
+  // adjustNote är sekretariatets MOTIVERING till en rättelse. Till skillnad
+  // från note publiceras den inte, och en motivering namnger ofta den man
+  // pratat med ("rättat efter samtal med ..."). history bär dessutom gamla
+  // versioner av allt ovan.
+  adjustNote: DOLD, history: DOLD
+};
+
 // controls/{ctrlId}/private/meta
 const KONTROLL_META = {
   telefon: DOLD, ansvariga: DOLD, ansvarigaEmails: DOLD,
@@ -290,6 +321,7 @@ const PATRULL = {
 };
 
 module.exports = {
+  POANG,
   skrubba, maskera, narvaro,
   OPPEN, DOLD, ALDRIG,
   TAVLING, KONTROLL, KONTROLL_META, PATRULL

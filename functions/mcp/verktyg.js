@@ -43,8 +43,9 @@
 const admin = require('firebase-admin');
 const { FieldValue } = require('firebase-admin/firestore');
 const crypto = require('crypto');
-const { maskera, skrubba, TAVLING, KONTROLL, PATRULL } = require('./redact.js');
+const { maskera, skrubba, TAVLING, KONTROLL, PATRULL, POANG } = require('./redact.js');
 const { delaLedning } = require('./ledning.js');
+const lagetKarna = require('./laget.js');
 
 // ═══ Skrivbara fält, per yta. Allt utanför listan avvisas. ══════════════════
 
@@ -154,6 +155,165 @@ function fel(meddelande) {
   return e;
 }
 
+// ═══ Läget: läsning, cache och sammanställning ═════════════════════════════
+//
+// KOSTNADEN ÄR HELA SKÄLET TILL CACHEN. En hämtning läser tävlingens
+// kontroller, patruller, varje kontrolls poäng, stationens avprickningar,
+// patrullernas egna avprickningar och varje kontrolls livstecken — alltså
+// 2N + 4 frågor och i storleksordningen N × M dokument. En assistent som
+// pollar var 20:e sekund gör 4 320 hämtningar per dygn. Med 10 kontroller och
+// 30 patruller är det ~1,3 miljoner dokumentläsningar om dagen, mot en
+// gratiskvot på 50 000 — och kvoten DELAS med rapportsidan. Att spränga den
+// stoppar inte assistenten först, den stoppar kontrollanternas rapportering
+// mitt i tävlingen.
+//
+// Cachen är per instans och lever 30 sekunder, samma takt som Läget självt
+// ritar om sig. Cloud Functions kan skala till flera instanser, så den är
+// ingen garanti — men en varm instans som pollas hårt svarar ur minnet, och
+// svaret säger alltid hur gammalt det är.
+const LAGET_CACHE = new Map();
+const LAGET_TTL_MS = 30000;
+
+async function lasLaget(db, cid, comp) {
+  const bas = `competitions/${cid}`;
+  const [ctrlSnap, patrolSnap, stationSnap, selfSnap] = await Promise.all([
+    db.collection(`${bas}/controls`).get(),
+    db.collection(`${bas}/patrols`).get(),
+    db.collection(`${bas}/stations`).get(),
+    db.collection(`${bas}/selfPassages`).get()
+  ]);
+
+  const controls = ctrlSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const patrols = patrolSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  // Poängen och livstecknen per kontroll, i ett svep.
+  const scoresByCtrl = {};
+  const beaconByCtrl = {};
+  await Promise.all(controls.map(async c => {
+    const [sc, bc] = await Promise.all([
+      db.collection(`${bas}/controls/${c.id}/scores`).get(),
+      db.collection(`${bas}/controls/${c.id}/beacon`).get()
+    ]);
+    scoresByCtrl[c.id] = sc.docs.map(d => ({ patrolId: d.id, ...d.data() }));
+    beaconByCtrl[c.id] = lagetKarna.mergeBeacons(bc.docs.map(d => d.data()));
+  }));
+
+  // Stationens avprickningar. STATIONS-ID:T ÄR HEMLIGT och lämnar aldrig
+  // servern — det används bara för att hitta underkollektionen.
+  const stationPassages = {};
+  const station = stationSnap.docs[0];
+  if (station) {
+    const pass = await db.collection(`${bas}/stations/${station.id}/passages`).get();
+    for (const d of pass.docs) stationPassages[d.id] = d.data();
+  }
+  const selfPassages = {};
+  for (const d of selfSnap.docs) selfPassages[d.id] = d.data();
+
+  return { controls, patrols, scoresByCtrl, beaconByCtrl, stationPassages, selfPassages };
+}
+
+/** Plockar bort tomma fält ur en poängrad — 300 tomma noteringar är brus. */
+function utanTomma(o) {
+  return Object.fromEntries(Object.entries(o).filter(([, v]) =>
+    v !== '' && v !== null && v !== undefined));
+}
+
+/** Etikett som i Läget: flera kårer döper sina patruller likadant. */
+function patrullEtikett(p) {
+  const namn = String(p?.name || 'Okänd patrull').trim();
+  const kar = String(p?.kar || '').trim();
+  return kar ? `${namn} (${kar})` : namn;
+}
+
+const klockan = (d) => d
+  ? String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0')
+  : null;
+
+async function sammanstallLaget(db, cid, comp) {
+  const cachad = LAGET_CACHE.get(cid);
+  const nu = Date.now();
+  if (cachad && nu - cachad.vid < LAGET_TTL_MS) {
+    return { ...cachad.svar, berakningen: `cachad, ${Math.round((nu - cachad.vid) / 1000)} s gammal` };
+  }
+
+  const rå = await lasLaget(db, cid, comp);
+  const now = new Date();
+  const passages = lagetKarna.slaIhopPassager({ comp, ...rå });
+  const res = lagetKarna.beraknaLaget({
+    comp, controls: rå.controls, patrols: rå.patrols, passages,
+    scoresByCtrl: rå.scoresByCtrl, now,
+    plannedStartAt: (p) => lagetKarna.patrolStartDateTime(comp, p, now, rå.patrols.length)
+  });
+
+  const halvtimmen = now.getTime() - 30 * 60000;
+  let senaste30 = 0;
+  for (const lista of Object.values(rå.scoresByCtrl)) {
+    for (const sc of lista) {
+      const t = lagetKarna.toDate(sc.clientReportedAt ?? sc.reportedAt);
+      if (t && t.getTime() >= halvtimmen) senaste30++;
+    }
+  }
+
+  const svar = {
+    tid: klockan(now),
+    berakningen: 'färsk',
+    sammanfattning: {
+      patruller: res.perPatrol.length,
+      ejStartade: res.perPatrol.filter(pp => !pp.started && !pp.utgatt).length,
+      uteISkogen: res.perPatrol.filter(pp => pp.active).length,
+      iMal: res.perPatrol.filter(pp => pp.finishAt).length,
+      utgatta: res.perPatrol.filter(pp => pp.utgatt).length,
+      rapporterSenaste30Min: senaste30
+    },
+    // Varningarna står FÖRST: det är svaret på frågan "vad ska jag göra något
+    // åt just nu?", och en modell som kapar läsningen ska träffa dem.
+    varningar: lagetKarna.varningar({
+      perPatrol: res.perPatrol, ctrlStats: res.ctrlStats,
+      beaconByCtrl: rå.beaconByCtrl, now, patrullEtikett
+    }),
+    kontroller: res.ctrlStats.map(cs => {
+      const b = rå.beaconByCtrl[cs.control.id];
+      const bt = b ? lagetKarna.toDate(b.at) : null;
+      return {
+        nummer: cs.control.nummer ?? null,
+        name: skrubba(String(cs.control.name || '')),
+        oppen: cs.control.open === true,
+        klara: cs.doneCount,
+        koPaVagIn: cs.inbound,
+        tryck: cs.heat === 'red' ? 'flaskhals' : cs.heat === 'yellow' ? 'kö byggs upp' : 'lugnt',
+        senasteRapport: klockan(cs.lastReport),
+        senasteRapportMinSedan: cs.silent,
+        mellantidMin: cs.legMedian == null ? null : Math.round(cs.legMedian),
+        mellantidStiger: !!cs.trendUp,
+        livstecken: b ? {
+          minSedan: bt ? Math.max(0, Math.round((now - bt) / 60000)) : null,
+          batteri: b.batteri, laddar: b.laddar, iKo: b.koade, telefoner: b.enheter
+        } : null
+      };
+    }),
+    patruller: res.perPatrol
+      .slice()
+      .sort((a, b) => (a.patrol.startOrder ?? 999) - (b.patrol.startOrder ?? 999))
+      .map(pp => ({
+        patrull: skrubba(patrullEtikett(pp.patrol)),
+        status: pp.utgatt ? 'utgått'
+          : pp.finishAt ? 'i mål'
+          : pp.active ? 'ute'
+          : 'ej startad',
+        vidKontroll: pp.position || null,
+        klara: pp.reports.length,
+        start: klockan(pp.startAt),
+        mal: klockan(pp.finishAt),
+        senastSedd: klockan(pp.lastSeen),
+        tystIMin: pp.silentMin,
+        senTillStartMin: pp.lateStart ? pp.lateStartMin : null
+      }))
+  };
+
+  LAGET_CACHE.set(cid, { vid: nu, svar });
+  return svar;
+}
+
 // ═══ Uppslagning på MÄNSKLIGA nycklar, aldrig doc-id ═══════════════════════
 
 async function hittaKontroll(db, cid, nummer) {
@@ -201,6 +361,22 @@ function normaliseraGrupper(inkomna, comp) {
   }
   if (standard > 1) throw fel('Bara en grupp får sakna avdelningar — den gäller alla övriga.');
   return { grupper, avdelningarMedEgenText: [...sedda], standardgrupp: standard === 1 };
+}
+
+/** Som hittaPatrull, men mot en redan inläst lista — sparar en hel fråga. */
+function hittaPatrullI(patrols, namn, kar) {
+  const n = String(namn || '').trim().toLowerCase();
+  let träff = patrols.filter(p => String(p.name || '').trim().toLowerCase() === n);
+  if (kar) {
+    const k = String(kar).trim().toLowerCase();
+    träff = träff.filter(p => String(p.kar || '').trim().toLowerCase() === k);
+  }
+  if (!träff.length) throw fel(`Ingen patrull heter "${namn}"${kar ? ` i ${kar}` : ''}.`);
+  if (träff.length > 1) {
+    const kårer = träff.map(p => p.kar || '(ingen kår)').join(', ');
+    throw fel(`Flera patruller heter "${namn}": ${kårer}. Ange kår.`);
+  }
+  return träff[0];
 }
 
 async function hittaPatrull(db, cid, namn, kar) {
@@ -515,6 +691,115 @@ const VERKTYG = [
     }
   },
   {
+    namn: 'laget_las',
+    beskrivning: 'LÄGET just nu: varningar, tryck per kontroll och var patrullerna är. '
+      + 'Samma härledning som sekretariatets Läget-vy i ESKIL, så siffrorna stämmer '
+      + 'med skärmen. Läs varningarna först — de säger vad som behöver åtgärdas. '
+      + 'Svaret cachas i 30 sekunder (samma takt som vyn ritar om sig); anropa inte '
+      + 'oftare än varannan minut, hämtningen läser hundratals dokument och kvoten '
+      + 'delas med kontrollanternas rapportering.',
+    schema: { type: 'object', properties: {}, additionalProperties: false },
+    async kor(_a, { db, cid, comp }) {
+      return sammanstallLaget(db, cid, comp);
+    }
+  },
+  {
+    namn: 'poang_las',
+    beskrivning: 'Inrapporterade poäng. Utan argument: en ställning per patrull. '
+      + 'Med nummer: alla rapporter på den kontrollen. Med patrull: den patrullens '
+      + 'rapporter på hela banan. Passagetiden är när knappen trycktes, inte när '
+      + 'rapporten synkade.',
+    schema: {
+      type: 'object', additionalProperties: false,
+      properties: {
+        nummer: { type: 'number', description: 'Visa en enskild kontrolls rapporter' },
+        patrull: { type: 'string', description: 'Visa en enskild patrulls rapporter' },
+        kar: { type: 'string', description: 'Kår, när flera patruller heter lika' }
+      }
+    },
+    async kor(a, { db, cid }) {
+      const bas = `competitions/${cid}`;
+      const [ctrlSnap, patrolSnap] = await Promise.all([
+        db.collection(`${bas}/controls`).get(),
+        db.collection(`${bas}/patrols`).get()
+      ]);
+      const controls = ctrlSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((x, y) => (x.nummer ?? 999) - (y.nummer ?? 999));
+      const patrols = patrolSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const namnFor = (pid) => {
+        const p = patrols.find(x => x.id === pid);
+        return p ? skrubba(patrullEtikett(p)) : '(borttagen patrull)';
+      };
+
+      // EN kontroll: en läsning.
+      if (a.nummer != null) {
+        const c = controls.find(x => Number(x.nummer) === Number(a.nummer));
+        if (!c) throw fel(`Det finns ingen kontroll med nummer ${a.nummer}.`);
+        const sc = await db.collection(`${bas}/controls/${c.id}/scores`).get();
+        return {
+          kontroll: c.nummer,
+          name: skrubba(String(c.name || '')),
+          oppen: c.open === true,
+          rapporter: sc.docs.map(d => utanTomma({
+            patrull: namnFor(d.id),
+            ...maskera(d.data(), POANG),
+            tid: klockan(lagetKarna.toDate(d.data().clientReportedAt ?? d.data().reportedAt))
+          })).sort((x, y) => String(x.tid || '').localeCompare(String(y.tid || '')))
+        };
+      }
+
+      const alla = {};
+      await Promise.all(controls.map(async c => {
+        const sc = await db.collection(`${bas}/controls/${c.id}/scores`).get();
+        alla[c.id] = sc.docs.map(d => ({ patrolId: d.id, ...d.data() }));
+      }));
+
+      // EN patrull: hela banan.
+      if (a.patrull) {
+        const p = hittaPatrullI(patrols, a.patrull, a.kar);
+        const rader = [];
+        let summa = 0;
+        for (const c of controls) {
+          const sc = (alla[c.id] || []).find(x => x.patrolId === p.id);
+          if (!sc) continue;
+          const m = maskera(sc, POANG);
+          summa += (Number(sc.poang) || 0) + (Number(sc.extraPoang) || 0);
+          rader.push(utanTomma({
+            kontroll: c.nummer, name: skrubba(String(c.name || '')), ...m,
+            tid: klockan(lagetKarna.toDate(sc.clientReportedAt ?? sc.reportedAt))
+          }));
+        }
+        return {
+          patrull: skrubba(patrullEtikett(p)),
+          klara: `${rader.length} av ${controls.length}`,
+          totalpoang: summa,
+          rapporter: rader
+        };
+      }
+
+      // Utan argument: ställningen. Kompakt med flit — hela poängmatrisen är
+      // N × M rader och fyller svaret utan att svara på någon fråga.
+      const rader = patrols.map(p => {
+        let summa = 0, klara = 0;
+        for (const c of controls) {
+          const sc = (alla[c.id] || []).find(x => x.patrolId === p.id);
+          if (!sc) continue;
+          klara++;
+          summa += (Number(sc.poang) || 0) + (Number(sc.extraPoang) || 0);
+        }
+        return { patrull: skrubba(patrullEtikett(p)), klara, av: controls.length, poang: summa };
+      });
+      rader.sort((x, y) => y.poang - x.poang || y.klara - x.klara);
+      return {
+        kontroller: controls.length,
+        patruller: rader.length,
+        stallning: rader,
+        obs: 'Ställningen är rådata — den tar inte hänsyn till utslagsfråga eller '
+           + 'avdelningsindelning. Den officiella rankingen finns i ESKIL:s poängtabell.'
+      };
+    }
+  },
+  {
     namn: 'kontroll_instruktioner_satt',
     beskrivning: 'Sätt kontrollens instruktioner — uppgiften kontrollanten läser upp. '
       + 'En grupp med tom avdelningslista gäller ALLA som inte har en egen grupp. '
@@ -641,7 +926,8 @@ async function syncSpeglar(db, cid) {
 // tavling_las från ledning_satt, så en klient kan inte visa en bekräftelseruta
 // för det som faktiskt ändrar något. readOnlyHint på läsverktygen,
 // destructiveHint på det som kan förstöra.
-const LASVERKTYG = new Set(['tavling_las', 'kontroller_lista', 'patruller_lista']);
+const LASVERKTYG = new Set(['tavling_las', 'kontroller_lista', 'patruller_lista',
+                            'laget_las', 'poang_las']);
 // Även uppdatera-verktygen: de skriver ÖVER fält, och en klient bör kunna
 // visa en bekräftelseruta för det. Konservativt med flit — en hint för mycket
 // kostar en klick, en för lite kostar ett överskrivet fält.
@@ -742,7 +1028,11 @@ async function anropaVerktyg(namn, args, ctx) {
 // enklaste formen, där text glider in som om servern sagt den.
 const FRITEXTFALT = new Set([
   'description', 'placement', 'text', 'utslagFraga', 'utslagSvar',
-  'name', 'kar', 'avdelning', 'label', 'location', 'organizer'
+  'name', 'kar', 'avdelning', 'label', 'location', 'organizer',
+  // Patrulletiketten "Rävarna (Lindsdals Scoutkår)" som laget_las och
+  // poang_las bygger. Namnen kommer från deltagande kårer via den ANONYMA
+  // anmälningslänken — alltså utifrån, precis som de fält som redan står här.
+  'patrull'
 ]);
 const DATA_MARKOR = '[data] ';
 
@@ -772,6 +1062,21 @@ ESKIL efteråt.
 
 ADRESSERING: kontroller pekas ut med sitt NUMMER, patruller med NAMN (och kår
 när flera heter lika). Det finns inga id:n — de är hemliga länkar.
+
+UNDER TÄVLINGEN: laget_las ger varningar, tryck per kontroll och var
+patrullerna är — samma härledning som sekretariatets Läget-vy, så siffrorna
+stämmer med skärmen. poang_las ger de inrapporterade poängen.
+
+POLLA INTE. Svaret cachas i 30 sekunder, men varje färsk hämtning läser
+hundratals dokument, och databaskvoten DELAS med kontrollanternas
+rapportering. En assistent som frågar var 20:e sekund kan därför göra att
+rapporteringen slutar fungera mitt i tävlingen. Fråga när människan frågar,
+eller på några minuters mellanrum om ni kommit överens om en bevakning.
+
+Varningarna är redan sorterade med det allvarligaste först. Läs dem och
+sammanfatta — hitta inte på egna trösklar för vad som är "för mycket kö", och
+räkna inte om läget själv ur poängen: gör du det kommer du att säga emot det
+sekretariatet ser på skärmen.
 
 NYA KONTROLLER ÄR STÄNGDA, och det är inte ett fel. En kontroll tar emot
 rapporter först när open är true — en öppen kontroll dagarna före tävlingen
