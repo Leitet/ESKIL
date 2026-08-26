@@ -127,11 +127,28 @@ describe('service workern täcker anmälningssidan', () => {
     assert.match(las('a.html'), /src="\/js\/sw-register\.js"/);
   });
 
-  test('och den förcachar konfigurationen som annars blockerar starten', () => {
+  test('och den SERVERAR konfigurationen — inte bara förcachar den', () => {
+    // Den här kontrollen letade förut bara efter strängen i PRECACHE_URLS och
+    // efter undantaget från /__/-spärren. Båda fanns — och filen serverades
+    // ändå aldrig, för fetch-lyssnarens predikat matchade inte '/__/'-vägar
+    // alls, så respondWith kördes inte. Testet var grönt på ett löfte koden
+    // inte höll, och /k, /s och /m gick inte att öppna offline så fort
+    // HTTP-cachens timme runnit ut. Därför KÖRS predikatet nu.
     const sw = las('sw.js');
-    assert.match(sw, /'\/__\/firebase\/init\.json'/);
-    // …och undantar den från den generella /__/-förbigången.
-    assert.match(sw, /url\.pathname !== '\/__\/firebase\/init\.json'/);
+    assert.match(sw, /'\/__\/firebase\/init\.json'/, 'inte längre förcachad');
+    const kalla = sw.match(/function skaCachas[\s\S]*?\n}/);
+    assert.ok(kalla, 'skaCachas() finns inte — predikatet går inte att pröva');
+    const skaCachas = new Function(kalla[0] + '; return skaCachas;')();
+
+    assert.equal(skaCachas('/__/firebase/init.json'), true,
+      'konfigurationen serveras inte ur cachen — fältsidorna startar inte offline');
+    for (const p of ['/js/app.js', '/assets/tokens.css', '/k.html']) {
+      assert.equal(skaCachas(p), true, `${p} borde cachas`);
+    }
+    // Firebases ÖVRIGA hjälpvägar ska fortfarande gå förbi cachen.
+    assert.equal(skaCachas('/__/auth/handler'), false);
+    // Och reservkonfigurationen ska inte cachas — se emulatorstubben nedan.
+    assert.equal(skaCachas('/firebase-config.json'), false);
   });
 
   test('vakthunden är förcachad — den behövs mest när nätet är dåligt', () => {
@@ -323,8 +340,8 @@ describe('reservkonfigurationen', () => {
   test('och service workern cachar den inte', () => {
     // En cachad kopia överlever länge efter att den slutat deployas.
     const sw = las('sw.js');
-    const isStatic = sw.slice(sw.indexOf('const isStatic'), sw.indexOf('if (isStatic)'));
-    assert.ok(!isStatic.includes("'/firebase-config.json'"), 'SW:n cachar reservfilen');
+    const skaCachas = new Function(sw.match(/function skaCachas[\s\S]*?\n}/)[0] + '; return skaCachas;')();
+    assert.equal(skaCachas('/firebase-config.json'), false, 'SW:n cachar reservfilen');
   });
 
   test('den är gitignorerad', () => {

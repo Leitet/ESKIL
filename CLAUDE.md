@@ -289,7 +289,16 @@ Email extension). Production domain: https://eskilscout.se.
   alls, tyst. `hamtaMedTak()` i firebase.js sätter tak på båda
   konfigurationshämtningarna (5 s + 3 s, så de hinner ge upp före vakthundens
   10 s och felet blir synligt i stället för generiskt). AbortController, inte
-  `AbortSignal.timeout` — den saknas i Safari före 16. Regressionstestat i
+  `AbortSignal.timeout` — den saknas i Safari före 16.
+  **Service workerns predikat heter `skaCachas()` och är en EGEN funktion just
+  för att gå att köra i ett test.** Som uttryck inne i fetch-lyssnaren kunde
+  `/__/firebase/init.json` vara förcachad, undantagen från `/__/`-spärren OCH
+  ändå aldrig serveras: den matchade varken `/js/`, `/assets/` eller `.html`,
+  så `respondWith` kördes inte. Kommentaren lovade motsatsen och testet var
+  grönt på ett löfte koden inte höll — det letade bara efter strängen i
+  PRECACHE_URLS. Följden var att `/k`, `/s` och `/m` inte gick att öppna
+  offline så fort HTTP-cachens timme (`max-age=3600`) runnit ut, alltså precis
+  när en kontrollant kommer ut i skogen. Testet KÖR nu predikatet. Regressionstestat i
   `test/boot.test.js`, mutationsverifierat.
   **Den tredje hängningen sitter i SDK:n och är den värsta**: Auth initieras med
   IndexedDB-persistens, och Firestore lägger en spärr i sin FIFO-kö som väntar

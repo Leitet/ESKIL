@@ -17,11 +17,12 @@
 //
 // Bump VERSION whenever cached-asset behavior must be reset.
 
+// v9: init.json serveras nu faktiskt ur cachen (predikatet matchade den inte).
 // v8: /firebase-config.json cachas inte längre (emulatorstub i produktion).
 // v7: vakthunden ändrades (den täcker nu #app också) och /a registrerar
 // service workern för första gången. Utan versionshöjning serverar en redan
 // installerad SW den gamla filen ur cachen tills den råkar revalideras.
-const VERSION = 'eskil-sw-v8';
+const VERSION = 'eskil-sw-v9';
 const RUNTIME = `${VERSION}-runtime`;
 
 const FIELD_SHELLS = { '/k/': '/k.html', '/s/': '/s.html', '/m/': '/m.html' };
@@ -113,6 +114,33 @@ async function navigateFieldPage(request, shell) {
   return cached || fromNetwork.catch(() => Response.error());
 }
 
+/**
+ * Vilka samma-ursprungs-vägar service workern svarar på.
+ *
+ * EGEN FUNKTION FÖR ATT DEN SKA GÅ ATT KÖRA I ETT TEST. När villkoret bara var
+ * ett uttryck inne i fetch-lyssnaren kunde /__/firebase/init.json vara
+ * förcachad, undantagen från /__/-spärren OCH ändå aldrig serveras: den
+ * matchade varken '/js/', '/assets/' eller '.html', så respondWith kördes
+ * aldrig och begäran gick till nätet orörd. Kommentaren lovade motsatsen, och
+ * ett test som bara letade efter strängen i PRECACHE_URLS var grönt på ett
+ * löfte koden inte höll. Följden var att /k, /s och /m inte gick att öppna
+ * offline så fort HTTP-cachens timme (max-age=3600) runnit ut — alltså precis
+ * när en kontrollant kommer ut i skogen.
+ */
+function skaCachas(pathname) {
+  // Klientkonfigurationen FÖRST: utan den startar ingen fältsida, och den
+  // ligger under /__/ som annars går förbi cachen.
+  if (pathname === '/__/firebase/init.json') return true;
+  if (pathname.startsWith('/__/')) return false;
+  // /firebase-config.json står medvetet INTE med: den är en lokal
+  // utvecklingsfil som bar emulatorstubben (projectId "demo-eskil"), och en
+  // cachad kopia överlever länge efter att den slutat deployas.
+  // loadConfig() avvisar den numera också.
+  return pathname.startsWith('/js/')
+    || pathname.startsWith('/assets/')
+    || pathname.endsWith('.html');
+}
+
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
@@ -131,22 +159,7 @@ self.addEventListener('fetch', (event) => {
   // auth/functions, map tiles) is left entirely to the network.
   const sameOrigin = url.origin === self.location.origin;
   if (!sameOrigin) return;
-  // /__/ är Firebases egna hjälpvägar och ska normalt gå förbi cachen — MEN
-  // init.json är klientkonfigurationen, och utan den startar ingen fältsida.
-  // Var den undantagen kunde /k inte öppnas om utan täckning: allt annat kom
-  // ur cachen, och sidan stannade på konfigurationshämtningen.
-  if (url.pathname.startsWith('/__/') && url.pathname !== '/__/firebase/init.json') return;
-
-  // /firebase-config.json står medvetet INTE med: den är en lokal
-  // utvecklingsfil som bar emulatorstubben (projectId "demo-eskil"), och en
-  // cachad kopia överlever länge efter att den slutat deployas.
-  // loadConfig() avvisar den numera också.
-  const isStatic = url.pathname.startsWith('/js/')
-    || url.pathname.startsWith('/assets/')
-    || url.pathname.endsWith('.html');
-  if (isStatic) {
-    event.respondWith(networkFirst(req));
-  }
+  if (skaCachas(url.pathname)) event.respondWith(networkFirst(req));
 });
 
 // Notisklick (meddelanden från tävlingsledningen): fokusera en öppen
