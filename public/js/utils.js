@@ -1156,6 +1156,32 @@ export function sparlagesBeslut(nuvarande, { level, charging } = {}) {
 // Listan är SPA:ns fyra toppsegment. Samma fyra som firebase.json har explicita
 // rewrites för sedan catch-allen togs bort; håll dem i synk.
 // ---------------------------------------------------------------------------
+// Sidor som ALDRIG loggar in: rapportsidan, startkortet, stationen och
+// anmälan. Ingen av dem importerar auth, och ingen av dem visar något som
+// beror på vem som är inloggad.
+//
+// Skälet att veta det är inte städning utan en HÄNGNING. Auth initieras med
+// IndexedDB-persistens, och Firestore lägger en spärr i sin FIFO-kö som
+// väntar på auth-tokenlyssnaren (`awaitNextToken` → `enqueueRetryable` →
+// `await deferred.promise`, verifierat i firebase-firestore.js 10.12.5).
+// Fyras den lyssnaren aldrig — därför att `indexedDB.open()` varken svarar
+// success eller error, vilket händer i inbyggda webbläsare och på iOS när
+// IDB-anslutningen tappas — blockeras HELA kön. Även Firestores egen
+// 10-sekundersräddning ligger bakom samma spärr, så läsningen blir varken
+// uppfylld eller avvisad. Sidan står kvar på "Laddar…" utan fel.
+//
+// På de här fyra sidorna är IndexedDB-persistensen alltså ingen funktion, bara
+// en risk: de har ingen session att bevara. `/t` står MEDVETET utanför —
+// public.js använder onAuthStateChanged för admin-genvägen — och SPA:n
+// behöver långlivade sessioner.
+//
+// Obs att mönstret kräver ett avslutande snedstreck: `/app/...` börjar på
+// "a" men matchar inte, och det är hela skillnaden mellan den här listan och
+// att slå ut inloggningen i hela admingränssnittet.
+export function arAnonymFaltsida(sokvag) {
+  return /^\/(a|k|s|m)\//.test(String(sokvag || ''));
+}
+
 export function arSpaRutt(href) {
   const h = String(href || '');
   // Extern adress, ankare, mailto, tel: aldrig routerns sak.

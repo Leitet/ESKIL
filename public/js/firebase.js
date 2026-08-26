@@ -3,7 +3,7 @@
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
 import {
-  initializeAuth, indexedDBLocalPersistence,
+  initializeAuth, indexedDBLocalPersistence, inMemoryPersistence,
   connectAuthEmulator,
   isSignInWithEmailLink, sendSignInLinkToEmail, signInWithEmailLink,
   onAuthStateChanged, signOut
@@ -21,6 +21,8 @@ import {
 import {
   initializeAppCheck, ReCaptchaV3Provider
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app-check.js';
+
+import { arAnonymFaltsida } from './utils.js';
 
 const isLocalHost = ['localhost', '127.0.0.1', '0.0.0.0'].includes(location.hostname);
 
@@ -63,6 +65,20 @@ async function loadConfig() {
   // 10-sekundersgräns i field-watchdog.js. Då hinner felet nedan bli ett
   // avvisat löfte som vakthunden fångar och visar som teknisk info, i stället
   // för att den bara hinner säga "Sidan kunde inte ladda klart".
+  //
+  // AVVÄGNINGEN, uttrycklig: ett tak gör ett TRÖGT-MEN-LEVANDE nät till ett
+  // hårt fel. En hämtning som förr lyckats efter sju sekunder misslyckas nu
+  // efter fem. Det är ändå rätt val, av tre skäl:
+  //   - Filen är 339 byte. Tar den mer än fem sekunder är förbindelsen
+  //     praktiskt taget död, och Firebase-SDK:n från gstatic (hundratals kB,
+  //     hämtas parallellt) kommer ändå aldrig fram i tid.
+  //   - Alternativet är inte "långsam men fungerar" utan "tyst för alltid":
+  //     utan tak finns ingen övre gräns alls, och det var precis det som
+  //     lämnade /a stående på "Laddar anmälan…".
+  //   - Felet är nu synligt och har en Försök igen-knapp. Ett andra försök
+  //     har varm DNS och TLS och lyckas oftare än det första.
+  // Höj alltså inte taken utan att också höja vakthundens deadline — testet
+  // i test/boot.test.js kräver att de ryms innanför den.
   try {
     const r = await hamtaMedTak('/__/firebase/init.json', 5000);
     if (r.ok) return r.json();
@@ -108,7 +124,16 @@ if (!isLocalHost && config.appId) {
 //
 // Persistensen anges uttryckligen här eftersom initializeAuth kräver det;
 // indexedDBLocalPersistence är samma förval som getAuth hade gett.
-const auth = initializeAuth(app, { persistence: indexedDBLocalPersistence });
+// Persistensen väljs efter sida. Se arAnonymFaltsida() i utils.js för hela
+// kedjan: på /a, /k, /s och /m kan en avstannad indexedDB.open() annars
+// blockera Firestores kö för alltid, och sidan blir stående på "Laddar…"
+// utan att något fel inträffar. De sidorna loggar aldrig in, så
+// minnespersistens kostar ingenting där.
+const auth = initializeAuth(app, {
+  persistence: arAnonymFaltsida(location.pathname)
+    ? inMemoryPersistence
+    : indexedDBLocalPersistence
+});
 // All Firebase-sent emails (magic links, anmälan manage-links/receipt
 // notifications) use the Swedish template instead of the English default.
 auth.languageCode = 'sv';

@@ -21,6 +21,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
+import { arAnonymFaltsida } from '../public/js/utils.js';
 
 const las = (f) => readFileSync(new URL(`../public/${f}`, import.meta.url), 'utf8');
 const SIDOR = readdirSync(new URL('../public/', import.meta.url)).filter(f => f.endsWith('.html'));
@@ -226,5 +227,65 @@ describe('vakthunden när den faktiskt körs', () => {
     g._brand();
     assert.ok(!g._root.innerHTML.includes('<img src=x'), 'felmeddelandet injicerades rått');
     assert.match(g._root.innerHTML, /&lt;img/);
+  });
+});
+
+// --- Vilka sidor som får ha IndexedDB i startvägen --------------------------
+//
+// Auth initieras med IndexedDB-persistens, och Firestore lägger en spärr i sin
+// FIFO-kö som väntar på auth-tokenlyssnaren (`awaitNextToken` →
+// `enqueueRetryable` → `await deferred.promise`, verifierat i
+// firebase-firestore.js 10.12.5). Fyras lyssnaren aldrig — därför att
+// `indexedDB.open()` varken svarar success eller error, vilket händer i
+// inbyggda webbläsare och när iOS tappar IDB-anslutningen — blockeras HELA
+// kön, inklusive Firestores egen 10-sekundersräddning. Läsningen blir varken
+// uppfylld eller avvisad och sidan står kvar på "Laddar…".
+//
+// Därför kör de fyra sidor som ALDRIG loggar in med minnespersistens.
+// Gränsdragningen är den farliga delen: en för bred matchning slår ut
+// inloggningen i hela admingränssnittet, en för smal återinför hängningen.
+
+describe('anonyma sidor håller IndexedDB borta från startvägen', () => {
+  test('de fyra sidor som aldrig loggar in matchar', () => {
+    for (const p of ['/a/ah26', '/a/ah26/reg123', '/a/ah26/k/tok',
+                     '/k/ah26/ctrl', '/s/ah26/p1', '/s/ah26/p1/tok', '/m/ah26/st1']) {
+      assert.equal(arAnonymFaltsida(p), true, `${p} borde vara anonym`);
+    }
+  });
+
+  test('SPA:n och de publika sidorna gör det INTE', () => {
+    // /app börjar på "a" — utan det avslutande snedstrecket i mönstret hade
+    // hela admingränssnittet tappat sin långlivade session.
+    for (const p of ['/app', '/app/c/ah26', '/app/c/ah26/laget', '/om', '/kontakt',
+                     '/', '/integritet', '/t/ah26']) {
+      assert.equal(arAnonymFaltsida(p), false, `${p} får inte behandlas som anonym`);
+    }
+  });
+
+  test('/t står utanför med flit — den använder onAuthStateChanged', () => {
+    // public.js:140 har admin-genvägen på tävlingssidan. Tas /t in i listan
+    // slutar den känna igen en inloggad tävlingsledare.
+    assert.equal(arAnonymFaltsida('/t/ah26'), false);
+    const pub = readFileSync(new URL('../public/js/public.js', import.meta.url), 'utf8');
+    assert.match(pub, /onAuthStateChanged/, 'public.js slutade använda auth — läs om undantaget');
+  });
+
+  test('firebase.js väljer persistens efter den här predikaten', () => {
+    const fb = las('js/firebase.js');
+    assert.match(fb, /arAnonymFaltsida\(location\.pathname\)/);
+    assert.match(fb, /\?\s*inMemoryPersistence/);
+    assert.match(fb, /:\s*indexedDBLocalPersistence/);
+  });
+
+  test('och de fyra sidorna rör faktiskt aldrig auth', () => {
+    // Premissen för hela undantaget. Slutar den gälla måste undantaget bort,
+    // annars överlever ingen session en omladdning.
+    for (const f of ['anmalan', 'report', 'start', 'station']) {
+      const src = readFileSync(new URL(`../public/js/${f}.js`, import.meta.url), 'utf8');
+      const rader = src.split('\n')
+        .filter(l => !l.trim().startsWith('//'))
+        .filter(l => /\bsignIn|onAuthStateChanged|currentUser/.test(l));
+      assert.equal(rader.length, 0, `${f}.js använder auth: ${rader.join(' | ')}`);
+    }
   });
 });

@@ -287,6 +287,21 @@ Email extension). Production domain: https://eskilscout.se.
   10 s och felet blir synligt i stället för generiskt). AbortController, inte
   `AbortSignal.timeout` — den saknas i Safari före 16. Regressionstestat i
   `test/boot.test.js`, mutationsverifierat.
+  **Den tredje hängningen sitter i SDK:n och är den värsta**: Auth initieras med
+  IndexedDB-persistens, och Firestore lägger en spärr i sin FIFO-kö som väntar
+  på auth-tokenlyssnaren (`awaitNextToken` → `enqueueRetryable` →
+  `await deferred.promise`, verifierat i firebase-firestore.js 10.12.5). Fyras
+  den lyssnaren aldrig — därför att `indexedDB.open()` varken svarar success
+  eller error, vilket händer i INBYGGDA webbläsare och när iOS tappar
+  IDB-anslutningen — blockeras HELA kön, inklusive Firestores egen
+  10-sekundersräddning som annars hade fällt tillbaka på cachen. Läsningen blir
+  varken uppfylld eller avvisad. Därför kör `/a`, `/k`, `/s` och `/m`
+  `inMemoryPersistence` (`arAnonymFaltsida()` i utils.js): de loggar aldrig in,
+  så det kostar ingenting, och IndexedDB lämnar startvägen helt. `/t` står
+  UTANFÖR med flit — public.js använder `onAuthStateChanged` för
+  admin-genvägen — och SPA:n behöver långlivade sessioner. Mönstret kräver ett
+  avslutande snedstreck: `/app/...` börjar på "a", och utan det slås
+  inloggningen ut i hela admingränssnittet. Mutationsverifierat.
 - **Night mode** on the reporter page is a red palette. Don't swap it for a
   gray dark mode — preserving night vision is the requirement.
 - **Banans delar heter STRÄCKA i all svensk text** — aldrig "ben". Ordet är en
