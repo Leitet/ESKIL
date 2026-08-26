@@ -54,6 +54,29 @@ function hamtaMedTak(url, ms) {
   return fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(t));
 }
 
+// EN EMULATORKONFIGURATION FÅR ALDRIG ANVÄNDAS I PRODUKTION.
+//
+// Reservfilen /firebase-config.json är enligt CLAUDE.md till för lokal
+// utveckling — men den låg spårad i git OCH deployad, och innehöll
+// emulatorstubben (projectId "demo-eskil"). Före taken var grenen praktiskt
+// taget onåbar: ett nät som dödade init.json dödade reservfilen lika snabbt.
+// Med taket på 5 s kan init.json avbrytas medan reservfilen svarar direkt ur
+// webbläsarens HTTP-cache — och då hade sidan startat mot ett projekt som
+// inte finns. Fixen som gjorde en hängning synlig hade alltså öppnat en ny
+// väg att gå sönder.
+//
+// Filen deployas inte längre och cachas inte längre av service workern, men
+// den här kontrollen står kvar ändå: en redan installerad service worker och
+// en HTTP-cache med en timmes livslängd kan servera den gamla kopian länge
+// efter att den försvunnit från servern.
+function kontrolleraConfig(c) {
+  if (!c || !c.projectId) throw new Error('Konfigurationen saknar projectId.');
+  if (c.projectId === 'demo-eskil' || c.apiKey === 'demo-local') {
+    throw new Error('Fick en emulatorkonfiguration i produktion — ignorerad.');
+  }
+  return c;
+}
+
 async function loadConfig() {
   // On localhost we always talk to the emulators regardless of the config
   // values — hard-code a stub so we skip the extra network round-trip that
@@ -81,11 +104,11 @@ async function loadConfig() {
   // i test/boot.test.js kräver att de ryms innanför den.
   try {
     const r = await hamtaMedTak('/__/firebase/init.json', 5000);
-    if (r.ok) return r.json();
+    if (r.ok) return kontrolleraConfig(await r.json());
   } catch {}
   try {
     const r = await hamtaMedTak('/firebase-config.json', 3000);
-    if (r.ok) return r.json();
+    if (r.ok) return kontrolleraConfig(await r.json());
   } catch {}
   throw new Error('Konfigurationen kunde inte hämtas (ingen kontakt med servern).');
 }

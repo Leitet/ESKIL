@@ -9,9 +9,14 @@ ui-debug.log
 *service-account*.json
 *.serviceaccount.json
 
-# No need to gitignore firebase-config.json — the client auto-connects to
-# emulators on localhost, and Firebase Hosting overrides the file in prod via
-# /__/firebase/init.json. The committed values are demo/placeholder only.
+# firebase-config.json ÄR ignorerad, och antagandet som stod här förut var
+# fel: Firebase Hosting "överskriver" den inte i produktion. Båda filerna
+# serveras, och loadConfig() faller tillbaka på den här när init.json inte
+# svarar. Med de commitade demo-värdena (projectId "demo-eskil") betydde det
+# att en sida på ett segt nät kunde starta mot ett projekt som inte finns.
+# Den låg 200 på https://eskilscout.se/firebase-config.json tills den togs
+# bort. localhost läser den aldrig — där returnerar loadConfig() en stub.
+public/firebase-config.json
 
 # Generated/bundle extraction
 _design/design.tar

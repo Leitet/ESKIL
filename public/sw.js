@@ -17,10 +17,11 @@
 //
 // Bump VERSION whenever cached-asset behavior must be reset.
 
+// v8: /firebase-config.json cachas inte längre (emulatorstub i produktion).
 // v7: vakthunden ändrades (den täcker nu #app också) och /a registrerar
 // service workern för första gången. Utan versionshöjning serverar en redan
 // installerad SW den gamla filen ur cachen tills den råkar revalideras.
-const VERSION = 'eskil-sw-v7';
+const VERSION = 'eskil-sw-v8';
 const RUNTIME = `${VERSION}-runtime`;
 
 const FIELD_SHELLS = { '/k/': '/k.html', '/s/': '/s.html', '/m/': '/m.html' };
@@ -136,10 +137,13 @@ self.addEventListener('fetch', (event) => {
   // ur cachen, och sidan stannade på konfigurationshämtningen.
   if (url.pathname.startsWith('/__/') && url.pathname !== '/__/firebase/init.json') return;
 
+  // /firebase-config.json står medvetet INTE med: den är en lokal
+  // utvecklingsfil som bar emulatorstubben (projectId "demo-eskil"), och en
+  // cachad kopia överlever länge efter att den slutat deployas.
+  // loadConfig() avvisar den numera också.
   const isStatic = url.pathname.startsWith('/js/')
     || url.pathname.startsWith('/assets/')
-    || url.pathname.endsWith('.html')
-    || url.pathname === '/firebase-config.json';
+    || url.pathname.endsWith('.html');
   if (isStatic) {
     event.respondWith(networkFirst(req));
   }

@@ -1027,7 +1027,10 @@ finns), aldrig en patrull med `genrep: true`, och aldrig `selfStart`/
   the page is fully anonymous.
 - Don't bake Firebase client config into JS. Prod uses
   `/__/firebase/init.json` (auto-provisioned); local dev uses
-  `public/firebase-config.json` (gitignored).
+  `public/firebase-config.json` (gitignored — den låg en gång SPÅRAD och
+  deployad med emulatorstubben i sig, och `loadConfig()` avvisar numera
+  uttryckligen en config med `projectId: 'demo-eskil'` just för att en cachad
+  kopia kan leva kvar hos klienter).
 - Cloud Functions (`functions/`) exist ONLY for transactional mail: they react
   to registration/utskick/control documents and queue mail docs in the `mail` collection,
   which the Trigger Email extension (Brevo SMTP) delivers. Two callables exist

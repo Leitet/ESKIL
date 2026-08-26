@@ -289,3 +289,46 @@ describe('anonyma sidor håller IndexedDB borta från startvägen', () => {
     }
   });
 });
+
+// --- Reservkonfigurationen får inte peka på emulatorn ------------------------
+//
+// /firebase-config.json är en lokal utvecklingsfil, men den låg spårad i git
+// OCH deployad, med projectId "demo-eskil" i sig. Grenen som läser den var
+// praktiskt taget onåbar tills konfigurationshämtningen fick ett tak: då kunde
+// init.json avbrytas på 5 s medan reservfilen svarade direkt ur HTTP-cachen,
+// och sidan hade startat mot ett projekt som inte finns. Fixen som gjorde en
+// hängning synlig öppnade alltså en ny väg att gå sönder.
+
+describe('reservkonfigurationen', () => {
+  const fb = las('js/firebase.js');
+
+  test('varje hämtad config kontrolleras innan den används', () => {
+    assert.match(fb, /function kontrolleraConfig/);
+    const anrop = [...fb.matchAll(/return kontrolleraConfig\(await r\.json\(\)\)/g)];
+    assert.equal(anrop.length, 2, 'någon gren använder configen okontrollerad');
+  });
+
+  test('en emulatorkonfiguration avvisas', () => {
+    assert.match(fb, /demo-eskil/);
+    assert.match(fb, /demo-local/);
+    assert.match(fb, /emulatorkonfiguration i produktion/);
+  });
+
+  test('filen deployas inte', () => {
+    const conf = JSON.parse(readFileSync(new URL('../firebase.json', import.meta.url), 'utf8'));
+    assert.ok(conf.hosting.ignore.some(m => m.includes('firebase-config.json')),
+      'firebase-config.json deployas fortfarande');
+  });
+
+  test('och service workern cachar den inte', () => {
+    // En cachad kopia överlever länge efter att den slutat deployas.
+    const sw = las('sw.js');
+    const isStatic = sw.slice(sw.indexOf('const isStatic'), sw.indexOf('if (isStatic)'));
+    assert.ok(!isStatic.includes("'/firebase-config.json'"), 'SW:n cachar reservfilen');
+  });
+
+  test('den är gitignorerad', () => {
+    const gi = readFileSync(new URL('../.gitignore', import.meta.url), 'utf8');
+    assert.match(gi, /^public\/firebase-config\.json$/m);
+  });
+});
