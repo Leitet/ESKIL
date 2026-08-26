@@ -144,3 +144,17 @@ html, body {
   width: 100%;
 }
 .page-narrow { max-width: 820px; }
+
+/* Logotyplåsningen på blå ytor — /t, /a, integritet, 404 och startsidan.
+   Höjden styr; bredden följer med (3,2:1). Under ~48 px är taglinen dekor och
+   inte text man läser, så 40 px på mobil är ett medvetet val, inte en gräns
+   som råkade hamna där.
+
+   REGELN BOR HÄR, INTE I public.css, och det är samma skäl som för .page:
+   anmälningssidan laddar inte public.css. Klassen sattes ändå i markupen
+   (anmalan.js hero() och renderFatal()), så bilden hade ingen storleksregel
+   alls och renderades i sin naturliga — 1149×418 px för låsningen, 400×480 för
+   symbolen. Det var därför /a hade en enorm logotyp längst upp. En klass som
+   är satt men odefinierad ser rätt ut i koden och fel på skärmen. */
+.pub-logo { height: 48px; width: auto; display: block; }
+@media (max-width: 560px) { .pub-logo { height: 40px; } }

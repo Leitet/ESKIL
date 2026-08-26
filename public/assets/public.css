@@ -43,8 +43,8 @@ a.pub-brand:hover { opacity: 0.85; }
 /* Låsningen bär BÅDE symbolen, ordbilden och taglinen. Förut låg symbolen
    och ett separat <span>ESKIL</span> bredvid varandra — ordet stod då två
    gånger så fort låsningen användes. Höjden styr; bredden följer med (3,2:1). */
-.pub-logo { height: 48px; width: auto; display: block; }
-@media (max-width: 560px) { .pub-logo { height: 40px; } }
+/* .pub-logo bor i tokens.css — anmälningssidan laddar inte den här filen.
+   Se kommentaren där för vad som gick fel när den bara stod här. */
 .pub-hero h1 {
   font-family: var(--font-display);
   font-weight: 200;

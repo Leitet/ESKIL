@@ -332,6 +332,15 @@ Email extension). Production domain: https://eskilscout.se.
   startar) och injicerar huvudet via `js/integritet-nav.js` — en egen fil, för
   CSP:n tillåter inga inline-skript. `data-link` sätts bara på det routern kan
   rendera; /integritet ligger utanför den.
+  **`.pub-logo` bor också i tokens.css**, av exakt samma skäl: anmälningssidan
+  laddar inte public.css, där regeln bodde. Klassen sattes ändå i markupen
+  (a.html samt `hero()` och `renderFatal()` i anmalan.js), så bilden hade
+  ingen storleksregel alls och renderades i sin NATURLIGA storlek — 1149×418
+  px för låsningen, 400×480 för symbolen. En enorm logotyp längst upp, medan
+  markupen såg helt riktig ut. En klass som är satt men odefinierad är den
+  värsta sortens fel att hitta genom läsning; `test/markup.test.js` kräver
+  därför att varje sida som sätter `pub-logo` (direkt eller via sina skript)
+  också laddar tokens.css, och att regeln finns på exakt ETT ställe.
   **`.page` bor i tokens.css**, inte app.css. Integritet.html laddar inte
   app.css, och när sidbredden bodde där låg hjältens innehåll klistrat i
   vänsterkanten medan brödtexten var centrerad.
