@@ -106,6 +106,10 @@ Email extension). Production domain: https://eskilscout.se.
   attesterad klient och reCAPTCHA v3 fullbordas aldrig i en automatiserad
   webbläsare, så sidan hänger på "Laddar tävling…" (mätt: 45 s ger två ord).
   Öppna INTE publika läsningar för oattesterade klienter för att fixa det.
+  (Sedan vakthunden kom hänger sidan inte längre kvar på laddskärmen — en
+  oattesterad klient får numera "Kunde inte ladda tävlingen: Missing or
+  insufficient permissions" inom några sekunder. Indexerbarheten är oförändrad;
+  det är bara tystnaden som är borta.)
   Det som ändå går är `t.html`:s STATISKA og-taggar: OG-skrapor i WhatsApp,
   Facebook och iMessage kör ingen JS och bryr sig inte om attestering, och /t
   är exakt den URL kårerna klistrar in i sina grupper. Den texten måste vara
