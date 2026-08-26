@@ -17,7 +17,10 @@
 //
 // Bump VERSION whenever cached-asset behavior must be reset.
 
-const VERSION = 'eskil-sw-v6';
+// v7: vakthunden ändrades (den täcker nu #app också) och /a registrerar
+// service workern för första gången. Utan versionshöjning serverar en redan
+// installerad SW den gamla filen ur cachen tills den råkar revalideras.
+const VERSION = 'eskil-sw-v7';
 const RUNTIME = `${VERSION}-runtime`;
 
 const FIELD_SHELLS = { '/k/': '/k.html', '/s/': '/s.html', '/m/': '/m.html' };

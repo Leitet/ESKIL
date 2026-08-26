@@ -69,6 +69,12 @@
 <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js" crossorigin>
 <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js" crossorigin>
 <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js" crossorigin>
+
+<!-- Vakthunden: SPA:n bootar på en statisk "Laddar…" i #app och hänger på
+     samma sätt som de publika sidorna om konfigurationen eller App Check
+     aldrig svarar. Vanligt skript med flit — det ska köra även när
+     modulgrafen inte gör det. -->
+<script src="/js/field-watchdog.js"></script>
 </head>
 <body>
   <div id="app">

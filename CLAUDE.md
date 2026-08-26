@@ -267,6 +267,26 @@ Email extension). Production domain: https://eskilscout.se.
   anmälningslänken, så injektionsytan är inte bara kårledarens egen krets.
   `delaLedning()` i `functions/mcp/ledning.js` är en medveten dubblett av
   `splitManagement()` (CJS mot ESM) — ett test kör båda mot samma indata.
+- **Ingen sida får kunna bli stående på "Laddar…".** Varje publik sida bootar
+  på en STATISK laddskärm i HTML:en (`#root`, `#app` i SPA:n) som byts först
+  när modulen renderat — och två oberoende saker kan göra att den aldrig gör
+  det. (1) `firebase.js` hämtar `/__/firebase/init.json` bakom ett
+  **TOPPNIVÅ-AWAIT**: en fetch som varken svarar eller felar (trögt mobilnät,
+  TCP uppe men tyst) fryser HELA modulgrafen, så `boot()` körs aldrig. Inget
+  fel inträffar, alltså visas inget fel. (2) App Check är enforced; blockeras
+  `www.google.com` av en innehållsblockerare får Firestore aldrig någon token
+  och läsningen ligger kvar som pending (uppmätt: fortfarande pending efter
+  10 s). Mot BÅDA hjälper bara `public/js/field-watchdog.js` — ett VANLIGT
+  (icke-modul) skript i `<head>` som byter ut laddskärmen mot ett riktigt
+  meddelande med felorsak och en Försök igen-knapp om inget hänt på 10 s. Det
+  ska ligga på VARJE sida med laddskärm; `/a`, `/t` och `/app` saknade det och
+  `/a` saknade dessutom `sw-register.js`, som är det som förcachar init.json.
+  Vakthunden letar `#root` ELLER `#app` — tappar den ena gör den ingenting
+  alls, tyst. `hamtaMedTak()` i firebase.js sätter tak på båda
+  konfigurationshämtningarna (5 s + 3 s, så de hinner ge upp före vakthundens
+  10 s och felet blir synligt i stället för generiskt). AbortController, inte
+  `AbortSignal.timeout` — den saknas i Safari före 16. Regressionstestat i
+  `test/boot.test.js`, mutationsverifierat.
 - **Night mode** on the reporter page is a red palette. Don't swap it for a
   gray dark mode — preserving night vision is the requirement.
 - **Banans delar heter STRÄCKA i all svensk text** — aldrig "ben". Ordet är en

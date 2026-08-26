@@ -1,6 +1,12 @@
-// Field-page watchdog (k/s/m) — plain script, NOT a module, so it runs even
-// when the ES-module graph fails to load or execute (blocked CDN, stale
-// service-worker mix, unsupported browser, App Check hang…).
+// Watchdog för varje sida som bootar med en statisk "Laddar…" i #root:
+// k/s/m (fältet), a (anmälan) och t (tävlingssidan). Vanligt skript, INTE en
+// modul, så den kör även när ES-modulgrafen aldrig blir klar — blockerad CDN,
+// hängande konfigurationshämtning bakom toppnivå-await, gammal
+// service-worker-blandning, App Check som inte får token.
+//
+// Filnamnet är kvar av praktiska skäl: sw.js förcachar den på den här
+// sökvägen, och ett byte hade kostat en cacheinvalidering utan att göra
+// någon nytta.
 //
 // The pages boot with a static "Laddar…" in #root. If NOTHING has replaced
 // that content within the deadline, the user is stuck on an eternal loading
@@ -27,7 +33,9 @@
   });
 
   function arm() {
-    var root = document.getElementById('root');
+    // #root på de publika sidorna, #app i admin-SPA:n — samma statiska
+    // "Laddar…" och samma hängningar, bara ett annat elementnamn.
+    var root = document.getElementById('root') || document.getElementById('app');
     if (!root) return;
 
     var done = false;
@@ -43,10 +51,10 @@
       root.innerHTML =
         '<div style="max-width:480px;margin:40px auto;padding:0 20px;font-family:inherit;">' +
           '<h2 style="font-size:22px;margin:0 0 10px;">Sidan kunde inte ladda klart</h2>' +
-          '<p style="margin:0 0 14px;opacity:.85;line-height:1.5;">Det kan bero på dålig täckning, en annonsblockerare, eller att QR-appens inbyggda webbläsare blockerar delar av sidan.</p>' +
+          '<p style="margin:0 0 14px;opacity:.85;line-height:1.5;">Det kan bero på dålig täckning, en annonsblockerare, eller att en app med inbyggd webbläsare (QR-läsaren, e-postappen) blockerar delar av sidan.</p>' +
           '<ul style="margin:0 0 18px;padding-left:20px;opacity:.85;line-height:1.6;">' +
             '<li>Prova knappen nedan.</li>' +
-            '<li>Öppna annars länken i din vanliga webbläsare (Safari eller Chrome) i stället för QR-appens.</li>' +
+            '<li>Öppna annars länken i din vanliga webbläsare (Safari eller Chrome) i stället för appens inbyggda.</li>' +
             '<li>Stäng av ev. annonsblockerare för den här sidan.</li>' +
           '</ul>' +
           '<button id="wd-retry" style="display:block;width:100%;padding:14px;font-size:17px;font-weight:700;border-radius:12px;border:none;background:#003660;color:#fff;cursor:pointer;">Försök igen</button>' +

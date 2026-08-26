@@ -17,6 +17,13 @@
 <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js" crossorigin>
 <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js" crossorigin>
 <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js" crossorigin>
+
+<!-- Vakthunden i <head> som på k/s/m: ett VANLIGT skript, så den kör även när
+     modulgrafen aldrig blir klar, och tidigt nog att dess felavlyssnare är på
+     plats innan modulen börjar. Utan den blev sidan stående på "Laddar
+     anmälan…" för alltid när konfigurationshämtningen hängde — reproducerat
+     på ett trögt mobilnät. -->
+<script src="/js/field-watchdog.js"></script>
 </head>
 <body>
 
@@ -31,5 +38,9 @@
 </div>
 
 <script type="module" src="/js/anmalan.js"></script>
+<!-- Service workern förcachar /__/firebase/init.json. Den filen ligger bakom
+     ett toppnivå-await i firebase.js, så utan den startar sidan inte alls —
+     och /a var den enda publika sidan som saknade registreringen. -->
+<script src="/js/sw-register.js"></script>
 </body>
 </html>

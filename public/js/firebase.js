@@ -29,6 +29,29 @@ const isLocalHost = ['localhost', '127.0.0.1', '0.0.0.0'].includes(location.host
 // the emulator doesn't enforce App Check and reCAPTCHA can't attest localhost.
 const RECAPTCHA_SITE_KEY = '6LdICIQtAAAAAEGzYf57ZC-J-645Mdp1A5Q2ExWW';
 
+// KONFIGURATIONSHÄMTNINGEN FÅR ALDRIG HÄNGA.
+//
+// Anropet nedan ligger bakom ett TOPPNIVÅ-AWAIT, så en fetch som varken
+// svarar eller felar fryser hela modulgrafen: ingen sida som importerar
+// firebase.js kör en enda rad, och användaren blir stående på den statiska
+// "Laddar…" som ligger i HTML:en. Inget fel visas, för inget fel inträffar —
+// det är väntan som aldrig tar slut.
+//
+// Det är inte en teoretisk risk. Ett trögflytande mobilnät (TCP uppe, svaret
+// kommer aldrig) ger precis det, och fetch har ingen egen tidsgräns; utan tak
+// väntar den ut webbläsarens socket-timeout, tiotals sekunder eller längre.
+// Service workern löste samma sak för fältsidorna med en 4-sekundersdeadline
+// och genom att förcacha init.json — men först BESÖKET efter att den
+// installerats, och bara på sidor som registrerar den.
+//
+// AbortController, inte AbortSignal.timeout: den senare saknas i Safari före
+// 16, och de telefonerna finns i kårerna.
+function hamtaMedTak(url, ms) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(t));
+}
+
 async function loadConfig() {
   // On localhost we always talk to the emulators regardless of the config
   // values — hard-code a stub so we skip the extra network round-trip that
@@ -36,15 +59,19 @@ async function loadConfig() {
   if (isLocalHost) {
     return { projectId: 'demo-eskil', apiKey: 'demo-local', appId: '1:0:web:0' };
   }
+  // Taken är satta så att BÅDA försöken hinner ge upp före vakthundens
+  // 10-sekundersgräns i field-watchdog.js. Då hinner felet nedan bli ett
+  // avvisat löfte som vakthunden fångar och visar som teknisk info, i stället
+  // för att den bara hinner säga "Sidan kunde inte ladda klart".
   try {
-    const r = await fetch('/__/firebase/init.json');
+    const r = await hamtaMedTak('/__/firebase/init.json', 5000);
     if (r.ok) return r.json();
   } catch {}
   try {
-    const r = await fetch('/firebase-config.json');
+    const r = await hamtaMedTak('/firebase-config.json', 3000);
     if (r.ok) return r.json();
   } catch {}
-  throw new Error('Ingen Firebase-konfiguration hittades. Deploya till Firebase Hosting eller skapa public/firebase-config.json.');
+  throw new Error('Konfigurationen kunde inte hämtas (ingen kontakt med servern).');
 }
 
 const config = await loadConfig();
