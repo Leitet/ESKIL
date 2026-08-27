@@ -167,7 +167,10 @@ describe('service workern täcker anmälningssidan', () => {
 
 function fejkDom() {
   const lyssnare = {};
-  let timer = null;
+  // FLERA timrar, inte en. Med bara den senaste kunde attrappen inte skilja
+  // "beväpnade om och rensade den gamla" från "beväpnade om och lät den ligga
+  // kvar" — och mutationstestet för just det var därför grönt oavsett.
+  const timrar = [];
   const el = (id) => ({
     id, innerHTML: '', _barn: [],
     addEventListener() {}
@@ -187,7 +190,8 @@ function fejkDom() {
   const g = {
     document: doc,
     addEventListener: (namn, fn) => { lyssnare[namn] = fn; },
-    setTimeout: (fn, ms) => { timer = { fn, ms }; return 1; },
+    setTimeout: (fn, ms) => { timrar.push({ fn, ms, id: timrar.length + 1 }); return timrar.length; },
+    clearTimeout: (id) => { const t = timrar.find(x => x.id === id); if (t) t.avbruten = true; },
     MutationObserver: class {
       constructor(cb) { this.cb = cb; g._obs = this; }
       observe() { this._pa = true; }
@@ -195,7 +199,7 @@ function fejkDom() {
     },
     location: { reload() {} },
     _lyssnare: lyssnare,
-    _brand: () => { if (timer) timer.fn(); },
+    _brand: () => { timrar.filter(t => !t.avbruten).forEach(t => t.fn()); },
     _root: root
   };
   return g;
@@ -206,8 +210,8 @@ function kor() {
   const g = fejkDom();
   const src = readFileSync(new URL('../public/js/field-watchdog.js', import.meta.url), 'utf8');
   // Skriptet är en IIFE som pratar med window/document/setTimeout.
-  new Function('window', 'document', 'setTimeout', 'MutationObserver', 'location', src)
-    .call(g, g, g.document, g.setTimeout, g.MutationObserver, g.location);
+  new Function('window', 'document', 'setTimeout', 'clearTimeout', 'MutationObserver', 'location', src)
+    .call(g, g, g.document, g.setTimeout, g.clearTimeout, g.MutationObserver, g.location);
   g.document.readyState = 'complete';
   g._lyssnare.DOMContentLoaded?.();     // armera
   return g;
@@ -367,5 +371,82 @@ describe('reservkonfigurationen', () => {
   test('den är gitignorerad', () => {
     const gi = readFileSync(new URL('../.gitignore', import.meta.url), 'utf8');
     assert.match(gi, /^public\/firebase-config\.json$/m);
+  });
+});
+
+// --- Vakthunden måste kunna beväpnas om -------------------------------------
+//
+// Första versionen kopplade ner sig vid första barnändringen i behållaren och
+// kom aldrig tillbaka. I SPA:n betyder det att allt EFTER landningssidans
+// rendering var oskyddat — alltså precis de vyer som laddas dynamiskt och kan
+// misslyckas tyst. Skyddet fanns, men bara för den första skärmen.
+
+describe('vakthunden efter första renderingen', () => {
+  test('går att beväpna om', () => {
+    const g = kor();
+    assert.equal(typeof g.__eskilVakt, 'function');
+  });
+
+  test('och fyrar då igen om nästa vy aldrig renderar', () => {
+    const g = kor();
+    g._obs.cb();            // landningssidan renderade → avväpnad
+    g._brand();
+    assert.equal(g._root.innerHTML, '', 'fyrade fast sidan renderat');
+    g.__eskilVakt();        // ruttbyte
+    g._brand();             // och inget renderades den här gången
+    assert.match(g._root.innerHTML, /Sidan kunde inte ladda klart/);
+  });
+
+  test('en gammal timer får inte fyra på en sida som fungerar', () => {
+    // Utan att den föregående beväpningen rensas kunde en timer från förra
+    // ruttbytet slå till mitt i en vy som sedan länge renderat.
+    const g = kor();
+    g.__eskilVakt();        // beväpnar om — den gamla timern ska vara rensad
+    g._obs.cb();            // den nya vyn renderade
+    g._brand();
+    assert.equal(g._root.innerHTML, '', 'en gammal timer fyrade av');
+  });
+
+  test('app.js beväpnar om vid varje ruttbyte', () => {
+    const src = las('js/app.js');
+    const hook = src.slice(src.indexOf('setRouteChangeHandler(('), src.indexOf('// ---- Topbar'));
+    assert.match(hook, /__eskilVakt/, 'route-change-hooken beväpnar inte om vakthunden');
+  });
+});
+
+describe('SPA:n visar när en vy inte kunde laddas', () => {
+  const src = las('js/app.js');
+
+  test('render() anropas inte längre utan felhantering', () => {
+    // Förut: `render();` — ett avvisat löfte blev en ohanterad rejection som
+    // ingen visade. Föregående vy stod kvar, frusen, utan förklaring.
+    const g = src.slice(src.indexOf('async function guard'), src.indexOf('// ---- Topbar'));
+    assert.ok(!/^\s*render\(\);\s*$/m.test(g), 'render() anropas fortfarande oskyddat');
+    assert.match(g, /Promise\.resolve\(render\(\)\)\.catch/);
+    assert.match(g, /Försök igen/);
+  });
+
+  test('ett misslyckat import() görs om med NY specificerare', () => {
+    // Module map memoiserar ett avvisat import(): samma specificerare ger
+    // samma fel resten av dokumentets livstid, även efter att filen blivit
+    // tillgänglig igen. Bara ett nytt namn ger en färsk post.
+    const v = src.slice(src.indexOf('const vy ='), src.indexOf('import { renderLogin }'));
+    assert.match(v, /catch/);
+    assert.match(v, /\?|&/);
+    assert.match(v, /r=\$\{Date\.now\(\)\}/);
+  });
+});
+
+describe('cache-reglerna säger vad de gör', () => {
+  test('ingen regel för /js/** som ändå överskuggas av **/*.js', () => {
+    // Den fanns och lovade max-age=3600 på modulerna. Mätt i produktion
+    // svarade de no-cache — den senare regeln vann. En död regel är värre än
+    // ingen: den fick mig att felaktigt tro att en kall morgoncache förklarade
+    // en långsam start, och att resonera vidare på det.
+    const conf = JSON.parse(readFileSync(new URL('../firebase.json', import.meta.url), 'utf8'));
+    const kallor = conf.hosting.headers.map(h => h.source);
+    const jsRegler = kallor.filter(s => s.includes('js'));
+    assert.ok(!jsRegler.includes('/js/**'),
+      `/js/** överskuggas av ${jsRegler.filter(s => s !== '/js/**').join(', ')} — ta bort den i stället för att låta den ljuga`);
   });
 });

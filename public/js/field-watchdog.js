@@ -61,20 +61,35 @@
     lastError = (r && (r.message || String(r))) || 'Okänt fel';
   });
 
+  var aktivObs = null;
+  var aktivTimer = null;
+
+  // ÅTERBEVÄPNINGSBAR. Första versionen kopplade ner sig vid första
+  // barnändringen i behållaren och kom aldrig tillbaka — i SPA:n betydde det
+  // att allt efter landningssidans rendering var helt oskyddat, alltså precis
+  // de vyer som laddas dynamiskt och kan misslyckas. Route-change-hooken i
+  // app.js anropar window.__eskilVakt() vid varje ruttbyte.
+  //
+  // En lyckad navigering ritar alltid om innehållet (layout() byter <main>),
+  // så uteblir varje ändring i tio sekunder är något faktiskt fel.
   function arm() {
-    // #root på de publika sidorna, #app i admin-SPA:n — samma statiska
-    // "Laddar…" och samma hängningar, bara ett annat elementnamn.
     var root = document.getElementById('root') || document.getElementById('app');
     if (!root) return;
+
+    // Rensa en tidigare beväpning, annars kan en gammal timer fyra av på en
+    // sida som sedan länge fungerar.
+    if (aktivObs) { try { aktivObs.disconnect(); } catch (e) {} }
+    if (aktivTimer) clearTimeout(aktivTimer);
 
     var done = false;
     var obs = new MutationObserver(function () {
       done = true;
       obs.disconnect();
     });
+    aktivObs = obs;
     obs.observe(root, { childList: true, subtree: true });
 
-    setTimeout(function () {
+    aktivTimer = setTimeout(function () {
       if (done) return;
       obs.disconnect();
       root.innerHTML =
@@ -96,6 +111,9 @@
       if (btn) btn.addEventListener('click', function () { location.reload(); });
     }, DEADLINE_MS);
   }
+
+  // Route-change-hooken i app.js beväpnar om vid varje SPA-navigering.
+  window.__eskilVakt = arm;
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', arm);

@@ -23,7 +23,27 @@ const fas = (n) => { try { window.__eskilFas?.(n); } catch {} };
 // ska inte betala för Läget, spårdragningen och backupvyn.
 //
 // import() cachas av webbläsaren, så en vy hämtas en gång per sidladdning.
-const vy = (fil, namn) => async (...args) => (await import(fil))[namn](...args);
+// ETT MISSLYCKAT import() MEMOISERAS av webbläsarens module map: samma
+// specificerare ger samma avvisade löfte resten av dokumentets livstid, även
+// efter att filen blivit tillgänglig igen (uppmätt — fil borta, import
+// misslyckas, fil skapad och verifierat 200, ny import misslyckas ändå, och
+// först en omladdning hjälper). En enda nätstörning under vyladdningen dödar
+// alltså rutten permanent, och service workern gör det lättare att råka ut för:
+// networkFirst() svarar Response.error() på en avvisad hämtning, vilket gör
+// modulhämtningen till ett hårt nätverksfel.
+//
+// Andra försöket byter därför specificerare. Det ger en färsk post i module
+// map och är enda vägen tillbaka utan omladdning. Beroendena har egna
+// specificerare och återanvänds, så det är vyfilen — inte grafen — som laddas
+// om, och bara efter att den redan misslyckats.
+const vy = (fil, namn) => async (...args) => {
+  try {
+    return (await import(fil))[namn](...args);
+  } catch (e) {
+    console.warn('[ESKIL] vyladdning misslyckades, försöker igen:', fil, e);
+    return (await import(`${fil}${fil.includes('?') ? '&' : '?'}r=${Date.now()}`))[namn](...args);
+  }
+};
 import { renderLogin } from './views/login.js';
 import { renderLanding } from './views/landing.js';
 import { renderKontakt, renderKontaktArende } from './views/kontakt.js';
@@ -95,7 +115,25 @@ async function guard(render, cid = null) {
     renderLogin(app);
     return;
   }
-  render();
+  // render() ANROPADES FÖRUT UTAN await och utan catch. Ett avvisat löfte från
+  // vy() blev då en ohanterad rejection som ingen visade: föregående vy stod
+  // kvar, frusen, och ingenting sa varför. Vakthunden fångar det numera efter
+  // tio sekunder, men den är sista utvägen — inte felhanteringen.
+  Promise.resolve(render()).catch((e) => {
+    console.error('[ESKIL] vyn kunde inte renderas:', e);
+    app.innerHTML = `
+      <div class="page" style="max-width:520px;">
+        <h1 class="t-h2">Sidan kunde inte laddas</h1>
+        <p class="muted">Något gick fel när vyn skulle hämtas. Det beror oftast på
+        tillfälligt dåligt nät.</p>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="vy-igen">Försök igen</button>
+          <a class="btn btn-secondary" href="/app" data-link>Dina tävlingar</a>
+        </div>
+        <p class="muted t-sm" style="margin-top:var(--sp-5);">${escapeHtml(String(e?.message || e))}</p>
+      </div>`;
+    app.querySelector('#vy-igen')?.addEventListener('click', () => dispatch());
+  });
 }
 
 // Update topbar active state when route changes. Also tear down any active
@@ -103,6 +141,10 @@ async function guard(render, cid = null) {
 // title so a view-specific title (e.g. ceremony's) never leaks to the next
 // page — views set their own via setDocTitle() once their data loads.
 setRouteChangeHandler(() => {
+  // Beväpna om vakthunden. Den kopplar ner sig vid första renderingen, så utan
+  // det här var varje SPA-navigering efter landningssidan oskyddad — och det
+  // är just de vyerna som laddas dynamiskt och kan misslyckas tyst.
+  try { window.__eskilVakt?.(); } catch { /* vakthunden saknas i test */ }
   document.title = 'ESKIL — spår och tävlingar för scouter';
   // Samma skäl som titeln ovan, och samma läckagemönster: <head> töms aldrig
   // (layout() återanvänder topbar och sidfot och byter bara <main>), så utan

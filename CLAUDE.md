@@ -285,6 +285,28 @@ Email extension). Production domain: https://eskilscout.se.
   meddelande med felorsak och en Försök igen-knapp om inget hänt på 10 s. Det
   ska ligga på VARJE sida med laddskärm; `/a`, `/t` och `/app` saknade det och
   `/a` saknade dessutom `sw-register.js`, som är det som förcachar init.json.
+  **Vakthunden BEVÄPNAS OM vid varje ruttbyte** (`window.__eskilVakt()` från
+  route-change-hooken i app.js). Den kopplar ner sig vid första barnändringen,
+  så utan omberväpningen var allt EFTER landningssidans rendering oskyddat i
+  SPA:n — alltså precis de vyer som laddas dynamiskt och kan misslyckas tyst.
+  Den rensar också föregående timer; annars kan en timer från förra ruttbytet
+  fyra av mitt i en vy som sedan länge renderat. Båda mutationsverifierade —
+  och DOM-attrappen i testet håller FLERA timrar just därför: med bara den
+  senaste var timerrensningens test grönt oavsett.
+  **Ett misslyckat `import()` MEMOISERAS** av webbläsarens module map: samma
+  specificerare ger samma avvisade löfte resten av dokumentets livstid, även
+  efter att filen blivit tillgänglig igen (uppmätt). En enda nätstörning under
+  en vyladdning dödar alltså rutten tills sidan laddas om — och service workern
+  gör det lättare att råka ut för, eftersom `networkFirst()` svarar
+  `Response.error()` på en avvisad hämtning. `vy()` i app.js gör därför om
+  försöket med en NY specificerare (`?r=<tid>`), och `guard()` kör numera
+  `render()` genom en catch som visar en felskärm — förut var ett avvisat löfte
+  en ohanterad rejection som ingen visade.
+  **`/js/**` har INGEN egen cache-regel** i firebase.json, och det är avsiktligt:
+  regeln fanns och lovade `max-age=3600`, men `**/*.js` längre ner sätter
+  `no-cache` och vinner. Mätt i produktion svarar modulerna no-cache. En död
+  regel är värre än ingen — den fick mig att tro att en kall morgoncache
+  förklarade en långsam start.
   Vakthunden letar `#root` ELLER `#app` — tappar den ena gör den ingenting
   alls, tyst. `hamtaMedTak()` i firebase.js sätter tak på båda
   konfigurationshämtningarna (5 s + 3 s, så de hinner ge upp före vakthundens
