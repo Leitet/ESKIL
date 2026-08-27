@@ -13,6 +13,8 @@ import { resetSeo } from './seo.js';
 
 import { icon } from './icons.js';
 
+const fas = (n) => { try { window.__eskilFas?.(n); } catch {} };
+
 // ADMINVYERNA LADDAS FÖRST NÄR DE SKA VISAS. Förut importerades alla nitton
 // statiskt, vilket betydde att den PUBLIKA startsidan drog ner hela
 // administratörsappen — ~40 moduler — innan den ritade en enda pixel. Mätt i
@@ -356,9 +358,11 @@ async function runMagicLinkFlow() {
   // Auth-callbacken nedan anropar dispatch() när den kommer, så sidan ritas
   // om med rätt identitet — knappen "Logga in" byts då mot "Dina tävlingar".
   const publikVag = /^\/$|^\/(om|kontakt)(\/|$)/.test(location.pathname);
-  if (publikVag) { routerStarted = true; startRouter(); }
+  if (publikVag) { fas('router-publik'); routerStarted = true; startRouter(); }
 
+  fas('auth-vantar');
   watchAuth(async (fbUser) => {
+    fas('auth-svar');
     if (fbUser) {
       try {
         const userDoc = await ensureUser(fbUser.uid, fbUser.email);
@@ -381,6 +385,7 @@ async function runMagicLinkFlow() {
       dispatch();
     } else {
       routerStarted = true;
+      fas('router-start');
       startRouter();
     }
   });

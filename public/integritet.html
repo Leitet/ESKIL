@@ -233,6 +233,15 @@
     Inställningar → AI-koppling. Åtkomsten upphör direkt vid återkallande, och automatiskt när
     tävlingen avslutas.</p>
 
+    <h2>Startdiagnostik i webbläsaren</h2>
+    <p>För att kunna felsöka sidor som blir stående på ”Laddar…” sparar ESKIL de tre senaste
+    sidstarterna i webbläsarens eget lagringsutrymme (<code>localStorage</code>, nyckeln
+    <code>eskil-start</code>). Det som sparas är bara <strong>fasnamn och millisekunder</strong> —
+    till exempel att konfigurationen hämtades efter 77 ms och att tävlingen började läsas efter
+    81 ms — samt vilken sidadress det gällde. Inga personuppgifter, inget innehåll från
+    tävlingen, och ingenting skickas någonstans: uppgifterna lämnar aldrig din enhet och raderas
+    när du rensar webbläsardata.</p>
+
     <h2>Tredje parter</h2>
     <p>När du använder ESKIL laddas resurser från följande leverantörer, som då ser din
     IP-adress (nödvändigt för att leverera själva tjänsten):</p>

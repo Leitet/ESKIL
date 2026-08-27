@@ -4,6 +4,8 @@
 // Tabs: overview (default), patrols, scoreboard.
 
 import { db, doc, getDoc, onSnapshot, collection, auth, onAuthStateChanged } from './firebase.js';
+
+const fas = (n) => { try { window.__eskilFas?.(n); } catch {} };
 import { getCompetition, getCompetitionBySlug, listPatrols, listControls, getTrack, watchBroadcastMessages } from './store.js';
 import { courseLegs, drawCourseOnMap, addCourseChip, competitionArea, courseDistance, fmtDist, courseEtaCalibrated, patrolFinishEtaMs } from './course.js';
 import {
@@ -114,12 +116,15 @@ async function boot() {
   // resolved id.
   let cid = parsed.cid;
   try {
+    fas('tavling-las');
     comp = await getCompetition(cid);
+    fas('tavling-klar');
     if (!comp) {
       comp = await getCompetitionBySlug(cid);
       if (comp) cid = comp.id;
     }
     if (comp) {
+      fas('banan-las');
       [patrols, controls, track] = await Promise.all([
         listPatrols(cid),
         listControls(cid),
@@ -484,6 +489,7 @@ function kanoniskSokvag(tab) {
 const FLIKNAMN = { overview: '', patrols: 'Patruller', scoreboard: 'Poängtabell' };
 
 function render() {
+  fas('render');
   const parsed = parsePath(); if (!parsed) return;
   // renderAnslag() anropas sist i den här funktionen: render() skriver om
   // hela sidan, inklusive tavlans värdelement.

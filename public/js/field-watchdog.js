@@ -22,6 +22,35 @@
   var DEADLINE_MS = 10000;
   var lastError = '';
 
+  // ── Startfaser ────────────────────────────────────────────────────────────
+  // En kall första sidladdning på morgonen kan ta lång tid, och "Laddar…" säger
+  // inte VAD den väntar på. Faserna märks av modulerna (firebase.js, app.js,
+  // public.js) och sparas — så att nästa gång det händer finns svaret redan,
+  // utan att någon behöver sitta och testa strukturerat.
+  //
+  // Ingen personuppgift: bara fasnamn och millisekunder. Ligger i localStorage
+  // på enheten och skickas ingenstans.
+  var faser = [];
+  var NYCKEL = 'eskil-start';
+  function nu() {
+    try { return Math.round(performance.now()); } catch (e) { return -1; }
+  }
+  window.__eskilFas = function (namn) {
+    faser.push(namn + ':' + nu());
+    try {
+      var gamla = JSON.parse(localStorage.getItem(NYCKEL) || '[]');
+      gamla[0] = { vid: new Date().toISOString(), sida: location.pathname, faser: faser.slice() };
+      localStorage.setItem(NYCKEL, JSON.stringify(gamla.slice(0, 3)));
+    } catch (e) { /* privat läge */ }
+  };
+  // Ny sidladdning skjuter ner föregående i listan, så de tre senaste finns kvar.
+  try {
+    var tidigare = JSON.parse(localStorage.getItem(NYCKEL) || '[]');
+    localStorage.setItem(NYCKEL, JSON.stringify([{ vid: new Date().toISOString(), sida: location.pathname, faser: [] }]
+      .concat(tidigare).slice(0, 3)));
+  } catch (e) { /* privat läge */ }
+  window.__eskilFas('start');
+
   window.addEventListener('error', function (e) {
     var src = e.filename ? ' (' + e.filename.split('/').slice(-1)[0] +
       (e.lineno ? ':' + e.lineno : '') + ')' : '';
@@ -58,10 +87,10 @@
             '<li>Stäng av ev. annonsblockerare för den här sidan.</li>' +
           '</ul>' +
           '<button id="wd-retry" style="display:block;width:100%;padding:14px;font-size:17px;font-weight:700;border-radius:12px;border:none;background:#003660;color:#fff;cursor:pointer;">Försök igen</button>' +
-          (lastError
-            ? '<p style="margin:18px 0 0;font-size:12px;opacity:.6;word-break:break-word;">Teknisk info: ' +
-              String(lastError).replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</p>'
-            : '') +
+          '<p style="margin:18px 0 0;font-size:12px;opacity:.6;word-break:break-word;">Teknisk info: ' +
+            String(lastError || 'inget fel — sidan väntade')
+              .replace(/&/g, '&amp;').replace(/</g, '&lt;') +
+            '<br>Kom till: ' + faser.join(' · ') + '</p>' +
         '</div>';
       var btn = document.getElementById('wd-retry');
       if (btn) btn.addEventListener('click', function () { location.reload(); });

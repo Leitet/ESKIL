@@ -231,6 +231,26 @@ describe('vakthunden när den faktiskt körs', () => {
     assert.equal(g._root.innerHTML, '', 'skrev över en sida som redan renderat');
   });
 
+  test('tar med STARTFASERNA — svaret på "vad väntade den på?"', () => {
+    // Det här är vad som gör en morgonrapport användbar utan att någon
+    // behöver sitta och testa strukturerat: meddelandet säger hur långt
+    // starten kom, inte bara att den inte kom fram.
+    const g = kor();
+    g._brand();
+    assert.match(g._root.innerHTML, /Kom till:/);
+    assert.match(g._root.innerHTML, /start:/);
+  });
+
+  test('faserna går att märka utan att vakthunden kastar', () => {
+    // Modulerna anropar window.__eskilFas() genom en try/catch, men funktionen
+    // måste finnas — annars registreras ingenting och tidslinjen blir tom.
+    const g = kor();
+    assert.equal(typeof g.__eskilFas, 'function');
+    g.__eskilFas('prov');
+    g._brand();
+    assert.match(g._root.innerHTML, /prov:/);
+  });
+
   test('tar med felorsaken så den går att felsöka från ett foto', () => {
     const g = kor();
     g._lyssnare.unhandledrejection({ reason: new Error('Konfigurationen kunde inte hämtas') });

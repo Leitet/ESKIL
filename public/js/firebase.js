@@ -24,6 +24,10 @@ import {
 
 import { arAnonymFaltsida } from './utils.js';
 
+// Fasmärkning till vakthundens tekniska rad — se field-watchdog.js.
+const fas = (n) => { try { window.__eskilFas?.(n); } catch {} };
+
+
 const isLocalHost = ['localhost', '127.0.0.1', '0.0.0.0'].includes(location.hostname);
 
 // App Check — reCAPTCHA v3. The site key is PUBLIC (it ships in the client by
@@ -113,7 +117,9 @@ async function loadConfig() {
   throw new Error('Konfigurationen kunde inte hämtas (ingen kontakt med servern).');
 }
 
+fas('config-start');
 const config = await loadConfig();
+fas('config-klar');
 const app = initializeApp(config);
 
 // Initialise App Check before any Firestore/Functions calls so requests carry
@@ -152,6 +158,7 @@ if (!isLocalHost && config.appId) {
 // blockera Firestores kö för alltid, och sidan blir stående på "Laddar…"
 // utan att något fel inträffar. De sidorna loggar aldrig in, så
 // minnespersistens kostar ingenting där.
+fas('auth-init');
 const auth = initializeAuth(app, {
   persistence: arAnonymFaltsida(location.pathname)
     ? inMemoryPersistence
