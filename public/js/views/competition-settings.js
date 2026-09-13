@@ -759,6 +759,13 @@ function renderRulesTab(comp, cid, refresh, readOnly) {
                 <input class="input" type="number" id="st-maxtime" min="0" placeholder="T.ex. 240" value="${comp.startTimes?.maxTimeMinutes ?? ''}">
                 <div class="field-hint">Visas som nedräkning på patrullernas startkort. Lämna tomt för ingen maxtid.</div>
               </div>
+              <label class="mt-3" style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
+                <input type="checkbox" id="st-published" ${comp.startTimes?.published !== false ? 'checked' : ''} style="margin-top:4px;">
+                <span>
+                  <strong>Visa starttiderna för patruller och anhöriga</strong>
+                  <div class="field-hint" style="margin-top:2px;">Låt den vara av tills schemat är spikat: startkorten, tävlingssidan och kårernas anmälningssidor säger då att starttiderna inte är publicerade ännu. Ledningen ser tiderna hela tiden i Läget, patrullistan och på startskärmen.</div>
+                </span>
+              </label>
             </div>
           `;
         })()}
@@ -832,7 +839,8 @@ function renderRulesTab(comp, cid, refresh, readOnly) {
         firstStart: card.querySelector('#st-firstStart').value || '09:00',
         intervalMinutes: Number(card.querySelector('#st-interval').value) || 5,
         lastStart: card.querySelector('#st-lastStart').value || null,
-        maxTimeMinutes: Number(card.querySelector('#st-maxtime').value) || null
+        maxTimeMinutes: Number(card.querySelector('#st-maxtime').value) || null,
+        published: card.querySelector('#st-published').checked
       },
       selfStart: card.querySelector('#selfStart').checked,
       fieldMessaging: card.querySelector('#fieldMessaging').checked,

@@ -12,7 +12,7 @@ import {
 } from './store.js';
 import { courseLegs, drawCourseOnMap, addCourseChip, legLatLngs, courseEtaCalibrated, patrolFinishEtaMs, fmtDist, fmtMin, competitionArea, bearingDeg, kompassnamn } from './course.js';
 import {
-  escapeHtml, formatDate, publicManagement, patrolStartTime, patrolStartDateTime,
+  escapeHtml, formatDate, publicManagement, patrolStartTime, patrolStartDateTime, startTimesPublished,
   startFinishPoints, startTimeSettings,
   effectiveIntervalSec as effectiveIntervalSecValue,
   wireOverlayClose, allowedAvdelningar,
@@ -673,6 +673,13 @@ function render() {
       ${(() => {
         const t = patrolStartTime(comp, patrol, patrols.length);
         if (!t) return '';
+        // Opublicerade tider: ledningen har ett utkast men vill inte att
+        // scouterna planerar efter det. Ingen tid, ingen nedräkning — bara
+        // beskedet. Chipet återkommer när växeln slås på (kortet lyssnar på
+        // tävlingsdokumentet).
+        if (!startTimesPublished(comp)) {
+          return `<div class="start-time-chip is-pending">${icon('clock', { size: 18 })}<span>Starttid: inte publicerad ännu</span></div>`;
+        }
         const dt = patrolStartDateTime(comp, patrol, new Date(), patrols.length);
         const maxMin = Number(comp.startTimes?.maxTimeMinutes) || 0;
         // Maxtiden räknas från när patrullen FAKTISKT gick. Med

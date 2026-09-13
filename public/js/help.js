@@ -305,7 +305,8 @@ export const HELP = {
     ],
     faq: [
       { q: 'Intervall eller sluttid?', a: 'Med intervall bestämmer du minuterna mellan patrullerna. Med sluttid anger du sista start i stället, så räknas intervallet ut från antalet patruller — bra när startfönstret är låst.' },
-      { q: 'Fungerar det över midnatt?', a: 'Ja, en tävling som startar 22:00 och sista start 02:00 hanteras korrekt.' }
+      { q: 'Fungerar det över midnatt?', a: 'Ja, en tävling som startar 22:00 och sista start 02:00 hanteras korrekt.' },
+      { q: 'Kan jag dölja tiderna tills schemat är klart?', a: 'Ja — kryssrutan "Visa starttiderna för patruller och anhöriga". Är den av säger startkorten, tävlingssidan och kårernas anmälningssidor att starttiderna inte är publicerade ännu, medan ledningen ser tiderna hela tiden. Förkontrollen på översikten påminner om den fortfarande är av.' }
     ]
   },
 

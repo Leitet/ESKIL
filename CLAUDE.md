@@ -931,6 +931,14 @@ BÅDA ställena.
   `lastBackupAt` (stamped on every backup/export download);
   `etaDwellMinutes` (ETA station time override, default 15);
   `startTimes.maxTimeMinutes` (maxtid countdown on the startkort);
+  `startTimes.published` (**växeln för om scouter och anhöriga ser tiderna** —
+  läs den ALLTID via `startTimesPublished(comp)` i utils.js: saknas = visas,
+  så tävlingar från före växeln inte tappar sina tider. Bara /t, startkortet
+  /s och kårens anmälningssida frågar den; Läget, startskärmen, patrullistan
+  och stationen visar utkastet, för ledningen behöver det för att spika
+  schemat. Årgångskopian slår AV den och `startklar.js` varnar tills den är
+  på. Ett test i logic.test.js kräver att de tre publika filerna frågar och
+  att ledningens vyer INTE gör det);
   `district` (scoutdistrikt — see below).
 - **Platser och banans ändpunkter är två olika saker.**
   `comp.startFinish` (start/mål) är BANDATA: `courseLegs` bygger `__start`/

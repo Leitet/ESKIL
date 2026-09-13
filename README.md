@@ -161,6 +161,11 @@ att köra gratis på Spark-planen.
   (`autoReleaseControls`) släpper öppna publika sidor banan av sig själva
   5 min före första patrullens starttid på tävlingsdatumet (kräver datum +
   starttider); kartans bildtext visar när.
+  **Starttiderna har en egen växel** (`startTimes.published`, Inställningar →
+  Starttider → "Visa starttiderna för patruller och anhöriga"): av säger
+  startkorten, tävlingssidan och kårernas anmälningssidor att starttiderna
+  inte är publicerade ännu, medan ledningen ser tiderna hela tiden.
+  Saknas = visas; årgångskopian slår av den; förkontrollen varnar om den är av.
 
 - **Officiell resultatexport** (Poängtabell-fliken, admin) — "Resultat
   (PDF)": officiella resultat i ESKIL-design (overall med topp-3-markering,

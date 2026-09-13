@@ -10,7 +10,7 @@ import { getCompetition, getCompetitionBySlug, listPatrols, listControls, getTra
 import { courseLegs, drawCourseOnMap, addCourseChip, competitionArea, courseDistance, fmtDist, courseEtaCalibrated, patrolFinishEtaMs } from './course.js';
 import {
   AVDELNINGAR, escapeHtml, publicNotices, anslagSynlig, linkifyText, formatDate, publicManagement, patrolStartTime,
-  patrolStartDateTime, startTimeSettings, allowedAvdelningar,
+  patrolStartDateTime, startTimeSettings, startTimesPublished, allowedAvdelningar,
   registrationSettings, registrationState,
   startFinishPoints, rankPatrols, rankKarer, RANKING_RULES_TEXT,
   wireOverlayClose, controlsAutoReleased, controlsReleaseTime, utslagRows, isNumSet,
@@ -864,8 +864,8 @@ function renderRegistrationCta() {
 // times are wall-clock anchored), or on demo competitions where the
 // schedule rolls with the clock.
 function startRows(now = new Date()) {
-  const s = startTimeSettings(comp);
-  if (!s.enabled || !patrols.length) return [];
+  // Opublicerade tider är ledningens utkast — listan väntar på växeln.
+  if (!startTimesPublished(comp) || !patrols.length) return [];
   if (!comp.demo && comp.date && daysUntilComp() !== 0) return [];
   return patrols
     .map(p => ({ p, dt: patrolStartDateTime(comp, p, now, patrols.length) }))
@@ -897,6 +897,18 @@ function renderStartList() {
   const cid = parsePath()?.cid;
   const now = new Date();
   const favs = getFavs();
+  // Opublicerade tider: säg det rakt ut där listan annars står. Anhöriga
+  // planerar körningar efter starttiden, och en tom sida ser ut som att
+  // tävlingen saknar schema — inte som att det kommer.
+  if (startTimeSettings(comp).enabled && !startTimesPublished(comp) && patrols.length) {
+    return `
+      <div class="pub-section-head">
+        <h2 class="t-h2">Startlista</h2>
+        <span class="muted">Inte publicerad ännu</span>
+      </div>
+      <p class="muted" style="margin:0 0 var(--sp-6);">Starttiderna är inte publicerade ännu. Tävlingsledningen släpper dem här och på startkorten när schemat är spikat.</p>
+    `;
+  }
   // Favoriter överst (i starttidsordning inom gruppen), resten efter.
   const rows = [...startRows(now)].sort((a, b) =>
     (favs.has(b.p.id) - favs.has(a.p.id)) || (a.dt - b.dt));
@@ -1088,9 +1100,11 @@ function renderMap() {
         <span>${(() => {
           if (controlsPublic()) return 'Kontrollpositioner — exakta platser kan skilja något.';
           const rel = controlsReleaseTime(comp);
-          return rel
-            ? `Banan släpps här ${rel.toLocaleDateString('sv-SE', { day: 'numeric', month: 'long' })} kl ${rel.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })} — 5 min före första start.`
-            : 'Kontrollernas platser visas här när tävlingsledningen släpper dem.';
+          if (!rel) return 'Kontrollernas platser visas här när tävlingsledningen släpper dem.';
+          const dag = rel.toLocaleDateString('sv-SE', { day: 'numeric', month: 'long' });
+          // Opublicerade starttider: klockslaget hade avslöjat första start.
+          if (!startTimesPublished(comp)) return `Banan släpps här ${dag}. Starttiderna är inte publicerade ännu.`;
+          return `Banan släpps här ${dag} kl ${rel.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })} — 5 min före första start.`;
         })()}</span>
       </div>
     </div>
@@ -1554,7 +1568,7 @@ function openPatrolModal(patrolId) {
     // rubriken patrullnamnet och beskrivningen kåren — en kalenderpost läses
     // utanför sitt sammanhang, så kåren behövs, men inte i rubriken.
     const namn = patrol.name || 'Patrullen';
-    const dt = patrolStartDateTime(comp, patrol);
+    const dt = startTimesPublished(comp) ? patrolStartDateTime(comp, patrol) : null;
     const reports = {};
     for (const { control, score } of perCtrl) {
       const t = score && (tsMs(score.clientReportedAt) ?? tsMs(score.reportedAt));

@@ -20,7 +20,7 @@ import {
   makePaymentReference, paymentEntry, paymentsSum,
   swishQrString, swishAppUrl, registrationUrl, copyToClipboard, isPaymentPaid,
   isPaymentClaimed, paymentClaimAt,
-  publicManagement
+  publicManagement, startTimesPublished
 } from './utils.js';
 import { ensureQRCode } from './qr.js';
 import { downloadReceiptPdf, downloadPaymentSlipPdf } from './pdf.js';
@@ -862,7 +862,7 @@ function renderInforDagen() {
     <div class="anm-card">
       <h2>Inför tävlingsdagen</h2>
       <ul class="t-sm" style="margin:8px 0 0;padding-left:18px;line-height:1.8;">
-        ${comp.date ? `<li><strong>${escapeHtml(formatDate(comp.date))}</strong>${comp.location ? ` · ${escapeHtml(comp.location)}` : ''}${comp.startTimes?.enabled && comp.startTimes?.firstStart ? ` · första start ${escapeHtml(comp.startTimes.firstStart)}` : ''}</li>` : ''}
+        ${comp.date ? `<li><strong>${escapeHtml(formatDate(comp.date))}</strong>${comp.location ? ` · ${escapeHtml(comp.location)}` : ''}${startTimesPublished(comp) && comp.startTimes?.firstStart ? ` · första start ${escapeHtml(comp.startTimes.firstStart)}` : ''}</li>` : ''}
         <li>Startlista med patrullernas starttider, karta och liveresultat finns på
           <a href="/t/${escapeHtml(cid)}" target="_blank" rel="noopener">tävlingssidan</a> —
           dela gärna länken med scouter och anhöriga.</li>

@@ -11,7 +11,7 @@
 // test/logic.test.js. Vyn hämtar datan (inklusive kontrollernas private/meta
 // för telefonkollen) och ritar.
 
-import { startFinishPoints, isNumSet } from './utils.js';
+import { startFinishPoints, isNumSet, startTimesPublished } from './utils.js';
 
 /**
  * @param comp     tävlingsdokumentet
@@ -87,6 +87,13 @@ export function startklarChecks(comp, controls = [], patrols = [], metas = null)
           `${utanOrdning.length} patrull${utanOrdning.length === 1 ? '' : 'er'} saknar startordning (${namnlista(utanOrdning)}) — de får ingen starttid på sina startkort.`,
           'patrols');
       } else ok('startordning', 'Alla patruller har en startordning.');
+      // Växeln som döljer utkastet — glöms den står "inte publicerad ännu"
+      // på startkorten på tävlingsmorgonen.
+      if (!startTimesPublished(comp)) {
+        varning('starttider-publicerade',
+          'Starttiderna är inte publicerade — startkorten och tävlingssidan säger "inte publicerade ännu". Slå på "Visa starttiderna" under Inställningar när schemat är spikat.',
+          'settings');
+      } else ok('starttider-publicerade', 'Starttiderna är publicerade för patruller och anhöriga.');
     }
 
     // En kvarglömd genrepspatrull hamnar i resultatlistan och i prisutdelningen.

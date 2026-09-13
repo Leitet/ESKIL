@@ -15,7 +15,7 @@ import {
   effectiveIntervalSec, swishAppUrl, swishQrString, patrolLabel, linkifyText, isNumSet, mergeBeacons,
   NOTE_CHIPS, harNotering, laggTillNotering, taBortNotering, kapaNotering,
   publicNotices, anslagSynlig, isPaymentPaid, isPaymentClaimed, paymentClaimAt,
-  planEfteranmalan, paymentEntry, paymentsSum,
+  planEfteranmalan, paymentEntry, paymentsSum, startTimesPublished,
   sparlagesBeslut, SPAR_PA_UNDER, SPAR_AV_VID,
   parseFieldPath,
   splitManagement,
@@ -1333,6 +1333,40 @@ describe('betalningspåstående', () => {
     assert.equal(isPaymentClaimed({ paymentClaims: [null] }, p), false);
     assert.equal(isPaymentClaimed({ paymentClaims: [{ reference: 'AH26-1' }] }, null), false);
     assert.equal(paymentClaimAt({}, p), null);
+  });
+});
+
+// --- Starttider: publicerade eller utkast ---------------------------------------
+// Ledningen spikar schemat sent; tills dess är tiderna ett utkast som scouter
+// och anhöriga inte ska planera efter. Växeln styr BARA de publika ytorna.
+describe('starttider publiceras med en växel', () => {
+  test('default PÅ — tävlingar från före växeln tappar inte sina tider', () => {
+    assert.equal(startTimesPublished({ startTimes: { enabled: true, firstStart: '09:00' } }), true);
+  });
+
+  test('av bara när flaggan uttryckligen är false', () => {
+    assert.equal(startTimesPublished({ startTimes: { enabled: true, published: false } }), false);
+    assert.equal(startTimesPublished({ startTimes: { enabled: true, published: true } }), true);
+  });
+
+  test('utan starttider finns inget att publicera', () => {
+    assert.equal(startTimesPublished({ startTimes: { enabled: false, published: true } }), false);
+    assert.equal(startTimesPublished({}), false);
+    assert.equal(startTimesPublished(null), false);
+  });
+
+  test('de tre publika ytorna frågar växeln — ledningens gör det INTE', () => {
+    // /t, startkortet och kårens anmälningssida når scouter och anhöriga.
+    // Läget, startskärmen och patrullistan ska visa utkastet: ledningen
+    // behöver det för att spika schemat.
+    for (const f of ['public', 'start', 'anmalan']) {
+      const src = readFileSync(new URL(`../public/js/${f}.js`, import.meta.url), 'utf8');
+      assert.match(src, /startTimesPublished\(comp\)/, `${f}.js visar starttider utan att fråga växeln`);
+    }
+    for (const f of ['views/laget', 'views/startscreen', 'views/patrols', 'station']) {
+      const src = readFileSync(new URL(`../public/js/${f}.js`, import.meta.url), 'utf8');
+      assert.doesNotMatch(src, /startTimesPublished/, `${f}.js döljer utkastet för ledningen`);
+    }
   });
 });
 

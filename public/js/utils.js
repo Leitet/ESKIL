@@ -613,8 +613,22 @@ export function startTimeSettings(comp) {
     mode: s.mode === 'range' ? 'range' : 'interval',
     firstStart: s.firstStart || '09:00',
     intervalMinutes: Number(s.intervalMinutes) || 5,
-    lastStart: s.lastStart || null
+    lastStart: s.lastStart || null,
+    // Publicerade för scouter och anhöriga? Default PÅ: tävlingar från före
+    // växeln ska inte tappa sina tider.
+    published: s.published !== false
   };
+}
+
+// Får starttiderna visas för dem som inte är ledning — tävlingssidan /t,
+// startkortet /s och kårens anmälningssida? Ledningen ser dem alltid (Läget,
+// patrullistan, startskärmen, stationen). Växeln finns för att tiderna brukar
+// vara ett utkast tills startordningen är spikad, och ett startkort som visar
+// "09:10" dagar i förväg blir en tid scouterna planerar efter. Default PÅ,
+// se startTimeSettings; årgångskopian slår AV den (store.copyCompetition).
+export function startTimesPublished(comp) {
+  const s = startTimeSettings(comp);
+  return s.enabled && s.published;
 }
 
 // Effective seconds between patrol starts. In interval mode this is just

@@ -438,6 +438,11 @@ export async function copyCompetition(cid, { name, shortName, year, date }, user
   if (src.registration) {
     data.registration = { ...src.registration, enabled: false, opensAt: null, closesAt: null };
   }
+  // Starttiderna följer med som mall men PUBLICERAS inte: nästa års schema är
+  // ett utkast tills startordningen är spikad, och kopian ska inte visa
+  // fjolårets tider på nya startkort. Samma skäl som anmälan stängs ovan;
+  // förkontrollen (startklar.js) påminner om växeln.
+  if (data.startTimes) data.startTimes = { ...data.startTimes, published: false };
 
   const newCid = await createCompetition(data, user);
 

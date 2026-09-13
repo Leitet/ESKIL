@@ -51,6 +51,9 @@
 }
 .start-time-chip .start-time-sep { opacity: 0.4; }
 .start-time-chip .start-time-countdown { opacity: 0.95; }
+/* Opublicerade tider (startTimes.published = false): bara beskedet, ingen
+   tid och ingen nedräkning — dämpat så det inte ser ut som en starttid. */
+.start-time-chip.is-pending { font-weight: 600; opacity: 0.85; }
 .start-time-chip.go {
   background: var(--r-success);
   color: #fff;
