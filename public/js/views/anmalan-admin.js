@@ -15,6 +15,7 @@ import {
 } from '../utils.js';
 import { icon } from '../icons.js';
 import { compHeader, compLabel, setDocTitle } from '../nav.js';
+import { openEfteranmalanModal } from './efteranmalan.js';
 
 // Ready-made PM templates — {comp} is replaced with the competition label,
 // [HAKPARENTESER] are gaps the admin fills in before sending.
@@ -80,6 +81,7 @@ export async function renderAnmalanAdmin(app, user, cid) {
       active: 'anmalan', title: 'Anmälan',
       subtitle: `${stateLabel} · ${settings.mode === 'kar' ? 'kårvis anmälan' : 'patrullvis anmälan'}`,
       actions: `
+        ${isAdmin && !comp.demo && !comp.closed && settings.enabled ? `<button class="btn btn-secondary btn-sm" id="ny-efteranmalan" title="Anmäl en kår som inte anmält sig — även efter att anmälan stängt">${icon('plus', { size: 14 })} Ny efteranmälan</button>` : ''}
         ${isAdmin && !comp.demo ? `<button class="btn btn-primary btn-sm" id="send-pm">${icon('send', { size: 14 })} Skicka PM</button>` : ''}
         <button class="btn btn-secondary btn-sm" id="copy-link">${icon('copy', { size: 14 })} Anmälningslänk</button>`
     })}
@@ -94,6 +96,10 @@ export async function renderAnmalanAdmin(app, user, cid) {
 
   let regs = [];
   wrap.querySelector('#send-pm')?.addEventListener('click', () => openPmModal());
+  // Efteranmälan av ledningen — se views/efteranmalan.js. Importen till
+  // patrullistan är samma funktion som kortets knapp, avgränsad till de nya.
+  wrap.querySelector('#ny-efteranmalan')?.addEventListener('click', () =>
+    openEfteranmalanModal({ cid, comp, user, reg: null, importera: importPatrolsFromReg, onSaved: load }));
 
   // --- "Skicka PM" — massutskick till alla aktiva anmälningar -------------------
   async function openPmModal() {
@@ -299,6 +305,10 @@ export async function renderAnmalanAdmin(app, user, cid) {
           </div>
           <div class="btn-row">
             <a class="btn btn-ghost btn-sm" href="/a/${cid}/${escapeHtml(r.id)}" target="_blank" rel="noopener">${icon('external', { size: 14 })} Öppna</a>
+            ${isAdmin && !comp.demo && !comp.closed && !r.cancelled && settings.mode === 'kar' ? `
+              <button class="btn btn-secondary btn-sm" data-efteranmal="${escapeHtml(r.id)}" title="Lägg till en patrull i kårens anmälan — mellanskillnaden blir en ny betalning med egen referens">
+                ${icon('plus', { size: 14 })} Efteranmäl patrull
+              </button>` : ''}
             ${isAdmin && !comp.demo && !r.cancelled && !fullyPaid && total > 0 && (r.contact?.email || '').trim() ? `
               <button class="btn btn-secondary btn-sm" data-remind="${escapeHtml(r.id)}" title="${r.reminderSentAt ? 'Senast påmind ' + escapeHtml(formatDate(r.reminderSentAt)) : 'Mailar en betalningspåminnelse med referens och belopp'}">
                 ${icon('mail', { size: 14 })} Påminn om betalning${r.reminderSentAt ? ` <span class="muted">(${escapeHtml(formatDate(r.reminderSentAt))})</span>` : ''}
@@ -347,6 +357,19 @@ export async function renderAnmalanAdmin(app, user, cid) {
           </div>
         </div>
 
+        ${(r.efteranmalningar || []).length ? `
+          <div class="mt-3" style="padding:var(--sp-3) var(--sp-4);background:var(--bg2);border-left:3px solid var(--scout-blue);border-radius:var(--r-sm);">
+            <div class="t-over" style="color:var(--scout-blue);margin-bottom:4px;">Efteranmält av ledningen</div>
+            ${r.efteranmalningar.map(e => `
+              <div class="t-sm" style="margin-bottom:4px;">
+                <strong>${escapeHtml((e.patrols || []).join(', '))}</strong>
+                <span class="muted">· ${escapeHtml((e.at || '').slice(0, 10))}</span>
+                ${e.reference ? ` · <span class="mono">${escapeHtml(e.reference)}</span> ${Number(e.amount) || 0} kr` : ' · ingen ny betalning'}
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+
         ${(r.andringar || []).length ? `
           <div class="mt-3" style="padding:var(--sp-3) var(--sp-4);background:var(--bg2);border-left:3px solid var(--avent-orange);border-radius:var(--r-sm);">
             <div class="t-over" style="color:var(--avent-orange);margin-bottom:4px;">Begärda ändringar</div>
@@ -381,12 +404,15 @@ export async function renderAnmalanAdmin(app, user, cid) {
 
   // Create patrol docs for a registration's patrols that aren't already in
   // the patrol list (matched on name+kår, numbered after the highest existing).
+  // `only` limits the import to those patrol names — efteranmälan adds just
+  // the new ones, never a kår's earlier, still-unpaid patrols as a side effect.
   // Returns how many were added.
-  async function importPatrolsFromReg(r) {
+  async function importPatrolsFromReg(r, only = null) {
     const existingKeys = new Set(patrols.map(p => `${(p.name || '').toLowerCase()}|${(p.kar || '').toLowerCase()}`));
     let nextNumber = patrols.reduce((m, p) => Math.max(m, Number(p.number) || 0), 0) + 1;
     let added = 0;
     for (const p of (r.patrols || [])) {
+      if (only && !only.includes(p.name)) continue;
       const key = `${(p.name || '').toLowerCase()}|${(r.kar || '').toLowerCase()}`;
       if (existingKeys.has(key)) continue;
       await createPatrol(cid, {
@@ -550,6 +576,12 @@ export async function renderAnmalanAdmin(app, user, cid) {
         await load();
       } catch (e) { toast('Fel: ' + e.message, 'error'); }
     })));
+
+    content.querySelectorAll('[data-efteranmal]').forEach(b => b.addEventListener('click', () => {
+      const r = regs.find(x => x.id === b.dataset.efteranmal);
+      if (!r) return;
+      openEfteranmalanModal({ cid, comp, user, reg: r, importera: importPatrolsFromReg, onSaved: load });
+    }));
 
     content.querySelectorAll('[data-import]').forEach(b => b.addEventListener('click', () => withBusy(b, 'Importerar…', async () => {
       const r = regs.find(x => x.id === b.dataset.import);

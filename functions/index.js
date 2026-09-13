@@ -11,6 +11,7 @@
 //  - registration created            → confirmation mail to the contact
 //  - payment flips to paid           → receipt mail (PDF attached) to the contact
 //  - förhinder appended              → notice to tävlingsledningen
+//  - efteranmälan appended (admin)   → added patrols + new payment reference to the contact
 //  - registration cancelled          → notice to tävlingsledningen
 //  - kontrollansvarig added          → welcome mail with control + report links
 //  - utskick created                 → PM fan-out to every active registration
@@ -1001,6 +1002,46 @@ exports.onRegistrationUpdated = onDocumentUpdated('competitions/{cid}/registrati
         }
       }));
     }
+  }
+
+  // 4) Efteranmälan av ledningen → mail till anmälningsansvarig. Kåren står
+  // inte vid skärmen när ledningen lägger till en patrull, så det här mailet
+  // är den enda vägen den nya betalningsreferensen når den som ska betala.
+  // Append-mönstret är detsamma som förhinder: bara poster efter before-
+  // längden mailas, så en omskrivning av listan mailar aldrig om. Posten bär
+  // patrullnamn, belopp och referens själv — den ska gå att läsa utan att
+  // diffa patrols[]. Anonyma klienter kan inte skriva fältet (hasOnly i
+  // reglerna), så det är ingen mailkran.
+  const beforeEfter = (before.efteranmalningar || []).length;
+  const nyaEfter = (after.efteranmalningar || []).slice(beforeEfter);
+  if (nyaEfter.length && !after.cancelled && after.contact && after.contact.email) {
+    const replyTo = managementEmails(comp)[0] || undefined;
+    const url = manageUrl(cid, regId);
+    const namn = nyaEfter.flatMap(e => Array.isArray(e.patrols) ? e.patrols : []);
+    const tillagda = (after.patrols || []).filter(p => namn.includes(p.name));
+    const lista = tillagda.length ? tillagda : namn.map(n => ({ name: n }));
+    const betalningar = nyaEfter.filter(e => (Number(e.amount) || 0) > 0 && e.reference);
+    const body = `
+      <p>Hej ${esc(after.contact.name || '')}!</p>
+      <p>Tävlingsledningen har lagt till <strong>${lista.length} patrull${lista.length === 1 ? '' : 'er'}</strong>
+      i er anmälan för <strong>${esc(after.kar || '')}</strong> till <strong>${esc(compLabel(comp))}</strong>:</p>
+      ${patrolListHtml({ patrols: lista })}
+      ${betalningar.length ? `
+        <p><strong>Betalning:</strong> ${betalningar.map(e => `${Number(e.amount) || 0} kr med referens <strong style="font-family:monospace;">${esc(e.reference)}</strong>`).join(' samt ')}.
+        Betalningsinstruktioner finns på er anmälningssida. Ett kvitto mailas när tävlingsledningen
+        har prickat av betalningen.</p>
+      ` : `<p>Ingen ytterligare avgift tillkommer.</p>`}
+      ${button(url, 'Visa er anmälan')}
+    `;
+    jobs.push(queueMail({
+      to: [after.contact.email],
+      ...(replyTo ? { replyTo } : {}),
+      message: {
+        subject: `Efteranmälan — ${compLabel(comp)}`,
+        html: layout(comp, body, replyTo ? 'Svar på mailet går till tävlingsledningen.' : undefined),
+        text: `Tävlingsledningen har lagt till ${namn.join(', ')} i er anmälan till ${compLabel(comp)}. ${betalningar.map(e => `${Number(e.amount) || 0} kr med referens ${e.reference}`).join(', ')}${betalningar.length ? '. ' : ''}Se er anmälan: ${url}`
+      }
+    }));
   }
 
   await Promise.all(jobs);

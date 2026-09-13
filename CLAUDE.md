@@ -813,6 +813,29 @@ BÅDA ställena.
   över ledningens hanterad-markering eller en ändring från en annan flik.
   Reglerna kan inte tvinga append-only på en array — courtesyn är
   klientsidig och det är ett medvetet val, inte en glömska.
+  **Efteranmälan är ledningens väg in efter stängning** (`views/efteranmalan.js`;
+  "Efteranmäl patrull" på kårens anmälan, "Ny efteranmälan" för en kår som inte
+  anmält sig). Den går via `isCompAdmin`: perioden vaktas bara i UI:t och
+  `enabled: false` bara för anonyma, så ingen rules-ändring behövdes och
+  kårens egen länk låses upp för ingen. Mellanskillnaden räknas av
+  `planEfteranmalan()` i utils.js mot SUMMAN AV BETALNINGSPOSTERNA, aldrig mot
+  `totalAmount` — en kår som minskat sin anmälan har ett lägre totalAmount än
+  posterna ("mellanskillnaden regleras av tävlingsledningen"), och räknat mot
+  det hade den nya patrullen kostat två gånger. Det är samma beräkning som
+  kårens egen utökning i anmalan.js, och `paymentEntry()` ger BÅDA vägarna
+  samma postform — kvitto-PDF, påminnelsemail och avprickning läser den.
+  Beloppet är redigerbart i modalen (efteranmälningsavgift, efterskänkning);
+  0 kr ger ingen post. `efteranmalningar[]` är append-spåret som
+  `onRegistrationUpdated` mailar kontakten ifrån (patrullnamn, ny referens,
+  ändringslänk — kåren står inte vid skärmen, så mailet är enda vägen
+  referensen når den som ska betala). Fältet står INTE i länkinnehavarens
+  hasOnly-lista; annars vore det en mailkran. Regressionstestat. Ledningens
+  adress skrivs aldrig på anmälan (länken kan läsa dokumentet) — vem som
+  efteranmälde står i sekretariatets logg (`vad: 'efteranmalan'`). Importen
+  till patrullistan är kortets `importPatrolsFromReg` avgränsad med `only`
+  till de nya namnen: en kårs äldre, obetalda patruller ska inte följa med som
+  bieffekt. Ny anmälan skapad av admin får sitt vanliga bekräftelsemail från
+  `onRegistrationCreated` — därför ingen egen mailgren för det fallet.
   **`paidRefs` är FACIT, `paymentClaims` är PÅSTÅENDE.** Anmälaren (den som har
   länken) får skriva `paymentClaims` — "vi har betalat" — men aldrig `paidRefs`.
   Uppdelningen ÄR skyddet: `paidRefs` står medvetet inte i anmälarens

@@ -860,6 +860,44 @@ describe('Anmälans betalning: påstående kontra facit', () => {
       null, { merge: true }), '31 förfrågningar');
   });
 
+  test('efteranmälan är ledningens fält — länken får aldrig skriva det', async () => {
+    // `efteranmalningar` triggar ett mail till kontakten (Cloud Function).
+    // Kunde länkinnehavaren skriva det vore fältet en mailkran, och en post
+    // med påhittat belopp hade sett ut som ledningens beslut.
+    const post = { at: new Date().toISOString(), patrols: ['Ugglorna'], amount: 300, reference: 'AT26-2' };
+    deny(await write(`competitions/${REG_CID}/registrations/${RID}`,
+      { ...bas, efteranmalningar: [post] }, null, { merge: true }), 'anonym efteranmäler');
+    deny(await write(`competitions/${REG_CID}/registrations/${uniq('reg')}`,
+      { ...bas, patrols: [{ name: 'Ugglorna' }], efteranmalningar: [post], createdAt: new Date().toISOString() }, null),
+      'anonym skapar en anmälan med efteranmälan');
+    allow(await write(`competitions/${REG_CID}/registrations/${RID}`,
+      { patrols: [{ name: 'Rävarna' }, { name: 'Ugglorna' }], totalAmount: 600,
+        payments: [{ reference: 'AT26-1', amount: 300 }, { reference: 'AT26-2', amount: 300 }],
+        efteranmalningar: [post] }, USER, { merge: true }), 'admin efteranmäler');
+  });
+
+  test('admin får skapa en anmälan när anmälan är avstängd — det ÄR efteranmälan', async () => {
+    // Perioden vaktas bara i UI:t, men `enabled: false` vaktas i reglerna.
+    // Ledningens väg går via isCompAdmin och ska fungera oavsett.
+    const AVSTANGD = uniq('comp');
+    await seed(`competitions/${AVSTANGD}`, {
+      name: 'Avstängd anmälan', shortName: 'AA', year: 2026, demo: false, closed: false,
+      registration: { enabled: false }
+    });
+    await seed(`competitions/${AVSTANGD}/private/access`, {
+      adminEmails: [USER.email], userEmails: [], ekonomiEmails: []
+    });
+    const data = {
+      kar: 'Lindsdals Scoutkår', contact: { name: 'Kim', email: 'kim@example.com' },
+      patrols: [{ name: 'Ugglorna' }], payments: [],
+      efteranmalningar: [{ at: new Date().toISOString(), patrols: ['Ugglorna'], amount: 0, reference: null }],
+      createdAt: new Date().toISOString()
+    };
+    allow(await write(`competitions/${AVSTANGD}/registrations/${uniq('reg')}`, data, USER), 'admin skapar efteranmälan');
+    deny(await write(`competitions/${AVSTANGD}/registrations/${uniq('reg')}`, data, OTHER), 'utomstående skapar');
+    deny(await write(`competitions/${AVSTANGD}/registrations/${uniq('reg')}`, data, null), 'anonym skapar på avstängd anmälan');
+  });
+
   test('formen på påståendet vaktas', async () => {
     deny(await write(`competitions/${REG_CID}/registrations/${RID}`,
       { ...bas, paymentClaims: 'inte-en-lista' }, null, { merge: true }), 'sträng i stället för lista');

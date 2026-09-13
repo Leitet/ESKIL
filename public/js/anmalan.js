@@ -17,7 +17,8 @@ import {
 import {
   allowedAvdelningar, escapeHtml, formatDate, toast, withBusy, confirmDialog, wireOverlayClose,
   registrationSettings, registrationState, computeRegistrationPrice,
-  makePaymentReference, swishQrString, swishAppUrl, registrationUrl, copyToClipboard, isPaymentPaid,
+  makePaymentReference, paymentEntry, paymentsSum,
+  swishQrString, swishAppUrl, registrationUrl, copyToClipboard, isPaymentPaid,
   isPaymentClaimed, paymentClaimAt,
   publicManagement
 } from './utils.js';
@@ -99,10 +100,6 @@ function regFields(scope) {
 
 function price() {
   return computeRegistrationPrice(settings.pricing, draft ? draft.patrols : []);
-}
-
-function paymentsSum(r) {
-  return (r?.payments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0);
 }
 
 // --- Boot -------------------------------------------------------------------
@@ -748,16 +745,8 @@ function wirePay() {
 }
 
 // --- Persistence ------------------------------------------------------------
-function paymentEntry(pay) {
-  return {
-    id: crypto.randomUUID(),
-    amount: pay.amount,
-    reference: pay.reference,
-    createdAt: isoNow(),
-    paid: false,
-    paidAt: null
-  };
-}
+// paymentEntry och paymentsSum bor i utils.js — ledningens efteranmälan
+// skriver samma poster och räknar samma mellanskillnad.
 
 function cleanAnswers(answers) {
   const out = {};

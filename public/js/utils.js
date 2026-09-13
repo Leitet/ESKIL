@@ -955,6 +955,42 @@ export function makePaymentReference(comp) {
   return `${refPrefix(comp)}-${code}`;
 }
 
+// En betalningspost i registrations/{id}.payments[]. SAMMA form vare sig kåren
+// själv utökar anmälan (anmalan.js) eller ledningen efteranmäler
+// (views/efteranmalan.js): kvitto-PDF:en, påminnelsemailet och avprickningen
+// läser alla posterna, och två former hade gett två uppsättningar buggar.
+// `paid`/`paidAt` är arv — facit är paidRefs (isPaymentPaid) — men äldre
+// poster bär fälten, så nya gör det också.
+export function paymentEntry({ amount, reference }) {
+  return {
+    id: crypto.randomUUID(),
+    amount: Number(amount) || 0,
+    reference,
+    createdAt: new Date().toISOString(),
+    paid: false,
+    paidAt: null
+  };
+}
+
+// Summan av det som REDAN ligger som betalningsposter på en anmälan.
+export function paymentsSum(reg) {
+  return (reg?.payments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0);
+}
+
+// Ledningens efteranmälan: nya patruller läggs till en befintlig anmälan
+// (eller en ny, reg = null) och mellanskillnaden räknas mot summan av
+// betalningsposterna — INTE mot totalAmount. De två skiljer sig så fort en
+// kår minskat sin anmälan: totalAmount sjunker men posterna ligger kvar
+// ("mellanskillnaden regleras av tävlingsledningen"), och räknade vi mot
+// totalAmount hade kåren fått betala samma patrull två gånger. Samma
+// beräkning som kårens egen utökning i anmalan.js gör.
+export function planEfteranmalan(pricing, reg, nyaPatruller) {
+  const patrols = [...(reg?.patrols || []), ...nyaPatruller];
+  const totalAmount = computeRegistrationPrice(pricing, patrols).total;
+  const diff = Math.max(0, totalAmount - paymentsSum(reg));
+  return { patrols, totalAmount, diff };
+}
+
 // --- Competition slug (kortadress) ------------------------------------------
 // Fixed human identifier set at creation: /t/<slug> and /a/<slug> resolve to
 // the competition, and payment references use it as prefix. Lowercase a-z0-9

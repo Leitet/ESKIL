@@ -15,6 +15,7 @@ import {
   effectiveIntervalSec, swishAppUrl, swishQrString, patrolLabel, linkifyText, isNumSet, mergeBeacons,
   NOTE_CHIPS, harNotering, laggTillNotering, taBortNotering, kapaNotering,
   publicNotices, anslagSynlig, isPaymentPaid, isPaymentClaimed, paymentClaimAt,
+  planEfteranmalan, paymentEntry, paymentsSum,
   sparlagesBeslut, SPAR_PA_UNDER, SPAR_AV_VID,
   parseFieldPath,
   splitManagement,
@@ -1332,6 +1333,65 @@ describe('betalningspåstående', () => {
     assert.equal(isPaymentClaimed({ paymentClaims: [null] }, p), false);
     assert.equal(isPaymentClaimed({ paymentClaims: [{ reference: 'AH26-1' }] }, null), false);
     assert.equal(paymentClaimAt({}, p), null);
+  });
+});
+
+// --- Efteranmälan ---------------------------------------------------------------
+// Ledningen lägger till patruller efter stängd anmälan (views/efteranmalan.js).
+// Mellanskillnaden är det som avgör vad kåren får betala en gång till.
+describe('efteranmälan', () => {
+  const perPatrull = { model: 'patrull', perPatrol: 300, perScout: 0, flat: 0, base: 0, unit: 'patrull', perUnit: 0 };
+  const ny = [{ name: 'Ugglorna', avdelning: 'Spårare', antal: 5, answers: {} }];
+
+  test('mellanskillnaden räknas mot betalningsposterna, INTE mot totalAmount', () => {
+    // Kåren anmälde tre patruller (900 kr, betalt) och minskade sedan till
+    // två: totalAmount 600 men posterna ligger kvar på 900. Efteranmäls en
+    // tredje är den redan betald — räknat mot totalAmount hade den kostat
+    // 300 kr en gång till.
+    const reg = {
+      patrols: [{ name: 'Rävarna', antal: 5 }, { name: 'Vargarna', antal: 5 }],
+      totalAmount: 600, payments: [{ reference: 'AH26-1', amount: 900 }]
+    };
+    const plan = planEfteranmalan(perPatrull, reg, ny);
+    assert.equal(plan.totalAmount, 900);
+    assert.equal(plan.diff, 0);
+    assert.equal(plan.patrols.length, 3);
+    assert.equal(plan.patrols[2].name, 'Ugglorna');
+  });
+
+  test('en vanlig utökning kostar precis den nya patrullen', () => {
+    const reg = { patrols: [{ name: 'Rävarna', antal: 5 }], totalAmount: 300, payments: [{ reference: 'AH26-1', amount: 300 }] };
+    assert.equal(planEfteranmalan(perPatrull, reg, ny).diff, 300);
+  });
+
+  test('fast avgift per kår ger ingen ny betalning', () => {
+    const flat = { ...perPatrull, model: 'kar', flat: 500 };
+    const reg = { patrols: [{ name: 'Rävarna', antal: 5 }], payments: [{ reference: 'AH26-1', amount: 500 }] };
+    assert.equal(planEfteranmalan(flat, reg, ny).diff, 0);
+  });
+
+  test('ny anmälan (reg = null) kostar hela beloppet', () => {
+    const plan = planEfteranmalan(perPatrull, null, [...ny, { name: 'Rävarna', antal: 6 }]);
+    assert.equal(plan.totalAmount, 600);
+    assert.equal(plan.diff, 600);
+    assert.equal(paymentsSum(null), 0);
+  });
+
+  test('mellanskillnaden blir aldrig negativ', () => {
+    const reg = { patrols: [], payments: [{ reference: 'AH26-1', amount: 5000 }] };
+    assert.equal(planEfteranmalan(perPatrull, reg, ny).diff, 0);
+  });
+
+  test('betalningsposten har samma form som anmälningssidans', () => {
+    // Kvitto-PDF, påminnelsemail och avprickning läser alla posten. Ändras
+    // formen måste anmalan.js och functions/index.js följa med.
+    const p = paymentEntry({ amount: '300', reference: 'AH26-K7PM' });
+    assert.deepEqual(Object.keys(p).sort(), ['amount', 'createdAt', 'id', 'paid', 'paidAt', 'reference']);
+    assert.equal(p.amount, 300);
+    assert.equal(p.reference, 'AH26-K7PM');
+    assert.equal(p.paid, false);
+    assert.equal(p.paidAt, null);
+    assert.match(p.id, /^[0-9a-f-]{36}$/);
   });
 });
 

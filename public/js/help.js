@@ -373,7 +373,8 @@ export const HELP = {
       'Båda datumen räknas inklusive: sista anmälningsdag betyder att anmälningar går igenom hela den dagen.'
     ],
     faq: [
-      { q: 'Kan kårer ändra sin anmälan efter stängning?', a: 'Nej, då låses ändringslänken för redigering. Kåren kan fortfarande se sin anmälan och anmäla förhinder, och du kan alltid justera manuellt.' }
+      { q: 'Kan kårer ändra sin anmälan efter stängning?', a: 'Nej, då låses ändringslänken för redigering. Kåren kan fortfarande se sin anmälan, anmäla förhinder och skicka en ändringsförfrågan som hamnar på Anmälan-fliken.' },
+      { q: 'Kan vi ta emot en patrull i efterhand?', a: 'Ja — under Anmälan finns "Efteranmäl patrull" på varje kårs anmälan och "Ny efteranmälan" för en kår som inte anmält sig. Mellanskillnaden enligt prismodellen blir en ny betalning med egen referens (beloppet går att ändra, t.ex. för efteranmälningsavgift), kåren får ett mail med referensen, och patrullen kan läggas i patrullistan direkt.' }
     ]
   },
 
