@@ -318,6 +318,19 @@ describe('anonyma sidor håller IndexedDB borta från startvägen', () => {
     assert.match(fb, /:\s*indexedDBLocalPersistence/);
   });
 
+  test('och samma predikat ger dem en EGEN Firebase-app', () => {
+    // Firestores cache och fliksynkronisering nycklas på appens namn. Delar
+    // fältsidorna namn med admin-appen bildar de en pool där den primära
+    // fliken kör de andras frågor med SINA inloggningsuppgifter — var en
+    // anonym sida första fliken nekades admin-flikens medlemsläsningar
+    // ("Missing or insufficient permissions" på Anmälan, brickan Super-admin
+    // borta). Återskapat i emulatorn med två flikar.
+    const fb = las('js/firebase.js');
+    assert.match(fb, /initializeApp\(config,\s*arAnonymFaltsida\(location\.pathname\)\s*\?\s*'falt'/,
+      'fältsidorna måste initiera en egen namngiven app');
+    assert.doesNotMatch(fb, /initializeApp\(config\)/, 'en namnlös app delar pool med admin-flikarna');
+  });
+
   test('och de fyra sidorna rör faktiskt aldrig auth', () => {
     // Premissen för hela undantaget. Slutar den gälla måste undantaget bort,
     // annars överlever ingen session en omladdning.

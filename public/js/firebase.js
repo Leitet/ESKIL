@@ -120,7 +120,21 @@ async function loadConfig() {
 fas('config-start');
 const config = await loadConfig();
 fas('config-klar');
-const app = initializeApp(config);
+// De anonyma fältsidorna får en EGEN Firebase-app med eget namn, och det är
+// ingen kosmetik. Firestores lokala cache och fliksynkronisering nycklas på
+// appens namn (persistenceKey): alla flikar med samma namn på samma domän
+// bildar en pool där EN flik, den primära, äger serverkontakten och kör de
+// andra flikarnas frågor med SINA inloggningsuppgifter. Var /a, /k, /s eller
+// /m den första fliken i webbläsaren blev den primär, och admin-flikens
+// medlemsläsningar gick då ut utan inloggning: användardokumentet nekades
+// (brickan Super-admin försvann, rollen föll till "user") och Anmälan-fliken
+// svarade "Missing or insufficient permissions" medan alla publika flikar
+// fungerade. Omvänt hade en anonym fliks skrivningar kunnat bli liggande i
+// kön, eftersom den primära bara synkar sin egen användares mutationer.
+// Återskapat i emulatorn med två flikar; regressionstestat i test/boot.test.js.
+// Priset är att fältsidornas cache byter databasnamn en gång: första
+// laddningen efter bytet behöver nät, precis som en ny enhet.
+const app = initializeApp(config, arAnonymFaltsida(location.pathname) ? 'falt' : undefined);
 
 // Initialise App Check before any Firestore/Functions calls so requests carry
 // an attestation token. Guarded on appId (App Check needs a registered web

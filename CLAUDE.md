@@ -337,6 +337,21 @@ Email extension). Production domain: https://eskilscout.se.
   admin-genvägen — och SPA:n behöver långlivade sessioner. Mönstret kräver ett
   avslutande snedstreck: `/app/...` börjar på "a", och utan det slås
   inloggningen ut i hela admingränssnittet. Mutationsverifierat.
+  **Samma predikat ger fältsidorna en EGEN Firebase-app (`initializeApp(config,
+  'falt')`), och det är den fjärde hängningens kusin: en rättighetskrasch.**
+  Firestores lokala cache och fliksynkronisering nycklas på appens namn, så
+  alla flikar med samma namn på samma domän bildar en pool där EN flik (den
+  primära) äger serverkontakten och kör de andras frågor med SINA
+  inloggningsuppgifter. Var en anonym sida (/a via "Öppna"-knappen, ett
+  startkort, en kontrollsida) första fliken i webbläsaren blev den primär,
+  och admin-flikens medlemsläsningar gick ut utan inloggning: `ensureUser`
+  nekades (brickan Super-admin försvann, rollen föll till "user") och
+  Anmälan-fliken svarade "Missing or insufficient permissions" medan alla
+  publika flikar fungerade — så det såg ut som ett fel i just den vyn.
+  Återskapat i emulatorn med två flikar. Med eget namn får fältsidorna en egen
+  pool (och en egen IndexedDB-databas), så inloggade och anonyma flikar delar
+  aldrig primär. Byt ALDRIG tillbaka till en delad app för att "spara en
+  reCAPTCHA-hämtning". Regressionstestat i `test/boot.test.js`.
 - **Night mode** on the reporter page is a red palette. Don't swap it for a
   gray dark mode — preserving night vision is the requirement.
 - **Banans delar heter STRÄCKA i all svensk text** — aldrig "ben". Ordet är en
