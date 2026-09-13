@@ -131,11 +131,14 @@ att köra gratis på Spark-planen.
   konfigurerat); klick i kartan lägger punkter på den aktiva sträckan, punkterna
   dras för att justera och tas bort med dubbelklick. Panelen visar längd och
   gångtid per sträcka samt total spårlängd och beräknad vandringstid med valbart
-  promenadtempo (3/4/5 km/h), exklusive och inklusive kontrolltid
-  (5 min/kontroll). Ben utan ritade punkter räknas som fågelväg (streckad).
+  promenadtempo (3/4/5 km/h), exklusive och inklusive stationstid per
+  kontroll. Sträckor utan ritade punkter räknas som fågelväg (streckad).
   Finns ett ritat spår används det alltid på alla kartor: offentliga sidan,
   startkortets översiktskarta (med chip "Spår X km · ca Y min gång") och
   Läget-kartan (dämpad bakgrundslinje). Delade hjälpare i `js/course.js`.
+  Stationstiden per kontroll (`etaDwellMinutes`, standard 15 min) ställs in
+  här bredvid promenadtempot och sparas direkt — det är samma värde som
+  ETA-motorn använder på startkort, kontrollsidor och i Läget.
 - **Start och mål** sätts i kontrollistan, tillsammans med resten av banan —
   de är banans ändpunkter (ETA:n räknar sträckor från dem, spåret hänger på dem).
   Normalt samma plats; "Målet ligger någon annanstans" ger ett eget mål med

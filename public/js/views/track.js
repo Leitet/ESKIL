@@ -5,20 +5,20 @@
 // waypoints drawn per leg, keyed "<fromKey>__<toKey>". A leg with no
 // waypoints renders as a dashed straight line and is measured as such.
 // Distances are haversine sums; walking time uses a selectable pace and the
-// totals show hiking time both with and without 5 min per control.
+// totals show hiking time with and without the competition's stationstid per
+// control (comp.etaDwellMinutes — the SAME value the ETA engine uses).
 
 import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
-import { getCompetition, listControls, getTrack, saveTrack } from '../store.js';
+import { getCompetition, listControls, getTrack, saveTrack, updateCompetition } from '../store.js';
 import { escapeHtml, toast, isCompAdminUser } from '../utils.js';
 import {
   courseLegs, legPath, legLatLngs, legDistance, fmtDist, fmtMin,
-  nearestSegmentIndex, waypointInsertIndex, DEFAULT_SPEED_KMH
+  nearestSegmentIndex, waypointInsertIndex, DEFAULT_SPEED_KMH, DEFAULT_DWELL_MIN
 } from '../course.js';
 import { ensureLeaflet } from '../leaflet.js';
 import { icon } from '../icons.js';
 import { compHeader, compLabel, setDocTitle } from '../nav.js';
 
-const CONTROL_MINUTES = 5;     // scheduled stop per control (fixed by design)
 const SPEEDS = [3, 4, 5];      // selectable walking pace, km/h
 const DEFAULT_SPEED = DEFAULT_SPEED_KMH;
 
@@ -52,6 +52,12 @@ export async function renderTrack(app, user, cid) {
   const { nodes, legs } = courseLegs(comp, controls, stored);
 
   let speedKmh = SPEEDS.includes(stored && stored.speedKmh) ? stored.speedKmh : DEFAULT_SPEED;
+  // Stationstiden per kontroll är TÄVLINGENS värde (comp.etaDwellMinutes) —
+  // samma som ETA-motorn räknar med på startkort, kontrollsidor och i Läget.
+  // Fliken hade förut en egen konstant på 5 min medan motorn antog 15, så
+  // summeringen här sa en sak och startkortet en annan. Sparas direkt på
+  // tävlingsdokumentet, inte med "Spara spår": spåret är ett eget dokument.
+  let dwellMin = Number(comp.etaDwellMinutes) || DEFAULT_DWELL_MIN;
   // -1 = ingen sträcka vald. Det är UTGÅNGSLÄGET: kartan är då inert (inga
   // punkthandtag, ingen orange markering, klick gör ingenting) så spåret går
   // att titta på och skärmdumpa i lugn och ro. Först när en sträcka är vald
@@ -260,7 +266,7 @@ export async function renderTrack(app, user, cid) {
     const dists = legs.map(legDist);
     const total = dists.reduce((s, d) => s + d, 0);
     const walk = walkMin(total);
-    const ctrlMin = nCtrls * CONTROL_MINUTES + placeMin;
+    const ctrlMin = nCtrls * dwellMin + placeMin;
 
     panel.innerHTML = `
       <div class="row" style="justify-content:space-between;align-items:center;">
@@ -271,7 +277,7 @@ export async function renderTrack(app, user, cid) {
       <div class="track-totals">
         <div><span class="muted">Spårlängd</span><strong>${fmtDist(total)}</strong></div>
         <div><span class="muted">Gångtid</span><strong>${fmtMin(walk)}</strong></div>
-        <div><span class="muted">Stopptid</span><strong>${fmtMin(ctrlMin)}</strong><span class="muted t-sm">${nCtrls} × ${CONTROL_MINUTES} min${placeMin ? ` + ${nPlaces} plats${nPlaces === 1 ? '' : 'er'}` : ''}</span></div>
+        <div><span class="muted">Stopptid</span><strong>${fmtMin(ctrlMin)}</strong><span class="muted t-sm">${nCtrls} × ${dwellMin} min${placeMin ? ` + ${nPlaces} plats${nPlaces === 1 ? '' : 'er'}` : ''}</span></div>
         <div class="track-grand"><span class="muted">Totalt inkl. stopp</span><strong>${fmtMin(walk + ctrlMin)}</strong></div>
       </div>
 
@@ -280,6 +286,11 @@ export async function renderTrack(app, user, cid) {
           ${SPEEDS.map(s => `<option value="${s}" ${s === speedKmh ? 'selected' : ''}>${s} km/h</option>`).join('')}
         </select>
       </label>
+      <label class="t-sm muted" style="display:flex;align-items:center;gap:8px;margin:4px 0 2px;">Stationstid per kontroll
+        <input class="input" type="number" id="track-dwell" min="0" max="240" step="1" value="${dwellMin}" style="width:5em;padding:4px 8px;" ${canEdit ? '' : 'disabled'}>
+        <span>min</span>
+      </label>
+      <div class="muted t-sm" style="margin:0 0 8px;">Styr alla tidsberäkningar: startkortens "ca X h inkl. kontroller", kontrollernas väntade ankomster och Läget. Sparas direkt.${canEdit ? '' : ' Bara administratörer kan ändra.'}</div>
 
       <div class="track-legs">
         ${legs.map((leg, i) => `
@@ -316,6 +327,26 @@ export async function renderTrack(app, user, cid) {
       speedKmh = Number(e.target.value) || DEFAULT_SPEED;
       markDirty();
       updatePanel();
+    });
+    // Samma gräns som MCP:ns kontrollera() (0–240): ett oändligt eller
+    // negativt tal hade gjort varje ETA oändlig.
+    panel.querySelector('#track-dwell')?.addEventListener('change', async (e) => {
+      const v = Math.round(Number(e.target.value));
+      if (!Number.isFinite(v) || v < 0 || v > 240) {
+        toast('Ange en stationstid mellan 0 och 240 minuter.', 'error');
+        e.target.value = dwellMin;
+        return;
+      }
+      try {
+        await updateCompetition(cid, { etaDwellMinutes: v });
+        dwellMin = v;
+        comp.etaDwellMinutes = v;
+        updatePanel();
+        toast(`Stationstid ${v} min per kontroll sparad`, 'success');
+      } catch (err) {
+        toast('Kunde inte spara: ' + err.message, 'error');
+        e.target.value = dwellMin;
+      }
     });
     panel.querySelector('#track-undo')?.addEventListener('click', () => {
       if (!active) return;

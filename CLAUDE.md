@@ -929,7 +929,12 @@ BÅDA ställena.
 - Comp-doc extras added over time: legacy `broadcast` (see above);
   `copiedFrom` (årgångskedjan — /t links to the previous year);
   `lastBackupAt` (stamped on every backup/export download);
-  `etaDwellMinutes` (ETA station time override, default 15);
+  `etaDwellMinutes` (ETA station time override, default 15 —
+  `DEFAULT_DWELL_MIN` i course.js; redigeras på Spår-fliken bredvid
+  promenadtempot och sparas DIREKT på tävlingsdokumentet. Flikens summering
+  räknar med samma värde: förut hade den en egen konstant på 5 min medan
+  motorn antog 15, så "Totalt inkl. stopp" på fliken och startkortets
+  "ca X h" sa olika saker. Ett test förbjuder en ny egen konstant);
   `startTimes.maxTimeMinutes` (maxtid countdown on the startkort);
   `startTimes.published` (**växeln för om scouter och anhöriga ser tiderna** —
   läs den ALLTID via `startTimesPublished(comp)` i utils.js: saknas = visas,

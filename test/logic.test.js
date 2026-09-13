@@ -1377,6 +1377,18 @@ describe('starttider publiceras med en växel', () => {
   });
 });
 
+// --- Stationstid: EN källa ------------------------------------------------------
+describe('stationstiden per kontroll har en enda källa', () => {
+  test('Spår-fliken räknar med etaDwellMinutes, inte en egen konstant', () => {
+    // Fliken hade en konstant på 5 min medan ETA-motorn antog 15: summeringen
+    // på fliken och startkortets "ca X h" sa olika saker om samma bana.
+    const src = readFileSync(new URL('../public/js/views/track.js', import.meta.url), 'utf8');
+    assert.doesNotMatch(src, /CONTROL_MINUTES/, 'track.js har återfått en egen stationstid');
+    assert.match(src, /etaDwellMinutes/);
+    assert.match(src, /DEFAULT_DWELL_MIN/, 'standardvärdet ska komma från course.js');
+  });
+});
+
 // --- Efteranmälan ---------------------------------------------------------------
 // Ledningen lägger till patruller efter stängd anmälan (views/efteranmalan.js).
 // Mellanskillnaden är det som avgör vad kåren får betala en gång till.
