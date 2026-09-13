@@ -1363,6 +1363,13 @@ describe('starttider publiceras med en växel', () => {
       const src = readFileSync(new URL(`../public/js/${f}.js`, import.meta.url), 'utf8');
       assert.match(src, /startTimesPublished\(comp\)/, `${f}.js visar starttider utan att fråga växeln`);
     }
+    // /t hämtar tiden på EXAKT ett ställe, hjälpfunktionen publikStarttid().
+    // Patrullkorten anropade patrolStartTime direkt och visade tiderna med
+    // växeln av — det gick i produktion.
+    const pub = readFileSync(new URL('../public/js/public.js', import.meta.url), 'utf8');
+    assert.equal((pub.match(/patrolStartTime\(/g) || []).length, 1,
+      'public.js anropar patrolStartTime utanför publikStarttid()');
+    assert.match(pub, /function publikStarttid\(p\) \{\s*return startTimesPublished\(comp\) \?/);
     for (const f of ['views/laget', 'views/startscreen', 'views/patrols', 'station']) {
       const src = readFileSync(new URL(`../public/js/${f}.js`, import.meta.url), 'utf8');
       assert.doesNotMatch(src, /startTimesPublished/, `${f}.js döljer utkastet för ledningen`);

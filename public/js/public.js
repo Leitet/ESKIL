@@ -779,6 +779,15 @@ function klockslag(at) {
   return Number.isFinite(d?.getTime?.()) ? d.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' }) : '';
 }
 
+// Patrullens starttid som TEXT för publika ytor — tom tills ledningen
+// publicerat schemat (startTimes.published). Det här är det ENDA stället /t
+// får hämta tiden ifrån; ett test räknar anropen. Patrullkorten på fliken
+// Patruller anropade patrolStartTime direkt och visade tiderna trots att
+// växeln var av — en ny yta ska inte kunna göra om det.
+function publikStarttid(p) {
+  return startTimesPublished(comp) ? patrolStartTime(comp, p, patrols.length) : '';
+}
+
 function renderFooter() {
   return `
     <footer class="pub-foot">
@@ -1140,7 +1149,7 @@ function renderPatrols(totals) {
           const t = totalMap[p.id];
           const done = t?.count || 0;
           const pct = Math.round((done / ctrlCount) * 100);
-          const stime = patrolStartTime(comp, p, patrols.length);
+          const stime = publikStarttid(p);
           return `<button type="button" class="pat-card" data-patrol="${escapeHtml(p.id)}">
             <div class="n">#${p.number ?? '—'} · <span class="dot ${avdSlug(p.avdelning)}"></span>${escapeHtml(p.avdelning || '')}${stime ? ` · <span class="mono" style="color:var(--scout-blue);">${escapeHtml(stime)}</span>` : ''}</div>
             <div class="name">${escapeHtml(p.name || '')}</div>
@@ -1452,7 +1461,7 @@ function openPatrolModal(patrolId) {
     return `Senast sedd vid ${controlName(senast.control)} · ${kl} (${sedan})`;
   })();
 
-  const stime = patrolStartTime(comp, patrol, patrols.length);
+  const stime = publikStarttid(patrol);
 
   const overlay = document.createElement('div');
   overlay.className = 'pub-modal-overlay';
