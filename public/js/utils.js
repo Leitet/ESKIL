@@ -1005,6 +1005,22 @@ export function planEfteranmalan(pricing, reg, nyaPatruller) {
   return { patrols, totalAmount, diff };
 }
 
+// Antal-ändringar mellan två patrullistor i en anmälan, matchade på NAMN —
+// namn och avdelning ändrar ledningen inte här (kompletteringslänkarna och
+// patrullistans matchning hänger på namnet). Listan bär mailet till kåren
+// ("Rävarna: 5 → 6 deltagare") och synken till patrullistan. Tom = inget.
+export function patrullAntalAndringar(gamla, nya) {
+  const ut = [];
+  for (const g of (gamla || [])) {
+    const n = (nya || []).find(p => p && p.name === g.name);
+    if (!n) continue;
+    const fran = Number(g.antal) || 0;
+    const till = Number(n.antal) || 0;
+    if (fran !== till) ut.push({ namn: g.name, fran, till });
+  }
+  return ut;
+}
+
 // --- Competition slug (kortadress) ------------------------------------------
 // Fixed human identifier set at creation: /t/<slug> and /a/<slug> resolve to
 // the competition, and payment references use it as prefix. Lowercase a-z0-9

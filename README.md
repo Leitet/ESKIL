@@ -61,11 +61,12 @@ att köra gratis på Spark-planen.
   anmälningssidan där kvittot laddas ner som PDF, genererat i klienten), och
   när anmälan är fullbetald importeras dess patruller automatiskt till
   patrullistan (dubbletter hoppas över). **Efteranmälan**: efter stängd
-  anmälan lägger ledningen själv till patruller ("Efteranmäl patrull" på
-  kårens anmälan, "Ny efteranmälan" för en kår som inte anmält sig) —
-  mellanskillnaden enligt prismodellen blir en ny betalning med egen referens
-  (beloppet går att ändra, t.ex. efteranmälningsavgift), kontakten mailas
-  referensen, och patrullen kan läggas i patrullistan direkt.
+  anmälan lägger ledningen själv till patruller eller ändrar antalet i
+  befintliga ("Efteranmälan" på kårens anmälan, "Ny efteranmälan" för en kår
+  som inte anmält sig) — mellanskillnaden enligt prismodellen blir en ny
+  betalning med egen referens (beloppet går att ändra, t.ex.
+  efteranmälningsavgift), kontakten mailas ändringen och referensen, och
+  patrullistan uppdateras direkt.
 - **Avdelningar per tävling** — under Inställningar → Grund väljs vilka
   avdelningar som deltar; endast valda visas i anmälan, patrullformulär och
   poängtabellens filter (`competitions/{cid}.avdelningar`, saknas = alla).

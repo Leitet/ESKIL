@@ -15,7 +15,7 @@ import {
   effectiveIntervalSec, swishAppUrl, swishQrString, patrolLabel, linkifyText, isNumSet, mergeBeacons,
   NOTE_CHIPS, harNotering, laggTillNotering, taBortNotering, kapaNotering,
   publicNotices, anslagSynlig, isPaymentPaid, isPaymentClaimed, paymentClaimAt,
-  planEfteranmalan, paymentEntry, paymentsSum, startTimesPublished,
+  planEfteranmalan, paymentEntry, paymentsSum, patrullAntalAndringar, startTimesPublished,
   sparlagesBeslut, SPAR_PA_UNDER, SPAR_AV_VID,
   parseFieldPath,
   splitManagement,
@@ -1433,6 +1433,25 @@ describe('efteranmälan', () => {
   test('mellanskillnaden blir aldrig negativ', () => {
     const reg = { patrols: [], payments: [{ reference: 'AH26-1', amount: 5000 }] };
     assert.equal(planEfteranmalan(perPatrull, reg, ny).diff, 0);
+  });
+
+  test('en scout till i en befintlig patrull kostar mellanskillnaden', () => {
+    // Per scout: Rävarna 5 → 6 med 100 kr/scout och 500 redan betalt → 100 kr.
+    const perScout = { ...perPatrull, model: 'scout', perScout: 100 };
+    const reg = { patrols: [{ name: 'Rävarna', antal: 5 }], payments: [{ reference: 'AH26-1', amount: 500 }] };
+    const andrad = { ...reg, patrols: [{ name: 'Rävarna', antal: 6 }] };
+    assert.equal(planEfteranmalan(perScout, andrad, []).diff, 100);
+    // Per patrull kostar den ingenting.
+    assert.equal(planEfteranmalan(perPatrull, { ...andrad, payments: [{ reference: 'AH26-1', amount: 300 }] }, []).diff, 0);
+  });
+
+  test('antal-ändringarna matchas på namn och bär före och efter', () => {
+    const gamla = [{ name: 'Rävarna', antal: 5 }, { name: 'Vargarna', antal: 4 }];
+    const nya = [{ name: 'Rävarna', antal: 6 }, { name: 'Vargarna', antal: 4 }, { name: 'Ugglorna', antal: 5 }];
+    assert.deepEqual(patrullAntalAndringar(gamla, nya), [{ namn: 'Rävarna', fran: 5, till: 6 }]);
+    assert.deepEqual(patrullAntalAndringar(gamla, gamla), []);
+    assert.deepEqual(patrullAntalAndringar(null, nya), []);
+    assert.deepEqual(patrullAntalAndringar(gamla, [null]), []);
   });
 
   test('betalningsposten har samma form som anmälningssidans', () => {

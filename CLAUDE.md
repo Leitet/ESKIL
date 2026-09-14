@@ -829,8 +829,15 @@ BÅDA ställena.
   Reglerna kan inte tvinga append-only på en array — courtesyn är
   klientsidig och det är ett medvetet val, inte en glömska.
   **Efteranmälan är ledningens väg in efter stängning** (`views/efteranmalan.js`;
-  "Efteranmäl patrull" på kårens anmälan, "Ny efteranmälan" för en kår som inte
-  anmält sig). Den går via `isCompAdmin`: perioden vaktas bara i UI:t och
+  "Efteranmälan" på kårens anmälan — nya patruller ELLER ändrat antal i
+  befintliga — och "Ny efteranmälan" för en kår som inte anmält sig).
+  Befintliga patruller får bara antal och egna fält ändrade, ALDRIG namn eller
+  avdelning: kompletteringslänkarna hänger på patrullnamnet och patrullistan
+  matchas på namn + kår, så ett namnbyte hade tyst kapat båda.
+  Antal-ändringarna (`patrullAntalAndringar()` i utils.js, matchade på namn)
+  ligger som `andrade[]` i samma post, går med i mailet och synkas till en
+  redan importerad patrull via `synkaAntal` i admin-vyn. Den går via
+  `isCompAdmin`: perioden vaktas bara i UI:t och
   `enabled: false` bara för anonyma, så ingen rules-ändring behövdes och
   kårens egen länk låses upp för ingen. Mellanskillnaden räknas av
   `planEfteranmalan()` i utils.js mot SUMMAN AV BETALNINGSPOSTERNA, aldrig mot

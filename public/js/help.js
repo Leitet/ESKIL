@@ -375,7 +375,7 @@ export const HELP = {
     ],
     faq: [
       { q: 'Kan kårer ändra sin anmälan efter stängning?', a: 'Nej, då låses ändringslänken för redigering. Kåren kan fortfarande se sin anmälan, anmäla förhinder och skicka en ändringsförfrågan som hamnar på Anmälan-fliken.' },
-      { q: 'Kan vi ta emot en patrull i efterhand?', a: 'Ja — under Anmälan finns "Efteranmäl patrull" på varje kårs anmälan och "Ny efteranmälan" för en kår som inte anmält sig. Mellanskillnaden enligt prismodellen blir en ny betalning med egen referens (beloppet går att ändra, t.ex. för efteranmälningsavgift), kåren får ett mail med referensen, och patrullen kan läggas i patrullistan direkt.' }
+      { q: 'Kan vi ta emot en patrull eller en scout till i efterhand?', a: 'Ja — under Anmälan finns "Efteranmälan" på varje kårs anmälan (ändra antalet i befintliga patruller eller lägg till nya) och "Ny efteranmälan" för en kår som inte anmält sig. Mellanskillnaden enligt prismodellen blir en ny betalning med egen referens (beloppet går att ändra, t.ex. för efteranmälningsavgift), kåren får ett mail med ändringen och referensen, och patrullistan uppdateras direkt.' }
     ]
   },
 

@@ -5,7 +5,7 @@
 import { layout, setTopbarCompetition } from '../app.js';
 import {
   getCompetition, listRegistrations, getRegistration, updateRegistration, deleteRegistration,
-  listPatrols, createPatrol, createUtskick, listUtskick
+  listPatrols, createPatrol, updatePatrol, createUtskick, listUtskick
 } from '../store.js';
 import { downloadReceiptPdf } from '../pdf.js';
 import {
@@ -99,7 +99,7 @@ export async function renderAnmalanAdmin(app, user, cid) {
   // Efteranmälan av ledningen — se views/efteranmalan.js. Importen till
   // patrullistan är samma funktion som kortets knapp, avgränsad till de nya.
   wrap.querySelector('#ny-efteranmalan')?.addEventListener('click', () =>
-    openEfteranmalanModal({ cid, comp, user, reg: null, importera: importPatrolsFromReg, onSaved: load }));
+    openEfteranmalanModal({ cid, comp, user, reg: null, importera: importPatrolsFromReg, synkaAntal, onSaved: load }));
 
   // --- "Skicka PM" — massutskick till alla aktiva anmälningar -------------------
   async function openPmModal() {
@@ -305,9 +305,9 @@ export async function renderAnmalanAdmin(app, user, cid) {
           </div>
           <div class="btn-row">
             <a class="btn btn-ghost btn-sm" href="/a/${cid}/${escapeHtml(r.id)}" target="_blank" rel="noopener">${icon('external', { size: 14 })} Öppna</a>
-            ${isAdmin && !comp.demo && !comp.closed && !r.cancelled && settings.mode === 'kar' ? `
-              <button class="btn btn-secondary btn-sm" data-efteranmal="${escapeHtml(r.id)}" title="Lägg till en patrull i kårens anmälan — mellanskillnaden blir en ny betalning med egen referens">
-                ${icon('plus', { size: 14 })} Efteranmäl patrull
+            ${isAdmin && !comp.demo && !comp.closed && !r.cancelled ? `
+              <button class="btn btn-secondary btn-sm" data-efteranmal="${escapeHtml(r.id)}" title="Ändra antalet i kårens patruller eller lägg till en ny — mellanskillnaden blir en ny betalning med egen referens">
+                ${icon('plus', { size: 14 })} Efteranmälan
               </button>` : ''}
             ${isAdmin && !comp.demo && !r.cancelled && !fullyPaid && total > 0 && (r.contact?.email || '').trim() ? `
               <button class="btn btn-secondary btn-sm" data-remind="${escapeHtml(r.id)}" title="${r.reminderSentAt ? 'Senast påmind ' + escapeHtml(formatDate(r.reminderSentAt)) : 'Mailar en betalningspåminnelse med referens och belopp'}">
@@ -362,7 +362,10 @@ export async function renderAnmalanAdmin(app, user, cid) {
             <div class="t-over" style="color:var(--scout-blue);margin-bottom:4px;">Efteranmält av ledningen</div>
             ${r.efteranmalningar.map(e => `
               <div class="t-sm" style="margin-bottom:4px;">
-                <strong>${escapeHtml((e.patrols || []).join(', '))}</strong>
+                <strong>${escapeHtml([
+                  ...(e.patrols || []).map(n => `ny: ${n}`),
+                  ...(e.andrade || []).map(a => `${a.namn} ${a.fran} → ${a.till}`)
+                ].join(', ') || 'uppgifter ändrade')}</strong>
                 <span class="muted">· ${escapeHtml((e.at || '').slice(0, 10))}</span>
                 ${e.reference ? ` · <span class="mono">${escapeHtml(e.reference)}</span> ${Number(e.amount) || 0} kr` : ' · ingen ny betalning'}
               </div>
@@ -426,6 +429,20 @@ export async function renderAnmalanAdmin(app, user, cid) {
       added++;
     }
     return added;
+  }
+
+  // Ett ändrat antal i anmälan skrivs till den redan importerade patrullen
+  // (matchad på namn + kår, som importen). Returnerar hur många som skrevs.
+  async function synkaAntal(r, andrade) {
+    let n = 0;
+    for (const a of andrade) {
+      const p = patrols.find(x => (x.name || '').toLowerCase() === (a.namn || '').toLowerCase()
+        && (x.kar || '').toLowerCase() === (r.kar || '').toLowerCase());
+      if (!p) continue;
+      await updatePatrol(cid, p.id, { antal: a.till });
+      n++;
+    }
+    return n;
   }
 
   // Returns { imported } when marking paid, or null when un-marking. The
@@ -580,7 +597,7 @@ export async function renderAnmalanAdmin(app, user, cid) {
     content.querySelectorAll('[data-efteranmal]').forEach(b => b.addEventListener('click', () => {
       const r = regs.find(x => x.id === b.dataset.efteranmal);
       if (!r) return;
-      openEfteranmalanModal({ cid, comp, user, reg: r, importera: importPatrolsFromReg, onSaved: load });
+      openEfteranmalanModal({ cid, comp, user, reg: r, importera: importPatrolsFromReg, synkaAntal, onSaved: load });
     }));
 
     content.querySelectorAll('[data-import]').forEach(b => b.addEventListener('click', () => withBusy(b, 'Importerar…', async () => {

@@ -1018,28 +1018,45 @@ exports.onRegistrationUpdated = onDocumentUpdated('competitions/{cid}/registrati
     const replyTo = managementEmails(comp)[0] || undefined;
     const url = manageUrl(cid, regId);
     const namn = nyaEfter.flatMap(e => Array.isArray(e.patrols) ? e.patrols : []);
+    // Antal-ändringar i befintliga patruller ({namn, fran, till}) — samma post.
+    const andrade = nyaEfter.flatMap(e => Array.isArray(e.andrade) ? e.andrade : [])
+      .filter(a => a && a.namn);
     const tillagda = (after.patrols || []).filter(p => namn.includes(p.name));
     const lista = tillagda.length ? tillagda : namn.map(n => ({ name: n }));
     const betalningar = nyaEfter.filter(e => (Number(e.amount) || 0) > 0 && e.reference);
     const body = `
       <p>Hej ${esc(after.contact.name || '')}!</p>
-      <p>Tävlingsledningen har lagt till <strong>${lista.length} patrull${lista.length === 1 ? '' : 'er'}</strong>
-      i er anmälan för <strong>${esc(after.kar || '')}</strong> till <strong>${esc(compLabel(comp))}</strong>:</p>
-      ${patrolListHtml({ patrols: lista })}
+      <p>Tävlingsledningen har uppdaterat er anmälan för <strong>${esc(after.kar || '')}</strong>
+      till <strong>${esc(compLabel(comp))}</strong>.</p>
+      ${lista.length ? `
+        <p><strong>${lista.length === 1 ? 'Ny patrull' : 'Nya patruller'}:</strong></p>
+        ${patrolListHtml({ patrols: lista })}
+      ` : ''}
+      ${andrade.length ? `
+        <p><strong>Ändrat antal:</strong></p>
+        <ul style="padding-left:18px;margin:8px 0;">
+          ${andrade.map(a => `<li><strong>${esc(a.namn)}</strong> — ${Number(a.fran) || 0} → ${Number(a.till) || 0} scouter</li>`).join('')}
+        </ul>
+      ` : ''}
       ${betalningar.length ? `
         <p><strong>Betalning:</strong> ${betalningar.map(e => `${Number(e.amount) || 0} kr med referens <strong style="font-family:monospace;">${esc(e.reference)}</strong>`).join(' samt ')}.
         Betalningsinstruktioner finns på er anmälningssida. Ett kvitto mailas när tävlingsledningen
         har prickat av betalningen.</p>
-      ` : `<p>Ingen ytterligare avgift tillkommer.</p>`}
+      ` : `<p>Ingen ny betalning tillkommer.</p>`}
       ${button(url, 'Visa er anmälan')}
     `;
+    const textDelar = [
+      namn.length ? `Nya patruller: ${namn.join(', ')}` : '',
+      andrade.length ? `Ändrat antal: ${andrade.map(a => `${a.namn} ${Number(a.fran) || 0} → ${Number(a.till) || 0}`).join(', ')}` : '',
+      betalningar.length ? `Betalning: ${betalningar.map(e => `${Number(e.amount) || 0} kr med referens ${e.reference}`).join(', ')}` : 'Ingen ny betalning tillkommer'
+    ].filter(Boolean);
     jobs.push(queueMail({
       to: [after.contact.email],
       ...(replyTo ? { replyTo } : {}),
       message: {
-        subject: `Efteranmälan — ${compLabel(comp)}`,
+        subject: `${namn.length ? 'Efteranmälan' : 'Uppdaterad anmälan'} — ${compLabel(comp)}`,
         html: layout(comp, body, replyTo ? 'Svar på mailet går till tävlingsledningen.' : undefined),
-        text: `Tävlingsledningen har lagt till ${namn.join(', ')} i er anmälan till ${compLabel(comp)}. ${betalningar.map(e => `${Number(e.amount) || 0} kr med referens ${e.reference}`).join(', ')}${betalningar.length ? '. ' : ''}Se er anmälan: ${url}`
+        text: `Tävlingsledningen har uppdaterat er anmälan till ${compLabel(comp)}. ${textDelar.join('. ')}. Se er anmälan: ${url}`
       }
     }));
   }
