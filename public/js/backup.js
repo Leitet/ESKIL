@@ -16,6 +16,7 @@ import {
   db, doc, collection, getDocs, setDoc, writeBatch
 } from './firebase.js';
 import {
+  listAndringar, listAndringSvar,
   getCompetition, listPatrols, listControls, listAllScores, listRegistrations,
   listStations, listUtskick, getTrack, createCompetition,
   getControlMeta, getPatrolMeta, setControlMeta, setPatrolMeta,
@@ -29,7 +30,7 @@ import { rankPatrols } from './utils.js';
 // handover document. Båda raderas av deleteCompetition, och sedan
 // raderingsskyddet KRÄVER en färsk backup är det backupen som avgör om de
 // går att få tillbaka. Imports still accept v1/v2 dumps.
-export const BACKUP_VERSION = 3;
+export const BACKUP_VERSION = 4;
 
 // --- Timestamp-safe (de)serialization -----------------------------------------
 
@@ -90,6 +91,17 @@ export async function dumpCompetition(cid) {
     stationsFull.push({ ...st, passages: await listPassages(cid, st.id).catch(() => []) });
   }
 
+  // Ändringsärendena med samtal (v4) ligger som undersamling under varje
+  // anmälan. Raderingsskyddet kräver att backupen bär allt deleteCompetition
+  // sveper, så de följer med som `_andringar` på anmälan.
+  const registrationsFull = [];
+  for (const r of registrations) {
+    const tradar = await listAndringar(cid, r.id).catch(() => []);
+    const full = [];
+    for (const t of tradar) full.push({ ...t, svar: await listAndringSvar(cid, r.id, t.id).catch(() => []) });
+    registrationsFull.push(full.length ? { ...r, _andringar: full } : r);
+  }
+
   // Private meta (telefon, notering) lives in subdocs — fetch it so the
   // backup is complete and a restore doesn't silently drop it.
   const ctrlMetas = await Promise.all(controls.map(c => getControlMeta(cid, c.id).catch(() => ({}))));
@@ -114,7 +126,7 @@ export async function dumpCompetition(cid) {
       _private: utanToken(ctrlMetas[i]),
       scores: (scoresByCtrl[c.id] || []).map(({ controlId, ...s }) => s)
     })),
-    registrations,
+    registrations: registrationsFull,
     stations: stationsFull,
     utskick,
     track,
@@ -180,8 +192,17 @@ export async function importCompetitionBackup(rawDump, user) {
     if (Object.keys(meta).length) metaWrites.push(['control', id, meta]);
   }
   for (const r of dump.registrations || []) {
-    const { id, ...data } = r;
+    const { id, _andringar, ...data } = r;
     writes.push([doc(db, 'competitions', newCid, 'registrations', id), { ...data, imported: true }]);
+    // Ärendetrådarna (v4) med samma id:n; `imported` så inget mailas om.
+    for (const t of _andringar || []) {
+      const { id: aid, svar, ...tdata } = t;
+      writes.push([doc(db, 'competitions', newCid, 'registrations', id, 'andringar', aid), { ...tdata, imported: true }]);
+      for (const m of svar || []) {
+        const { id: mid, ...mdata } = m;
+        writes.push([doc(db, 'competitions', newCid, 'registrations', id, 'andringar', aid, 'svar', mid), { ...mdata, imported: true }]);
+      }
+    }
   }
   for (const st of dump.stations || []) {
     const { id, passages, ...data } = st;

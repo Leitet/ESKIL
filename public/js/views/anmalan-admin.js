@@ -4,8 +4,9 @@
 
 import { layout, setTopbarCompetition } from '../app.js';
 import {
-  getCompetition, listRegistrations, getRegistration, updateRegistration, deleteRegistration,
-  listPatrols, createPatrol, updatePatrol, createUtskick, listUtskick
+  getCompetition, listRegistrations, updateRegistration, deleteRegistration,
+  listPatrols, createPatrol, updatePatrol, createUtskick, listUtskick,
+  listAndringar, listAndringSvar, skickaAndringSvar, uppdateraAndring, migreraAndring
 } from '../store.js';
 import { downloadReceiptPdf } from '../pdf.js';
 import {
@@ -202,17 +203,64 @@ export async function renderAnmalanAdmin(app, user, cid) {
   }
 
   let patrols = [];
+  // Ärendetrådarna per anmälan (regId → [{...tråd, svar: [...]}]).
+  let arenden = {};
 
   async function load() {
     try {
       [regs, patrols] = await Promise.all([listRegistrations(cid), listPatrols(cid)]);
       regs.sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
-      if (isAdmin && !comp.demo) await migrateLegacyPaid();
+      if (isAdmin && !comp.demo) { await migrateLegacyPaid(); await migreraAndringar(); }
+      arenden = await laddaArenden();
       render();
     } catch (e) {
       content.innerHTML = `<div class="empty"><h3>Kunde inte ladda</h3><p>${escapeHtml(e.message)}</p></div>`;
     }
   }
+
+  // Ärendena: en liten fråga per anmälan (de flesta tomma) plus svaren.
+  async function laddaArenden() {
+    const par = await Promise.all(regs.map(async r => {
+      const tradar = await listAndringar(cid, r.id).catch(() => []);
+      for (const t of tradar) t.svar = await listAndringSvar(cid, r.id, t.id).catch(() => []);
+      return [r.id, tradar];
+    }));
+    return Object.fromEntries(par);
+  }
+
+  // Engångsflytt: ändringsförfrågningar låg förut som `andringar[]` på
+  // anmälan. Varje post blir ett ärende med DETERMINISTISKT id, så flytten
+  // kan köras om utan dubbletter (en kår med gammal sida i en flik kan hinna
+  // lägga en post till i arrayen). `migrerad: true` hindrar Cloud Function
+  // från att mejla om något som redan hänt.
+  async function migreraAndringar() {
+    const hash = (str) => [...String(str || '')].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
+    for (const r of regs) {
+      const gamla = r.andringar || [];
+      if (!gamla.length) continue;
+      try {
+        for (const a of gamla) {
+          const aid = `legacy-${String(a.at || '').replace(/[^0-9]/g, '')}-${hash(`${a.sort}|${a.patrol}|${a.message}`)}`;
+          await migreraAndring(cid, r.id, aid, {
+            sort: a.sort || 'annat', patrol: a.patrol || '', message: a.message || '',
+            at: a.at || new Date().toISOString(),
+            status: a.hanterad ? 'hanterad' : 'oppen', hanteradAt: a.hanteradAt || null,
+            senastAt: a.at || new Date().toISOString(), senastFran: 'kar', migrerad: true
+          });
+        }
+        await updateRegistration(cid, r.id, { andringar: [] });
+        r.andringar = [];
+      } catch (e) { console.warn('[ESKIL] ärendemigrering misslyckades', r.id, e); }
+    }
+  }
+
+  const ARENDE_BADGE = {
+    oppen: '<span class="badge badge-orange">Väntar på svar</span>',
+    besvarad: '<span class="badge badge-blue">Besvarad</span>',
+    hanterad: '<span class="badge badge-green">Hanterad</span>'
+  };
+  const senasteText = (t) => (t.senastFran === 'kar' && (t.svar || []).length)
+    ? (t.svar[t.svar.length - 1].text || '') : (t.message || '');
 
   // One-time migration: registrations from before paidRefs stored paid on
   // each payment object. Upgrade any that still lack paidRefs but have legacy
@@ -238,6 +286,9 @@ export async function renderAnmalanAdmin(app, user, cid) {
     const totalAmount = active.reduce((s, r) => s + paySum(r), 0);
     const totalPaid = active.reduce((s, r) => s + paySum(r, true), 0);
     const forhinderCount = regs.reduce((s, r) => s + (r.forhinder || []).length, 0);
+    // Öppna ärenden = de som väntar på LEDNINGEN (ny fråga eller kårens svar).
+    const oppna = regs.flatMap(r => (arenden[r.id] || []).filter(t => t.status === 'oppen').map(t => ({ r, t })))
+      .sort((a, b) => String(a.t.senastAt || a.t.at || '').localeCompare(String(b.t.senastAt || b.t.at || '')));
 
     content.innerHTML = `
       <div class="kpi-row">
@@ -245,8 +296,25 @@ export async function renderAnmalanAdmin(app, user, cid) {
         <div class="kpi"><div class="k-label">Patruller</div><div class="k-value">${nPatrols}</div></div>
         <div class="kpi"><div class="k-label">Scouter</div><div class="k-value">${nScouts}</div></div>
         <div class="kpi"><div class="k-label">Inbetalt</div><div class="k-value">${totalPaid}<span style="font-size:14px;color:var(--fg3);"> / ${totalAmount} kr</span></div></div>
+        ${oppna.length ? `<div class="kpi" style="border-color:var(--avent-orange);"><div class="k-label" style="color:var(--avent-orange);">Obesvarade ändringar</div><div class="k-value">${oppna.length}</div></div>` : ''}
         ${forhinderCount ? `<div class="kpi" style="border-color:var(--utm-pink);"><div class="k-label" style="color:var(--utm-pink);">Förhinder</div><div class="k-value">${forhinderCount}</div></div>` : ''}
       </div>
+
+      ${oppna.length ? `
+        <div class="card mb-4" style="padding:var(--sp-4);border-left:4px solid var(--avent-orange);">
+          <div class="t-over" style="color:var(--avent-orange);margin-bottom:6px;">${oppna.length} obesvarad${oppna.length === 1 ? '' : 'e'} ändring${oppna.length === 1 ? '' : 'ar'}</div>
+          ${oppna.map(({ r, t }) => `
+            <div class="t-sm" style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--border);">
+              <div style="flex:1;min-width:0;">
+                <strong>${escapeHtml(r.kar || '')}</strong> · ${escapeHtml(ANDRING_ETIKETT[t.sort] || 'Ändring')}${t.patrol ? ' · ' + escapeHtml(t.patrol) : ''}
+                <span class="muted">· ${escapeHtml((t.senastAt || t.at || '').slice(0, 10))}${t.senastFran === 'kar' && (t.svar || []).length ? ' · kåren svarade' : ''}</span>
+                <div style="white-space:pre-wrap;">${escapeHtml(senasteText(t))}</div>
+              </div>
+              <a class="btn btn-secondary btn-sm" href="#andring-${escapeHtml(t.id)}" data-fokus="${escapeHtml(t.id)}">Svara</a>
+              ${isAdmin ? `<button class="btn btn-ghost btn-sm" data-hanterad="${escapeHtml(r.id)}:${escapeHtml(t.id)}">Markera hanterad</button>` : ''}
+            </div>`).join('')}
+        </div>
+      ` : ''}
 
       ${canPay ? `
         <div class="card mb-4" style="padding:var(--sp-4);">
@@ -373,17 +441,40 @@ export async function renderAnmalanAdmin(app, user, cid) {
           </div>
         ` : ''}
 
-        ${(r.andringar || []).length ? `
+        ${((arenden[r.id] || []).length || (r.andringar || []).length) ? `
           <div class="mt-3" style="padding:var(--sp-3) var(--sp-4);background:var(--bg2);border-left:3px solid var(--avent-orange);border-radius:var(--r-sm);">
-            <div class="t-over" style="color:var(--avent-orange);margin-bottom:4px;">Begärda ändringar</div>
-            ${r.andringar.map((a, i) => `
+            <div class="t-over" style="color:var(--avent-orange);margin-bottom:4px;">Ärenden</div>
+            ${(arenden[r.id] || []).map(t => `
+              <div class="t-sm" id="andring-${escapeHtml(t.id)}" style="margin-bottom:10px;${t.status === 'hanterad' ? 'opacity:.6;' : ''}">
+                <strong>${escapeHtml(ANDRING_ETIKETT[t.sort] || 'Ändring')}</strong>
+                ${t.patrol ? `· ${escapeHtml(t.patrol)}` : ''}
+                <span class="muted">· ${escapeHtml((t.at || '').slice(0, 10))}</span>
+                ${ARENDE_BADGE[t.status] || ''}
+                <div style="white-space:pre-wrap;">${escapeHtml(t.message)}</div>
+                ${(t.svar || []).map(m => `
+                  <div style="margin:4px 0 0 10px;padding:4px 8px;border-left:3px solid ${m.from === 'ledning' ? 'var(--scout-blue)' : 'var(--border)'};">
+                    <span class="muted">${m.from === 'ledning' ? 'Ledningen' : 'Kåren'} · ${escapeHtml((m.at || '').slice(0, 16).replace('T', ' '))}</span>
+                    <div style="white-space:pre-wrap;">${escapeHtml(m.text)}</div>
+                  </div>`).join('')}
+                ${isAdmin && !comp.demo ? `
+                  <div style="display:flex;gap:6px;align-items:flex-start;margin-top:6px;">
+                    <textarea class="textarea" rows="2" data-svar-text="${escapeHtml(t.id)}" placeholder="Svara kåren — mailas till ${escapeHtml(r.contact?.email || 'kontakten')}" style="flex:1;"></textarea>
+                    <div style="display:flex;flex-direction:column;gap:4px;">
+                      <button class="btn btn-secondary btn-sm" data-svar="${escapeHtml(r.id)}:${escapeHtml(t.id)}">Svara</button>
+                      ${t.status === 'hanterad'
+                        ? `<button class="btn btn-ghost btn-sm" data-oppna="${escapeHtml(r.id)}:${escapeHtml(t.id)}">Öppna igen</button>`
+                        : `<button class="btn btn-ghost btn-sm" data-hanterad="${escapeHtml(r.id)}:${escapeHtml(t.id)}">Markera hanterad</button>`}
+                    </div>
+                  </div>` : ''}
+              </div>
+            `).join('')}
+            ${(r.andringar || []).map(a => `
               <div class="t-sm" style="margin-bottom:6px;${a.hanterad ? 'opacity:.55;' : ''}">
                 <strong>${escapeHtml(ANDRING_ETIKETT[a.sort] || 'Ändring')}</strong>
                 ${a.patrol ? `· ${escapeHtml(a.patrol)}` : ''}
                 <span class="muted">· ${escapeHtml((a.at || '').slice(0, 10))}</span>
-                ${a.hanterad ? '<span class="badge badge-green">Hanterad</span>' : (isAdmin
-                  ? `<button class="btn btn-ghost btn-sm" data-andring="${escapeHtml(r.id)}:${i}">Markera hanterad</button>` : '')}
-                <div>${escapeHtml(a.message)}</div>
+                ${a.hanterad ? '<span class="badge badge-green">Hanterad</span>' : '<span class="badge">Flyttas till ärende vid nästa laddning</span>'}
+                <div style="white-space:pre-wrap;">${escapeHtml(a.message)}</div>
               </div>
             `).join('')}
           </div>
@@ -485,19 +576,44 @@ export async function renderAnmalanAdmin(app, user, cid) {
     // Markera en ändring som hanterad. Läser om anmälan färskt först: kåren
     // kan ha hunnit skicka en till från sin länk, och en förlegad kopia hade
     // raderat den.
-    content.querySelectorAll('[data-andring]').forEach(b => b.addEventListener('click', () => withBusy(b, '…', async () => {
-      const [regId, idx] = b.dataset.andring.split(':');
+    // Ärenden: svara (mailas till kontakten av Cloud Function), stäng, öppna igen.
+    content.querySelectorAll('[data-svar]').forEach(b => b.addEventListener('click', () => withBusy(b, 'Skickar…', async () => {
+      const [regId, aid] = b.dataset.svar.split(':');
+      const ta = content.querySelector(`[data-svar-text="${aid}"]`);
+      const text = (ta?.value || '').trim();
+      if (!text) { toast('Skriv ett svar först', 'error'); return; }
+      const email = regs.find(x => x.id === regId)?.contact?.email;
       try {
-        const fresh = await getRegistration(cid, regId);
-        const lista = [...(fresh?.andringar || [])];
-        const i = Number(idx);
-        if (!lista[i]) { toast('Ändringen hittades inte — ladda om sidan', 'error'); return; }
-        lista[i] = { ...lista[i], hanterad: true, hanteradAt: new Date().toISOString() };
-        await updateRegistration(cid, regId, { andringar: lista });
-        toast('Markerad som hanterad', 'success');
+        await skickaAndringSvar(cid, regId, aid, 'ledning', text);
+        toast(`Svaret är skickat${email ? ' · mailas till ' + email : ''}`, 'success');
         await load();
       } catch (e) { toast('Fel: ' + e.message, 'error'); }
     })));
+    content.querySelectorAll('[data-hanterad]').forEach(b => b.addEventListener('click', () => withBusy(b, '…', async () => {
+      const [regId, aid] = b.dataset.hanterad.split(':');
+      try {
+        await uppdateraAndring(cid, regId, aid, { status: 'hanterad', hanteradAt: new Date().toISOString() });
+        toast('Ärendet är markerat som hanterat', 'success');
+        await load();
+      } catch (e) { toast('Fel: ' + e.message, 'error'); }
+    })));
+    content.querySelectorAll('[data-oppna]').forEach(b => b.addEventListener('click', () => withBusy(b, '…', async () => {
+      const [regId, aid] = b.dataset.oppna.split(':');
+      try {
+        await uppdateraAndring(cid, regId, aid, { status: 'oppen' });
+        toast('Ärendet är öppnat igen', 'success');
+        await load();
+      } catch (e) { toast('Fel: ' + e.message, 'error'); }
+    })));
+    // "Svara" i aviseringen och mailets länk (#andring-<id>) pekar på ärendet
+    // på kortet — scrolla dit och sätt markören i svarsrutan.
+    const fokusera = (aid) => {
+      const el = content.querySelector(`#andring-${CSS.escape(aid)}`);
+      el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      content.querySelector(`[data-svar-text="${aid}"]`)?.focus({ preventScroll: true });
+    };
+    content.querySelectorAll('[data-fokus]').forEach(a => a.addEventListener('click', (e) => { e.preventDefault(); fokusera(a.dataset.fokus); }));
+    if (location.hash.startsWith('#andring-')) fokusera(location.hash.slice('#andring-'.length));
 
     content.querySelectorAll('[data-pay]').forEach(b => b.addEventListener('click', () => withBusy(b, '…', async () => {
       const [regId, payId] = b.dataset.pay.split(':');

@@ -1438,6 +1438,37 @@ describe('spåreditorn lägger punkter bara i ritläge', () => {
   });
 });
 
+// --- Ändringsförfrågningar som ärenden ------------------------------------------
+// Förut en array på anmälan som kåren skrev över hela; nu trådar under den.
+// Källtester: ingen sida får skriva till den gamla arrayen igen, och admin-
+// vyn måste ha kvar migreringen så gamla poster inte blir osynliga.
+describe('ändringsförfrågningar är trådar, inte en array', () => {
+  const anm = readFileSync(new URL('../public/js/anmalan.js', import.meta.url), 'utf8');
+  const adm = readFileSync(new URL('../public/js/views/anmalan-admin.js', import.meta.url), 'utf8');
+  const store = readFileSync(new URL('../public/js/store.js', import.meta.url), 'utf8');
+  const fn = readFileSync(new URL('../functions/index.js', import.meta.url), 'utf8');
+
+  test('kårens sida skapar ärenden, inte array-poster', () => {
+    assert.doesNotMatch(anm, /andringar: \[\.\.\./, 'anmalan.js lägger poster i arrayen igen');
+    assert.match(anm, /skapaAndring\(cid, reg\.id/);
+    assert.match(anm, /skickaAndringSvar\(cid, reg\.id, aid, 'kar'/);
+  });
+  test('admin-vyn migrerar gamla poster och svarar som ledning', () => {
+    assert.match(adm, /migreraAndring\(cid, r\.id, aid, \{[\s\S]*migrerad: true/);
+    assert.match(adm, /skickaAndringSvar\(cid, regId, aid, 'ledning'/);
+  });
+  test('kårens svar öppnar ärendet, ledningens besvarar det', () => {
+    assert.match(store, /status: from === 'ledning' \? 'besvarad' : 'oppen'/);
+  });
+  test('trådarna sopas vid radering av anmälan, avslut och radering av tävling', () => {
+    assert.equal((store.match(/await deleteAndringar\(cid, /g) || []).length, 3, 'tre sopningar');
+  });
+  test('Cloud Functions mailar aldrig om migrerade eller importerade ärenden', () => {
+    assert.match(fn, /if \(!a \|\| a\.migrerad \|\| a\.imported\) return;/);
+    assert.match(fn, /if \(!m \|\| !m\.text \|\| m\.imported\) return;/);
+  });
+});
+
 // --- Efteranmälan ---------------------------------------------------------------
 // Ledningen lägger till patruller efter stängd anmälan (views/efteranmalan.js).
 // Mellanskillnaden är det som avgör vad kåren får betala en gång till.

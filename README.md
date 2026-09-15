@@ -55,7 +55,11 @@ att köra gratis på Spark-planen.
   fyra prismodeller, betalningssteg (Swish-QR med låst belopp/referens, bankgiro,
   faktura), egna fritextfält (per anmälan eller per patrull, t.ex. "Allergier"),
   hemlig ändringslänk via e-post, mellanskillnadsbetalning vid utökning,
-  avanmälan under perioden och förhinderanmälan efteråt. Adminflik med
+  avanmälan under perioden och förhinderanmälan efteråt. **Ändringsärenden**:
+  efter stängning skickar kåren en strukturerad ändringsförfrågan som blir ett
+  ärende — ledningen aviseras överst på Anmälan-fliken (och per mail), svarar
+  i ESKIL, kåren får svaret per mail med länk rakt in i tråden och svarar
+  där; ärendet markeras hanterat när det är klart. Adminflik med
   betalningsavprickning per referens och import till patrullistan. När en
   betalning prickas av mailas anmälningsansvarig automatiskt (länken går till
   anmälningssidan där kvittot laddas ner som PDF, genererat i klienten), och
@@ -455,9 +459,11 @@ competitions/{cid}               { name, shortName, year, date, location,
                                    payments: [{id,amount,reference,paid,paidAt}],
                                    paidRefs: [reference],       # kassörens facit
                                    forhinder: [{patrol,message,at}],
-                                   andringar: [{sort,patrol,message,at,hanterad}],
-                                   efteranmalningar: [{at,patrols,amount,reference}],
+                                   efteranmalningar: [{at,patrols,andrade,amount,reference}],
                                    createdAt, updatedAt }
+    andringar/{aid}                { sort, patrol, message, at, status,   # ärende (oppen|besvarad|hanterad)
+                                   senastAt, senastFran, hanteradAt? }
+      svar/{mid}                   { from: kar|ledning, text, at }
   stations/{stationId}           { createdAt }   # doc-id = hemlig stations-URL
     passages/{patrolId}          { patrolId, startAt?, finishAt? }
   track/main                     { speedKmh, legs: { "<från>__<till>":

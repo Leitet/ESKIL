@@ -12,6 +12,8 @@
 //  - payment flips to paid           → receipt mail (PDF attached) to the contact
 //  - förhinder appended              → notice to tävlingsledningen
 //  - efteranmälan appended (admin)   → added patrols + new payment reference to the contact
+//  - ändringsärende created (kår)     → notice to tävlingsledningen
+//  - svar in ändringsärende           → ledning's reply to the contact / kår's reply to ledningen
 //  - registration cancelled          → notice to tävlingsledningen
 //  - kontrollansvarig added          → welcome mail with control + report links
 //  - utskick created                 → PM fan-out to every active registration
@@ -1063,6 +1065,122 @@ exports.onRegistrationUpdated = onDocumentUpdated('competitions/{cid}/registrati
 
   await Promise.all(jobs);
   if (jobs.length) logger.info(`${jobs.length} mail(s) queued for ${cid}/${regId}`);
+});
+
+// --- Ändringsärenden (kår ↔ ledning) --------------------------------------------
+// registrations/{regId}/andringar/{aid} är ärendet, .../svar/{mid} samtalet.
+// Kåren står inte vid ledningens skärm och ledningen inte vid kårens, så
+// mailet är vad som gör tråden till ett samtal: ny fråga → ledningen, svar
+// från ledningen → kontakten (med länk rakt in i tråden), svar från kåren →
+// ledningen. Migrerade och importerade poster (migrerad/imported) mailas
+// aldrig — de har redan hänt.
+const ANDRING_SORT = {
+  antal: 'Antal deltagare ändras', patrullnamn: 'Patrullens namn ändras',
+  kontakt: 'Ny kontaktperson', allergi: 'Allergi eller specialkost', annat: 'Annat'
+};
+
+async function andringKontext(cid, regId, aid) {
+  const comp = await getComp(cid);
+  if (!comp || comp.demo) return null;
+  const regSnap = await db.doc(`competitions/${cid}/registrations/${regId}`).get();
+  const reg = regSnap.exists ? regSnap.data() : null;
+  if (!reg || reg.imported) return null;
+  const aSnap = await db.doc(`competitions/${cid}/registrations/${regId}/andringar/${aid}`).get();
+  const arende = aSnap.exists ? aSnap.data() : null;
+  if (!arende) return null;
+  return { comp, reg, arende };
+}
+
+function arendeRubrik(arende) {
+  return `${ANDRING_SORT[arende.sort] || 'Ändring'}${arende.patrol ? ` · ${arende.patrol}` : ''}`;
+}
+
+exports.onAndringCreated = onDocumentCreated('competitions/{cid}/registrations/{regId}/andringar/{aid}', async (event) => {
+  const { cid, regId, aid } = event.params;
+  const a = event.data && event.data.data();
+  if (!a || a.migrerad || a.imported) return;
+  const ctx = await andringKontext(cid, regId, aid);
+  if (!ctx) return;
+  const { comp, reg, arende } = ctx;
+  const to = managementEmails(comp);
+  if (!to.length) { logger.warn(`Ändringsärende ${cid}/${regId}/${aid} men ingen ledningsadress`); return; }
+  const url = `${APP_URL}/app/c/${cid}/anmalan#andring-${aid}`;
+  const body = `
+    <p><strong>${esc(reg.kar || '')}</strong> har begärt en ändring i sin anmälan till <strong>${esc(compLabel(comp))}</strong>:</p>
+    <p><strong>${esc(arendeRubrik(arende))}</strong></p>
+    <p style="border-left:3px solid #003660;padding-left:14px;white-space:pre-wrap;">${esc(arende.message || '')}</p>
+    <p>Kontakt: ${esc(reg.contact && reg.contact.name || '')} ·
+    ${esc(reg.contact && reg.contact.email || '')}${reg.contact && reg.contact.phone ? ' · ' + esc(reg.contact.phone) : ''}</p>
+    <p>Svara i ESKIL så får kåren svaret per mail och kan svara tillbaka i samma ärende.</p>
+    ${button(url, 'Öppna ärendet')}
+  `;
+  await queueMail({
+    to,
+    ...(reg.contact && reg.contact.email ? { replyTo: reg.contact.email } : {}),
+    message: {
+      subject: `Ändringsförfrågan — ${reg.kar || 'okänd kår'} (${compLabel(comp)})`,
+      html: layout(comp, body, 'Svar på mailet går direkt till anmälaren — men syns inte i ESKIL. Svara i ärendet för att hålla samtalet samlat.'),
+      text: `${reg.kar}: ${arendeRubrik(arende)} — ${arende.message}. Öppna ärendet: ${url}`
+    }
+  });
+  logger.info(`Ändringsärende ${cid}/${regId}/${aid} mailat till ledningen`);
+});
+
+exports.onAndringSvarCreated = onDocumentCreated('competitions/{cid}/registrations/{regId}/andringar/{aid}/svar/{mid}', async (event) => {
+  const { cid, regId, aid } = event.params;
+  const m = event.data && event.data.data();
+  if (!m || !m.text || m.imported) return;
+  const ctx = await andringKontext(cid, regId, aid);
+  if (!ctx) return;
+  const { comp, reg, arende } = ctx;
+
+  if (m.from === 'ledning') {
+    if (!reg.contact || !reg.contact.email) return;
+    const replyTo = managementEmails(comp)[0] || undefined;
+    const url = `${manageUrl(cid, regId)}#andring-${aid}`;
+    const body = `
+      <p>Hej ${esc(reg.contact.name || '')}!</p>
+      <p>Tävlingsledningen för <strong>${esc(compLabel(comp))}</strong> har svarat på er ändring
+      (<strong>${esc(arendeRubrik(arende))}</strong>):</p>
+      <p style="border-left:3px solid #003660;padding-left:14px;white-space:pre-wrap;">${esc(m.text)}</p>
+      <p style="font-size:13px;color:#6b6b6b;">Er fråga: <span style="white-space:pre-wrap;">${esc(arende.message || '')}</span></p>
+      ${button(url, 'Läs och svara i ärendet')}
+      <p style="font-size:13px;color:#8a8a8a;">Knappen öppnar er anmälningssida där hela samtalet finns och ni kan svara.
+      ${replyTo ? 'Svarar ni i stället på det här mailet når det tävlingsledningen, men syns inte i ESKIL.' : ''}</p>
+    `;
+    await queueMail({
+      to: [reg.contact.email],
+      ...(replyTo ? { replyTo } : {}),
+      message: {
+        subject: `Svar på er ändring — ${compLabel(comp)}`,
+        html: layout(comp, body, replyTo ? 'Svar på mailet går till tävlingsledningen — svara helst i ärendet via knappen.' : undefined),
+        text: `Tävlingsledningen har svarat på er ändring (${arendeRubrik(arende)}):\n\n${m.text}\n\nLäs och svara: ${url}`
+      }
+    });
+    logger.info(`Svar i ärende ${cid}/${regId}/${aid} mailat till kontakten`);
+    return;
+  }
+
+  // Kåren skrev igen → ledningen.
+  const to = managementEmails(comp);
+  if (!to.length) { logger.warn(`Svar i ärende ${cid}/${regId}/${aid} men ingen ledningsadress`); return; }
+  const url = `${APP_URL}/app/c/${cid}/anmalan#andring-${aid}`;
+  const body = `
+    <p><strong>${esc(reg.kar || '')}</strong> har svarat i ärendet <strong>${esc(arendeRubrik(arende))}</strong>
+    (${esc(compLabel(comp))}):</p>
+    <p style="border-left:3px solid #003660;padding-left:14px;white-space:pre-wrap;">${esc(m.text)}</p>
+    ${button(url, 'Öppna ärendet')}
+  `;
+  await queueMail({
+    to,
+    ...(reg.contact && reg.contact.email ? { replyTo: reg.contact.email } : {}),
+    message: {
+      subject: `Nytt svar i ärende — ${reg.kar || 'okänd kår'} (${compLabel(comp)})`,
+      html: layout(comp, body, 'Svar på mailet går direkt till anmälaren — men syns inte i ESKIL. Svara i ärendet för att hålla samtalet samlat.'),
+      text: `${reg.kar} svarade i ärendet ${arendeRubrik(arende)}: ${m.text}. Öppna: ${url}`
+    }
+  });
+  logger.info(`Kårsvar i ärende ${cid}/${regId}/${aid} mailat till ledningen`);
 });
 
 // --- Kontrollansvarig utsedd ---------------------------------------------------

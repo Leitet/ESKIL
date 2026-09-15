@@ -957,6 +957,78 @@ describe('Sekretariatets logg', () => {
   });
 });
 
+describe('Ändringsförfrågningar som ärenden', () => {
+  // Trådar under anmälan: kåren frågar anonymt med länken, ledningen svarar,
+  // en Cloud Function mailar. Sökvägen bär regId, som är hemligheten.
+  const C = uniq('comp');
+  const R = uniq('reg');
+  const A = uniq('arende');
+  const bas = { sort: 'antal', patrol: 'Rävarna', message: 'Vi blir 5 i stället för 6', at: new Date().toISOString(),
+                status: 'oppen', senastAt: new Date().toISOString(), senastFran: 'kar' };
+
+  before(async () => {
+    await seed(`competitions/${C}`, {
+      name: 'Ärendetävling', shortName: 'AR', year: 2026, demo: false, closed: false,
+      registration: { enabled: true }
+    });
+    await seed(`competitions/${C}/private/access`, { adminEmails: [USER.email], userEmails: [], ekonomiEmails: [] });
+    await seed(`competitions/${C}/registrations/${R}`, { kar: 'Lindsdals Scoutkår', contact: { name: 'Kim', email: 'kim@example.com' } });
+    await seed(`competitions/${C}/registrations/${R}/andringar/${A}`, bas);
+  });
+
+  test('kåren skapar ärendet anonymt — bara som öppet och som avsändare "kar"', async () => {
+    allow(await write(`competitions/${C}/registrations/${R}/andringar/${uniq('a')}`, bas, null), 'anonym skapar ärende');
+    deny(await write(`competitions/${C}/registrations/${R}/andringar/${uniq('a')}`, { ...bas, status: 'hanterad' }, null), 'anonym skapar hanterat');
+    deny(await write(`competitions/${C}/registrations/${R}/andringar/${uniq('a')}`, { ...bas, senastFran: 'ledning' }, null), 'anonym utger sig för ledningen');
+    deny(await write(`competitions/${C}/registrations/${R}/andringar/${uniq('a')}`, { ...bas, message: 'x'.repeat(2001) }, null), 'för långt meddelande');
+    deny(await write(`competitions/${C}/registrations/${R}/andringar/${uniq('a')}`, { ...bas, hanteradAt: 'nu' }, null), 'okänt fält');
+  });
+
+  test('tråden går att läsa och lista med länken, men aldrig ändras i sak anonymt', async () => {
+    assert.equal((await read(`competitions/${C}/registrations/${R}/andringar/${A}`, null)).ok, true, 'anonym läser');
+    assert.equal((await list(`competitions/${C}/registrations/${R}/andringar`, null)).ok, true, 'anonym listar under regId');
+    deny(await write(`competitions/${C}/registrations/${R}/andringar/${A}`, { message: 'omskrivet' }, null, { merge: true }), 'anonym skriver om frågan');
+    deny(await write(`competitions/${C}/registrations/${R}/andringar/${A}`, { status: 'hanterad' }, null, { merge: true }), 'anonym stänger');
+    allow(await write(`competitions/${C}/registrations/${R}/andringar/${A}`,
+      { status: 'oppen', senastAt: new Date().toISOString(), senastFran: 'kar' }, null, { merge: true }), 'anonym öppnar igen');
+    allow(await write(`competitions/${C}/registrations/${R}/andringar/${A}`,
+      { status: 'hanterad', hanteradAt: new Date().toISOString() }, USER, { merge: true }), 'admin stänger');
+    deny(await write(`competitions/${C}/registrations/${R}/andringar/${A}`, { status: 'hanterad' }, OTHER, { merge: true }), 'utomstående stänger');
+  });
+
+  test('svaren: kåren skriver som "kar", ledningen som "ledning" — aldrig tvärtom', async () => {
+    const svar = (from) => ({ from, text: 'Hej!', at: new Date().toISOString() });
+    allow(await write(`competitions/${C}/registrations/${R}/andringar/${A}/svar/${uniq('m')}`, svar('kar'), null), 'anonym svarar som kår');
+    deny(await write(`competitions/${C}/registrations/${R}/andringar/${A}/svar/${uniq('m')}`, svar('ledning'), null), 'anonym utger sig för ledningen');
+    allow(await write(`competitions/${C}/registrations/${R}/andringar/${A}/svar/${uniq('m')}`, svar('ledning'), USER), 'admin svarar');
+    // Länkgrenen gäller VEM SOM HELST som har länken — även en inloggad
+    // admin. Admin-vyn skriver aldrig som kår, men regeln kan inte skilja
+    // "admin med länken" från "kåren med länken", och ska inte heller.
+    allow(await write(`competitions/${C}/registrations/${R}/andringar/${A}/svar/${uniq('m')}`, svar('kar'), USER), 'admin med länken skriver som kår');
+    deny(await write(`competitions/${C}/registrations/${R}/andringar/${A}/svar/${uniq('m')}`, svar('ledning'), OTHER), 'utomstående svarar');
+    deny(await write(`competitions/${C}/registrations/${R}/andringar/${A}/svar/${uniq('m')}`, { ...svar('kar'), bild: 'x' }, null), 'okänt fält');
+    assert.equal((await list(`competitions/${C}/registrations/${R}/andringar/${A}/svar`, null)).ok, true, 'anonym läser samtalet med länken');
+  });
+
+  test('ett skickat svar är skickat', async () => {
+    const M = uniq('m');
+    await seed(`competitions/${C}/registrations/${R}/andringar/${A}/svar/${M}`, { from: 'kar', text: 'Hej', at: new Date().toISOString() });
+    deny(await write(`competitions/${C}/registrations/${R}/andringar/${A}/svar/${M}`, { text: 'ändrat' }, null, { merge: true }), 'anonym ändrar');
+    deny(await write(`competitions/${C}/registrations/${R}/andringar/${A}/svar/${M}`, { text: 'ändrat' }, USER, { merge: true }), 'admin ändrar');
+    deny(await remove(`competitions/${C}/registrations/${R}/andringar/${A}/svar/${M}`, null), 'anonym raderar');
+    allow(await remove(`competitions/${C}/registrations/${R}/andringar/${A}/svar/${M}`, USER), 'admin sopar (avslut/radering)');
+  });
+
+  test('avstängd anmälan stänger kårens väg men inte ledningens', async () => {
+    const C2 = uniq('comp'); const R2 = uniq('reg');
+    await seed(`competitions/${C2}`, { name: 'Av', shortName: 'AV', year: 2026, demo: false, closed: false, registration: { enabled: false } });
+    await seed(`competitions/${C2}/private/access`, { adminEmails: [USER.email], userEmails: [], ekonomiEmails: [] });
+    await seed(`competitions/${C2}/registrations/${R2}`, { kar: 'Kåren' });
+    deny(await write(`competitions/${C2}/registrations/${R2}/andringar/${uniq('a')}`, bas, null), 'anonym med avstängd anmälan');
+    allow(await write(`competitions/${C2}/registrations/${R2}/andringar/${uniq('a')}`, { ...bas, migrerad: true }, USER), 'admin migrerar gammal post');
+  });
+});
+
 describe('Komplettering per patrull', () => {
   const TOK = uniq('tok');
   const path = `competitions/${CID}/kompletteringar/${TOK}`;

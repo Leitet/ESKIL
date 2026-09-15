@@ -825,6 +825,55 @@ service cloud.firestore {
           && request.resource.data.get('paymentClaims', []).size() <= 20
         );
         allow delete: if isCompAdmin(cid);
+
+        // Ändringsförfrågningar som TRÅDAR — ärenden mellan kår och ledning.
+        // Anmälningslänken är hemligheten: sökvägen bär regId, så get/list här
+        // kan bara den göra som redan har länken, och regId går inte att
+        // räkna upp (list på registrations är member-only). Samma modell som
+        // kontaktformulärets feedback/{fbId}/messages.
+        match /andringar/{aid} {
+          allow get, list: if true;
+          // Kåren skapar ärendet anonymt med länken. Ledningen skapar bara
+          // migrerade kopior av de gamla array-posterna (`migrerad: true`,
+          // så Cloud Function inte mailar om dem).
+          allow create: if isCompAdmin(cid) || (
+               registrationEnabled(cid) && !compIsDemo(cid) && !compClosed(cid)
+            && request.resource.data.keys().hasOnly(['sort', 'patrol', 'message', 'at', 'status', 'senastAt', 'senastFran'])
+            && request.resource.data.status == 'oppen'
+            && request.resource.data.senastFran == 'kar'
+            && request.resource.data.message is string
+            && request.resource.data.message.size() > 0
+            && request.resource.data.message.size() <= 2000
+          );
+          // Status är ledningens. Kåren får bara ÖPPNA ärendet igen när den
+          // svarar — aldrig stänga det, aldrig skriva om vad som frågades.
+          allow update: if isCompAdmin(cid) || (
+               registrationEnabled(cid) && !compIsDemo(cid) && !compClosed(cid)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'senastAt', 'senastFran'])
+            && request.resource.data.status == 'oppen'
+            && request.resource.data.senastFran == 'kar'
+          );
+          allow delete: if isCompAdmin(cid);
+
+          // Samtalet. `from` är provenienskritiskt: anonymt får det bara vara
+          // 'kar' — ett påhittat "från ledningen" hade kunnat lura den som
+          // läser tråden. Skickat är skickat: ingen uppdatering, radering
+          // bara av admin (avslut/radering av tävlingen sopar trådarna).
+          match /svar/{mid} {
+            allow get, list: if true;
+            allow create: if request.resource.data.keys().hasOnly(['from', 'text', 'at'])
+              && request.resource.data.text is string
+              && request.resource.data.text.size() > 0
+              && request.resource.data.text.size() <= 2000
+              && (
+                (isCompAdmin(cid) && request.resource.data.from == 'ledning')
+                || (registrationEnabled(cid) && !compIsDemo(cid) && !compClosed(cid)
+                    && request.resource.data.from == 'kar')
+              );
+            allow update: if false;
+            allow delete: if isCompAdmin(cid);
+          }
+        }
       }
 
       // Kompletteringar per patrull. Kårledaren har anmälningslänken och kan

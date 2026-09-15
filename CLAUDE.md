@@ -822,12 +822,29 @@ BÅDA ställena.
   `ekonomiEmails[]` (mirror of `ekonomi: [{email, name}]`, in private/access
   only — write via store.setCompetitionEkonomi) marks ekonomiansvariga/
   kassörer: member-level read + may update ONLY `paidRefs` on registrations.
-  **`andringar[]`** är strukturerade ändringsförfrågningar efter stängd
-  anmälan (sort + patrull + fritext), samma append-mönster som `forhinder`:
-  läs om anmälan FÄRSKT före append, annars skriver en förlegad ögonblicksbild
-  över ledningens hanterad-markering eller en ändring från en annan flik.
-  Reglerna kan inte tvinga append-only på en array — courtesyn är
-  klientsidig och det är ett medvetet val, inte en glömska.
+  **Ändringsförfrågningar är ÄRENDEN** — trådar i
+  `registrations/{regId}/andringar/{aid}` (sort, patrull, fråga, status
+  `oppen | besvarad | hanterad`) med samtalet i `.../svar/{mid}`
+  (`from: 'kar' | 'ledning'`). Den gamla formen, `andringar[]` som array på
+  anmälan, migreras av admin-vyn (`migreraAndringar`, deterministiskt id ur
+  tid + innehåll så den kan köras om, `migrerad: true` så Cloud Function
+  inte mailar om den) och ska ALDRIG skrivas till igen — ett källtest vaktar.
+  Sökvägen bär regId, som är hemligheten: get/list är öppna under den, men
+  regId kan inte räknas upp. Anonymt får ett ärende bara skapas som `oppen`
+  med `senastFran: 'kar'`, uppdateras bara till `oppen` (kårens svar öppnar
+  igen — den kan aldrig stänga eller skriva om frågan), och ett svar får
+  anonymt bara ha `from: 'kar'`: ett påhittat "från ledningen" hade kunnat
+  lura den som läser tråden. Ledningens svar sätter `besvarad`; "Markera
+  hanterad" stänger. Aviseringen överst på Anmälan-fliken och KPI:n räknar
+  `oppen` — det som väntar på LEDNINGEN. `onAndringCreated` mailar ledningen,
+  `onAndringSvarCreated` mailar kontakten (ledningens svar, med länk rakt in
+  i tråden `#andring-<aid>`) respektive ledningen (kårens svar). Inkommande
+  mail kan inte läsas in; Reply-To pekar på motparten så ett vanligt
+  mailsvar når en människa, men mailet säger att svaret då hamnar utanför
+  ESKIL. Trådarna sopas av `deleteRegistration`, `closeCompetition` (de kan
+  bära allergier) och `deleteCompetition`, och följer med i backupen
+  (BACKUP_VERSION 4, `_andringar` på anmälan) — allt raderingen sveper måste
+  backupen bära. Mutationsverifierat i `test/rules.test.js`.
   **Efteranmälan är ledningens väg in efter stängning** (`views/efteranmalan.js`;
   "Efteranmälan" på kårens anmälan — nya patruller ELLER ändrat antal i
   befintliga — och "Ny efteranmälan" för en kår som inte anmält sig).

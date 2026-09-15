@@ -12,7 +12,8 @@
 
 import {
   getCompetition, getCompetitionBySlug, getRegistration, createRegistration, updateRegistration,
-  getKomplettering, sparaKomplettering, skapaKompletteringar, kompletteringarForAnmalan
+  getKomplettering, sparaKomplettering, skapaKompletteringar, kompletteringarForAnmalan,
+  listAndringar, listAndringSvar, skapaAndring, skickaAndringSvar
 } from './store.js';
 import {
   allowedAvdelningar, escapeHtml, formatDate, toast, withBusy, confirmDialog, wireOverlayClose,
@@ -42,6 +43,7 @@ let cid = null;
 let comp = null;
 let settings = null;   // registrationSettings(comp)
 let reg = null;        // existing registration when managing
+let andringar = [];    // ärendetrådarna (med svar) för anmälan som hanteras
 let view = 'form';     // 'form' | 'pay' | 'done' | 'manage' | 'closed-info'
 let editing = false;   // manage-mode: currently editing the form
 
@@ -102,6 +104,20 @@ function price() {
   return computeRegistrationPrice(settings.pricing, draft ? draft.patrols : []);
 }
 
+// Ärendetrådarna: kårens ändringsförfrågningar och ledningens svar. Trådar
+// som inte går att läsa (avstängd anmälan, nät) ger en tom lista — sidan
+// får aldrig falla på dem.
+async function laddaAndringar() {
+  if (!reg) return [];
+  try {
+    const tradar = await listAndringar(cid, reg.id);
+    for (const t of tradar) t.svar = await listAndringSvar(cid, reg.id, t.id).catch(() => []);
+    return tradar;
+  } catch { return []; }
+}
+
+const ARENDE_STATUS = { oppen: 'Väntar på ledningens svar', besvarad: 'Besvarad', hanterad: 'Hanterad' };
+
 // --- Boot -------------------------------------------------------------------
 async function boot() {
   const parsed = parsePath();
@@ -140,6 +156,7 @@ async function boot() {
       return renderFatal('Kunde inte ladda anmälan: ' + e.message);
     }
     if (!reg) return renderFatal('Anmälan hittades inte. Kontrollera länken.');
+    andringar = await laddaAndringar();
     view = 'manage';
   } else {
     draft = newDraft();
@@ -976,15 +993,36 @@ function renderManage() {
         <button class="btn btn-secondary" id="kompl-skapa">Skapa länkar</button>
       </div>
     </div>
-    ${(reg.andringar || []).length ? `
-      <div class="anm-card">
-        <h2>Skickade ändringar</h2>
-        ${reg.andringar.map(a => `
+    ${(andringar.length || (reg.andringar || []).length) ? `
+      <div class="anm-card" id="arenden">
+        <h2>Era ärenden</h2>
+        <p class="muted t-sm" style="margin-top:-8px;">Skickade ändringar och tävlingsledningens svar. Ni får mail när ledningen svarar, och kan svara här — då mailas ledningen.</p>
+        ${andringar.map(t => `
+          <div class="anm-arende" id="andring-${escapeHtml(t.id)}">
+            <div class="anm-sum-row">
+              <span><strong>${escapeHtml(ANDRING_SORTER.find(o => o.v === t.sort)?.t || 'Ändring')}</strong>${t.patrol ? ' · ' + escapeHtml(t.patrol) : ''}</span>
+              <span class="meta">${escapeHtml((t.at || '').slice(0, 10))} · ${escapeHtml(ARENDE_STATUS[t.status] || 'Skickad')}</span>
+            </div>
+            <p class="t-sm" style="margin:2px 0 6px;white-space:pre-wrap;">${escapeHtml(t.message)}</p>
+            ${(t.svar || []).map(m => `
+              <div class="anm-svar ${m.from === 'ledning' ? 'fran-ledning' : 'fran-kar'}">
+                <span class="meta">${m.from === 'ledning' ? 'Tävlingsledningen' : 'Ni'} · ${escapeHtml((m.at || '').slice(0, 16).replace('T', ' '))}</span>
+                <div>${escapeHtml(m.text)}</div>
+              </div>`).join('')}
+            <div class="field-group" style="margin-top:8px;">
+              <textarea class="textarea" rows="2" data-an-text="${escapeHtml(t.id)}" placeholder="${t.status === 'hanterad' ? 'Skriv om något mer behövs — ärendet öppnas igen' : 'Skriv ett svar till tävlingsledningen'}"></textarea>
+              <div class="btn-row" style="justify-content:flex-end;">
+                <button type="button" class="btn btn-secondary btn-sm" data-an-svar="${escapeHtml(t.id)}">Svara</button>
+              </div>
+            </div>
+          </div>
+        `).join('')}
+        ${(reg.andringar || []).map(a => `
           <div class="anm-sum-row">
             <span>${escapeHtml(ANDRING_SORTER.find(o => o.v === a.sort)?.t || 'Ändring')}${a.patrol ? ' · ' + escapeHtml(a.patrol) : ''}</span>
-            <span class="meta">${escapeHtml((a.at || '').slice(0, 10))}${a.hanterad ? ' · hanterad' : ''}</span>
+            <span class="meta">${escapeHtml((a.at || '').slice(0, 10))}${a.hanterad ? ' · hanterad' : ' · skickad'}</span>
           </div>
-          <p class="t-sm muted" style="margin:2px 0 10px;">${escapeHtml(a.message)}</p>
+          <p class="t-sm muted" style="margin:2px 0 10px;white-space:pre-wrap;">${escapeHtml(a.message)}</p>
         `).join('')}
       </div>
     ` : ''}
@@ -1076,6 +1114,23 @@ function renderForhinderCard() {
 }
 
 function wireManage() {
+  // Svar i ett ärende. Kårens svar öppnar ärendet igen; ledningen mailas.
+  document.querySelectorAll('[data-an-svar]').forEach(b => b.addEventListener('click', () => withBusy(b, 'Skickar…', async () => {
+    const aid = b.dataset.anSvar;
+    const ta = document.querySelector(`[data-an-text="${aid}"]`);
+    const text = (ta?.value || '').trim();
+    if (!text) { toast('Skriv ett svar först', 'error'); return; }
+    try {
+      await skickaAndringSvar(cid, reg.id, aid, 'kar', text);
+      andringar = await laddaAndringar();
+      toast('Svaret är skickat till tävlingsledningen', 'success');
+      render();
+    } catch (err) { toast('Fel: ' + err.message, 'error'); }
+  })));
+  // Mailets länk pekar rakt in i ärendet.
+  if (location.hash.startsWith('#andring-')) {
+    document.getElementById(location.hash.slice(1))?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }
   document.getElementById('edit-reg')?.addEventListener('click', () => {
     draft = draftFromReg(reg);
     editing = true;
@@ -1193,17 +1248,13 @@ function wireManage() {
       at: isoNow()
     };
     try {
-      // Läs om färskt före append — annars skriver den här sidans förlegade
-      // ögonblicksbild över en ändring som skickats från en annan flik, eller
-      // ledningens hanterad-markering. Samma mönster som förhinder.
-      const fresh = await getRegistration(cid, reg.id).catch(() => null) || reg;
-      await updateRegistration(cid, reg.id, {
-        andringar: [...(fresh.andringar || []), entry],
-        updatedAt: isoNow()
-      });
-      reg = await getRegistration(cid, reg.id);
+      // Ett ärende är ett EGET dokument under anmälan (inte längre en post i
+      // en array på den): ledningen svarar i det, kåren svarar tillbaka, och
+      // en Cloud Function mailar åt båda hållen.
+      await skapaAndring(cid, reg.id, entry);
+      andringar = await laddaAndringar();
       document.getElementById('an-msg').value = '';
-      toast('Ändringen är skickad till tävlingsledningen', 'success');
+      toast('Ändringen är skickad till tävlingsledningen — ni får mail när de svarar', 'success');
       render();
     } catch (err) {
       toast('Fel: ' + err.message, 'error');

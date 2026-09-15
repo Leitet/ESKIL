@@ -583,6 +583,11 @@ export async function closeCompetition(cid) {
   const komplSnap = await getDocs(collection(db, 'competitions', cid, 'kompletteringar'));
   await deleteRefs(komplSnap.docs.map(d => d.ref));
 
+  // Ändringsärendena med sina samtal bär samma slags uppgifter (allergier,
+  // kontaktpersoner) och sopas av samma skäl. Anmälningarna själva står kvar.
+  const regSnap = await getDocs(collection(db, 'competitions', cid, 'registrations'));
+  for (const r of regSnap.docs) await deleteAndringar(cid, r.id);
+
   // Sekretariatets logg namnger enskilda patruller och bär funktionärernas
   // e-postadresser. Den fyller sitt syfte under och strax efter dagen; när
   // tävlingen avslutas är den bara personuppgifter kvar. Raderas helt, precis
@@ -695,6 +700,10 @@ export async function deleteCompetition(cid) {
     await deleteRefs(pass.docs.map(d => d.ref));
   }
   await deleteRefs(stationsSnap.docs.map(d => d.ref));
+  // Anmälningarnas ärendetrådar (undersamling under varje anmälan) — före
+  // den platta sopningen, annars blir de föräldralösa.
+  const regsSnap = await getDocs(collection(db, 'competitions', cid, 'registrations'));
+  for (const r of regsSnap.docs) await deleteAndringar(cid, r.id);
   // Platta kollektioner. `selfPassages`, `track` och `utskick` saknades och
   // låg kvar som föräldralösa dokument efter en "raderad" tävling.
   for (const sub of ['registrations', 'invites', 'selfPassages', 'track', 'utskick', 'logg', 'faltinfo', 'kompletteringar', 'papperskorg']) {
@@ -1762,7 +1771,76 @@ export async function deleteRegistration(cid, regId) {
   for (const r of (reg?.kompletteringar || [])) {
     await deleteDoc(doc(db, 'competitions', cid, 'kompletteringar', r.token)).catch(() => {});
   }
+  await deleteAndringar(cid, regId);
   await deleteDoc(doc(db, 'competitions', cid, 'registrations', regId));
+}
+
+// --- Ändringsförfrågningar som ärenden (trådar under anmälan) ------------------
+// `registrations/{regId}/andringar/{aid}` är ärendet (sort, patrull, fråga,
+// status oppen | besvarad | hanterad) och `.../svar/{mid}` samtalet. Kåren
+// når det med anmälningslänken (sökvägen bär regId), ledningen från
+// Anmälan-fliken; Cloud Functions mailar åt båda hållen. Den gamla formen —
+// `andringar[]` som array på anmälan — migreras av admin-vyn
+// (migreraAndring) och ska inte skrivas till längre.
+export async function listAndringar(cid, regId) {
+  const snap = await getDocs(collection(db, 'competitions', cid, 'registrations', regId, 'andringar'));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
+}
+
+export async function listAndringSvar(cid, regId, aid) {
+  const snap = await getDocs(collection(db, 'competitions', cid, 'registrations', regId, 'andringar', aid, 'svar'));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
+}
+
+// Kårens nya ärende. Formen är exakt den reglerna släpper igenom anonymt.
+export async function skapaAndring(cid, regId, { sort, patrol, message }) {
+  const at = new Date().toISOString();
+  const ref = await addDoc(collection(db, 'competitions', cid, 'registrations', regId, 'andringar'), {
+    sort: sort || 'annat',
+    patrol: patrol || '',
+    message: String(message || '').slice(0, 2000),
+    at, status: 'oppen', senastAt: at, senastFran: 'kar'
+  });
+  return ref.id;
+}
+
+// Admin: en gammal array-post blir ett ärende med deterministiskt id, så
+// migreringen kan köras om utan dubbletter. `migrerad: true` hindrar
+// Cloud Function från att mejla om något som redan hänt.
+export async function migreraAndring(cid, regId, aid, data) {
+  await setDoc(doc(db, 'competitions', cid, 'registrations', regId, 'andringar', aid), data);
+}
+
+export async function uppdateraAndring(cid, regId, aid, data) {
+  await updateDoc(doc(db, 'competitions', cid, 'registrations', regId, 'andringar', aid), data);
+}
+
+// Ett svar i tråden. Kårens svar ÖPPNAR ärendet igen (reglerna tillåter
+// bara den statusen anonymt); ledningens sätter det till besvarat, så
+// avisering och KPI visar det som väntar på ledningen, inte på kåren.
+export async function skickaAndringSvar(cid, regId, aid, from, text) {
+  const at = new Date().toISOString();
+  await addDoc(collection(db, 'competitions', cid, 'registrations', regId, 'andringar', aid, 'svar'), {
+    from, text: String(text || '').slice(0, 2000), at
+  });
+  await updateDoc(doc(db, 'competitions', cid, 'registrations', regId, 'andringar', aid), {
+    status: from === 'ledning' ? 'besvarad' : 'oppen', senastAt: at, senastFran: from
+  });
+}
+
+// Sopar en anmälans ärenden med samtal. Anropas av deleteRegistration,
+// closeCompetition (ärendena kan bära allergier och kontaktuppgifter) och
+// deleteCompetition — Firestore raderar aldrig undersamlingar med föräldern.
+export async function deleteAndringar(cid, regId) {
+  const tradar = await getDocs(collection(db, 'competitions', cid, 'registrations', regId, 'andringar')).catch(() => null);
+  if (!tradar) return;
+  for (const t of tradar.docs) {
+    const svar = await getDocs(collection(db, 'competitions', cid, 'registrations', regId, 'andringar', t.id, 'svar'));
+    await deleteRefs(svar.docs.map(d => d.ref));
+  }
+  await deleteRefs(tradar.docs.map(d => d.ref));
 }
 
 // --- Meddelanden till ESKIL (kontaktformuläret) -------------------------------
