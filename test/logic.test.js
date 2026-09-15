@@ -1469,6 +1469,17 @@ describe('ändringsförfrågningar är trådar, inte en array', () => {
   });
 });
 
+// --- Startskärmen och driftmeddelandet ----------------------------------------
+describe('startskärmen börjar under driftmeddelande-bannern', () => {
+  test('.ss-root tar höjden ur --field-bar-offset', () => {
+    // Roten är position: fixed och nås inte av body-paddingen broadcast.js
+    // sätter — bannern låg över klockan och rubriken på storbildsskärmen.
+    const css = readFileSync(new URL('../public/assets/startscreen.css', import.meta.url), 'utf8');
+    const rot = css.slice(css.indexOf('.ss-root {'), css.indexOf('}', css.indexOf('.ss-root {')));
+    assert.match(rot, /inset: var\(--field-bar-offset, 0px\) 0 0 0/);
+  });
+});
+
 // --- Efteranmälan ---------------------------------------------------------------
 // Ledningen lägger till patruller efter stängd anmälan (views/efteranmalan.js).
 // Mellanskillnaden är det som avgör vad kåren får betala en gång till.

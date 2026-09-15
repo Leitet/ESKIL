@@ -513,6 +513,10 @@ Email extension). Production domain: https://eskilscout.se.
   ligger i informationsbladet bakom (i)-knappen.
   Bannern och headern delar toppen: broadcast.js sätter `--field-bar-offset`
   och räknar in headern i body-paddingen, annars hamnar headern bakom bannern.
+  **Startskärmens rot är `position: fixed`** och nås inte av body-paddingen —
+  den börjar därför på `inset: var(--field-bar-offset, 0px) 0 0 0`
+  (startscreen.css); utan det låg bannern över klockan och rubriken på
+  storbildsskärmen. Källtestat.
   `--field-top` (report.css) är summan av båda — sticky-remsor och
   `scroll-padding-top` måste utgå från den, annars hamnar det de scrollar
   fram under headern.

@@ -3,7 +3,11 @@
    ============================================ */
 
 .ss-root {
-  position: fixed; inset: 0;
+  /* Fixerad över hela fönstret — så den body-padding som driftmeddelande-
+     bannern reserverar (broadcast.js) når den inte. Bannern exponerar sin
+     höjd som --field-bar-offset; roten börjar under den i stället för att
+     klockan och rubriken hamnar bakom meddelandet. 0 när ingen banner. */
+  position: fixed; inset: var(--field-bar-offset, 0px) 0 0 0;
   background: var(--scout-blue-900);
   color: var(--white);
   display: grid;
