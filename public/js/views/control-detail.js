@@ -2,11 +2,12 @@ import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import {
   getCompetition, getControl, updateControl, attachControlMeta,
   watchScoresForControl, listPatrols, listControls, getTrack,
-  deleteScore, adjustScore, ensureThreadToken, loggHandelse
+  deleteScore, adjustScore, adjustTidScore, stangKontroll, fordelaTidspoangForKontroll, ensureThreadToken, loggHandelse
 } from '../store.js';
 import { courseLegs, legStub, legLatLngs, controlEtaWindow } from '../course.js';
 import { escapeHtml, toast, copyToClipboard, reportUrl, confirmDialog, formatTime, allInstructionGroups, withBusy, wireOverlayClose, isCompAdminUser, canEditControl } from '../utils.js';
 import { icon } from '../icons.js';
+import { formateraTid, tolkaTid } from '../tidspoang.js';
 import { compHeader, compLabel, setDocTitle } from '../nav.js';
 import { navigate } from '../router.js';
 import { openControlModal } from './controls.js';
@@ -60,10 +61,10 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
     ${compHeader(cid, comp, user, {
       active: 'controls', title: ctrlTitle,
       crumbs: [{ label: 'Kontroller', href: `/app/c/${cid}/controls` }],
-      subtitleHtml: `${control.open ? '<span class="badge badge-green">Öppen</span>' : '<span class="badge badge-gray">Stängd</span>'} Max ${control.maxPoang || 0} · Min ${control.minPoang || 0}${control.extraPoang ? ' · Extra ' + control.extraPoang : ''}`,
+      subtitleHtml: `${control.open ? '<span class="badge badge-green">Öppen</span>' : '<span class="badge badge-gray">Stängd</span>'} ${control.tidtagning ? '<span class="badge badge-blue">Tidtagning</span> Poäng ' + (control.minPoang || 0) + '–' + (control.maxPoang || 0) + ' fördelas vid stängning' : 'Max ' + (control.maxPoang || 0) + ' · Min ' + (control.minPoang || 0)}${control.extraPoang ? ' · Extra ' + control.extraPoang : ''}`,
       actions: `
         ${canEdit ? '<button class="btn btn-secondary" id="edit">Redigera kontrollen</button>' : ''}
-        ${canEdit ? `<button class="btn btn-primary" id="toggle">${control.open ? 'Stäng' : 'Öppna'} för rapport</button>` : ''}`
+        ${canEdit ? `<button class="btn btn-primary" id="toggle">${control.open ? 'Stäng' : 'Öppna'} för rapport</button>${control.tidtagning && !control.open && isAdmin ? `<button class="btn btn-secondary btn-sm" id="fordela" title="Räknar om poängen ur tiderna — samma formel som vid stängningen">Fördela poäng igen</button>` : ''}` : ''}`
     })}
 
     <div class="grid grid-2">
@@ -251,11 +252,18 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
         else renderControlDetail(app, user, cid, ctrlId);
       }, { manageAnsvariga: isAdmin, inviteAnsvariga: !isAdmin && canEdit, comp });
     });
+    const fordelaBtn = wrap.querySelector('#fordela');
+    fordelaBtn?.addEventListener('click', () => withBusy(fordelaBtn, 'Fördelar…', async () => {
+      try {
+        const n = await fordelaTidspoangForKontroll(cid, control);
+        toast(n ? `Poängen omfördelade (${n} patruller)` : 'Poängen var redan rätt fördelade', 'success');
+      } catch (e) { toast('Fel: ' + e.message, 'error'); }
+    }));
     const toggleBtn = wrap.querySelector('#toggle');
     toggleBtn.addEventListener('click', () => withBusy(toggleBtn, control.open ? 'Stänger…' : 'Öppnar…', async () => {
       try {
-        await updateControl(cid, ctrlId, { open: !control.open });
-        toast(control.open ? 'Kontroll stängd' : 'Kontroll öppnad', 'success');
+        if (control.open) await stangKontroll(cid, control); else await updateControl(cid, ctrlId, { open: true });
+        toast(control.open ? (control.tidtagning ? 'Kontroll stängd — poängen fördelade ur tiderna' : 'Kontroll stängd') : 'Kontroll öppnad', 'success');
         renderControlDetail(app, user, cid, ctrlId);
       } catch (e) { toast(e.message, 'error'); }
     }));
@@ -322,9 +330,84 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
       } catch (err) { toast('Fel: ' + err.message, 'error'); }
     }));
   }
+  // Rättelse av en TID: samma spårbarhet som poängrättelsen (gammalt värde i
+  // history, obligatorisk motivering). Är kontrollen stängd fördelas
+  // poängen om direkt — annars vid stängningen.
+  function openAdjustTidModal(s, patrol) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal" style="max-width:480px;">
+        <div class="modal-head"><h3>Justera tid — ${escapeHtml(patrol.name || '')}</h3></div>
+        <div class="modal-body field-group">
+          <p class="muted t-sm" style="margin-top:0;">Nuvarande: <strong>${s.ejGenomford ? 'Ej genomförd' : (s.tidSek != null ? formateraTid(s.tidSek) : '—')}</strong>${Number(s.extraPoang) ? ` + ${s.extraPoang} extra` : ''}${s.poangFranTid ? ` · ${s.poang} p fördelade` : ''}.
+          Det gamla värdet sparas i justeringsloggen tillsammans med din motivering.${!control.open ? ' Poängen fördelas om direkt.' : ''}</p>
+          <div class="grid grid-2">
+            <div>
+              <label class="field" for="adj-tid">Tid (mm:ss)</label>
+              <input class="input" id="adj-tid" inputmode="numeric" placeholder="2:05" value="${s.tidSek != null ? formateraTid(s.tidSek) : ''}" ${s.ejGenomford ? 'disabled' : ''}>
+            </div>
+            <div>
+              <label class="field" for="adj-extra">Extrapoäng</label>
+              <input class="input" id="adj-extra" type="number" value="${s.extraPoang ?? 0}">
+            </div>
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" id="adj-ej" ${s.ejGenomford ? 'checked' : ''}> Ej genomförd — 0 poäng
+          </label>
+          <div>
+            <label class="field" for="adj-note">Motivering (obligatorisk)</label>
+            <textarea class="textarea" id="adj-note" rows="3" placeholder="Ex. Klockan stoppades för sent — tiden enligt reservprotokollet."></textarea>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn btn-ghost" id="adj-cancel">Avbryt</button>
+          <button class="btn btn-primary" id="adj-save">Justera tiden</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    wireOverlayClose(overlay, close);
+    overlay.querySelector('#adj-cancel').addEventListener('click', close);
+    const ejEl = overlay.querySelector('#adj-ej');
+    const tidEl = overlay.querySelector('#adj-tid');
+    ejEl.addEventListener('change', () => { tidEl.disabled = ejEl.checked; });
+    overlay.querySelector('#adj-save').addEventListener('click', (e) => withBusy(e.currentTarget, 'Justerar…', async () => {
+      const adjustNote = overlay.querySelector('#adj-note').value.trim();
+      if (!adjustNote) { toast('Motivering krävs för att justera tiden.', 'error'); return; }
+      const ejGenomford = ejEl.checked;
+      const tidSek = tolkaTid(tidEl.value);
+      if (!ejGenomford && tidSek == null) { toast('Ange tiden som mm:ss, t.ex. 2:05.', 'error'); return; }
+      try {
+        await adjustTidScore(cid, ctrlId, s.patrolId, s, {
+          tidSek, ejGenomford,
+          extraPoang: Number(overlay.querySelector('#adj-extra').value) || 0,
+          adjustNote
+        });
+        if (!control.open) await fordelaTidspoangForKontroll(cid, control);
+        loggHandelse(cid, { vad: 'poang-justerad', av: user?.email || '',
+          text: `Justerade tid för patrull på kontroll ${control?.nummer ?? ctrlId} — ${adjustNote}` });
+        toast(control.open ? 'Tiden justerad' : 'Tiden justerad och poängen omfördelade', 'success');
+        close();
+      } catch (err) { toast('Fel: ' + err.message, 'error'); }
+    }));
+  }
+
   let autoCloseFired = false;
+  let fordelaKor = false;
   registerViewCleanup(() => { if (unsub) { unsub(); unsub = null; } });
   unsub = watchScoresForControl(cid, ctrlId, (rows) => {
+    // Tidtagning: en STÄNGD kontroll med ofördelade tider (stängd via
+    // AI-kopplingen, en sen rapport, en rättad tid) fördelas här — ledningens
+    // sida är den som får skriva poängen, och fördelningen är idempotent.
+    if (control.tidtagning && !control.open && isAdmin && !fordelaKor
+        && rows.some(r => r.ejGenomford !== true && r.tidSek != null && r.poangFranTid !== true)) {
+      fordelaKor = true;
+      fordelaTidspoangForKontroll(cid, control)
+        .then(n => { fordelaKor = false; if (n) toast(`Poäng fördelade ur tiderna (${n} patruller)`, 'success'); })
+        .catch(e => { fordelaKor = false; console.warn('[ESKIL] fördelning misslyckades', e); });
+    }
     // Auto-close when every patrol has reported. Only admins can write the
     // control doc (per Firestore rules) so this runs just for admin viewers;
     // that's acceptable — the setting is per-competition and the control
@@ -338,7 +421,7 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
       const coverage = patrols.every(p => reportedIds.has(p.id));
       if (coverage) {
         autoCloseFired = true;
-        updateControl(cid, ctrlId, { open: false })
+        stangKontroll(cid, control)
           .then(() => {
             control.open = false;
             toast('Alla patruller rapporterat — kontrollen stängdes automatiskt', 'success');
@@ -364,8 +447,8 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
           <thead>
             <tr>
               <th>Nr</th><th>Patrull</th><th>Avdelning</th><th>Kår</th>
-              <th class="num">Poäng</th><th class="num">Extra</th>
-              <th>Tid</th><th>Notering</th>
+              ${control.tidtagning ? '<th class="num">Tid</th>' : ''}<th class="num">Poäng</th><th class="num">Extra</th>
+              <th>Rapporterad</th><th>Notering</th>
               ${isAdmin ? '<th></th>' : ''}
             </tr>
           </thead>
@@ -377,7 +460,8 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
                 <td><strong>${escapeHtml(p.name || s.patrolId)}</strong></td>
                 <td>${escapeHtml(p.avdelning || '')}</td>
                 <td>${escapeHtml(p.kar || '')}</td>
-                <td class="num"><strong>${s.poang ?? 0}</strong>${s.adjustNote ? ` <span title="Justerad av sekretariatet">${icon('pencil', { size: 11 })}</span>` : ''}${(s.history || []).length ? ` <span class="muted t-sm" title="${(s.history || []).length} tidigare värden — se justeringsloggen på poängtabellen">${icon('history', { size: 11 })}${(s.history || []).length}</span>` : ''}</td>
+                ${control.tidtagning ? `<td class="num mono">${s.ejGenomford ? 'Ej genomförd' : (s.tidSek != null ? formateraTid(s.tidSek) : '—')}</td>` : ''}
+                <td class="num"><strong>${control.tidtagning && s.poangFranTid !== true && s.ejGenomford !== true ? '<span class="muted" title="Fördelas när kontrollen stängs">–</span>' : (s.poang ?? 0)}</strong>${s.adjustNote ? ` <span title="Justerad av sekretariatet">${icon('pencil', { size: 11 })}</span>` : ''}${(s.history || []).length ? ` <span class="muted t-sm" title="${(s.history || []).length} tidigare värden — se justeringsloggen på poängtabellen">${icon('history', { size: 11 })}${(s.history || []).length}</span>` : ''}</td>
                 <td class="num">${s.extraPoang ?? 0}</td>
                 <td class="muted t-sm">${formatTime(s.reportedAt)}</td>
                 <td class="muted t-sm" style="max-width:22ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
@@ -394,7 +478,7 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
         b.addEventListener('click', () => {
           const s = rows.find(x => x.id === b.dataset.adjust);
           const patrol = patrolById[s.patrolId] || {};
-          openAdjustModal(s, patrol);
+          (control.tidtagning ? openAdjustTidModal : openAdjustModal)(s, patrol);
         });
       });
       scoresEl.querySelectorAll('[data-del]').forEach(b => {

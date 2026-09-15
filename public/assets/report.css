@@ -554,6 +554,22 @@ html[data-mode="night"] .sheet-overlay { background: rgba(0,0,0,0.85); }
 }
 
 /* Score stepper */
+/* Stoppklockan på en tidtagningskontroll. Stor tid i samma monospace som
+   poängdisplayen; knapparna är vanliga r-btn så nattläget håller. */
+.stoppklocka { margin: 6px 0 4px; text-align: center; }
+.klocka-tid {
+  font-family: 'SF Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 44px; font-weight: 800; letter-spacing: 0.02em;
+  color: var(--r-fg); padding: 8px 0 10px;
+}
+.klocka-tid.igang { color: var(--r-accent-text); }
+.klocka-knappar { display: flex; gap: 8px; }
+.klocka-knappar .r-btn { flex: 1; margin: 0; }
+.klocka-knappar .r-btn.klocka-sekundar { background: transparent; color: var(--r-fg); border: 1px solid var(--r-border); }
+.klocka-ej { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-weight: 600; color: var(--r-fg); }
+.klocka-ej input { width: 22px; height: 22px; }
+.klocka-hint { margin-top: 8px; font-size: 13px; color: var(--r-fg-muted); line-height: 1.4; }
 .score-stepper {
   display: flex;
   align-items: stretch;           /* buttons match the score box height */

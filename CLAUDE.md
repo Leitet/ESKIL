@@ -914,6 +914,27 @@ BÅDA ställena.
   visar den i badgens `title`; `closeCompetition` nollar den i metan OCH i den
   gamla publika grenen (tävlingar skrivna före flytten).
 - `.../controls/{ctrlId}` — publicly readable; writable by competition admins.
+- **Tidtagning** (`control.tidtagning === true`): kontrollanten rapporterar
+  `tidSek` (heltal sekunder) eller `ejGenomford: true` (som ger `poang: 0`
+  direkt) — ALDRIG en poäng; reglerna (`tidScoreShape`) avvisar `poang` på
+  en tidsrapport, så totalen utelämnar kontrollen tills ledningen fördelat.
+  Fördelningen är `fordelaTidspoang()` i `public/js/tidspoang.js` (ren, låst
+  av test: tio patruller och 5–10 ger 10, 9, 8, 8, 8, 7, 7, 7, 6, 5 —
+  rangbaserad normalfördelning, snabbast max, långsammast min, lika tid lika
+  poäng, ej genomförd 0) och skrivs av `fordelaTidspoangForKontroll()` med
+  `poangFranTid: true` som kvitto. **Varje väg som sätter `open: false` går
+  via `stangKontroll()`** (kontrollens sida, kontrollistans massknapp, båda
+  autostängningarna) — stängningen ÄR fördelningsögonblicket; ett källtest
+  förbjuder direkta `updateControl(..., { open: false })` i vyerna. Stängs
+  kontrollen via MCP fördelas inget förrän ledningen öppnar kontrollens sida,
+  som fördelar ofördelade tider själv (idempotent — även efter en sen rapport
+  eller en rättad tid, `adjustTidScore` med history). Visning: startkortet,
+  /t och poängtabellen visar TIDEN (`formateraTid`, m:ss) tills
+  `poangFranTid`, sedan poängen med tiden som referens. Stoppklockan på /k
+  bor i localStorage per patrull (`eskil-klocka:<cid>:<ctrlId>:<patrolId>`) så
+  den överlever stängt blad, låst telefon och omladdning, och flera patruller
+  kan tidtas samtidigt; Stopp fyller i fältet, Spara bekräftar. Offlinekön
+  bär `tidtagning: true` på posten så flushen väljer rätt skrivning.
 - `.../controls/{ctrlId}/scores/{patrolId}` — one doc per patrol×control; the
   doc id IS the patrolId so re-reporting overwrites. May carry
   `utslagGissning` (the patrol's tiebreaker guess) when the control has

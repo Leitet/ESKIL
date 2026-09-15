@@ -20,6 +20,7 @@ import { ensureLeaflet } from './leaflet.js';
 import { compPlaces, placeKind, drawPlaces } from './places.js';
 import { icon } from './icons.js';
 import { buildIcs } from './ics.js';
+import { formateraTid } from './tidspoang.js';
 import { showSystemNotification } from './broadcast.js';
 import { setSeo } from './seo.js';
 
@@ -1585,8 +1586,11 @@ function openPatrolModal(patrolId) {
                 <div class="name ${hidden ? 'is-hidden' : ''}">${escapeHtml(name)}</div>
                 ${showScores ? `
                   <div class="pts">
-                    <span class="main">${Number(score.poang) || 0}</span>
+                    ${control.tidtagning && score.poangFranTid !== true
+                      ? `<span class="main mono" title="Poängen fördelas när kontrollen stängs">${score.ejGenomford ? 'Ej genomförd' : escapeHtml(formateraTid(score.tidSek))}</span>`
+                      : `<span class="main">${Number(score.poang) || 0}</span>`}
                     ${extra > 0 ? `<span class="extra">+${extra}</span>` : ''}
+                    ${control.tidtagning && score.poangFranTid === true && score.tidSek != null ? `<span class="extra muted">${escapeHtml(formateraTid(score.tidSek))}</span>` : ''}
                   </div>
                 ` : `<div class="pts done-icon">${icon('check', { size: 20, stroke: 3 })}</div>`}
                 <!-- Kontrollantens notering visas MEDVETET inte här. Den är

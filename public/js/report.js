@@ -3,7 +3,8 @@
 // with the URL report (if the control is open).
 
 import { db, doc, onSnapshot } from './firebase.js';
-import { getCompetition, getControl, listPatrols, watchScoresForControl, upsertScore, deleteScore, listControls, getTrack, listAllScoresForEta, rensaEtaCache, sendControlBeacon } from './store.js';
+import { getCompetition, getControl, listPatrols, watchScoresForControl, upsertScore, upsertTidScore, deleteScore, listControls, getTrack, listAllScoresForEta, rensaEtaCache, sendControlBeacon } from './store.js';
+import { formateraTid, tolkaTid } from './tidspoang.js';
 import { AVDELNINGAR, escapeHtml, allInstructionGroups, internalManagement, parseFieldPath,
   NOTE_CHIPS, harNotering, laggTillNotering, taBortNotering, kapaNotering,
   sparlagesBeslut } from './utils.js';
@@ -47,6 +48,14 @@ modeBtn.addEventListener('click', () => {
   const cur = document.documentElement.getAttribute('data-mode') || 'light';
   applyMode(cur === 'night' ? 'light' : 'night');
 });
+
+// Vad en rapport betyder i listan: poäng, eller tid på en tidtagningskontroll
+// ("2:05", "Ej genomförd") — poängen där finns inte förrän ledningen fördelat.
+function resultatText(s, control) {
+  const extra = Number(s?.extraPoang) ? '+' + s.extraPoang : '';
+  if (control?.tidtagning) return (s?.ejGenomford ? 'Ej genomförd' : formateraTid(s?.tidSek)) + extra;
+  return `${s?.poang ?? 0}${extra}`;
+}
 
 function reporterId() {
   let id = localStorage.getItem('eskil:reporter');
@@ -441,7 +450,9 @@ async function main() {
         <h1 class="r-title">
           <span class="r-ctrl-no">${escapeHtml(String(control.nummer ?? ''))}</span>${escapeHtml(control.name || '')}
         </h1>
-        <div class="r-sub">Rapportera poäng. Max ${control.maxPoang ?? 0} · Min ${control.minPoang ?? 0}${control.extraPoang ? ' · Extra max ' + control.extraPoang : ''}</div>
+        <div class="r-sub">${control.tidtagning
+          ? `Rapportera tid. Poäng ${control.minPoang ?? 0}–${control.maxPoang ?? 0} fördelas när kontrollen stängs${control.extraPoang ? ' · Extra max ' + control.extraPoang : ''}`
+          : `Rapportera poäng. Max ${control.maxPoang ?? 0} · Min ${control.minPoang ?? 0}${control.extraPoang ? ' · Extra max ' + control.extraPoang : ''}`}</div>
         ${etaText ? `<div class="r-eta">${icon('clock', { size: 13 })} ${escapeHtml(etaText)}</div>` : ''}
       </div>
     `;
@@ -547,11 +558,11 @@ async function main() {
           const pending = isPending(cid, ctrlId, p.id);
           const missingGissning = s && control.utslag && s.utslagGissning == null;
           return `<button type="button" class="patrol-btn ${s ? 'reported' : ''}" data-id="${p.id}"
-            aria-label="${escapeHtml(`#${p.number ?? ''} ${p.name || ''}${p.kar ? ', ' + p.kar : ''}. ${s ? `Rapporterad, ${(Number(s.poang) || 0) + (Number(s.extraPoang) || 0)} poäng` : 'Ej rapporterad'}${pending ? ', väntar på synk' : ''}`)}">
+            aria-label="${escapeHtml(`#${p.number ?? ''} ${p.name || ''}${p.kar ? ', ' + p.kar : ''}. ${s ? `Rapporterad, ${resultatText(s, control)}` : 'Ej rapporterad'}${pending ? ', väntar på synk' : ''}`)}">
             <div class="p-num">#${p.number ?? '—'}</div>
             <div class="p-name">${escapeHtml(p.name || '—')}</div>
             <div class="p-meta">${escapeHtml(p.kar || '')}${p.utgatt ? ' <span class="p-utgatt">Utgått</span>' : ''}${pending ? ' <span class="p-pending">Väntar på synk</span>' : ''}${missingGissning ? ' <span class="p-missing-guess">Utslagssvar saknas!</span>' : ''}</div>
-            ${s ? `<span class="p-score">${s.poang}${s.extraPoang ? '+' + s.extraPoang : ''}</span>` : ''}
+            ${s ? `<span class="p-score">${escapeHtml(resultatText(s, control))}</span>` : ''}
           </button>`;
         }).join('')}
       </div>
@@ -573,6 +584,10 @@ async function main() {
     // doesn't re-enter a score they already reported.
     const pending = !existing ? listQueue(cid, ctrlId).find(x => x.patrolId === patrolId) : null;
     const seed = existing || pending;
+    const tidLage = !!control.tidtagning;
+    const sparaText = existing ? (tidLage ? 'Uppdatera tid' : 'Uppdatera poäng') : (tidLage ? 'Spara tid' : 'Spara poäng');
+    const seedTid = seed && seed.tidSek != null ? formateraTid(seed.tidSek) : '';
+    const seedEj = !!seed?.ejGenomford;
     const maxP = Number(control.maxPoang) || 0;
     const minP = Number(control.minPoang) || 0;
     const maxE = Number(control.extraPoang) || 0;
@@ -598,6 +613,22 @@ async function main() {
       body: `
         <div class="score-who">${escapeHtml(patrol.avdelning || '')} · ${escapeHtml(patrol.kar || '')}</div>
 
+        ${tidLage ? `
+        <div class="r-label-inline">Stoppklocka</div>
+        <div class="stoppklocka" id="klocka">
+          <div class="klocka-tid" id="klocka-tid" role="timer" aria-live="off">0:00</div>
+          <div class="klocka-knappar">
+            <button type="button" class="r-btn" id="k-start">Start</button>
+            <button type="button" class="r-btn klocka-sekundar" id="k-paus" hidden>Paus</button>
+            <button type="button" class="r-btn" id="k-stopp" hidden>Stopp</button>
+            <button type="button" class="r-btn klocka-sekundar" id="k-noll" hidden>Nollställ</button>
+          </div>
+        </div>
+        <div class="r-label-inline" style="margin-top:14px;">Tid (mm:ss)</div>
+        <input type="text" class="r-input" id="tid-input" inputmode="numeric" autocomplete="off" placeholder="2:05" value="${escapeHtml(seedTid)}" ${seedEj ? 'disabled' : ''}>
+        <label class="klocka-ej"><input type="checkbox" id="ej-genomford" ${seedEj ? 'checked' : ''}> Ej genomförd — 0 poäng</label>
+        <div class="klocka-hint">Poäng ${minP}–${maxP} fördelas mellan patrullerna när kontrollen stängs. Fram till dess ser patrullen sin tid.</div>
+        ` : `
         <div class="r-label-inline">Poäng</div>
         <div class="score-stepper">
           <button type="button" class="step-btn" id="minus" aria-label="Minska">${icon('minus', { size: 28 })}</button>
@@ -609,6 +640,7 @@ async function main() {
         </div>
         <input type="number" class="r-input" id="poang-input" inputmode="numeric" value="${poang}" min="${minP}" max="${maxP}" step="1">
         ${maxP > minP ? `<button type="button" class="score-full" id="fullpott" aria-pressed="false">Full pott — ${maxP}${maxE > 0 ? ` + ${maxE} extra` : ''}</button>` : ''}
+        `}
 
         ${maxE > 0 ? `
           <div style="margin-top:18px;" class="r-label-inline">Extra poäng (max ${maxE})</div>
@@ -631,7 +663,7 @@ async function main() {
         ).join('')}</div>
         <textarea class="r-textarea" id="note" placeholder="T.ex. regelavvikelse eller kommentar…">${escapeHtml(note)}</textarea>`,
       footer: `
-        <button type="button" class="r-btn" id="save">${existing ? 'Uppdatera poäng' : 'Spara poäng'}</button>
+        <button type="button" class="r-btn" id="save">${sparaText}</button>
         ${existing ? '<button type="button" class="r-btn danger" id="remove">Ta bort rapport</button>' : ''}`
     });
     const overlay = ark.el;
@@ -643,12 +675,16 @@ async function main() {
     // skriver inp.value programmatiskt, vilket inte utlöser något input-event,
     // så knappen stod kvar som "full" efter ett tryck på minus.
     let speglaFull = () => {};
+    // På en tidtagningskontroll finns ingen poängstegare i bladet — setPoang
+    // och steg-knapparna kopplas bara när elementen finns.
     const setPoang = (v) => {
+      if (!valEl) return;
       poang = Math.max(minP, Math.min(maxP, Number(v) || 0));
       valEl.firstChild.textContent = poang + ' ';
       inp.value = poang;
       speglaFull();
     };
+    if (!tidLage) {
     // bindTap uses touchstart+preventDefault so two quick +/- taps register
     // as two increments on iOS without the browser ever considering it a
     // double-tap-to-zoom gesture.
@@ -665,6 +701,7 @@ async function main() {
       }
     });
     inp.addEventListener('change', e => setPoang(e.target.value));
+    }
 
     // setExtra ligger utanför if-blocket: Full pott-knappen nedan måste nå den,
     // och en block-scopad const hade kastat ReferenceError vid första trycket.
@@ -693,6 +730,53 @@ async function main() {
       bindTap(fullBtn, () => { setPoang(maxP); setExtra(maxE); });
       inp.addEventListener('input', () => speglaFull());
       speglaFull();
+    }
+
+    // Stoppklockan. Läget bor i localStorage per patrull, så den lever kvar
+    // när bladet stängs, telefonen låses eller sidan laddas om — och flera
+    // patruller kan tidtas samtidigt. Stopp fyller i tidsfältet; Spara är
+    // kvar som bekräftelse, precis som för poängen.
+    if (tidLage) {
+      const kNyckel = `eskil-klocka:${cid}:${ctrlId}:${patrol.id}`;
+      const lasK = () => { try { return JSON.parse(localStorage.getItem(kNyckel) || 'null') || { ack: 0, startadVid: null }; } catch { return { ack: 0, startadVid: null }; } };
+      const sparaK = (st) => { try { localStorage.setItem(kNyckel, JSON.stringify(st)); } catch {} };
+      const msK = (st) => st.ack + (st.startadVid ? Date.now() - st.startadVid : 0);
+      const tidEl = overlay.querySelector('#klocka-tid');
+      const tidInp = overlay.querySelector('#tid-input');
+      const ejInp = overlay.querySelector('#ej-genomford');
+      const kStart = overlay.querySelector('#k-start');
+      const kPaus = overlay.querySelector('#k-paus');
+      const kStopp = overlay.querySelector('#k-stopp');
+      const kNoll = overlay.querySelector('#k-noll');
+      const rita = () => {
+        const st = lasK();
+        tidEl.textContent = formateraTid(msK(st) / 1000);
+        const igang = !!st.startadVid;
+        kStart.hidden = igang;
+        kStart.textContent = st.ack > 0 ? 'Fortsätt' : 'Start';
+        kPaus.hidden = !igang;
+        kStopp.hidden = !igang && st.ack === 0;
+        kNoll.hidden = igang || st.ack === 0;
+        tidEl.classList.toggle('igang', igang);
+      };
+      bindTap(kStart, () => { const st = lasK(); st.startadVid = Date.now(); sparaK(st); rita(); });
+      bindTap(kPaus, () => { const st = lasK(); if (st.startadVid) { st.ack += Date.now() - st.startadVid; st.startadVid = null; } sparaK(st); rita(); });
+      bindTap(kStopp, () => {
+        const st = lasK();
+        if (st.startadVid) { st.ack += Date.now() - st.startadVid; st.startadVid = null; }
+        sparaK(st); rita();
+        tidInp.value = formateraTid(st.ack / 1000);
+        ejInp.checked = false; tidInp.disabled = false;
+        haptic([12, 40, 12]);
+      });
+      bindTap(kNoll, () => { sparaK({ ack: 0, startadVid: null }); rita(); });
+      ejInp.addEventListener('change', () => { tidInp.disabled = ejInp.checked; });
+      rita();
+      // Tickern lever så länge bladet står i dokumentet.
+      const tick = setInterval(() => {
+        if (!overlay.isConnected) { clearInterval(tick); return; }
+        if (lasK().startadVid) rita();
+      }, 250);
     }
 
     // Snabbnoteringar. Chipsen skriver in vanlig läsbar text i SAMMA note-fält
@@ -725,6 +809,17 @@ async function main() {
     saveBtn.addEventListener('click', async () => {
       if (comp?.demo) { rtoast('Demospår — rapportering är avstängd.', 'err'); return; }
       if (!control.open) { rtoast('Kontrollen är stängd.', 'err'); return; }
+      // Tidtagning: tiden ur fältet (mm:ss) eller "ej genomförd" — inget annat.
+      let tidSek = null;
+      let ejGenomford = false;
+      if (tidLage) {
+        ejGenomford = !!overlay.querySelector('#ej-genomford')?.checked;
+        tidSek = tolkaTid(overlay.querySelector('#tid-input')?.value);
+        if (!ejGenomford && tidSek == null) {
+          rtoast('Ange tiden som mm:ss, t.ex. 2:05 — eller kryssa i Ej genomförd.', 'err');
+          return;
+        }
+      }
       // Final clamp — the input only clamps on blur, and a fast tap on Spara
       // could race the change event.
       poang = Math.round(Math.max(minP, Math.min(maxP, Number(poang) || 0)));
@@ -746,7 +841,7 @@ async function main() {
         rtoast('Ingen utslagsgissning ifylld — vid lika poäng förlorar patrullen utslaget. Fyll i svaret, eller tryck igen för att spara utan.', 'err');
         gi.addEventListener('input', () => {
           saveBtn.dataset.guessArmed = '';
-          saveBtn.textContent = existing ? 'Uppdatera poäng' : 'Spara poäng';
+          saveBtn.textContent = sparaText;
           gi.style.borderColor = '';
         }, { once: true });
         return;
@@ -764,7 +859,9 @@ async function main() {
       // mid-save. Firestore's setDoc is idempotent on our keys (patrolId) so
       // the retry on reconnect cannot create duplicates.
       enqueue(cid, ctrlId, {
-        patrolId: patrol.id, poang, extraPoang: extra, note: noteVal, reporter,
+        patrolId: patrol.id,
+        ...(tidLage ? { tidtagning: true, tidSek, ejGenomford } : { poang }),
+        extraPoang: extra, note: noteVal, reporter,
         ...(gissning != null ? { utslagGissning: gissning } : {}),
         ...(history ? { history } : {})
       });
@@ -774,10 +871,13 @@ async function main() {
       try {
         await withTimeout(
           // clientAt = nu: direktrapport bär tryck-ögonblicket som passagetid.
-          upsertScore(cid, ctrlId, patrol.id, poang, extra, noteVal, reporter, gissning, history, new Date()),
+          tidLage
+            ? upsertTidScore(cid, ctrlId, patrol.id, { tidSek, ejGenomford, extraPoang: extra, note: noteVal, reporter, utslagGissning: gissning, history, clientAt: new Date() })
+            : upsertScore(cid, ctrlId, patrol.id, poang, extra, noteVal, reporter, gissning, history, new Date()),
           navigator.onLine ? 5000 : 500
         );
         removeFromQueue(cid, ctrlId, patrol.id);
+        if (tidLage) { try { localStorage.removeItem(`eskil-klocka:${cid}:${ctrlId}:${patrol.id}`); } catch {} }
         haptic([12, 40, 12]);
         sync.render();
         // Stäng bladet FÖRST, sedan toasten: rtoast lämnar över till bladets
@@ -785,7 +885,7 @@ async function main() {
         // bladet. En kontrollant i skogen ska se att poängen gick fram, så
         // bekräftelsen måste ligga kvar på sidan efter att bladet glidit ner.
         close();
-        rtoast(existing ? 'Poäng uppdaterat' : 'Poäng sparat');
+        rtoast(tidLage ? (existing ? 'Tid uppdaterad' : 'Tid sparad') : (existing ? 'Poäng uppdaterat' : 'Poäng sparat'));
       } catch (e) {
         if (isPermanentError(e)) {
           // Firestore actively rejected the write (e.g. the control was just
@@ -794,7 +894,7 @@ async function main() {
           console.error('[ESKIL] score rejected:', e);
           removeFromQueue(cid, ctrlId, patrol.id);
           saveBtn.disabled = false;
-          saveBtn.textContent = existing ? 'Uppdatera poäng' : 'Spara poäng';
+          saveBtn.textContent = sparaText;
           rtoast('Kunde inte spara — kontrollen kan ha stängts. Kontakta tävlingsledningen.', 'err');
           sync.render();
           return;
@@ -887,7 +987,9 @@ async function main() {
       ({ synced, failed } = await flushQueue(cid, ctrlId,
         // queuedAt = när knappen trycktes — passagetiden följer med även när
         // rapporten synkas timmar senare (annars förgiftas ETA-mellantiderna).
-        (item) => upsertScore(cid, ctrlId, item.patrolId, item.poang, item.extraPoang, item.note, item.reporter, item.utslagGissning ?? null, item.history ?? null, item.queuedAt ?? null)
+        (item) => item.tidtagning
+          ? upsertTidScore(cid, ctrlId, item.patrolId, { tidSek: item.tidSek, ejGenomford: item.ejGenomford, extraPoang: item.extraPoang, note: item.note, reporter: item.reporter, utslagGissning: item.utslagGissning ?? null, history: item.history ?? null, clientAt: item.queuedAt ?? null })
+          : upsertScore(cid, ctrlId, item.patrolId, item.poang, item.extraPoang, item.note, item.reporter, item.utslagGissning ?? null, item.history ?? null, item.queuedAt ?? null)
       ));
     } finally {
       syncInFlight = false;

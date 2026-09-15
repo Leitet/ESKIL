@@ -20,6 +20,7 @@ import {
 } from './utils.js';
 import { ensureLeaflet } from './leaflet.js';
 import { icon } from './icons.js';
+import { formateraTid } from './tidspoang.js';
 import { bindHaptic, bindTap, lockScroll, unlockScroll } from './haptic.js';
 import { updateBroadcast } from './broadcast.js';
 import { patrolHighlights, totalRank, rankWorthShowing } from './highlights.js';
@@ -182,6 +183,18 @@ async function main() {
 }
 
 function isAnonymous() { return comp?.anonymousControls !== false; }
+
+// Vad patrullen ser för en rapporterad kontroll: poängen — eller, på en
+// tidtagningskontroll, sin TID tills ledningen fördelat poängen. När de är
+// fördelade står poängen först och tiden kvar som referens.
+function resultatText(score, c) {
+  const extra = Number(score?.extraPoang) ? '+' + score.extraPoang : '';
+  if (c?.tidtagning && score?.poangFranTid !== true) {
+    return (score?.ejGenomford ? 'Ej genomförd' : formateraTid(score?.tidSek)) + extra;
+  }
+  const tid = c?.tidtagning && score?.tidSek != null ? ` · ${formateraTid(score.tidSek)}` : '';
+  return `${score?.poang ?? 0}${extra}${tid}`;
+}
 
 // --- Startkortets tre lägen ---------------------------------------------------
 //
@@ -981,7 +994,7 @@ function renderList() {
           <div class="start-ctrl-sub">${done ? 'Rapporterad' : (c.open ? 'Öppen · inte klar' : 'Stängd · inte klar')}</div>
         </div>
         ${done
-          ? `<span class="start-ctrl-score">${score.poang}${score.extraPoang ? '+' + score.extraPoang : ''}</span>`
+          ? `<span class="start-ctrl-score">${escapeHtml(resultatText(score, c))}</span>`
           : `<span class="start-ctrl-status">Kvar</span>`}
       </button>
     `;
@@ -1186,7 +1199,7 @@ function openControlSheet(ctrlId) {
     title: name,
     body: `
       <div style="color:var(--r-fg-muted);margin:0 0 14px;">
-        ${done ? `<span style="color:var(--r-success);font-weight:700;">Rapporterad · ${score.poang}${score.extraPoang ? '+' + score.extraPoang : ''} p</span>`
+        ${done ? `<span style="color:var(--r-success);font-weight:700;">Rapporterad · ${escapeHtml(resultatText(score, c))}${c.tidtagning && score.poangFranTid !== true ? (c.open ? ' — poängen fördelas när kontrollen stängs' : '') : ' p'}</span>`
                : (c.open ? 'Öppen för rapportering' : 'Inte öppen ännu')}
       </div>
 

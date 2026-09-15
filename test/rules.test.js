@@ -1029,6 +1029,55 @@ describe('Ändringsförfrågningar som ärenden', () => {
   });
 });
 
+describe('Tidtagningskontroll: tid anonymt, poäng bara av ledningen', () => {
+  const C = uniq('comp');
+  const T = uniq('ctrl');   // tidtagning
+  const P = uniq('ctrl');   // vanlig poängkontroll
+  const PAT = uniq('patrol');
+
+  before(async () => {
+    await seed(`competitions/${C}`, { name: 'Tidtävling', shortName: 'TT', year: 2026, demo: false, closed: false });
+    await seed(`competitions/${C}/private/access`, { adminEmails: [USER.email], userEmails: [], ekonomiEmails: [] });
+    await seed(`competitions/${C}/controls/${T}`, { nummer: 1, name: 'Hinderbanan', open: true, tidtagning: true, minPoang: 5, maxPoang: 10, extraPoang: 2 });
+    await seed(`competitions/${C}/controls/${P}`, { nummer: 2, name: 'Knopar', open: true, minPoang: 0, maxPoang: 10 });
+    await seed(`competitions/${C}/patrols/${PAT}`, { name: 'Rävarna' });
+  });
+
+  const tid = (extra = {}) => ({ patrolId: PAT, tidSek: 125, extraPoang: 1, note: '', reporter: 'enhet-1', clientReportedAt: new Date(), ...extra });
+
+  test('kontrollanten rapporterar en tid — utan poäng', async () => {
+    allow(await write(`competitions/${C}/controls/${T}/scores/${PAT}`, tid(), null), 'anonym tid');
+    deny(await write(`competitions/${C}/controls/${T}/scores/${PAT}`, tid({ poang: 10 }), null), 'anonym tid MED poäng — poängen är ledningens');
+    deny(await write(`competitions/${C}/controls/${T}/scores/${PAT}`, tid({ poangFranTid: true }), null), 'anonym stämplar fördelningen');
+    deny(await write(`competitions/${C}/controls/${T}/scores/${PAT}`, tid({ tidSek: -5 }), null), 'negativ tid');
+    deny(await write(`competitions/${C}/controls/${T}/scores/${PAT}`, tid({ tidSek: 90000 }), null), 'över ett dygn');
+    deny(await write(`competitions/${C}/controls/${T}/scores/${PAT}`, tid({ tidSek: '2:05' }), null), 'tid som text');
+    deny(await write(`competitions/${C}/controls/${T}/scores/${PAT}`, { patrolId: PAT, extraPoang: 1, reporter: 'x' }, null), 'varken tid eller ej genomförd');
+  });
+
+  test('"ej genomförd" ger 0 direkt — och bara 0', async () => {
+    const ej = { patrolId: PAT, ejGenomford: true, poang: 0, extraPoang: 0, reporter: 'enhet-1' };
+    allow(await write(`competitions/${C}/controls/${T}/scores/${PAT}`, ej, null), 'ej genomförd med 0');
+    const { poang: _p, ...utanPoang } = ej;
+    allow(await write(`competitions/${C}/controls/${T}/scores/${PAT}`, utanPoang, null), 'ej genomförd utan poang-fält');
+    deny(await write(`competitions/${C}/controls/${T}/scores/${PAT}`, { ...ej, poang: 5 }, null), 'ej genomförd med poäng');
+    deny(await write(`competitions/${C}/controls/${T}/scores/${PAT}`, { ...ej, tidSek: 120 }, null), 'ej genomförd OCH tid');
+  });
+
+  test('en vanlig poängkontroll tar inte emot tider', async () => {
+    deny(await write(`competitions/${C}/controls/${P}/scores/${PAT}`, { patrolId: PAT, tidSek: 125, reporter: 'x' }, null), 'tid på poängkontroll');
+    deny(await write(`competitions/${C}/controls/${P}/scores/${PAT}`, { patrolId: PAT, poang: 7, ejGenomford: true, reporter: 'x' }, null), 'ej genomförd på poängkontroll');
+    allow(await write(`competitions/${C}/controls/${P}/scores/${PAT}`, { patrolId: PAT, poang: 7, reporter: 'x' }, null), 'poäng som förut');
+  });
+
+  test('ledningen fördelar poängen — även på en stängd kontroll', async () => {
+    await seed(`competitions/${C}/controls/${T}/scores/${PAT}`, { patrolId: PAT, tidSek: 125, extraPoang: 1 });
+    allow(await write(`competitions/${C}/controls/${T}/scores/${PAT}`, { poang: 8, poangFranTid: true }, USER, { merge: true }), 'admin fördelar');
+    deny(await write(`competitions/${C}/controls/${T}/scores/${PAT}`, { poang: 8, poangFranTid: true }, OTHER, { merge: true }), 'utomstående fördelar');
+    deny(await write(`competitions/${C}/controls/${T}/scores/${PAT}`, { poang: 8, poangFranTid: true }, null, { merge: true }), 'anonym fördelar');
+  });
+});
+
 describe('Komplettering per patrull', () => {
   const TOK = uniq('tok');
   const path = `competitions/${CID}/kompletteringar/${TOK}`;

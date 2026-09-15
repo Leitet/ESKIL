@@ -949,7 +949,7 @@ function drawControlProtocolPage(pdf, comp, control, patrols = []) {
   pdf.setFont('helvetica', 'bold'); pdf.setFontSize(15); pdf.setTextColor(BLUE);
   pdf.text(`Reservprotokoll — kontroll ${control.nummer ?? '?'} · ${control.name || ''}`, 15, 42);
   pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9.5); pdf.setTextColor('#8a8a8a');
-  pdf.text(`Max ${control.maxPoang ?? 0} p · Min ${control.minPoang ?? 0} p${control.extraPoang ? ` · Extra max ${control.extraPoang} p` : ''}${control.utslag && control.utslagFraga ? ' · Utslagsfråga: ' + control.utslagFraga : ''}`, 15, 48);
+  pdf.text(`${control.tidtagning ? `Tidtagning (mm:ss) · poäng ${control.minPoang ?? 0}–${control.maxPoang ?? 0} fördelas vid stängning · ej genomförd = 0` : `Max ${control.maxPoang ?? 0} p · Min ${control.minPoang ?? 0} p`}${control.extraPoang ? ` · Extra max ${control.extraPoang} p` : ''}${control.utslag && control.utslagFraga ? ' · Utslagsfråga: ' + control.utslagFraga : ''}`, 15, 48);
   pdf.text('Fyll i för hand om rapporteringen inte fungerar — lämna protokollet till sekretariatet efter tävlingen.', 15, 53);
 
   const x = { num: 15, name: 27, avd: 95, poang: 130, extra: 150, utslag: 168, sign: 188 };
@@ -959,7 +959,7 @@ function drawControlProtocolPage(pdf, comp, control, patrols = []) {
     pdf.rect(15, ty - 5, 180, 8, 'F');
     pdf.setFont('helvetica', 'bold'); pdf.setFontSize(9); pdf.setTextColor(BLUE);
     pdf.text('#', x.num + 1, ty); pdf.text('Patrull', x.name, ty); pdf.text('Avdelning', x.avd, ty);
-    pdf.text('Poäng', x.poang, ty); pdf.text('Extra', x.extra, ty); pdf.text('Utslag', x.utslag, ty); pdf.text('Sign', x.sign, ty);
+    pdf.text(control.tidtagning ? 'Tid' : 'Poäng', x.poang, ty); pdf.text('Extra', x.extra, ty); pdf.text('Utslag', x.utslag, ty); pdf.text('Sign', x.sign, ty);
     ty += 6;
     pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9.5); pdf.setTextColor('#282727');
   };

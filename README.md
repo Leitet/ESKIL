@@ -8,6 +8,14 @@ att köra gratis på Spark-planen.
 
 - **Flera tävlingar** med egna administratörer — en tävlingsadministratör för
   Älghornsjakten 2026 kan bjuda in tävlingsadministratören för Älghornsjakten 2027.
+- **Tidtagning på en kontroll** (Bedömning → Tidtagning) — kontrollanten
+  rapporterar en tid (mm:ss, inmatad eller med stoppklockan på kontrollkortet)
+  eller "ej genomförd" (0 p). När kontrollen stängs fördelas poängen i
+  intervallet min–max rangbaserat genom en normalfördelning (snabbast max,
+  långsammast min, de flesta i mitten); tills dess visar startkort och
+  tävlingssida tiden och kontrollen räknas inte in i totalen. Sen rapport
+  eller rättad tid räknas om vid nästa stängning eller med "Fördela poäng
+  igen".
 - **Patruller** — nummer, namn, antal, avdelning (Spårare, Upptäckare,
   Äventyrare, Utmanare, Rover, Ledare), kår, notering.
 - **Kontroller** — nummer, namn, max/min/extra poäng, position (lat/lng),

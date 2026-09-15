@@ -8,6 +8,7 @@ import {
 } from './firebase.js';
 import { normDistrict } from './districts.js';
 import { mergeBeacons, splitManagement, mergeManagement, isValidSlug } from './utils.js';
+import { fordelaTidspoang } from './tidspoang.js';
 
 // --- System config (super-admin) --------------------------------------------
 // A single config/system doc holding operational settings that are useful to
@@ -1435,6 +1436,11 @@ export function scoreHistoryEntry(existing) {
   }
   if (existing.utslagGissning != null) entry.utslagGissning = existing.utslagGissning;
   if (existing.adjustNote) entry.adjustNote = existing.adjustNote;
+  // Tidtagning: tiden (eller "ej genomförd") är det som rättas, så den
+  // ska stå i spåret precis som poängen gör.
+  if (existing.tidSek != null) entry.tidSek = Number(existing.tidSek);
+  if (existing.ejGenomford === true) entry.ejGenomford = true;
+  if (existing.poangFranTid === true) entry.poangFranTid = true;
   return entry;
 }
 
@@ -1460,6 +1466,84 @@ export async function upsertScore(cid, ctrlId, patrolId, poang, extraPoang, note
   }
   if (Array.isArray(history) && history.length) data.history = history.slice(-10);
   await setDoc(ref, data);
+}
+
+// --- Tidtagning ------------------------------------------------------------------
+// Kontrollanten rapporterar en TID (sekunder) eller "ej genomförd" (0 p
+// direkt). Poängen fördelas av ledningen när kontrollen stängs — se
+// tidspoang.js för formeln och firestore.rules (tidScoreShape) för varför
+// rapporten inte får bära någon poäng: totalen utelämnar kontrollen tills
+// fördelningen är gjord.
+export async function upsertTidScore(cid, ctrlId, patrolId, { tidSek, ejGenomford, extraPoang, note, reporter, utslagGissning = null, history = null, clientAt = null }) {
+  const ref = doc(db, 'competitions', cid, 'controls', ctrlId, 'scores', patrolId);
+  const data = {
+    patrolId,
+    extraPoang: Number(extraPoang) || 0,
+    note: note || '',
+    reportedAt: serverTimestamp(),
+    clientReportedAt: Timestamp.fromDate(clientAt ? new Date(clientAt) : new Date()),
+    reporter: reporter || ''
+  };
+  if (ejGenomford) { data.ejGenomford = true; data.poang = 0; }
+  else data.tidSek = Math.max(0, Math.round(Number(tidSek) || 0));
+  if (utslagGissning != null && Number.isFinite(Number(utslagGissning))) data.utslagGissning = Number(utslagGissning);
+  if (Array.isArray(history) && history.length) data.history = history.slice(-10);
+  await setDoc(ref, data);
+}
+
+// Sekretariatets rättelse av en TID, med samma spårbarhet som poängrättelsen:
+// det gamla värdet i history, obligatorisk motivering. En fördelad poäng
+// tas bort — den hör till den gamla tiden — och anroparen fördelar om när
+// kontrollen är stängd.
+export async function adjustTidScore(cid, ctrlId, patrolId, existing, { tidSek, ejGenomford, extraPoang, adjustNote }) {
+  const ref = doc(db, 'competitions', cid, 'controls', ctrlId, 'scores', patrolId);
+  const history = [...(existing?.history || []), scoreHistoryEntry(existing)].filter(Boolean).slice(-10);
+  const data = {
+    patrolId,
+    extraPoang: Number(extraPoang) || 0,
+    note: existing?.note || '',
+    reportedAt: existing?.reportedAt ?? serverTimestamp(),
+    reporter: 'sekretariat',
+    adjustNote: adjustNote || ''
+  };
+  if (ejGenomford) { data.ejGenomford = true; data.poang = 0; }
+  else data.tidSek = Math.max(0, Math.round(Number(tidSek) || 0));
+  if (existing?.clientReportedAt) data.clientReportedAt = existing.clientReportedAt;
+  if (existing?.utslagGissning != null) data.utslagGissning = existing.utslagGissning;
+  if (history.length) data.history = history;
+  await setDoc(ref, data);
+}
+
+// Fördelar poängen på en tidtagningskontroll ur de rapporterade tiderna och
+// skriver dem med admin-rätt (poangFranTid = kvittot). Idempotent: kan
+// köras om efter en rättelse eller en sen rapport. Returnerar antal poster.
+export async function fordelaTidspoangForKontroll(cid, control) {
+  const snap = await getDocs(collection(db, 'competitions', cid, 'controls', control.id, 'scores'));
+  const scores = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const fordelning = fordelaTidspoang(control, scores);
+  let n = 0;
+  for (let i = 0; i < fordelning.length; i += 400) {
+    const batch = writeBatch(db);
+    for (const f of fordelning.slice(i, i + 400)) {
+      const befintlig = scores.find(x => x.patrolId === f.patrolId);
+      if (befintlig && befintlig.poang === f.poang && befintlig.poangFranTid === true) continue;
+      batch.update(doc(db, 'competitions', cid, 'controls', control.id, 'scores', f.patrolId),
+        { poang: f.poang, poangFranTid: true, fordeladAt: serverTimestamp() });
+      n++;
+    }
+    await batch.commit();
+  }
+  return n;
+}
+
+// Stänger en kontroll. På en tidtagningskontroll är stängningen ögonblicket
+// då poängen fördelas — därför ska ALLA vägar som sätter open: false gå hit
+// (kontrollens sida, kontrollistans massknapp, autostängningen i poängtabellen
+// och på kontrollens sida). En sida som ser en STÄNGD tidtagningskontroll
+// med ofördelade tider (t.ex. stängd via AI-kopplingen) fördelar i efterhand.
+export async function stangKontroll(cid, control) {
+  if (control?.tidtagning === true) await fordelaTidspoangForKontroll(cid, control);
+  await updateControl(cid, control.id, { open: false });
 }
 
 // Sekretariat adjustment: overwrite a score with a MANDATORY motivation,

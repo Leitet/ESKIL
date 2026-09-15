@@ -108,13 +108,32 @@ service cloud.firestore {
     // fetched control data `c`. Enforces: control open, doc-id == patrolId,
     // point value within the control's [min,max], extra within [0,extra],
     // types, allowed keys, short note. Admins bypass this entirely.
+    // Poängkontroll: poängen är kontrollantens och måste ligga i intervallet.
+    // Inga tidsfält — en tid på en poängkontroll är ett fel i klienten.
+    function poangScoreShape(c, data) {
+      return data.poang is number
+        && data.poang >= c.get('minPoang', 0)
+        && data.poang <= c.get('maxPoang', 100000)
+        && !('tidSek' in data) && !('ejGenomford' in data);
+    }
+    // Tidtagningskontroll: kontrollanten rapporterar en TID (sekunder) eller
+    // "ej genomförd". Poängen är INTE kontrollantens — den fördelas av
+    // ledningen när kontrollen stängs (tidspoang.js) och skrivs med admin-
+    // rätt. Anonymt får poang därför bara förekomma som 0 tillsammans med
+    // ejGenomford; en tidsrapport bär ingen poang alls, så totalen utelämnar
+    // kontrollen tills fördelningen är gjord. poangFranTid står inte i
+    // hasOnly-listan — den är ledningens kvitto på fördelningen.
+    function tidScoreShape(c, data) {
+      return data.get('ejGenomford', false) == true
+        ? ((!('poang' in data) || data.poang == 0) && !('tidSek' in data))
+        : (!('poang' in data) && !('ejGenomford' in data)
+           && data.tidSek is number && data.tidSek >= 0 && data.tidSek <= 86400);
+    }
     function anonScoreShape(c, scoreId, data) {
       return c.get('open', false) == true
         && scoreId == data.patrolId
         && data.patrolId is string
-        && data.poang is number
-        && data.poang >= c.get('minPoang', 0)
-        && data.poang <= c.get('maxPoang', 100000)
+        && (c.get('tidtagning', false) == true ? tidScoreShape(c, data) : poangScoreShape(c, data))
         && (!('extraPoang' in data) || (data.extraPoang is number && data.extraPoang >= 0 && data.extraPoang <= c.get('extraPoang', 0)))
         && (!('utslagGissning' in data) || data.utslagGissning is number)
         && (!('note' in data) || (data.note is string && data.note.size() <= 500))
@@ -124,7 +143,7 @@ service cloud.firestore {
         // av score-dokumentet betalar för. (history behöver ingen vakt här —
         // create/update-reglerna nedan kräver redan tom/oförändrad history.)
         && (!('reporter' in data) || (data.reporter is string && data.reporter.size() <= 100))
-        && data.keys().hasOnly(['patrolId','poang','extraPoang','note','reportedAt','clientReportedAt','reporter','utslagGissning','history']);
+        && data.keys().hasOnly(['patrolId','poang','extraPoang','note','reportedAt','clientReportedAt','reporter','utslagGissning','history','tidSek','ejGenomford']);
     }
 
     // --- Tävlingsförfrågningar

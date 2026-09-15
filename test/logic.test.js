@@ -25,6 +25,7 @@ import {
   arSpaRutt
 } from '../public/js/utils.js';
 import { hasIcon } from '../public/js/icons.js';
+import { fordelaTidspoang, invNorm, formateraTid, tolkaTid } from '../public/js/tidspoang.js';
 import { tolkaVader, vaderMeddelande, BY_VARNING_MS } from '../public/js/vader.js';
 import { byggDagskopia } from '../public/js/dagskopia.js';
 import { buildIcs, icsText, icsDate, foldLine } from '../public/js/ics.js';
@@ -1502,6 +1503,114 @@ describe('kortadressen löses i ett nätvarv', () => {
     }
     const store = readFileSync(new URL('../public/js/store.js', import.meta.url), 'utf8');
     assert.match(store, /Promise\.all\(\[\s*getDoc\(doc\(db, 'competitions', seg\)\)/, 'doc-läsning och slug-fråga ska gå parallellt');
+  });
+});
+
+// --- Tidtagning: tider → poäng ---------------------------------------------------
+// Rangbaserad normalfördelning i kontrollens intervall. Formeln är ett löfte
+// till arrangören ("få på 5 och 10, de flesta på 7 och 8"), så exemplet nedan
+// är låst: ändras utfallet har fördelningen ändrats, inte bara koden.
+describe('tidtagning: tider blir poäng i intervallet', () => {
+  const ctrl = { minPoang: 5, maxPoang: 10 };
+  const rapporter = (tider) => tider.map((t, i) => ({ patrolId: 'p' + (i + 1), tidSek: t }));
+  const poangFor = (ut, id) => ut.find(x => x.patrolId === id).poang;
+
+  test('tio patruller ger 10, 9, 8, 8, 8, 7, 7, 7, 6, 5', () => {
+    const ut = fordelaTidspoang(ctrl, rapporter([120, 130, 140, 150, 160, 170, 180, 190, 200, 210]));
+    assert.deepEqual(ut.map(x => x.poang), [10, 9, 8, 8, 8, 7, 7, 7, 6, 5]);
+  });
+
+  test('snabbast får alltid max, långsammast alltid min — även med få', () => {
+    const två = fordelaTidspoang(ctrl, rapporter([100, 200]));
+    assert.deepEqual(två.map(x => x.poang), [10, 5]);
+    const fem = fordelaTidspoang(ctrl, rapporter([100, 110, 120, 130, 140]));
+    assert.equal(fem[0].poang, 10); assert.equal(fem[4].poang, 5);
+  });
+
+  test('rang, inte sekunder: en extremt långsam patrull trycker inte ihop de andra', () => {
+    const jamn = fordelaTidspoang(ctrl, rapporter([120, 130, 140, 150, 160, 170, 180, 190, 200, 210]));
+    const skev = fordelaTidspoang(ctrl, rapporter([120, 130, 140, 150, 160, 170, 180, 190, 200, 3600]));
+    assert.deepEqual(skev.map(x => x.poang), jamn.map(x => x.poang));
+  });
+
+  test('samma tid ger samma poäng', () => {
+    const ut = fordelaTidspoang(ctrl, rapporter([100, 100, 150, 200, 250, 300]));
+    assert.equal(poangFor(ut, 'p1'), poangFor(ut, 'p2'));
+    assert.equal(poangFor(ut, 'p1'), 10, 'delad snabbast är fortfarande max');
+  });
+
+  test('ej genomförd ger 0 oavsett intervallets min, och räknas inte i rangen', () => {
+    const ut = fordelaTidspoang(ctrl, [
+      { patrolId: 'a', tidSek: 100 }, { patrolId: 'b', ejGenomford: true, poang: 0 }, { patrolId: 'c', tidSek: 200 }
+    ]);
+    assert.equal(poangFor(ut, 'b'), 0);
+    assert.equal(poangFor(ut, 'a'), 10);
+    assert.equal(poangFor(ut, 'c'), 5);
+  });
+
+  test('en ensam patrull hamnar i mitten; trasiga rapporter utelämnas', () => {
+    assert.deepEqual(fordelaTidspoang(ctrl, rapporter([90])), [{ patrolId: 'p1', poang: 8 }]);
+    assert.deepEqual(fordelaTidspoang(ctrl, [{ patrolId: 'x' }, { patrolId: 'y', tidSek: 'nej' }]), []);
+    assert.deepEqual(fordelaTidspoang(ctrl, []), []);
+  });
+
+  test('intervallet respekteras även när min och max är lika eller vända', () => {
+    assert.deepEqual(fordelaTidspoang({ minPoang: 7, maxPoang: 7 }, rapporter([100, 200])).map(x => x.poang), [7, 7]);
+    const ut = fordelaTidspoang({ minPoang: 10, maxPoang: 5 }, rapporter([100, 200]));
+    assert.ok(ut.every(x => x.poang === 10), 'max < min tolkas som ett intervall utan bredd vid min');
+  });
+
+  test('invNorm är symmetrisk och träffar kända värden', () => {
+    assert.ok(Math.abs(invNorm(0.5)) < 1e-3);
+    assert.ok(Math.abs(invNorm(0.975) - 1.96) < 5e-3);
+    assert.ok(Math.abs(invNorm(0.025) + 1.96) < 5e-3);
+  });
+
+  test('tidstext: m:ss ut, mm:ss/m:ss/sekunder in', () => {
+    assert.equal(formateraTid(125), '2:05');
+    assert.equal(formateraTid(0), '0:00');
+    assert.equal(formateraTid(3690), '61:30');
+    assert.equal(tolkaTid('2:05'), 125);
+    assert.equal(tolkaTid('02:05'), 125);
+    assert.equal(tolkaTid('2.05'), 125);
+    assert.equal(tolkaTid('125'), 125);
+    assert.equal(tolkaTid('2:75'), null, 'sekunddelen måste vara under 60');
+    assert.equal(tolkaTid('abc'), null);
+    assert.equal(tolkaTid(''), null);
+  });
+});
+
+// --- Tidtagning: ytorna hänger ihop ----------------------------------------------
+describe('tidtagning: stängning fördelar, ytorna visar tiden', () => {
+  const las = (f) => readFileSync(new URL(`../public/js/${f}`, import.meta.url), 'utf8');
+  test('varje stängning i vyerna går via stangKontroll', () => {
+    // Stängningen ÄR fördelningsögonblicket. En direkt open:false hade
+    // stängt en tidtagningskontroll utan att någon fick poäng.
+    for (const f of ['views/control-detail.js', 'views/controls.js', 'views/scoreboard.js']) {
+      const src = las(f);
+      assert.doesNotMatch(src, /updateControl\([^)]*\{\s*open:\s*false/, `${f} stänger utan stangKontroll`);
+      assert.match(src, /stangKontroll\(/, `${f} anropar inte stangKontroll`);
+    }
+  });
+  test('rapportsidan skickar tider och flushar dem rätt', () => {
+    const src = las('report.js');
+    assert.match(src, /upsertTidScore\(cid, ctrlId, patrol\.id/);
+    assert.match(src, /item\.tidtagning\s*\?\s*upsertTidScore/, 'offlinekön måste välja skrivning per post');
+    assert.match(src, /eskil-klocka:/, 'stoppklockan ska överleva i localStorage');
+  });
+  test('startkort, tävlingssida och poängtabell visar tiden tills poängen fördelats', () => {
+    for (const f of ['start.js', 'public.js', 'views/scoreboard.js']) {
+      const src = las(f);
+      assert.match(src, /poangFranTid/, `${f} skiljer inte fördelad poäng från väntande tid`);
+      assert.match(src, /formateraTid\(/, `${f} skriver inte ut tiden`);
+    }
+  });
+  test('AI-kopplingen känner till fälten', () => {
+    const v = readFileSync(new URL('../functions/mcp/verktyg.js', import.meta.url), 'utf8');
+    const r = readFileSync(new URL('../functions/mcp/redact.js', import.meta.url), 'utf8');
+    assert.match(v, /tidtagning: 'bool'/);
+    assert.match(r, /tidtagning: OPPEN/);
+    assert.match(r, /tidSek: OPPEN, ejGenomford: OPPEN, poangFranTid: OPPEN/);
   });
 });
 

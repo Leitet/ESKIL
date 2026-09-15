@@ -1,6 +1,6 @@
 import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import {
-  getCompetition, watchControls, createControl, updateControl, flyttaTillPapperskorg,
+  getCompetition, watchControls, createControl, updateControl, stangKontroll, flyttaTillPapperskorg,
   updateControlNumbers, setCompetitionUsers, getControlMeta, migrateControlMeta,
   updateCompetition
 } from '../store.js';
@@ -155,7 +155,7 @@ export async function renderControls(app, user, cid) {
                 ${dragEnabled ? `<td class="drag-col" aria-label="Dra för att ändra ordning">${icon('grip-vertical', { size: 18, class: 'drag-handle' })}</td>` : ''}
                 <td class="num">${escapeHtml(String(r.nummer ?? ''))}</td>
                 <td><a class="row-link" href="/app/c/${cid}/controls/${r.id}" data-link>${escapeHtml(r.name || '—')}</a></td>
-                <td class="num">${r.maxPoang ?? ''}</td>
+                <td class="num">${r.maxPoang ?? ''}${r.tidtagning ? ` <span title="Tidtagning — poäng fördelas vid stängning">${icon('clock', { size: 11 })}</span>` : ''}</td>
                 <td class="num">${r.minPoang ?? ''}</td>
                 <td class="num">${r.extraPoang ?? ''}</td>
                 <td>${r.telefon ? `<a class="mono t-sm" href="tel:${escapeHtml(r.telefon)}" style="color:var(--scout-blue);text-decoration:none;white-space:nowrap;">${escapeHtml(r.telefon)}</a>` : '<span class="muted">—</span>'}</td>
@@ -301,7 +301,9 @@ export async function renderControls(app, user, cid) {
       if (!(await confirmDialog(`${verb} ${targets.length} kontroller för rapportering?`, { okLabel: `${verb} alla`, danger: false }))) return;
       await withBusy(btn, '…', async () => {
         try {
-          for (const c of targets) await updateControl(cid, c.id, { open });
+          // Stängning går via stangKontroll: på en tidtagningskontroll är det
+          // ögonblicket då poängen fördelas.
+          for (const c of targets) { if (open) await updateControl(cid, c.id, { open }); else await stangKontroll(cid, c); }
           toast(`${targets.length} kontroller ${open ? 'öppnade' : 'stängda'}`, 'success');
         } catch (err) { toast('Fel: ' + err.message, 'error'); }
       });
@@ -407,6 +409,19 @@ export function openControlModal(cid, control, onSaved, { manageAnsvariga = true
             </div>
           </div>
 
+          <div>
+            <label class="field">Bedömning ${help('ctrl.tidtagning')}</label>
+            <div class="row wrap" style="gap:var(--sp-4);">
+              <label style="display:inline-flex;align-items:flex-start;gap:8px;cursor:pointer;max-width:300px;">
+                <input type="radio" name="bedomning" value="poang" ${control?.tidtagning ? '' : 'checked'} style="margin-top:3px;">
+                <span><strong>Poäng</strong><div class="field-hint">Kontrollanten sätter poäng mellan min och max.</div></span>
+              </label>
+              <label style="display:inline-flex;align-items:flex-start;gap:8px;cursor:pointer;max-width:300px;">
+                <input type="radio" name="bedomning" value="tid" ${control?.tidtagning ? 'checked' : ''} style="margin-top:3px;">
+                <span><strong>Tidtagning</strong><div class="field-hint">Kontrollanten tar tid (mm:ss, stoppklocka på kontrollkortet). Poängen mellan min och max fördelas rangbaserat när kontrollen stängs; "ej genomförd" ger 0.</div></span>
+              </label>
+            </div>
+          </div>
           <div class="grid grid-2">
             <div>
               <label class="field" for="maxPoang">Max poäng ${help('ctrl.points')}</label>
@@ -698,6 +713,7 @@ export function openControlModal(cid, control, onSaved, { manageAnsvariga = true
         maxPoang: Number(overlay.querySelector('#maxPoang').value) || 0,
         minPoang: Number(overlay.querySelector('#minPoang').value) || 0,
         extraPoang: Number(overlay.querySelector('#extraPoang').value) || 0,
+        tidtagning: overlay.querySelector('input[name="bedomning"]:checked')?.value === 'tid',
         lat: overlay.querySelector('#lat').value ? Number(overlay.querySelector('#lat').value) : null,
         lng: overlay.querySelector('#lng').value ? Number(overlay.querySelector('#lng').value) : null,
         placement: overlay.querySelector('#placement').value.trim(),

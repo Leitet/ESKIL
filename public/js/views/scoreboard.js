@@ -1,8 +1,9 @@
 import { layout, setTopbarCompetition } from '../app.js';
-import { getCompetition, listPatrols, listControls, listAllScores, updateControl, updateCompetition, getTrack, listRegistrations, attachControlMeta } from '../store.js';
+import { getCompetition, listPatrols, listControls, listAllScores, updateControl, stangKontroll, updateCompetition, getTrack, listRegistrations, attachControlMeta } from '../store.js';
 import { downloadResultsPdf, downloadResultsCsv, attachTrackStats } from '../results-export.js';
 import { allowedAvdelningar, escapeHtml, rankPatrols, rankKarer, RANKING_RULES_TEXT, utslagRows, isNumSet, toast, withBusy, isCompAdminUser, patrolLabel } from '../utils.js';
 import { icon } from '../icons.js';
+import { formateraTid } from '../tidspoang.js';
 import { compHeader, compLabel, setDocTitle } from '../nav.js';
 
 export async function renderScoreboard(app, user, cid) {
@@ -128,7 +129,7 @@ export async function renderScoreboard(app, user, cid) {
     const closed = [];
     for (const c of ready) {
       try {
-        await updateControl(cid, c.id, { open: false });
+        await stangKontroll(cid, c);   // tidtagning: fördelar poängen i samma slag
         c.open = false;
         closed.push(c);
       } catch (e) {
@@ -298,7 +299,7 @@ export async function renderScoreboard(app, user, cid) {
     }
     if (!entries.length) { host.innerHTML = ''; return; }
     entries.sort((a, b) => String(b.at).localeCompare(String(a.at)));
-    const fmt = (v) => `${v.poang ?? 0}${Number(v.extraPoang) ? '+' + v.extraPoang : ''} p`;
+    const fmt = (v) => `${v.ejGenomford ? 'ej genomförd · ' : (v.tidSek != null ? formateraTid(v.tidSek) + ' · ' : '')}${v.poang ?? 0}${Number(v.extraPoang) ? '+' + v.extraPoang : ''} p`;
     host.innerHTML = `
       <div class="card mt-6">
         <div class="t-over" style="color:var(--scout-blue);">Justeringslogg</div>
@@ -326,7 +327,7 @@ export async function renderScoreboard(app, user, cid) {
   function computeTotals() {
     const map = {};
     for (const p of patrols) {
-      map[p.id] = { ...p, total: 0, extra: 0, count: 0, perControl: {} };
+      map[p.id] = { ...p, total: 0, extra: 0, count: 0, poangCount: 0, perControl: {} };
     }
     for (const s of scores) {
       const row = map[s.patrolId];
@@ -334,10 +335,14 @@ export async function renderScoreboard(app, user, cid) {
       row.total += Number(s.poang) || 0;
       row.extra += Number(s.extraPoang) || 0;
       row.count += 1;
+      // En tidtagningskontroll som ännu inte fördelats bär ingen poäng alls —
+      // den räknas som rapporterad men utelämnas ur snittet, annars drar en
+      // öppen tidtagningskontroll ner snittet med en nolla som inte är en nolla.
+      if (s.poang != null) row.poangCount += 1;
       row.perControl[s.controlId] = s;
     }
     for (const r of Object.values(map)) {
-      r.avg = r.count ? (r.total / r.count) : 0;
+      r.avg = r.poangCount ? (r.total / r.poangCount) : 0;
       r.grand = r.total + r.extra;
     }
     return Object.values(map);
@@ -408,7 +413,7 @@ function renderPatrolTable(container, rows, controls, sort) {
             <th>Kår</th>
             <th class="num">Kontr.</th>
             <th class="num">Max</th>
-            ${ctrls.map(c => `<th class="num" title="${escapeHtml(c.name || '')}">${c.nummer ?? ''}</th>`).join('')}
+            ${ctrls.map(c => `<th class="num" title="${escapeHtml(c.name || '')}${c.tidtagning ? ' · tidtagning: poäng fördelas när kontrollen stängs' : ''}">${c.nummer ?? ''}${c.tidtagning ? ` ${icon('clock', { size: 10 })}` : ''}</th>`).join('')}
             <th class="num">Extra</th>
             <th class="num">Total</th>
           </tr>
@@ -426,7 +431,13 @@ function renderPatrolTable(container, rows, controls, sort) {
               <td class="num">${r.maxedCount || 0}</td>
               ${ctrls.map(c => {
                 const s = r.perControl[c.id];
-                return `<td class="num">${s ? (Number(s.poang) || 0) : '<span class="muted">—</span>'}</td>`;
+                if (!s) return '<td class="num"><span class="muted">—</span></td>';
+                // Tidtagning: tiden tills ledningen fördelat, sedan poängen
+                // med tiden som referens i titeln.
+                if (c.tidtagning && s.poangFranTid !== true && s.ejGenomford !== true) {
+                  return `<td class="num"><span class="muted mono" title="Tid — poängen fördelas när kontrollen stängs">${escapeHtml(formateraTid(s.tidSek))}</span></td>`;
+                }
+                return `<td class="num"${c.tidtagning && s.tidSek != null ? ` title="${escapeHtml(formateraTid(s.tidSek))}"` : ''}>${Number(s.poang) || 0}</td>`;
               }).join('')}
               <td class="num">${r.extra || ''}</td>
               <td class="num"><strong style="color:var(--scout-blue);">${r.grand}</strong></td>

@@ -252,6 +252,7 @@ const TAVLING = {
 const KONTROLL = {
   nummer: OPPEN, name: OPPEN, lat: OPPEN, lng: OPPEN,
   maxPoang: OPPEN, minPoang: OPPEN, extraPoang: OPPEN, open: OPPEN, kind: OPPEN,
+  tidtagning: OPPEN,
   // Innehåll om uppgiften: läsbart med skrubbning.
   utslag: OPPEN, utslagFraga: OPPEN, utslagSvar: OPPEN,
   placement: OPPEN,
@@ -272,6 +273,8 @@ const KONTROLL = {
 // Därför OPPEN med skrubbning, precis som kontrollernas instruktioner.
 const POANG = {
   poang: OPPEN, extraPoang: OPPEN, utslagGissning: OPPEN,
+  // Tidtagning: tiden i sekunder, "ej genomförd" och kvittot på fördelningen.
+  tidSek: OPPEN, ejGenomford: OPPEN, poangFranTid: OPPEN,
   note: OPPEN,                        // publiceras redan på /t
 
   // Tidsstämplarna är Firestore-Timestamp-OBJEKT, och maskerarens objektvakt

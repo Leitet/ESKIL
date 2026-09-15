@@ -472,10 +472,19 @@ export const HELP = {
     ]
   },
 
+  'ctrl.tidtagning': {
+    title: 'Bedömning: poäng eller tidtagning',
+    body: [
+      'Med poäng sätter kontrollanten själv en siffra mellan min och max. Med tidtagning rapporterar kontrollanten i stället en tid (mm:ss) — inmatad eller tagen med stoppklockan på kontrollkortet — eller "ej genomförd", som ger 0.',
+      'Poängen fördelas när kontrollen stängs: tiderna rangordnas och rangen översätts genom en normalfördelning till intervallet, så snabbast får max, långsammast min och de flesta hamnar i mitten. Med tio patruller och 5–10 blir det 10, 9, 8, 8, 8, 7, 7, 7, 6, 5. Samma tid ger samma poäng.',
+      'Fram till stängningen visar startkorten och tävlingssidan tiden, och kontrollen räknas inte in i totalen. Öppnas kontrollen igen, rättas en tid eller kommer en sen rapport räknas poängen om vid nästa stängning — eller direkt med "Fördela poäng igen".'
+    ]
+  },
+
   'ctrl.points': {
     title: 'Poängsättning',
     body: [
-      'Max- och minpoäng avgränsar vad kontrollanten kan rapportera. Det är inte bara en hjälp — säkerhetsreglerna avvisar poäng utanför intervallet, så en felskrivning kan inte hamna i tabellen.',
+      'Max- och minpoäng avgränsar vad kontrollanten kan rapportera. Det är inte bara en hjälp — säkerhetsreglerna avvisar poäng utanför intervallet, så en felskrivning kan inte hamna i tabellen. På en tidtagningskontroll är intervallet det poängen fördelas i.',
       'Extrapoäng är en separat pott för sådant som stil, samarbete eller bonusuppgifter. Den räknas ovanpå grundpoängen och visas separat i poängtabellen.'
     ],
     faq: [

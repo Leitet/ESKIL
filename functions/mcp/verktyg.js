@@ -67,7 +67,11 @@ const TAVLING_SKRIVBART = {
 
 const KONTROLL_SKRIVBART = {
   name: 'str', lat: 'num', lng: 'num', maxPoang: 'num', minPoang: 'num',
-  placement: 'str', open: 'bool', utslag: 'bool', utslagFraga: 'str', utslagSvar: 'str'
+  placement: 'str', open: 'bool', utslag: 'bool', utslagFraga: 'str', utslagSvar: 'str',
+  // Tidtagning: kontrollanten rapporterar tid, poängen fördelas när kontrollen
+  // stängs. Stängs en tidtagningskontroll via MCP fördelas poängen först när
+  // ledningen öppnar kontrollens sida (den fördelar ofördelade tider själv).
+  tidtagning: 'bool'
 };
 
 const PATRULL_SKRIVBART = { name: 'str', kar: 'str', avdelning: 'str', startOrder: 'num' };
@@ -447,7 +451,7 @@ const VERKTYG = [
       properties: {
         nummer: { type: 'number' }, name: { type: 'string' },
         lat: { type: 'number' }, lng: { type: 'number' },
-        maxPoang: { type: 'number' }, placement: { type: 'string' },
+        maxPoang: { type: 'number' }, tidtagning: { type: 'boolean' }, placement: { type: 'string' },
         instruktioner: INSTRUKTIONSSCHEMA
       }
     },
