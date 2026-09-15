@@ -7,7 +7,7 @@
 
 import { db, doc, onSnapshot, collection } from './firebase.js';
 import {
-  getCompetition, getCompetitionBySlug, getPatrol, listControls, listPatrols, getTrack,
+  resolveCompetition, getPatrol, listControls, listPatrols, getTrack,
   watchSelfPassages, confirmSelfPassage, sendThreadMessage
 } from './store.js';
 import { courseLegs, drawCourseOnMap, addCourseChip, legLatLngs, courseEtaCalibrated, patrolFinishEtaMs, fmtDist, fmtMin, competitionArea, bearingDeg, kompassnamn } from './course.js';
@@ -108,12 +108,10 @@ async function main() {
   const { patrolId } = parsed;
 
   try {
-    // /s/<id>/... or the competition's fixed slug (/s/ah26/...) — resolve.
-    comp = await getCompetition(cid);
-    if (!comp) {
-      comp = await getCompetitionBySlug(cid);
-      if (comp) cid = comp.id;
-    }
+    // /s/<id>/... or the competition's fixed slug (/s/ah26/...) — ETT
+    // nätvarv för båda, se resolveCompetition i store.js.
+    comp = await resolveCompetition(cid);
+    if (comp) cid = comp.id;
     if (comp) {
       [patrol, controls, patrols, track] = await Promise.all([
         // /s/<cid>/test — a synthetic patrol so the startkort can be

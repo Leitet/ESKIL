@@ -13,6 +13,14 @@
 <link rel="stylesheet" href="/assets/app.css">
 <link rel="stylesheet" href="/assets/anmalan.css">
 
+<!-- Preconnect till de värdar som ligger på startens kritiska väg: SDK:n
+     från gstatic, App Check-attesteringen (reCAPTCHA på www.google.com och
+     firebaseappcheck) och Firestore. På ett trögt mobilnät kostar varje ny
+     TLS-uppkoppling ett par sekunder — här görs de medan HTML:en tolkas. -->
+<link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://www.google.com">
+<link rel="preconnect" href="https://firebaseappcheck.googleapis.com">
+<link rel="preconnect" href="https://firestore.googleapis.com">
 <link rel="modulepreload" href="/js/firebase.js">
 <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js" crossorigin>
 <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js" crossorigin>

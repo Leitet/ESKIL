@@ -200,6 +200,7 @@ function fejkDom() {
     location: { reload() {} },
     _lyssnare: lyssnare,
     _brand: () => { timrar.filter(t => !t.avbruten).forEach(t => t.fn()); },
+    _timrar: timrar,
     _root: root
   };
   return g;
@@ -408,6 +409,24 @@ describe('vakthunden efter första renderingen', () => {
     g.__eskilVakt();        // ruttbyte
     g._brand();             // och inget renderades den här gången
     assert.match(g._root.innerHTML, /Sidan kunde inte ladda klart/);
+  });
+
+  test('en fas förlänger tidsfristen — en sida som gör framsteg är inte fast', () => {
+    // Uppmätt på /t över mobilnät: tävlingsläsningen tog 7,3 s och sidan blev
+    // klar vid 12,7 s, men vakthunden räknade tio sekunder från beväpningen
+    // och bytte ut en sida som var på väg. Nu flyttar varje fas fristen.
+    const g = kor();
+    const fore = g._timrar.filter(t => !t.avbruten);
+    assert.equal(fore.length, 1, 'en beväpnad timer');
+    g.__eskilFas('tavling-klar');
+    assert.equal(fore[0].avbruten, true, 'den gamla timern ska vara rensad');
+    const efter = g._timrar.filter(t => !t.avbruten);
+    assert.equal(efter.length, 1, 'exakt en ny timer');
+    assert.equal(efter[0].ms, 10000, 'ny frist på DEADLINE_MS från fasen');
+    // Och står sidan ändå stilla efter den nya fristen fyrar den.
+    g._brand();
+    assert.match(g._root.innerHTML, /Sidan kunde inte ladda klart/);
+    assert.match(g._root.innerHTML, /tavling-klar/, 'fasen ska stå i den tekniska raden');
   });
 
   test('en gammal timer får inte fyra på en sida som fungerar', () => {

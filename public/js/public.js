@@ -6,7 +6,7 @@
 import { db, doc, getDoc, onSnapshot, collection, auth, onAuthStateChanged } from './firebase.js';
 
 const fas = (n) => { try { window.__eskilFas?.(n); } catch {} };
-import { getCompetition, getCompetitionBySlug, listPatrols, listControls, getTrack, watchBroadcastMessages } from './store.js';
+import { getCompetition, resolveCompetition, listPatrols, listControls, getTrack, watchBroadcastMessages } from './store.js';
 import { courseLegs, drawCourseOnMap, addCourseChip, competitionArea, courseDistance, fmtDist, courseEtaCalibrated, patrolFinishEtaMs } from './course.js';
 import {
   AVDELNINGAR, escapeHtml, publicNotices, anslagSynlig, linkifyText, formatDate, publicManagement, patrolStartTime,
@@ -117,12 +117,10 @@ async function boot() {
   let cid = parsed.cid;
   try {
     fas('tavling-las');
-    comp = await getCompetition(cid);
+    // ETT nätvarv för id eller kortadress — se resolveCompetition i store.js.
+    comp = await resolveCompetition(cid);
     fas('tavling-klar');
-    if (!comp) {
-      comp = await getCompetitionBySlug(cid);
-      if (comp) cid = comp.id;
-    }
+    if (comp) cid = comp.id;
     if (comp) {
       fas('banan-las');
       [patrols, controls, track] = await Promise.all([

@@ -20,6 +20,15 @@
 (function () {
   'use strict';
   var DEADLINE_MS = 10000;
+  // En sida som gör FRAMSTEG är inte fast. Varje fas som modulerna märker
+  // flyttar tidsfristen fram DEADLINE_MS från den fasen — förut räknades
+  // tio sekunder från beväpningen oavsett, och på ett trögt mobilnät där
+  // tävlingsläsningen ensam tog sju sekunder byttes en sida som var på väg
+  // ut mot "Sidan kunde inte ladda klart" (teknisk info: "inget fel — sidan
+  // väntade", faserna fortsatte). Ett tak finns ändå: efter MAX_MS från
+  // beväpningen förlängs inget mer, så en sida som cyklar faser för evigt
+  // får sitt meddelande till slut.
+  var MAX_MS = 45000;
   var lastError = '';
 
   // ── Startfaser ────────────────────────────────────────────────────────────
@@ -37,6 +46,7 @@
   }
   window.__eskilFas = function (namn) {
     faser.push(namn + ':' + nu());
+    forlang();
     try {
       var gamla = JSON.parse(localStorage.getItem(NYCKEL) || '[]');
       gamla[0] = { vid: new Date().toISOString(), sida: location.pathname, faser: faser.slice() };
@@ -63,6 +73,15 @@
 
   var aktivObs = null;
   var aktivTimer = null;
+  var aktivFyra = null;     // timerns callback, så en fas kan skjuta på den
+  var armadVid = 0;
+
+  function forlang() {
+    if (!aktivTimer || !aktivFyra) return;
+    if (nu() - armadVid > MAX_MS) return;
+    clearTimeout(aktivTimer);
+    aktivTimer = setTimeout(aktivFyra, DEADLINE_MS);
+  }
 
   // ÅTERBEVÄPNINGSBAR. Första versionen kopplade ner sig vid första
   // barnändringen i behållaren och kom aldrig tillbaka — i SPA:n betydde det
@@ -89,7 +108,8 @@
     aktivObs = obs;
     obs.observe(root, { childList: true, subtree: true });
 
-    aktivTimer = setTimeout(function () {
+    armadVid = nu();
+    aktivFyra = function () {
       if (done) return;
       obs.disconnect();
       root.innerHTML =
@@ -109,7 +129,8 @@
         '</div>';
       var btn = document.getElementById('wd-retry');
       if (btn) btn.addEventListener('click', function () { location.reload(); });
-    }, DEADLINE_MS);
+    };
+    aktivTimer = setTimeout(aktivFyra, DEADLINE_MS);
   }
 
   // Route-change-hooken i app.js beväpnar om vid varje SPA-navigering.

@@ -7,7 +7,7 @@ import {
   serverTimestamp, deleteField, writeBatch, Timestamp
 } from './firebase.js';
 import { normDistrict } from './districts.js';
-import { mergeBeacons, splitManagement, mergeManagement } from './utils.js';
+import { mergeBeacons, splitManagement, mergeManagement, isValidSlug } from './utils.js';
 
 // --- System config (super-admin) --------------------------------------------
 // A single config/system doc holding operational settings that are useful to
@@ -236,7 +236,29 @@ export async function getCompetitionBySlug(slug) {
   if (!s) return null;
   const snap = await getDocs(query(collection(db, 'competitions'), where('slug', '==', s)));
   if (snap.empty) return null;
-  return getCompetition(snap.docs[0].id);
+  // Frågans träff ÄR dokumentet — ingen andra läsning av samma doc.
+  return hydrateComp(snap.docs[0]);
+}
+
+// Löser upp URL-segmentet (`/t/ah26` ELLER `/t/<doc-id>`) i ETT nätvarv.
+// Förut: getDoc(segment) → tomt → slug-fråga → getDoc(träffen) — tre
+// seriella varv innan sidan visste vilken tävling den handlade om, och på
+// ett trögt mobilnät kostade de sekunder var. Kortadressen är NORMALVÄGEN
+// från tävlingssidan, så den vägen ska vara den snabba. Doc-läsningen och
+// slug-frågan går parallellt (slug-frågan bara när segmentet alls kan vara
+// en slug), och träffen hydreras direkt.
+export async function resolveCompetition(segment) {
+  const seg = String(segment || '').trim();
+  if (!seg) return null;
+  const slug = seg.toLowerCase();
+  const [byId, bySlug] = await Promise.all([
+    getDoc(doc(db, 'competitions', seg)).catch(() => null),
+    isValidSlug(slug)
+      ? getDocs(query(collection(db, 'competitions'), where('slug', '==', slug))).catch(() => null)
+      : Promise.resolve(null)
+  ]);
+  const snap = (byId && byId.exists()) ? byId : (bySlug && !bySlug.empty ? bySlug.docs[0] : null);
+  return snap ? hydrateComp(snap) : null;
 }
 
 // A slug is free when no competition uses it AND no competition document has
@@ -253,6 +275,13 @@ export async function isSlugTaken(slug, excludeCid = null) {
 export async function getCompetition(cid) {
   const snap = await getDoc(doc(db, 'competitions', cid));
   if (!snap.exists()) return null;
+  return hydrateComp(snap);
+}
+
+// Från dokument-snapshot till det comp-objekt vyerna förväntar sig — delad
+// av getCompetition, getCompetitionBySlug och resolveCompetition.
+async function hydrateComp(snap) {
+  const cid = snap.id;
   const comp = { id: snap.id, ...snap.data() };
   // Merge the member-only permission mirror so isCompAdminUser/isCompMemberUser
   // keep working after the PII fields leave the public doc. Only attempted when

@@ -11,7 +11,7 @@
 // document is created, via the Trigger Email extension.
 
 import {
-  getCompetition, getCompetitionBySlug, getRegistration, createRegistration, updateRegistration,
+  resolveCompetition, getRegistration, createRegistration, updateRegistration,
   getKomplettering, sparaKomplettering, skapaKompletteringar, kompletteringarForAnmalan,
   listAndringar, listAndringSvar, skapaAndring, skickaAndringSvar
 } from './store.js';
@@ -125,12 +125,10 @@ async function boot() {
   cid = parsed.cid;
 
   try {
-    // /a/<id> or the fixed slug /a/ah26 — resolve to the real id.
-    comp = await getCompetition(cid);
-    if (!comp) {
-      comp = await getCompetitionBySlug(cid);
-      if (comp) cid = comp.id;
-    }
+    // /a/<id> or the fixed slug /a/ah26 — ETT nätvarv för båda, se
+    // resolveCompetition i store.js.
+    comp = await resolveCompetition(cid);
+    if (comp) cid = comp.id;
   } catch (e) {
     return renderFatal('Kunde inte ladda tävlingen: ' + e.message);
   }

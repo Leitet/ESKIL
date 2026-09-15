@@ -1492,6 +1492,19 @@ describe('startskärmen börjar under driftmeddelande-bannern', () => {
   });
 });
 
+// --- Kortadressen löses i ett nätvarv ------------------------------------------
+describe('kortadressen löses i ett nätvarv', () => {
+  test('/t, /s och /a går via resolveCompetition, inte doc → slug → doc', () => {
+    for (const f of ['public', 'start', 'anmalan']) {
+      const src = readFileSync(new URL(`../public/js/${f}.js`, import.meta.url), 'utf8');
+      assert.match(src, /await resolveCompetition\(cid\)/, `${f}.js löser inte kortadressen i ett varv`);
+      assert.doesNotMatch(src, /getCompetitionBySlug/, `${f}.js har kvar den seriella vägen`);
+    }
+    const store = readFileSync(new URL('../public/js/store.js', import.meta.url), 'utf8');
+    assert.match(store, /Promise\.all\(\[\s*getDoc\(doc\(db, 'competitions', seg\)\)/, 'doc-läsning och slug-fråga ska gå parallellt');
+  });
+});
+
 // --- Efteranmälan ---------------------------------------------------------------
 // Ledningen lägger till patruller efter stängd anmälan (views/efteranmalan.js).
 // Mellanskillnaden är det som avgör vad kåren får betala en gång till.

@@ -307,6 +307,17 @@ Email extension). Production domain: https://eskilscout.se.
   `no-cache` och vinner. Mätt i produktion svarar modulerna no-cache. En död
   regel är värre än ingen — den fick mig att tro att en kall morgoncache
   förklarade en långsam start.
+  **Varje fas FÖRLÄNGER vakthundens tidsfrist** (`forlang()` i
+  field-watchdog.js): tio sekunder räknas från senaste `__eskilFas()`, inte
+  från beväpningen, med ett tak på 45 s. Förut byttes en sida som gjorde
+  framsteg ut mot felskärmen — uppmätt på /t över mobilnät: tävlingsläsningen
+  ensam tog 7,3 s och sidan blev klar vid 12,7 s, men vakthunden slog till
+  vid 10. Märk därför nya väntesteg med en fas; en osynlig väntan är den
+  vakthunden dödar. **Kortadressen löses i ETT nätvarv** (`resolveCompetition`
+  i store.js: doc-läsning och slug-fråga parallellt, träffen hydreras
+  direkt) — förut tre seriella varv på /t, /s och /a, vilket var sekunder på
+  ett trögt nät, och kortadressen är normalvägen. Alla sidor preconnectar till
+  gstatic, www.google.com (reCAPTCHA), firebaseappcheck och firestore.
   Vakthunden letar `#root` ELLER `#app` — tappar den ena gör den ingenting
   alls, tyst. `hamtaMedTak()` i firebase.js sätter tak på båda
   konfigurationshämtningarna (5 s + 3 s, så de hinner ge upp före vakthundens
