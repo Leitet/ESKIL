@@ -1009,6 +1009,21 @@ export function planEfteranmalan(pricing, reg, nyaPatruller) {
 // namn och avdelning ändrar ledningen inte här (kompletteringslänkarna och
 // patrullistans matchning hänger på namnet). Listan bär mailet till kåren
 // ("Rävarna: 5 → 6 deltagare") och synken till patrullistan. Tom = inget.
+// Kontrollens namn på PUBLIKA ytor när tävlingen kör anonyma kontroller.
+// Namnet är uppgiften ("Eldning", "Knopar") och får inte gå att läsa i förväg.
+// Det visas när tävlingen är avslutad, eller när kontrollen är stängd EFTER
+// att ha använts (alla patruller har passerat — det är vad autostängningen
+// betyder). `open: false` ensamt räcker INTE: nya kontroller är stängda tills
+// ledningen öppnar dem, så "stängd = klar" avslöjade hela banans uppgifter i
+// patrullmodalen på /t veckan före tävlingen. Därav kravet på poäng.
+export function publikKontrollnamn(comp, control, harPoang) {
+  const nr = `Kontroll ${control?.nummer ?? '?'}`;
+  const anon = comp?.anonymousControls !== false;
+  if (!anon || comp?.closed === true) return control?.name || nr;
+  if (!control?.open && harPoang) return control?.name || nr;
+  return nr;
+}
+
 export function patrullAntalAndringar(gamla, nya) {
   const ut = [];
   for (const g of (gamla || [])) {

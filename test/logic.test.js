@@ -15,7 +15,7 @@ import {
   effectiveIntervalSec, swishAppUrl, swishQrString, patrolLabel, linkifyText, isNumSet, mergeBeacons,
   NOTE_CHIPS, harNotering, laggTillNotering, taBortNotering, kapaNotering,
   publicNotices, anslagSynlig, isPaymentPaid, isPaymentClaimed, paymentClaimAt,
-  planEfteranmalan, paymentEntry, paymentsSum, patrullAntalAndringar, startTimesPublished,
+  planEfteranmalan, paymentEntry, paymentsSum, patrullAntalAndringar, startTimesPublished, publikKontrollnamn,
   sparlagesBeslut, SPAR_PA_UNDER, SPAR_AV_VID,
   parseFieldPath,
   splitManagement,
@@ -1386,6 +1386,37 @@ describe('stationstiden per kontroll har en enda källa', () => {
     assert.doesNotMatch(src, /CONTROL_MINUTES/, 'track.js har återfått en egen stationstid');
     assert.match(src, /etaDwellMinutes/);
     assert.match(src, /DEFAULT_DWELL_MIN/, 'standardvärdet ska komma från course.js');
+  });
+});
+
+// --- Anonyma kontroller på /t -----------------------------------------------------
+// Namnet är uppgiften. Patrullmodalen avslöjade det för varje STÄNGD kontroll —
+// och nya kontroller är stängda tills ledningen öppnar dem, så hela banan låg
+// öppen veckan före tävlingen.
+describe('publikt kontrollnamn under anonyma kontroller', () => {
+  const comp = { anonymousControls: true };
+  const c = { nummer: 3, name: 'Eldning', open: false };
+
+  test('en stängd kontroll UTAN poäng är inte klar — den är inte öppnad än', () => {
+    assert.equal(publikKontrollnamn(comp, c, false), 'Kontroll 3');
+  });
+  test('en öppen kontroll är alltid anonym', () => {
+    assert.equal(publikKontrollnamn(comp, { ...c, open: true }, true), 'Kontroll 3');
+  });
+  test('stängd efter användning visar namnet', () => {
+    assert.equal(publikKontrollnamn(comp, c, true), 'Eldning');
+  });
+  test('avslutad tävling och avstängd anonymitet visar alltid namnet', () => {
+    assert.equal(publikKontrollnamn({ ...comp, closed: true }, { ...c, open: true }, false), 'Eldning');
+    assert.equal(publikKontrollnamn({ anonymousControls: false }, { ...c, open: true }, false), 'Eldning');
+  });
+  test('saknat namn faller tillbaka på numret', () => {
+    assert.equal(publikKontrollnamn({ anonymousControls: false }, { nummer: 4 }, false), 'Kontroll 4');
+  });
+  test('/t bygger aldrig namnet själv', () => {
+    const pub = readFileSync(new URL('../public/js/public.js', import.meta.url), 'utf8');
+    assert.doesNotMatch(pub, /\.name \|\| `[Kk]ontroll/, 'public.js har en egen namnregel igen');
+    assert.ok((pub.match(/publikKontrollnamn\(/g) || []).length >= 3, 'modal, notiser och utslagsfrågan ska gå via hjälpfunktionen');
   });
 });
 

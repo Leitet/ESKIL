@@ -10,7 +10,7 @@ import { getCompetition, getCompetitionBySlug, listPatrols, listControls, getTra
 import { courseLegs, drawCourseOnMap, addCourseChip, competitionArea, courseDistance, fmtDist, courseEtaCalibrated, patrolFinishEtaMs } from './course.js';
 import {
   AVDELNINGAR, escapeHtml, publicNotices, anslagSynlig, linkifyText, formatDate, publicManagement, patrolStartTime,
-  patrolStartDateTime, startTimeSettings, startTimesPublished, allowedAvdelningar,
+  patrolStartDateTime, startTimeSettings, startTimesPublished, allowedAvdelningar, publikKontrollnamn,
   registrationSettings, registrationState,
   startFinishPoints, rankPatrols, rankKarer, RANKING_RULES_TEXT,
   wireOverlayClose, controlsAutoReleased, controlsReleaseTime, utslagRows, isNumSet,
@@ -450,8 +450,8 @@ function notiseraFavoriter(ctrlId, rows, franCache = false) {
     const patrol = patrols.find(p => p.id === s.patrolId);
     const control = controls.find(c => c.id === ctrlId);
     if (!patrol || !control) continue;
-    const anon = comp?.anonymousControls !== false;
-    const namn = (anon && control.open) ? `kontroll ${control.nummer ?? '?'}` : (control.name || `kontroll ${control.nummer ?? '?'}`);
+    // Poängen som just kom in är beviset på att kontrollen använts.
+    const namn = publikKontrollnamn(comp, control, true);
     const poäng = scoresPublic() ? ` — ${(Number(s.poang) || 0) + (Number(s.extraPoang) || 0)} poäng` : '';
     showSystemNotification(`${patrol.name || 'Er patrull'} · ${comp?.shortName || 'Tävlingen'}`, {
       body: `Prickade av ${namn}${poäng}`,
@@ -1282,7 +1282,7 @@ function renderUtslagPanel(totals) {
     return `
       <div class="pub-section-head" style="margin-top:var(--sp-8);">
         <h2 class="t-h2">Utslagsfrågan</h2>
-        <span class="muted">Kontroll ${c.nummer ?? '?'} · ${escapeHtml(c.name || '')}</span>
+        <span class="muted">${escapeHtml(publikKontrollnamn(comp, c, (scoresByControl[c.id] || []).length > 0))}</span>
       </div>
       <div class="lb">
         ${c.utslagFraga ? `<p style="margin:14px 16px 4px;font-family:var(--font-serif, Georgia, serif);font-size:18px;">"${escapeHtml(c.utslagFraga)}"</p>` : ''}
@@ -1422,16 +1422,18 @@ document.addEventListener('click', (e) => {
 // --- Patrol detail modal ---------------------------------------------------
 // Click on a patrol card or scoreboard row to see every control the patrol has
 // scored, with the points and optional reporter note. Respects the
-// competition's anonymousControls flag: while a control is still open, its
-// name is hidden (only the number is shown) — only when an admin closes the
-// control does its name reveal on this public view.
+// competition's anonymousControls flag via publikKontrollnamn(): the name
+// shows only when the competition is closed or the control was closed after
+// use. Plain "not open" is NOT enough — new controls are closed until the
+// admin opens them, and that revealed every task on /t before the day.
 function openPatrolModal(patrolId) {
   const patrol = patrols.find(p => p.id === patrolId);
   if (!patrol) return;
 
   const anon = comp?.anonymousControls !== false;
   const showScores = scoresPublic();
-  const controlName = (c) => (anon && c.open) ? `Kontroll ${c.nummer ?? '?'}` : (c.name || `Kontroll ${c.nummer ?? '?'}`);
+  const controlName = (c) => publikKontrollnamn(comp, c, (scoresByControl[c.id] || []).length > 0);
+  const nameHidden = (c) => !!c.name && controlName(c) === `Kontroll ${c.nummer ?? '?'}`;
 
   // Gather this patrol's score for every control, in control-number order.
   const sorted = [...controls].sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0));
@@ -1523,12 +1525,12 @@ function openPatrolModal(patrolId) {
       ${senastText ? `<div class="pub-senast">${icon('clock', { size: 14 })} ${escapeHtml(senastText)}</div>` : ''}
 
       ${showScores ? '' : `<p class="pub-modal-hint muted t-sm">Poängen är inte publicerade ännu — en grön bock visar genomförd kontroll.</p>`}
-      ${anon ? `<p class="pub-modal-hint muted t-sm">Anonyma kontroller: namn visas först när kontrollen stängts.</p>` : ''}
+      ${anon ? `<p class="pub-modal-hint muted t-sm">Anonyma kontroller: namnen visas när en kontroll stängts efter att alla passerat, eller när tävlingen avslutats.</p>` : ''}
 
       <div class="pub-modal-list">
         ${perCtrl.map(({ control, score }) => {
           const name = controlName(control);
-          const hidden = anon && control.open;
+          const hidden = nameHidden(control);
           if (score) {
             const extra = Number(score.extraPoang) || 0;
             return `
