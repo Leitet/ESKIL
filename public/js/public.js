@@ -787,6 +787,48 @@ function klockslag(at) {
 function publikStarttid(p) {
   return startTimesPublished(comp) ? patrolStartTime(comp, p, patrols.length) : '';
 }
+function publikStartDt(p, now = new Date()) {
+  return startTimesPublished(comp) ? patrolStartDateTime(comp, p, now, patrols.length) : null;
+}
+
+// Beräknad målgång på de publika patrullytorna (korten under Patruller och
+// patrullmodalen). SAMMA motor som startlistan och startkortet: kalibrerad
+// med verkliga mellantider så fort tre patruller passerat en sträcka, annars
+// Spårets modell (promenadtempo + stationstid) ankrad i patrullens starttid.
+// Visas så snart starttiderna är publicerade — utan starttid finns inget att
+// ankra i före första rapporten, och tiden avslöjar inget om banan som
+// startlistan inte redan säger. null när banan inte går att räkna på.
+function publikEta(now = new Date()) {
+  if (!startTimesPublished(comp)) return null;
+  try {
+    const platta = Object.entries(scoresByControl).flatMap(([ctrlId, list]) =>
+      (list || []).map(x => ({ ...x, controlId: ctrlId, patrolId: x.patrolId || x.id })));
+    const e = courseEtaCalibrated(comp, controls, track, platta, patrols, now);
+    return (e.finishMin != null && e.totalDist > 0) ? e : null;
+  } catch { return null; }
+}
+
+// Texten per patrull. Tillstånden måste kunna UPPLÖSAS, som i startlistan:
+// alla kontroller rapporterade → "I mål" (/t kan inte läsa målpassager);
+// estimatet nyss passerat → "Väntas i mål"; passerat sedan länge → tomt, så
+// kvällens sida inte fastnar i ett evigt "väntas". Utgångna får ingen tid.
+function publikMalgang(p, eta, now = new Date()) {
+  if (!eta || !p || p.utgatt) return '';
+  const reports = {};
+  for (const [ctrlId, list] of Object.entries(scoresByControl)) {
+    const sc = (list || []).find(x => (x.patrolId || x.id) === p.id);
+    const t = sc?.clientReportedAt ?? sc?.reportedAt;
+    if (t) reports[ctrlId] = t;
+  }
+  if (controls.length > 0 && Object.keys(reports).length >= controls.length) return 'I mål';
+  const dt = publikStartDt(p, now);
+  const ms = patrolFinishEtaMs(eta, reports, dt ? dt.getTime() : null);
+  if (ms == null) return '';
+  const late = now.getTime() - ms;
+  if (late > 90 * 60000) return '';
+  if (late > 60000) return 'Väntas i mål';
+  return `Väntas i mål ca ${new Date(ms).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })}`;
+}
 
 function renderFooter() {
   return `
@@ -1142,6 +1184,8 @@ function renderPatrols(totals) {
       || (a.number || 0) - (b.number || 0)
       || (a.name || '').localeCompare(b.name || '', 'sv'));
   const totalMap = Object.fromEntries(totals.map(t => [t.id, t]));
+  // En ETA-beräkning per rendering, inte en per kort.
+  const eta = publikEta(nu);
 
   const ctrlCount = controls.length || 1;
 
@@ -1163,12 +1207,14 @@ function renderPatrols(totals) {
           const done = t?.count || 0;
           const pct = Math.round((done / ctrlCount) * 100);
           const stime = publikStarttid(p);
+          const mal = publikMalgang(p, eta, nu);
           return `<button type="button" class="pat-card" data-patrol="${escapeHtml(p.id)}">
             <div class="n">#${p.number ?? '—'} · <span class="dot ${avdSlug(p.avdelning)}"></span>${escapeHtml(p.avdelning || '')}${stime ? ` · <span class="mono" style="color:var(--scout-blue);">${escapeHtml(stime)}</span>` : ''}</div>
             <div class="name">${escapeHtml(p.name || '')}</div>
             <div class="kar">${escapeHtml(p.kar || '')}</div>
             <div class="progress"><span style="width:${pct}%"></span></div>
             <div class="progress-label"><span>${done} / ${ctrlCount} kontroller</span>${scoresPublic() ? `<span>${t?.grand || 0} p</span>` : ''}</div>
+            ${mal ? `<div class="pat-eta">${icon('clock', { size: 12 })} ${escapeHtml(mal)}</div>` : ''}
           </button>`;
         }).join('')}
       </div>
@@ -1477,6 +1523,7 @@ function openPatrolModal(patrolId) {
   })();
 
   const stime = publikStarttid(patrol);
+  const malText = publikMalgang(patrol, publikEta());
 
   const overlay = document.createElement('div');
   overlay.className = 'pub-modal-overlay';
@@ -1523,6 +1570,7 @@ function openPatrolModal(patrolId) {
       </div>
 
       ${senastText ? `<div class="pub-senast">${icon('clock', { size: 14 })} ${escapeHtml(senastText)}</div>` : ''}
+      ${malText ? `<div class="pub-senast pub-malgang">${icon('flag', { size: 14 })} ${escapeHtml(malText)}${malText.startsWith('Väntas') ? ' <span class="muted">· beräknad, kalibreras mot verkliga tider under dagen</span>' : ''}</div>` : ''}
 
       ${showScores ? '' : `<p class="pub-modal-hint muted t-sm">Poängen är inte publicerade ännu — en grön bock visar genomförd kontroll.</p>`}
       ${anon ? `<p class="pub-modal-hint muted t-sm">Anonyma kontroller: namnen visas när en kontroll stängts efter att alla passerat, eller när tävlingen avslutats.</p>` : ''}
@@ -1592,7 +1640,7 @@ function openPatrolModal(patrolId) {
     // rubriken patrullnamnet och beskrivningen kåren — en kalenderpost läses
     // utanför sitt sammanhang, så kåren behövs, men inte i rubriken.
     const namn = patrol.name || 'Patrullen';
-    const dt = startTimesPublished(comp) ? patrolStartDateTime(comp, patrol) : null;
+    const dt = publikStartDt(patrol);
     const reports = {};
     for (const { control, score } of perCtrl) {
       const t = score && (tsMs(score.clientReportedAt) ?? tsMs(score.reportedAt));

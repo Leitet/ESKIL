@@ -296,6 +296,10 @@ a.pub-brand:hover { opacity: 0.85; }
   overflow: hidden;
 }
 .pat-card .progress > span { display: block; height: 100%; background: var(--scout-blue); }
+.pat-card .pat-eta {
+  margin-top: 6px; font-size: 12px; font-weight: 600; color: var(--scout-blue);
+  display: inline-flex; align-items: center; gap: 4px;
+}
 .pat-card .progress-label {
   font-size: 11px; color: var(--fg3); margin-top: 4px;
   display: flex; justify-content: space-between;

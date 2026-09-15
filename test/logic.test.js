@@ -1413,6 +1413,18 @@ describe('publikt kontrollnamn under anonyma kontroller', () => {
   test('saknat namn faller tillbaka på numret', () => {
     assert.equal(publikKontrollnamn({ anonymousControls: false }, { nummer: 4 }, false), 'Kontroll 4');
   });
+  test('beräknad målgång på patrullkort och i modalen går genom ETA-motorn', () => {
+    // Samma motor som startlistan: courseEtaCalibrated + patrolFinishEtaMs,
+    // grindad på publicerade starttider — aldrig en egen tidsberäkning i vyn.
+    const pub = readFileSync(new URL('../public/js/public.js', import.meta.url), 'utf8');
+    const fn = pub.slice(pub.indexOf('function publikMalgang('), pub.indexOf('\n}\n', pub.indexOf('function publikMalgang(')));
+    assert.match(fn, /patrolFinishEtaMs\(eta, reports/);
+    const eta = pub.slice(pub.indexOf('function publikEta('), pub.indexOf('\n}\n', pub.indexOf('function publikEta(')));
+    assert.match(eta, /if \(!startTimesPublished\(comp\)\) return null;/);
+    assert.match(eta, /courseEtaCalibrated\(comp, controls, track/);
+    assert.ok((pub.match(/publikMalgang\(/g) || []).length >= 3, 'korten och modalen ska båda använda den');
+  });
+
   test('/t bygger aldrig namnet själv', () => {
     const pub = readFileSync(new URL('../public/js/public.js', import.meta.url), 'utf8');
     assert.doesNotMatch(pub, /\.name \|\| `[Kk]ontroll/, 'public.js har en egen namnregel igen');
