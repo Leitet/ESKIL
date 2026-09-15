@@ -622,6 +622,22 @@ table.t tr.sf-row.park-row td {
 }
 .track-totals .track-grand strong { color: var(--scout-blue); font-size: 16px; }
 
+/* Lägesremsan på kartan (ritläge kontra redigering) och hårkorset. Orange
+   som den valda sträckan, så man ser PÅ KARTAN om ett klick blir en punkt. */
+.track-mode {
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  z-index: 1000; max-width: min(560px, calc(100% - 24px));
+  padding: 6px 14px; border-radius: 999px; font-size: 13px; line-height: 1.4;
+  background: var(--white); color: var(--fg1); border: 1px solid var(--border);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .12); pointer-events: none; text-align: center;
+}
+.track-mode.is-drawing { border-color: var(--avent-orange); background: #fdf1e8; }
+.track-map.is-drawing,
+.track-map.is-drawing .leaflet-grab,
+.track-map.is-drawing .leaflet-interactive { cursor: crosshair !important; }
+.track-panel #track-draw.is-on {
+  background: var(--avent-orange); border-color: var(--avent-orange); color: #fff;
+}
 .track-legs { margin-top: 8px; display: grid; gap: 3px; }
 .track-leg {
   display: grid; grid-template-columns: 1fr auto auto 14px; gap: 8px; align-items: baseline;

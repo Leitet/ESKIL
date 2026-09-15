@@ -7,6 +7,15 @@
 // Distances are haversine sums; walking time uses a selectable pace and the
 // totals show hiking time with and without the competition's stationstid per
 // control (comp.etaDwellMinutes — the SAME value the ETA engine uses).
+//
+// Punkter läggs bara i RITLÄGE (`drawing`). En sträcka UTAN punkter öppnas i
+// ritläge — det är "rita nytt spår", och där ska första klicket i kartan vara
+// en punkt. En sträcka MED punkter öppnas i redigeringsläge, där ett klick i
+// kartan är inert: en tappad musklick mitt i en justering blev annars en
+// punkt i spåret. Klick på själva linjen lägger alltid en punkt där (man
+// träffade linjen — det är avsiktligt), "Rita punkter" slår på läget, Esc
+// lämnar det och Esc igen avmarkerar. "Nästa sträcka →" är vägen genom en
+// hel bana utan att släppa musen.
 
 import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import { getCompetition, listControls, getTrack, saveTrack, updateCompetition } from '../store.js';
@@ -63,6 +72,9 @@ export async function renderTrack(app, user, cid) {
   // att titta på och skärmdumpa i lugn och ro. Först när en sträcka är vald
   // blir kartan en rityta.
   let activeIdx = -1;
+  // Ritläge: bara då lägger ett klick i kartan en punkt. Sätts av setActive
+  // (på för en tom sträcka, av för en ritad) och av knappen "Rita punkter".
+  let drawing = false;
   let dirty = false;
 
   // --- Layout --------------------------------------------------------------------
@@ -88,11 +100,12 @@ export async function renderTrack(app, user, cid) {
     <div class="track-wrap" id="track-wrap">
       <div id="track-map" class="track-map"></div>
       <div class="track-panel" id="track-panel"></div>
+      <div class="track-mode" id="track-mode" hidden></div>
       <button class="btn btn-secondary btn-sm track-fs" id="track-fs" title="Fullskärm">${icon('maximize', { size: 14 })} Fullskärm</button>
     </div>
     <p class="muted t-sm" style="margin-top:8px;">
       ${canEdit
-        ? 'Välj en sträcka i panelen eller klicka på dess linje. Klicka sedan i kartan för att lägga till punkter — nära linjen justeras spåret där du klickar, längre bort förlängs det från slutet. Dra punkter för att flytta, dubbelklicka för att ta bort. Klicka långt utanför sträckan eller tryck <kbd>Esc</kbd> för att avmarkera.'
+        ? 'Välj en sträcka i panelen eller klicka på dess linje. En sträcka utan punkter öppnas i <strong>ritläge</strong>: klicka i kartan för att lägga punkter — nära linjen justeras spåret där du klickar, längre bort förlängs det från slutet; klicka långt utanför sträckan när du är klar, eller ta "Nästa sträcka". En sträcka med punkter öppnas i <strong>redigeringsläge</strong>: dra punkter för att flytta, dubbelklicka för att ta bort, klicka på linjen för en ny punkt just där — ett klick i kartan gör då ingenting, tryck "Rita punkter" för att lägga till fritt. <kbd>Esc</kbd> lämnar ritläget, <kbd>Esc</kbd> igen avmarkerar.'
         : 'Skrivskyddad vy — endast administratörer kan ändra spåret. Klicka på en sträcka för att lyfta fram den, i kartan utanför för att avmarkera.'}
     </p>`}
   `;
@@ -233,15 +246,24 @@ export async function renderTrack(app, user, cid) {
 
   map.on('click', (e) => {
     if (activeIdx < 0) return;                       // inget valt → kartan är inert
+    if (!canEdit) { setActive(-1); return; }          // skrivskyddad: klick utanför avmarkerar
+    // Utanför ritläget lägger ett kartklick INGEN punkt. En tappad musklick
+    // mitt i en justering blev annars en punkt i spåret; punkter läggs då
+    // bara med klick på själva linjen, eller efter "Rita punkter".
+    if (!drawing) return;
     const leg = legs[activeIdx];
     // Klick långt utanför sträckan betyder "jag är klar med den här sträckan",
     // inte "lägg en punkt hit ut".
-    if (!canEdit || isOutsideLeg(leg, e.latlng)) { setActive(-1); return; }
+    if (isOutsideLeg(leg, e.latlng)) { setActive(-1); return; }
     insertWaypoint(leg, e.latlng);
   });
 
   function setActive(i) {
     activeIdx = i;
+    // Ritläget slås på av sig självt för en sträcka UTAN punkter — det är
+    // "rita nytt spår", och där ska första klicket vara en punkt. En sträcka
+    // med punkter öppnas i redigeringsläge: dra, ta bort, klicka på linjen.
+    drawing = canEdit && i >= 0 && legs[i].wps.length === 0;
     // Under ritning har dubbelklick i kartan ingen egen uppgift, och zoomen
     // skulle bara krocka med punktutsättningen.
     if (canEdit && i >= 0) map.doubleClickZoom.disable();
@@ -251,11 +273,40 @@ export async function renderTrack(app, user, cid) {
     if (i >= 0) hits[i].bringToFront();
     styleLegs();
     drawWaypoints();
+    updateMode();
     updatePanel();
+  }
+
+  function setDrawing(on) {
+    drawing = !!on && canEdit && activeIdx >= 0;
+    updateMode();
+    updatePanel();
+  }
+
+  function focusLeg(i) {
+    setActive(i);
+    map.fitBounds(L.latLngBounds(legPath(legs[i]).map(p => [p.lat, p.lng])), { padding: [70, 70] });
   }
 
   // --- Panel -------------------------------------------------------------------
   const panel = wrap.querySelector('#track-panel');
+  const modeEl = wrap.querySelector('#track-mode');
+  const mapEl = wrap.querySelector('#track-map');
+
+  // Lägesremsan på kartan och hårkorset: man ska se på kartan själv om ett
+  // klick blir en punkt eller inte, inte behöva minnas det.
+  function updateMode() {
+    const active = activeIdx >= 0 ? legs[activeIdx] : null;
+    const ritar = !!(active && canEdit && drawing);
+    mapEl.classList.toggle('is-drawing', ritar);
+    modeEl.classList.toggle('is-drawing', ritar);
+    if (!active || !canEdit) { modeEl.hidden = true; modeEl.innerHTML = ''; return; }
+    const namn = `${escapeHtml(legLabel(active.from))} → ${escapeHtml(legLabel(active.to))}`;
+    modeEl.hidden = false;
+    modeEl.innerHTML = ritar
+      ? `${icon('pencil', { size: 13 })} <strong>Ritläge</strong> ${namn} · klicka i kartan för att lägga punkter · <kbd>Esc</kbd> avslutar`
+      : `<strong>Redigerar</strong> ${namn} · dra punkter, dubbelklick tar bort, klick på linjen lägger till · <kbd>Esc</kbd> avmarkerar`;
+  }
 
   function markDirty() {
     if (!dirty) { dirty = true; updatePanel(); }
@@ -304,6 +355,9 @@ export async function renderTrack(app, user, cid) {
       </div>
 
       <div class="btn-row" style="margin-top:10px;flex-wrap:wrap;">
+        ${active && canEdit ? `
+          <button class="btn btn-secondary btn-sm ${drawing ? 'is-on' : ''}" id="track-draw" aria-pressed="${drawing ? 'true' : 'false'}">${icon('pencil', { size: 14 })} ${drawing ? 'Ritläge på' : 'Rita punkter'}</button>
+          ${activeIdx < legs.length - 1 ? '<button class="btn btn-ghost btn-sm" id="track-next">Nästa sträcka →</button>' : ''}` : ''}
         ${active ? '<button class="btn btn-ghost btn-sm" id="track-deselect">Avmarkera</button>' : ''}
         ${canEdit ? `
           <button class="btn btn-ghost btn-sm" id="track-undo" ${active && active.wps.length ? '' : 'disabled'}>Ångra punkt</button>
@@ -318,11 +372,14 @@ export async function renderTrack(app, user, cid) {
         // Klick på en redan vald sträcka stänger av markeringen — samma knapp,
         // fram och tillbaka.
         if (i === activeIdx) { setActive(-1); return; }
-        setActive(i);
-        map.fitBounds(L.latLngBounds(legPath(legs[i]).map(p => [p.lat, p.lng])), { padding: [70, 70] });
+        focusLeg(i);
       });
     });
     panel.querySelector('#track-deselect')?.addEventListener('click', () => setActive(-1));
+    panel.querySelector('#track-draw')?.addEventListener('click', () => setDrawing(!drawing));
+    panel.querySelector('#track-next')?.addEventListener('click', () => {
+      if (activeIdx < legs.length - 1) focusLeg(activeIdx + 1);
+    });
     panel.querySelector('#track-speed')?.addEventListener('change', (e) => {
       speedKmh = Number(e.target.value) || DEFAULT_SPEED;
       markDirty();
@@ -385,10 +442,12 @@ export async function renderTrack(app, user, cid) {
   const onFs = () => setTimeout(() => map.invalidateSize(), 60);
   document.addEventListener('fullscreenchange', onFs);
 
-  // Esc avmarkerar — snabbaste vägen till en ren karta (skärmdumpar).
+  // Esc lämnar först ritläget, sedan markeringen — snabbaste vägen till en
+  // ren karta (skärmdumpar).
   const onKey = (e) => {
     if (e.key !== 'Escape' || activeIdx < 0) return;
     if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '')) return;
+    if (drawing) { setDrawing(false); return; }
     setActive(-1);
   };
   document.addEventListener('keydown', onKey);

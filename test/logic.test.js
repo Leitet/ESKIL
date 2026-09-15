@@ -1420,6 +1420,24 @@ describe('publikt kontrollnamn under anonyma kontroller', () => {
   });
 });
 
+// --- Spåreditorn: punkter bara i ritläge --------------------------------------
+// En tappad musklick mitt i en justering blev en punkt i spåret. Nu är kartan
+// inert utanför ritläget, som slås på av sig självt för en tom sträcka.
+describe('spåreditorn lägger punkter bara i ritläge', () => {
+  const src = readFileSync(new URL('../public/js/views/track.js', import.meta.url), 'utf8');
+  test('ett kartklick utanför ritläget är inert', () => {
+    const start = src.indexOf("map.on('click'");
+    const klick = src.slice(start, src.indexOf('insertWaypoint(leg, e.latlng);', start));
+    assert.match(klick, /if \(!drawing\) return;/, 'kartklicket måste stanna utanför ritläget');
+  });
+  test('en tom sträcka öppnas i ritläge, en ritad i redigeringsläge', () => {
+    assert.match(src, /drawing = canEdit && i >= 0 && legs\[i\]\.wps\.length === 0;/);
+  });
+  test('Esc lämnar ritläget före markeringen', () => {
+    assert.match(src, /if \(drawing\) \{ setDrawing\(false\); return; \}\s*setActive\(-1\);/);
+  });
+});
+
 // --- Efteranmälan ---------------------------------------------------------------
 // Ledningen lägger till patruller efter stängd anmälan (views/efteranmalan.js).
 // Mellanskillnaden är det som avgör vad kåren får betala en gång till.

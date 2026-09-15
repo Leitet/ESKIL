@@ -994,7 +994,14 @@ BÅDA ställena.
   (controls already expose all positions); admin-only writes.
   The editor has an explicit **no-leg-selected** state (`activeIdx === -1`,
   and it is the default): the map is then inert and renders clean for
-  screenshots. Where a new point lands in the sequence is decided by
+  screenshots. **Punkter läggs bara i RITLÄGE** (`drawing`): en sträcka UTAN
+  punkter öppnas i ritläge (nytt spår — första klicket är en punkt), en
+  sträcka MED punkter i redigeringsläge där ett kartklick är inert; en tappad
+  musklick blev annars en punkt mitt i spåret. Klick på själva linjen lägger
+  alltid en punkt (man träffade linjen), "Rita punkter" slår på läget, Esc
+  lämnar det och Esc igen avmarkerar; "Nästa sträcka →" är vägen genom en hel
+  bana. Lägesremsan på kartan och hårkorset visar vilket läge som gäller.
+  Regressionstestat mot källan i `test/logic.test.js`. Where a new point lands in the sequence is decided by
   `waypointInsertIndex` in `course.js` — near the line refines there, farther
   away extends from the end. Don't put it back to plain nearest-segment: on a
   curved leg the nearest segment ties on the bend and points landed BEFORE
