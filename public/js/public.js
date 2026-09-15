@@ -1124,16 +1124,29 @@ function renderMap() {
 // --- Tab: Patrols ----------------------------------------------------------
 let avdFilter = null;
 function renderPatrols(totals) {
+  // I STARTORDNING när tiderna är publicerade — det är den ordning anhöriga
+  // letar i på tävlingsdagen ("när går vi?"), inte nummerordningen.
+  // Patruller utan starttid (saknar startordning) hamnar sist, i
+  // nummerordning. Är tiderna inte publicerade gäller nummerordning som
+  // förut; ordningen hade annars avslöjat schemat som växeln döljer.
+  const iStartordning = startTimesPublished(comp);
+  const nu = new Date();
+  const startMs = new Map(patrols.map(p => {
+    const dt = iStartordning ? patrolStartDateTime(comp, p, nu, patrols.length) : null;
+    return [p.id, dt ? dt.getTime() : Infinity];
+  }));
   const rows = patrols
     .filter(p => !avdFilter || p.avdelning === avdFilter)
     .slice()
-    .sort((a,b) => (a.number||0) - (b.number||0) || (a.name||'').localeCompare(b.name||'', 'sv'));
+    .sort((a, b) => (startMs.get(a.id) - startMs.get(b.id))
+      || (a.number || 0) - (b.number || 0)
+      || (a.name || '').localeCompare(b.name || '', 'sv'));
   const totalMap = Object.fromEntries(totals.map(t => [t.id, t]));
 
   const ctrlCount = controls.length || 1;
 
   return `
-    <div class="pub-section-head"><h2 class="t-h2">Patruller</h2><span class="muted">${rows.length} av ${patrols.length}</span></div>
+    <div class="pub-section-head"><h2 class="t-h2">Patruller</h2><span class="muted">${rows.length} av ${patrols.length}${iStartordning && rows.some(p => Number.isFinite(startMs.get(p.id))) ? ' · i startordning' : ''}</span></div>
     <div class="avd-filter">
       <button class="${avdFilter === null ? 'active' : ''}" data-avd="">Alla</button>
       ${AVDELNINGAR.filter(a => patrols.some(p => p.avdelning === a.key))
