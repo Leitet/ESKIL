@@ -947,6 +947,15 @@ BÅDA ställena.
   den överlever stängt blad, låst telefon och omladdning, och flera patruller
   kan tidtas samtidigt; Stopp fyller i fältet, Spara bekräftar. Offlinekön
   bär `tidtagning: true` på posten så flushen väljer rätt skrivning.
+  **Placeringsregel två är lägst sammanlagd tid** på tidtagningskontrollerna
+  (`tidTotal` i `rankPatrols`, jämförd via `tidSkillnad` FÖRE ordningspoäng
+  och maxade kontroller). Saknad tid — ej genomförd eller ej rapporterad — är
+  Infinity: "samtliga tidskontroller" betyder att den som har tid på alla slår
+  den som saknar någon, samma tanke som "ett svar slår inget svar". Utan
+  tidtagningskontroller är den 0 för alla, så regeln är osynlig för varje
+  tävling utan tidtagning. Kårtabellens TRE vyer (poängtabellen, /t,
+  resultatexporten) måste summera `tidTotal` per kår, annars rangordnar
+  `rankKarer` kårerna utan regel två — ett källtest kräver det.
 - `.../controls/{ctrlId}/scores/{patrolId}` — one doc per patrol×control; the
   doc id IS the patrolId so re-reporting overwrites. May carry
   `utslagGissning` (the patrol's tiebreaker guess) when the control has

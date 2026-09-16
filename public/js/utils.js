@@ -471,7 +471,8 @@ export function parseFieldPath(pathname, prefix) {
 // Om alla tre är lika → delad placering.
 export const RANKING_RULES_TEXT = [
   { title: 'Totalpoäng',                rule: 'Summan av kontrollpoäng och ordningspoäng.' },
-  { title: 'Högst ordningspoäng',       rule: 'Vid lika totalpoäng jämförs extrapoängen.' },
+  { title: 'Lägst total tid',           rule: 'Vid lika totalpoäng vinner den med lägst sammanlagd tid på tävlingens tidtagningskontroller. Saknas tid på någon av dem (ej genomförd eller ej rapporterad) räknas patrullen som långsammare än en som har tid på alla. Gäller bara tävlingar med tidtagning.' },
+  { title: 'Högst ordningspoäng',       rule: 'Vid lika totalpoäng och tid jämförs extrapoängen.' },
   { title: 'Flest maxade kontroller',   rule: 'Vid lika ordningspoäng: den som tagit full maxpoäng på flest kontroller.' },
   { title: 'Utslagsfråga',              rule: 'Har tävlingen en utslagskontroll vinner den vars svar ligger närmast rätt svar (ett svar slår inget svar). Räknas först när tävlingsledningen angett rätt svar.' },
   { title: 'Delad placering',           rule: 'Går det inte att avgöra efter detta får de inblandade dela på platsen.' }
@@ -512,14 +513,31 @@ export function utslagRows(control, patrols, perPatrolScore) {
 // (ctrlId → score doc). `controls` supplies each control's maxPoang and any
 // utslagskontroller. Returns a new array with { ...row, rank, maxedCount,
 // utslagDiffs } sorted by the rules in RANKING_RULES_TEXT.
+// Regel två — lägst sammanlagd tid — jämförs på `tidTotal`. En saknad tid
+// (ej genomförd, ej rapporterad) är Infinity: "samtliga tidskontroller" betyder
+// att den som har tid på alla slår den som saknar någon, samma tanke som "ett
+// svar slår inget svar" i utslagsfrågan. Två Infinity är lika och faller
+// vidare. Utan tidtagningskontroller är den 0 för alla, så regeln är osynlig
+// för varje tävling som inte har tidtagning. `?? 0` för att kårrader byggda
+// före fältet ska jämföras som lika, inte som NaN.
+function tidSkillnad(a, b) {
+  const ta = a.tidTotal ?? 0, tb = b.tidTotal ?? 0;
+  return ta === tb ? 0 : (ta < tb ? -1 : 1);
+}
 export function rankPatrols(totals, controls) {
   const ctrlMax = Object.fromEntries(controls.map(c => [c.id, Number(c.maxPoang) || 0]));
   const utslag = utslagControls(controls);
+  const tidKontroller = controls.filter(c => c.tidtagning === true);
   const enriched = totals.map(r => {
     let maxedCount = 0;
     for (const [ctrlId, s] of Object.entries(r.perControl || {})) {
       const max = ctrlMax[ctrlId];
       if (max > 0 && (Number(s.poang) || 0) >= max) maxedCount++;
+    }
+    let tidTotal = 0;
+    for (const c of tidKontroller) {
+      const t = r.perControl?.[c.id]?.tidSek;
+      tidTotal += isNumSet(t) ? Number(t) : Infinity;
     }
     // Distance from facit per utslagskontroll; no guess = Infinity, so a
     // patrol that answered always beats one that didn't.
@@ -527,12 +545,13 @@ export function rankPatrols(totals, controls) {
       const g = r.perControl?.[c.id]?.utslagGissning;
       return isNumSet(g) ? Math.abs(Number(g) - Number(c.utslagSvar)) : Infinity;
     });
-    return { ...r, maxedCount, utslagDiffs };
+    return { ...r, maxedCount, utslagDiffs, tidTotal };
   });
   const sameDiffs = (a, b) =>
     (a.utslagDiffs || []).every((d, i) => d === (b.utslagDiffs || [])[i]);
   enriched.sort((a, b) => {
     if ((b.grand || 0) !== (a.grand || 0)) return (b.grand || 0) - (a.grand || 0);
+    const tid = tidSkillnad(a, b); if (tid) return tid;
     if ((b.extra || 0) !== (a.extra || 0)) return (b.extra || 0) - (a.extra || 0);
     if ((b.maxedCount || 0) !== (a.maxedCount || 0)) return (b.maxedCount || 0) - (a.maxedCount || 0);
     for (let i = 0; i < (a.utslagDiffs || []).length; i++) {
@@ -545,6 +564,7 @@ export function rankPatrols(totals, controls) {
   enriched.forEach((r, i) => {
     const tied = prev
       && (r.grand       || 0) === (prev.grand       || 0)
+      && tidSkillnad(r, prev) === 0
       && (r.extra       || 0) === (prev.extra       || 0)
       && (r.maxedCount  || 0) === (prev.maxedCount  || 0)
       && sameDiffs(r, prev);
@@ -556,11 +576,13 @@ export function rankPatrols(totals, controls) {
 }
 
 // Same tiebreaker logic applied to kår-aggregated rows. Each row must carry
-// `grand`, `extra`, and a pre-computed `maxedCount` (sum across the kår's
-// patrols).
+// `grand`, `extra`, a pre-computed `maxedCount` and `tidTotal` (both summed
+// across the kår's patrols — Infinity från en patrull utan komplett tid
+// smittar summan, precis som på patrullnivå).
 export function rankKarer(rows) {
   const arr = rows.slice().sort((a, b) => {
     if ((b.grand || 0) !== (a.grand || 0)) return (b.grand || 0) - (a.grand || 0);
+    const tid = tidSkillnad(a, b); if (tid) return tid;
     if ((b.extra || 0) !== (a.extra || 0)) return (b.extra || 0) - (a.extra || 0);
     if ((b.maxedCount || 0) !== (a.maxedCount || 0)) return (b.maxedCount || 0) - (a.maxedCount || 0);
     return 0;
@@ -569,6 +591,7 @@ export function rankKarer(rows) {
   arr.forEach((r, i) => {
     const tied = prev
       && (r.grand      || 0) === (prev.grand      || 0)
+      && tidSkillnad(r, prev) === 0
       && (r.extra      || 0) === (prev.extra      || 0)
       && (r.maxedCount || 0) === (prev.maxedCount || 0);
     r.rank = tied ? prevRank : i + 1;

@@ -363,12 +363,13 @@ export async function renderScoreboard(app, user, cid) {
       const grouped = {};
       rankedPatrols.forEach(r => {
         const k = r.kar || '(Ingen kår)';
-        if (!grouped[k]) grouped[k] = { kar: k, patrols: [], total: 0, extra: 0, count: 0, maxedCount: 0 };
+        if (!grouped[k]) grouped[k] = { kar: k, patrols: [], total: 0, extra: 0, count: 0, maxedCount: 0, tidTotal: 0 };
         grouped[k].patrols.push(r);
         grouped[k].total += r.total;
         grouped[k].extra += r.extra;
         grouped[k].count += r.count;
         grouped[k].maxedCount += r.maxedCount;
+        grouped[k].tidTotal += r.tidTotal ?? 0;
       });
       const karRaw = Object.values(grouped).map(g => ({
         ...g, grand: g.total + g.extra, avg: g.patrols.length ? g.total / g.patrols.length : 0

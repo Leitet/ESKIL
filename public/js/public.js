@@ -1239,11 +1239,12 @@ function renderScoreboard(totals) {
     const byKar = {};
     for (const t of rankedPatrols) {
       const k = t.kar || '(Okänd)';
-      if (!byKar[k]) byKar[k] = { kar: k, total: 0, extra: 0, patrols: [], count: 0, maxedCount: 0 };
+      if (!byKar[k]) byKar[k] = { kar: k, total: 0, extra: 0, patrols: [], count: 0, maxedCount: 0, tidTotal: 0 };
       byKar[k].total      += t.total;
       byKar[k].extra      += t.extra;
       byKar[k].count      += t.count;
       byKar[k].maxedCount += t.maxedCount;
+      byKar[k].tidTotal   += t.tidTotal ?? 0;
       byKar[k].patrols.push(t);
     }
     const karRaw = Object.values(byKar)

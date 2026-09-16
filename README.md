@@ -21,8 +21,8 @@ att köra gratis på Spark-planen.
 - **Kontroller** — nummer, namn, max/min/extra poäng, position (lat/lng),
   information, notering, öppen/stängd.
 - **Poängtabell** — sortering Overall, per avdelning, per kår. Placeringar
-  avgörs av totalpoäng → extrapoäng → flest maxade kontroller →
-  **utslagsfråga** → delad placering.
+  avgörs av totalpoäng → lägst sammanlagd tid på tidtagningskontrollerna →
+  extrapoäng → flest maxade kontroller → **utslagsfråga** → delad placering.
 - **Utslagskontroll** — en kontroll kan markeras som utslagskontroll med en
   fråga (t.ex. "Hur många knopar är det i burken?"). Kontrollanten rapporterar
   patrullens svar på rapportsidan; vid i övrigt lika resultat vinner den som

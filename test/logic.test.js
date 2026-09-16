@@ -22,7 +22,8 @@ import {
   mergeManagement,
   publicManagement,
   internalManagement,
-  arSpaRutt
+  arSpaRutt,
+  rankPatrols, rankKarer, RANKING_RULES_TEXT,
 } from '../public/js/utils.js';
 import { hasIcon } from '../public/js/icons.js';
 import { fordelaTidspoang, invNorm, formateraTid, tolkaTid } from '../public/js/tidspoang.js';
@@ -2203,6 +2204,85 @@ describe('arSpaRutt — data-link får bara sitta på det routern kan rendera', 
     for (const seg of ['/om', '/kontakt', '/app']) {
       assert.ok(sources.some(s => s === seg || s === `${seg}/**` || s === '**'),
         `${seg} räknas som SPA-rutt men saknar rewrite`);
+    }
+  });
+});
+
+describe('placeringsregler: lägst total tid skiljer lika totalpoäng', () => {
+  // Regel två, före ordningspoäng och maxade kontroller: vid lika totalpoäng
+  // vinner den med lägst sammanlagd tid på tidtagningskontrollerna. Saknad tid
+  // = Infinity ("samtliga" — den som har tid på alla slår den som saknar
+  // någon). Utan tidtagningskontroller är tiden 0 för alla och regeln osynlig.
+  const tid = (id, nummer = 1) => ({ id, nummer, maxPoang: 10, tidtagning: true });
+  const poang = (id, nummer = 5) => ({ id, nummer, maxPoang: 10 });
+  const rad = (id, perControl, extra = 0) => {
+    const total = Object.values(perControl).reduce((s, x) => s + (Number(x.poang) || 0), 0);
+    return { id, total, extra, grand: total + extra, perControl };
+  };
+
+  test('lika totalpoäng: lägst sammanlagd tid vinner', () => {
+    const controls = [tid('t1'), tid('t2', 2), poang('p1')];
+    const a = rad('a', { t1: { poang: 8, tidSek: 60 }, t2: { poang: 8, tidSek: 60 }, p1: { poang: 4 } });
+    const b = rad('b', { t1: { poang: 8, tidSek: 50 }, t2: { poang: 8, tidSek: 65 }, p1: { poang: 4 } });
+    const r = rankPatrols([a, b], controls);
+    assert.deepEqual(r.map(x => [x.id, x.rank, x.tidTotal]), [['b', 1, 115], ['a', 2, 120]]);
+  });
+
+  test('tiden slår extrapoäng och maxade kontroller — den är regel två', () => {
+    const controls = [tid('t1'), poang('p1')];
+    const a = rad('a', { t1: { poang: 5, tidSek: 90 }, p1: { poang: 10 } }, 2);   // 15 + 2, en maxad
+    const b = rad('b', { t1: { poang: 8, tidSek: 40 }, p1: { poang: 9 } }, 0);    // 17 + 0, ingen maxad
+    assert.deepEqual(rankPatrols([a, b], controls).map(x => x.id), ['b', 'a']);
+    // Lika tid: då avgör ordningspoängen som förut
+    const c = rad('c', { t1: { poang: 8, tidSek: 40 }, p1: { poang: 7 } }, 2);    // 15 + 2
+    assert.deepEqual(rankPatrols([b, c], controls).map(x => x.id), ['c', 'b']);
+  });
+
+  test('saknad tid (ej genomförd eller ej rapporterad) förlorar mot komplett tid', () => {
+    const controls = [tid('t1'), tid('t2', 2)];
+    const a = rad('a', { t1: { poang: 10, tidSek: 30 }, t2: { poang: 0, ejGenomford: true } });
+    const b = rad('b', { t1: { poang: 5, tidSek: 200 }, t2: { poang: 5, tidSek: 200 } });
+    const r = rankPatrols([a, b], controls);
+    assert.deepEqual(r.map(x => x.id), ['b', 'a']);
+    assert.equal(r[1].tidTotal, Infinity);
+    // Två utan komplett tid är lika på regeln och faller vidare — delad plats
+    const c = rad('c', { t1: { poang: 10, tidSek: 20 } });
+    assert.deepEqual(rankPatrols([a, c], controls).map(x => x.rank), [1, 1]);
+  });
+
+  test('utan tidtagningskontroller är ordningen orörd och tiden 0', () => {
+    const controls = [poang('p1'), poang('p2', 6)];
+    const a = rad('a', { p1: { poang: 10 }, p2: { poang: 5 } });
+    const b = rad('b', { p1: { poang: 8 }, p2: { poang: 7 } });
+    assert.deepEqual(rankPatrols([b, a], controls).map(x => [x.id, x.rank, x.tidTotal]),
+      [['a', 1, 0], ['b', 2, 0]]);   // a har en maxad kontroll
+  });
+
+  test('lika tid ger delad placering — tiden räknas in i "lika"', () => {
+    const controls = [tid('t1')];
+    const a = rad('a', { t1: { poang: 8, tidSek: 60 } });
+    const b = rad('b', { t1: { poang: 8, tidSek: 60 } });
+    const c = rad('c', { t1: { poang: 8, tidSek: 61 } });
+    assert.deepEqual(rankPatrols([c, a, b], controls).map(x => [x.id, x.rank]), [['a', 1], ['b', 1], ['c', 3]]);
+  });
+
+  test('kårtabellen: summerad tid skiljer lika kårer; saknas fältet är de lika', () => {
+    const r = rankKarer([
+      { kar: 'A', grand: 20, extra: 1, maxedCount: 1, tidTotal: 300 },
+      { kar: 'B', grand: 20, extra: 0, maxedCount: 0, tidTotal: 250 },
+    ]);
+    assert.deepEqual(r.map(x => [x.kar, x.rank]), [['B', 1], ['A', 2]]);
+    const utan = rankKarer([{ kar: 'A', grand: 20, extra: 0, maxedCount: 1 }, { kar: 'B', grand: 20, extra: 0, maxedCount: 1 }]);
+    assert.deepEqual(utan.map(x => x.rank), [1, 1]);
+  });
+
+  test('regeltexten står som regel två, och alla tre kårvyer summerar tiden', () => {
+    assert.equal(RANKING_RULES_TEXT[0].title, 'Totalpoäng');
+    assert.match(RANKING_RULES_TEXT[1].title, /tid/i);
+    assert.match(RANKING_RULES_TEXT[2].rule, /och tid/);
+    for (const f of ['views/scoreboard.js', 'public.js', 'results-export.js']) {
+      const src = readFileSync(new URL(`../public/js/${f}`, import.meta.url), 'utf8');
+      assert.match(src, /tidTotal\s*\+= /, `${f} summerar inte tiden per kår — kårtabellen skulle rangordna utan regel två`);
     }
   });
 });
