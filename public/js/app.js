@@ -36,10 +36,38 @@ const fas = (n) => { try { window.__eskilFas?.(n); } catch {} };
 // map och är enda vägen tillbaka utan omladdning. Beroendena har egna
 // specificerare och återanvänds, så det är vyfilen — inte grafen — som laddas
 // om, och bara efter att den redan misslyckats.
+//
+// VERSIONSSKEV är det andra sättet en vyladdning dör på, och det är inget
+// nätfel: efter en deploy har en flik som var öppen FÖRE den fortfarande den
+// gamla store.js (eller någon annan delad modul) i sin module map, medan
+// vyfilen hämtas färsk (no-cache) och importerar ett namn som inte fanns i den
+// gamla. Länkningen faller med ett SyntaxError — "does not provide an export
+// named" — och varken andra försöket eller Försök igen hjälper, för beroendet
+// är redan instansierat. Bara en omladdning ger en ny modulgraf. Inträffade i
+// produktion när tidtagningen deployades: varje öppen adminflik fick "Sidan
+// kunde inte laddas" på nästa vybyte, mitt under en pågående tävling. Sidan
+// laddas därför om EN gång per halvminut; faller den ändå är felet något annat
+// och felskärmen ska visas. Omladdningen sker bara vid ett vybyte, så ingen
+// öppen modal eller ifylld formulärrad går förlorad.
+const OMLADDNING_NYCKEL = 'eskil-vy-omladdad';
+function arLankfel(e) {
+  return e instanceof SyntaxError && /export|import/i.test(String(e?.message || ''));
+}
+function laddaOmVidSkev(e) {
+  if (!arLankfel(e)) return false;
+  let senast = 0;
+  try { senast = Number(sessionStorage.getItem(OMLADDNING_NYCKEL)) || 0; } catch { /* privat läge */ }
+  if (Date.now() - senast < 30_000) return false;
+  try { sessionStorage.setItem(OMLADDNING_NYCKEL, String(Date.now())); } catch { /* privat läge */ }
+  console.warn('[ESKIL] modulgrafen är från en äldre version — laddar om sidan:', e);
+  location.reload();
+  return true;
+}
 const vy = (fil, namn) => async (...args) => {
   try {
     return (await import(fil))[namn](...args);
   } catch (e) {
+    if (laddaOmVidSkev(e)) return new Promise(() => {}); // sidan laddas om — visa ingen felskärm
     console.warn('[ESKIL] vyladdning misslyckades, försöker igen:', fil, e);
     return (await import(`${fil}${fil.includes('?') ? '&' : '?'}r=${Date.now()}`))[namn](...args);
   }

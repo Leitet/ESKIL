@@ -467,6 +467,44 @@ describe('SPA:n visar när en vy inte kunde laddas', () => {
     assert.match(v, /\?|&/);
     assert.match(v, /r=\$\{Date\.now\(\)\}/);
   });
+
+  test('versionsskev efter en deploy laddar om sidan — en gång, och bara för länkfel', () => {
+    // Fliken var öppen FÖRE deployen: gamla store.js i module map, färsk vyfil
+    // (no-cache) som importerar ett namn som inte fanns då. Länkningen ger ett
+    // SyntaxError, och varken andra försöket eller Försök igen hjälper — bara
+    // en omladdning ger en ny modulgraf. Hände i produktion när tidtagningen
+    // gick ut: varje öppen adminflik fick felskärmen på nästa vybyte.
+    const v = src.slice(src.indexOf('const vy ='), src.indexOf('import { renderLogin }'));
+    assert.match(v, /laddaOmVidSkev\(e\)/, 'vy() frågar inte skev-vakten');
+    assert.ok(v.indexOf('laddaOmVidSkev') < v.indexOf('r=${Date.now()}'),
+      'omladdningen måste prövas FÖRE det nya försöket — det nya försöket faller på samma länkning');
+    const kod = src.slice(src.indexOf('const OMLADDNING_NYCKEL'), src.indexOf('const vy ='));
+    const kor = (lager) => {
+      const reloads = [];
+      const fabrik = new Function('sessionStorage', 'location', 'console', `${kod}; return laddaOmVidSkev;`);
+      return { fn: fabrik(lager, { reload: () => reloads.push(1) }, { warn() {} }), reloads };
+    };
+    const minne = () => {
+      const m = new Map();
+      return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, x) => m.set(k, String(x)) };
+    };
+    const chrome = new SyntaxError("The requested module '../store.js' does not provide an export named 'stangKontroll'");
+    const a = kor(minne());
+    assert.equal(a.fn(chrome), true);
+    assert.equal(a.reloads.length, 1);
+    assert.equal(a.fn(chrome), false, 'ett andra länkfel inom en halvminut får inte bli en omladdningsloop');
+    assert.equal(a.reloads.length, 1);
+    const b = kor(minne());
+    assert.equal(b.fn(new TypeError('Failed to fetch dynamically imported module')), false,
+      'ett nätfel ska gå till det nya försöket, inte till omladdning');
+    assert.equal(b.reloads.length, 0);
+    const c = kor(minne());
+    assert.equal(c.fn(new SyntaxError("Importing binding name 'stangKontroll' is not found.")), true,
+      'Safari formulerar samma länkfel annorlunda');
+    const d = kor({ getItem() { throw new Error('privat läge'); }, setItem() { throw new Error('privat läge'); } });
+    assert.equal(d.fn(chrome), true, 'ett sessionStorage som kastar får inte stoppa omladdningen');
+    assert.equal(d.reloads.length, 1);
+  });
 });
 
 describe('cache-reglerna säger vad de gör', () => {

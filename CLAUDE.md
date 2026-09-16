@@ -302,6 +302,18 @@ Email extension). Production domain: https://eskilscout.se.
   försöket med en NY specificerare (`?r=<tid>`), och `guard()` kör numera
   `render()` genom en catch som visar en felskärm — förut var ett avvisat löfte
   en ohanterad rejection som ingen visade.
+  **Versionsskev är det andra sättet en vyladdning dör på, och det slog till i
+  produktion:** en flik som var öppen FÖRE en deploy har den gamla `store.js`
+  (eller någon annan delad modul) i sin module map, vyfilen hämtas färsk
+  (no-cache) och importerar ett namn som inte fanns då — `SyntaxError: does not
+  provide an export named` — och varken den nya specificeraren eller Försök
+  igen hjälper, för beroendet är redan instansierat. När tidtagningen gick ut
+  fick varje öppen adminflik felskärmen på nästa vybyte, mitt under en
+  pågående tävling. `laddaOmVidSkev()` i app.js laddar därför om sidan vid
+  just det felet (SyntaxError med export/import i texten — nätfel går den gamla
+  vägen), en gång per halvminut så ett äkta fel inte blir en loop. Fliken
+  laddas om bara vid ett vybyte, så ingen öppen modal går förlorad. Testat i
+  `test/boot.test.js` med Chromes och Safaris felmeningar.
   **`/js/**` har INGEN egen cache-regel** i firebase.json, och det är avsiktligt:
   regeln fanns och lovade `max-age=3600`, men `**/*.js` längre ner sätter
   `no-cache` och vinner. Mätt i produktion svarar modulerna no-cache. En död
