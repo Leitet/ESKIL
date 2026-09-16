@@ -705,6 +705,13 @@ function renderRulesTab(comp, cid, refresh, readOnly) {
             <div class="field-hint" style="margin-top:2px;">Gäller när kontrollplatserna är dolda: publika kartan visar kontroller och spår av sig själv 5 minuter före första patrullens starttid på tävlingsdatumet. Kräver att datum och starttider är satta.</div>
           </span>
         </label>
+        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin-top:var(--sp-3);">
+          <input type="checkbox" id="courseHidden" ${comp.courseHidden === true ? 'checked' : ''} style="margin-top:4px;">
+          <span>
+            <strong>Dölj spåret för scouterna under hela tävlingen ${help('comp.courseHidden')}</strong>
+            <div class="field-hint" style="margin-top:2px;">För banor där patrullerna ska följa snitslar och markeringar. Publika sidan och startkorten visar alltid "Tävlingsområde", start/mål och platser — aldrig kontroller eller spår, oavsett släppet ovan. Spårlängd och beräknad målgång visas. Ledningen, kontrollsidorna och kontrollernas PDF ser allt. Bocka ur efter tävlingen om ni vill visa spåret.</div>
+          </span>
+        </label>
       </div>
 
       <div style="border-top:1px solid var(--border);padding-top:var(--sp-4);">
@@ -832,6 +839,7 @@ function renderRulesTab(comp, cid, refresh, readOnly) {
       publicScores: card.querySelector('#publicScores').checked,
       publicControls: card.querySelector('#publicControls').checked,
       autoReleaseControls: card.querySelector('#autoReleaseControls').checked,
+      courseHidden: card.querySelector('#courseHidden').checked,
       autoCloseControls: card.querySelector('#autoCloseControls').checked,
       startTimes: {
         enabled: card.querySelector('#st-enabled').checked,

@@ -461,7 +461,7 @@ export async function copyCompetition(cid, { name, shortName, year, date }, user
   // dem skulle tyst ändra nästa års bana och alla kartnålar.
   for (const k of ['startTimes', 'startFinish', 'parking', 'places', 'management',
                    'publicScores', 'publicControls', 'autoReleaseControls',
-                   'anonymousControls', 'autoCloseControls',
+                   'anonymousControls', 'autoCloseControls', 'courseHidden',
                    'selfStart', 'selfFinish', 'autoFinish', 'fieldMessaging']) {
     if (src[k] !== undefined) data[k] = src[k];
   }

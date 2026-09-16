@@ -629,6 +629,16 @@ export function controlsAutoReleased(comp, now = new Date()) {
   return !!t && now >= t;
 }
 
+// Hemligt spår: scouterna ska följa snitslar och markeringar, så varken
+// kontrollernas positioner eller spåret får synas på /t eller startkortet —
+// hela tävlingen, oavsett manuellt eller automatiskt släpp. Ledningen,
+// kontrollanternas /k och kontrollernas PDF ser allt. Bara `=== true` räknas:
+// saknas = visat, så ingen befintlig tävling ändrar beteende. UI-nivå, som
+// publicControls. Släpps aldrig av sig självt — ledningen bockar ur.
+export function courseHidden(comp) {
+  return comp?.courseHidden === true;
+}
+
 export function startTimeSettings(comp) {
   const s = comp?.startTimes || {};
   return {

@@ -199,7 +199,7 @@ const TAVLING = {
   district: OPPEN, slug: OPPEN,
   demo: OPPEN, closed: OPPEN,
   publicScores: OPPEN, publicControls: OPPEN, controlsAutoReleased: OPPEN,
-  anonymousControls: OPPEN, selfStart: OPPEN, selfFinish: OPPEN,
+  anonymousControls: OPPEN, courseHidden: OPPEN, selfStart: OPPEN, selfFinish: OPPEN,
   autoFinish: OPPEN, fieldMessaging: OPPEN, etaDwellMinutes: OPPEN,
   copiedFrom: OPPEN, lastBackupAt: OPPEN,
 

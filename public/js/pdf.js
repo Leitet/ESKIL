@@ -4,11 +4,11 @@
 //
 // jsPDF and qrcodejs are loaded lazily from CDN on first use.
 
-import {
+import { courseHidden,
   reportUrl, startUrl, allInstructionGroups, publicManagement, patrolStartTime, patrolLabel,
   swishQrString
 } from './utils.js';
-import { legStub, courseLegs } from './course.js';
+import { competitionArea, legStub, courseLegs } from './course.js';
 
 let jsPDFReady = null;
 let qrReady = null;
@@ -374,7 +374,11 @@ function drawMapChrome(ctx, w, h, { metersPerPx, northDeg }) {
  *          för att fylla papperet; kortet skriver då ut att man ska vrida det.
  *          null när inget går att rita.
  */
-export async function courseMapDataUrl(comp, controls, track, places = [], { wPx = 1800, hPx = 1240 } = {}) {
+// `omrade`: hemligt spår — rita tävlingsområdet (samma konvexa hölje som
+// /t och startkortet) i stället för spår och kontrollnålar. Start/mål och
+// platser ritas som vanligt. Papperstartkortet måste följa skärmen; annars
+// läcker pappret precis det skärmen döljer.
+export async function courseMapDataUrl(comp, controls, track, places = [], { wPx = 1800, hPx = 1240, omrade = false } = {}) {
   const { nodes, legs } = courseLegs(comp, controls, track);
   // Alla punkter som ska rymmas: nodernas, spårets ritade punkter och
   // platserna. En parkering en bit bort ska inte hamna utanför bilden.
@@ -452,7 +456,7 @@ export async function courseMapDataUrl(comp, controls, track, places = [], { wPx
 
   // --- Spåret ---
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  for (const leg of legs) {
+  for (const leg of omrade ? [] : legs) {
     const path = [leg.from, ...leg.wps, leg.to].map(toPx);
     if (path.length < 2) continue;
     // Vit kontur under linjen: utan den försvinner spåret i skog och vägar
@@ -467,6 +471,27 @@ export async function courseMapDataUrl(comp, controls, track, places = [], { wPx
     }
   }
   ctx.setLineDash([]);
+
+  // --- Tävlingsområdet (hemligt spår) ---
+  if (omrade) {
+    const hull = competitionArea(nodes.filter(n => n.kind === 'control').map(n => ({ lat: n.lat, lng: n.lng })));
+    if (hull) {
+      const path = hull.map(([lat, lng]) => toPx({ lat, lng }));
+      ctx.beginPath();
+      path.forEach((q, i) => i ? ctx.lineTo(q.px, q.py) : ctx.moveTo(q.px, q.py));
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(0,54,96,.14)'; ctx.fill();
+      ctx.setLineDash([14, 12]); ctx.lineWidth = 4; ctx.strokeStyle = BLUE; ctx.stroke();
+      ctx.setLineDash([]);
+      const cx = path.reduce((s, q) => s + q.px, 0) / path.length;
+      const cy = path.reduce((s, q) => s + q.py, 0) / path.length;
+      ctx.font = '700 30px Helvetica, Arial, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(255,255,255,.95)';
+      ctx.strokeText('Tävlingsområde', cx, cy);
+      ctx.fillStyle = BLUE; ctx.fillText('Tävlingsområde', cx, cy);
+    }
+  }
 
   // --- Platser: färgad prick + namn ---
   ctx.textBaseline = 'middle';
@@ -489,6 +514,7 @@ export async function courseMapDataUrl(comp, controls, track, places = [], { wPx
   ctx.textAlign = 'center';
   for (const nd of nodes) {
     if (nd.kind === 'place') continue;                   // ritad ovan
+    if (omrade && nd.kind === 'control') continue;       // hemligt spår: inga nålar
     const { px, py } = toPx(nd);
     const isCtrl = nd.kind === 'control';
     ctx.beginPath();
@@ -1577,7 +1603,7 @@ export async function downloadManualStartPdf(comp, patrols, controls, track, pla
     .filter(c => Number.isFinite(Number(c.nummer)))
     .sort((a, b) => (a.nummer ?? 0) - (b.nummer ?? 0));
 
-  const karta = await courseMapDataUrl(comp, controls, track, places, { wPx: 1900, hPx: 1328 });
+  const karta = await courseMapDataUrl(comp, controls, track, places, { wPx: 1900, hPx: 1328, omrade: courseHidden(comp) });
 
   // Banplatserna som rader i poängkortet, med kontrollnumret de följer.
   const coursePlaceNodes = places

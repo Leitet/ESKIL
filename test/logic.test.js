@@ -15,7 +15,7 @@ import {
   effectiveIntervalSec, swishAppUrl, swishQrString, patrolLabel, linkifyText, isNumSet, mergeBeacons,
   NOTE_CHIPS, harNotering, laggTillNotering, taBortNotering, kapaNotering,
   publicNotices, anslagSynlig, isPaymentPaid, isPaymentClaimed, paymentClaimAt,
-  planEfteranmalan, paymentEntry, paymentsSum, patrullAntalAndringar, startTimesPublished, publikKontrollnamn,
+  planEfteranmalan, paymentEntry, paymentsSum, patrullAntalAndringar, startTimesPublished, courseHidden, publikKontrollnamn,
   sparlagesBeslut, SPAR_PA_UNDER, SPAR_AV_VID,
   parseFieldPath,
   splitManagement,
@@ -2284,5 +2284,57 @@ describe('placeringsregler: lägst total tid skiljer lika totalpoäng', () => {
       const src = readFileSync(new URL(`../public/js/${f}`, import.meta.url), 'utf8');
       assert.match(src, /tidTotal\s*\+= /, `${f} summerar inte tiden per kår — kårtabellen skulle rangordna utan regel två`);
     }
+  });
+});
+
+describe('hemligt spår: courseHidden döljer spåret hela tävlingen', () => {
+  // Scouterna ska följa snitslar och markeringar, så /t och startkortet visar
+  // tävlingsområdet hela dagen — oavsett manuellt eller automatiskt släpp.
+  const las = (f) => readFileSync(new URL(`../public/js/${f}`, import.meta.url), 'utf8');
+
+  test('bara === true räknas — saknas eller annat värde är visat spår', () => {
+    assert.equal(courseHidden({ courseHidden: true }), true);
+    assert.equal(courseHidden({}), false);
+    assert.equal(courseHidden(null), false);
+    assert.equal(courseHidden({ courseHidden: 'true' }), false);
+    assert.equal(courseHidden({ courseHidden: false }), false);
+  });
+
+  test('de tre scoutytorna frågar växeln FÖRE släppet — /t, startkortet, papperskortet', () => {
+    const pub = las('public.js');
+    const cp = pub.slice(pub.indexOf('function controlsPublic()'), pub.indexOf('async function boot()'));
+    assert.match(cp, /courseHidden\(comp\)/, '/t:s controlsPublic frågar inte växeln');
+    assert.ok(cp.indexOf('courseHidden(comp)') < cp.indexOf('controlsAutoReleased(comp)'),
+      'växeln måste gå FÖRE autosläppet, annars släpper morgonen banan ändå');
+    const st = las('start.js');
+    const pv = st.slice(st.indexOf('function positionsVisible()'), st.indexOf('function releaseText()'));
+    assert.match(pv, /courseHidden\(comp\)/, 'startkortets positionsVisible frågar inte växeln');
+    const rt = st.slice(st.indexOf('function releaseText()'), st.indexOf('function isDone('));
+    assert.match(rt, /courseHidden\(comp\)/, 'startkortet lovar annars en släpptid som aldrig kommer');
+    const pdf = las('pdf.js');
+    assert.match(pdf, /omrade: courseHidden\(comp\)/, 'papperstartkortet skulle läcka det skärmen döljer');
+    const cm = pdf.slice(pdf.indexOf('export async function courseMapDataUrl'), pdf.indexOf('export const BLUE'));
+    assert.match(cm, /competitionArea\(/, 'områdeskartan ritar inget område');
+    assert.match(cm, /omrade \? \[\] : legs/, 'spåret ritas trots hemligt spår');
+    assert.match(cm, /omrade && nd\.kind === 'control'/, 'kontrollnålarna ritas trots hemligt spår');
+  });
+
+  test('spårlängd och måltid får stå kvar — de avslöjar inga positioner', () => {
+    assert.match(las('public.js'), /\(controlsPublic\(\) \|\| courseHidden\(comp\)\) \? courseDistance/);
+    const st = las('start.js');
+    const eta = st.slice(st.indexOf('function renderEtaLine'), st.indexOf('function renderInfoBody'));
+    assert.match(eta, /!positionsVisible\(\) && !courseHidden\(comp\)/);
+  });
+
+  test('växeln är människans beslut: inställningssidan har den, MCP kan inte skriva den, årgångskopian bär den', () => {
+    const inst = las('views/competition-settings.js');
+    assert.match(inst, /id="courseHidden"/);
+    assert.match(inst, /courseHidden: card\.querySelector\('#courseHidden'\)\.checked/);
+    const verktyg = readFileSync(new URL('../functions/mcp/verktyg.js', import.meta.url), 'utf8');
+    const i = verktyg.indexOf('const TAVLING_SKRIVBART');
+    const skrivbart = verktyg.slice(i, verktyg.indexOf('};', i));
+    assert.ok(!/courseHidden/.test(skrivbart), 'MCP får inte kunna avslöja ett hemligt spår i ett enda anrop');
+    assert.match(readFileSync(new URL('../functions/mcp/redact.js', import.meta.url), 'utf8'), /courseHidden: OPPEN/);
+    assert.match(las('store.js'), /'autoCloseControls', 'courseHidden'/);
   });
 });

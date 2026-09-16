@@ -54,7 +54,8 @@ const TAVLING_SKRIVBART = {
   description: 'str', generalInfo: 'str', district: 'str',
   controlsAutoReleased: 'bool', autoFinish: 'bool', etaDwellMinutes: 'num'
 };
-// publicScores, publicControls och anonymousControls står medvetet INTE här.
+// publicScores, publicControls, anonymousControls och courseHidden står
+// medvetet INTE här.
 // De är publiceringsbeslut, inte inställningar: mätt gick en medvetet dold
 // tävling att avslöja i ett enda ogrindat anrop. Samma resonemang som för
 // visibility:public — vad som visas för allmänheten är människans beslut.

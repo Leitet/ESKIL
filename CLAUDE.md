@@ -1025,6 +1025,16 @@ BÅDA ställena.
   schemat. Årgångskopian slår AV den och `startklar.js` varnar tills den är
   på. Ett test i logic.test.js kräver att de tre publika filerna frågar och
   att ledningens vyer INTE gör det);
+  `courseHidden` (**hemligt spår** — läs den via `courseHidden(comp)` i
+  utils.js; `=== true`, saknas = visat. Går FÖRE släppet i både
+  `controlsPublic()` på /t och `positionsVisible()` på startkortet, och
+  `releaseText()` säger då "följ snitslar" i stället för en släpptid som
+  aldrig kommer. Spårlängd och måltid visas ändå — de avslöjar inga
+  positioner, och patrullerna planerar efter dem. Papperstartkortet ritar
+  tävlingsområdet (`courseMapDataUrl` med `omrade`), annars läcker pappret det
+  skärmen döljer. Släpps ALDRIG automatiskt — ledningen bockar ur efter
+  tävlingen. Medvetet INTE skrivbar via MCP, av samma skäl som publicControls.
+  Årgångskopian bär den. Källtestat i logic.test.js);
   `district` (scoutdistrikt — see below).
 - **Platser och banans ändpunkter är två olika saker.**
   `comp.startFinish` (start/mål) är BANDATA: `courseLegs` bygger `__start`/

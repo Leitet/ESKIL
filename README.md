@@ -177,6 +177,11 @@ att köra gratis på Spark-planen.
   (`autoReleaseControls`) släpper öppna publika sidor banan av sig själva
   5 min före första patrullens starttid på tävlingsdatumet (kräver datum +
   starttider); kartans bildtext visar när.
+  **Hemligt spår** ("Dölj spåret för scouterna under hela tävlingen",
+  `courseHidden`) håller området kvar hela tävlingen oavsett släpp — för banor
+  där patrullerna ska följa snitslar och markeringar. Spårlängd och måltid
+  visas ändå, papperstartkorten får områdeskartan, och det släpps aldrig av
+  sig självt: ledningen bockar ur efter tävlingen.
   **Starttiderna har en egen växel** (`startTimes.published`, Inställningar →
   Starttider → "Visa starttiderna för patruller och anhöriga"): av säger
   startkorten, tävlingssidan och kårernas anmälningssidor att starttiderna

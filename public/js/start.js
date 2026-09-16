@@ -11,7 +11,7 @@ import {
   watchSelfPassages, confirmSelfPassage, sendThreadMessage
 } from './store.js';
 import { courseLegs, drawCourseOnMap, addCourseChip, legLatLngs, courseEtaCalibrated, patrolFinishEtaMs, fmtDist, fmtMin, competitionArea, bearingDeg, kompassnamn } from './course.js';
-import {
+import { courseHidden,
   escapeHtml, formatDate, publicManagement, patrolStartTime, patrolStartDateTime, startTimesPublished,
   startFinishPoints, startTimeSettings,
   effectiveIntervalSec as effectiveIntervalSecValue,
@@ -249,6 +249,9 @@ function effectiveStartMs() {
 // autosläppet 5 min före första start (controlsAutoReleased). Kontrollanternas
 // /k-sidor berörs inte — de behöver sina positioner för att bygga kontrollen.
 function positionsVisible() {
+  // Hemligt spår går före allt: snitslarna ÄR uppgiften, så ingen
+  // släpplogik får någonsin visa positionerna.
+  if (courseHidden(comp)) return false;
   // Med självbekräftad start är banan stängd tills patrullen tryckt på
   // knappen — det gäller ÖVERALLT på kortet, även i start/mål-bladets
   // bankontext, inte bara i huvudvyn.
@@ -258,6 +261,8 @@ function positionsVisible() {
 
 // Text för när platserna dyker upp — visas där kartnålarna skulle varit.
 function releaseText() {
+  // Hemligt spår: lova ingen släpptid — den kommer aldrig.
+  if (courseHidden(comp)) return 'Spåret är hemligt — följ snitslar och markeringar. Kontrollernas platser visas inte på kortet.';
   if (selfStartEnabled() && !selfStarted()) {
     return 'Kontrollerna visas när ni bekräftat start.';
   }
@@ -456,8 +461,9 @@ function renderEtaLine(t) {
   try {
     if (!t.total) return '';
     // Före positionssläppet avslöjar vi ingen bansträckning — visa i stället
-    // NÄR platserna dyker upp.
-    if (!positionsVisible()) {
+    // NÄR platserna dyker upp. Med hemligt spår visas raden ändå: avstånd
+    // och måltid avslöjar inga positioner, och patrullen planerar efter dem.
+    if (!positionsVisible() && !courseHidden(comp)) {
       return `<div class="start-eta">${icon('eye-off', { size: 14 })} ${escapeHtml(releaseText())}</div>`;
     }
     const now = new Date();
@@ -491,6 +497,13 @@ function renderEtaLine(t) {
       .toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
     return `<div class="start-eta">${icon('clock', { size: 14 })} Kvar: ${kvar} kontroll${kvar === 1 ? '' : 'er'} · ${fmtDist(distLeft)} · ~${fmtMin(minLeft)} — i mål ca ${malKl}</div>`;
   } catch { return ''; }
+}
+
+// Hemligt spår: säg det rakt ut i huvudvyn — annars letar patrullen efter
+// nålarna och tror att kortet är trasigt.
+function renderHemligtSpar() {
+  if (!courseHidden(comp)) return '';
+  return `<div class="start-eta">${icon('eye-off', { size: 14 })} Spåret är hemligt — följ snitslar och markeringar.</div>`;
 }
 
 // --- Läge 'info': före bekräftad start ----------------------------------------
@@ -722,7 +735,7 @@ function render() {
         <div class="start-kpi"><div class="kp-label">Klara</div><div class="kp-value">${t.done} / ${t.total}</div></div>
         <div class="start-kpi"><div class="kp-label">Kvar</div><div class="kp-value">${t.total - t.done}</div></div>
       </div>
-      ${phase === 'summering' ? '' : renderEtaLine(t) + renderNextControl(t)}
+      ${phase === 'summering' ? '' : renderEtaLine(t) + renderHemligtSpar() + renderNextControl(t)}
 
       ${controls.some(c => c.lat && c.lng) ? `
         <div class="start-map-wrap">

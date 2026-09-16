@@ -8,7 +8,7 @@ import { db, doc, getDoc, onSnapshot, collection, auth, onAuthStateChanged } fro
 const fas = (n) => { try { window.__eskilFas?.(n); } catch {} };
 import { getCompetition, resolveCompetition, listPatrols, listControls, getTrack, watchBroadcastMessages } from './store.js';
 import { courseLegs, drawCourseOnMap, addCourseChip, competitionArea, courseDistance, fmtDist, courseEtaCalibrated, patrolFinishEtaMs } from './course.js';
-import {
+import { courseHidden,
   AVDELNINGAR, escapeHtml, publicNotices, anslagSynlig, linkifyText, formatDate, publicManagement, patrolStartTime,
   patrolStartDateTime, startTimeSettings, startTimesPublished, allowedAvdelningar, publikKontrollnamn,
   registrationSettings, registrationState,
@@ -106,6 +106,7 @@ function scoresPublic() { return comp?.publicScores !== false; }
 // With autoReleaseControls the course releases itself 5 min before the first
 // patrol's start on the competition date (see controlsAutoReleased).
 function controlsPublic() {
+  if (courseHidden(comp)) return false;   // hemligt spår: aldrig, oavsett släpp
   return comp?.publicControls !== false || controlsAutoReleased(comp);
 }
 
@@ -1038,7 +1039,9 @@ function renderOverview(totals) {
   // before it, track length as a teaser otherwise.
   const openCount = controls.filter(c => c.open).length;
   const days = daysUntilComp();
-  const trackDist = track && controlsPublic() ? courseDistance(courseLegs(comp, controls, track).legs) : 0;
+  // Hemligt spår: längden avslöjar inga positioner, och patrullerna behöver
+  // den för att planera vatten och mat — så den visas trots dolt spår.
+  const trackDist = track && (controlsPublic() || courseHidden(comp)) ? courseDistance(courseLegs(comp, controls, track).legs) : 0;
   const kpi4 = openCount > 0 ? { label: 'Öppna just nu', val: openCount }
     : (days != null && days > 0) ? { label: days === 1 ? 'Dag kvar' : 'Dagar kvar', val: days }
     : trackDist > 0 ? { label: 'Spårlängd', val: fmtDist(trackDist) }
@@ -1149,6 +1152,7 @@ function renderMap() {
       <div class="foot">
         <span>${(() => {
           if (controlsPublic()) return 'Kontrollpositioner — exakta platser kan skilja något.';
+          if (courseHidden(comp)) return 'Spåret är hemligt under tävlingen — patrullerna följer snitslar och markeringar.';
           const rel = controlsReleaseTime(comp);
           if (!rel) return 'Kontrollernas platser visas här när tävlingsledningen släpper dem.';
           const dag = rel.toLocaleDateString('sv-SE', { day: 'numeric', month: 'long' });

@@ -286,6 +286,19 @@ export const HELP = {
     ]
   },
 
+  'comp.courseHidden': {
+    title: 'Hemligt spår',
+    body: [
+      'För tävlingar där en del av uppgiften är att hitta vägen — följa snitslar, scoutmärken eller andra markeringar. Med inställningen på visar den offentliga tävlingssidan och patrullernas startkort alltid ett skuggat tävlingsområde med start, mål och platser, men aldrig kontrollernas positioner eller spåret. Det gäller hela tävlingen och går före både det manuella och det automatiska släppet.',
+      'Spårlängden och den beräknade målgången visas ändå — de avslöjar inga positioner, och patrullerna behöver dem för att planera vatten och mat. Tävlingsledningen, kontrollanternas rapportsidor och kontrollernas PDF:er visar allt som vanligt, och papperstartkorten får områdeskartan i stället för bankartan.'
+    ],
+    demo: demoToggle('Hemligt spår', demoMapHidden(), 'Visat spår', demoMapShown()),
+    faq: [
+      { q: 'När ser scouterna spåret?', a: 'Aldrig så länge inställningen är på. Bocka ur den efter tävlingen om ni vill att patruller och anhöriga ska kunna se var banan gick.' },
+      { q: 'Hur skiljer det sig från dolda kontrollplatser?', a: 'Dolda kontrollplatser är en hemlighet före start som släpps på tävlingsmorgonen, manuellt eller automatiskt. Hemligt spår släpps aldrig av sig självt.' }
+    ]
+  },
+
   'comp.autoCloseControls': {
     title: 'Stäng kontroller automatiskt',
     body: [
