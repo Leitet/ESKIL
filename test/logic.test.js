@@ -3,7 +3,7 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 
 import {
   courseEta, courseEtaCalibrated, patrolFinishEtaMs, controlEtaWindow, courseLegs,
@@ -24,6 +24,7 @@ import {
   internalManagement,
   arSpaRutt,
   rankPatrols, rankKarer, RANKING_RULES_TEXT,
+  startlistaPublik, antalStartplatser, startlistaLuckor, startlistaLuckorSparade, starttidsAndringar,
 } from '../public/js/utils.js';
 import { hasIcon } from '../public/js/icons.js';
 import { fordelaTidspoang, invNorm, formateraTid, tolkaTid } from '../public/js/tidspoang.js';
@@ -2336,5 +2337,114 @@ describe('hemligt spår: courseHidden döljer spåret hela tävlingen', () => {
     assert.ok(!/courseHidden/.test(skrivbart), 'MCP får inte kunna avslöja ett hemligt spår i ett enda anrop');
     assert.match(readFileSync(new URL('../functions/mcp/redact.js', import.meta.url), 'utf8'), /courseHidden: OPPEN/);
     assert.match(las('store.js'), /'autoCloseControls', 'courseHidden'/);
+  });
+});
+
+describe('startlistan: platser, luckor och varningar när den är publicerad', () => {
+  // Kårerna bokar tåg och bilar efter en publicerad startlista. En borttagen
+  // patrull lämnar därför en LUCKA — de andras tider rörs inte — och det som
+  // ändå flyttar någon annans tid varnas med namn. Allt bygger på att antalet
+  // startplatser räknas ur platserna, inte ur antalet patruller.
+  const COMP_IV = { startTimes: { enabled: true, mode: 'interval', firstStart: '09:00', intervalMinutes: 5, published: true }, date: '2026-10-04' };
+  const COMP_RANGE = { startTimes: { enabled: true, mode: 'range', firstStart: '09:00', lastStart: '10:00', published: true }, date: '2026-10-04' };
+  const medLuckor = (comp, luckor) => ({ ...comp, startTimes: { ...comp.startTimes, luckor } });
+  const P = (id, startOrder) => ({ id, name: id, startOrder });
+
+  test('publik = starttider på och visade; saknad växel räknas som visad', () => {
+    assert.equal(startlistaPublik(COMP_IV), true);
+    assert.equal(startlistaPublik({ startTimes: { enabled: true, firstStart: '09:00' } }), true);
+    assert.equal(startlistaPublik({ startTimes: { enabled: true, published: false } }), false);
+    assert.equal(startlistaPublik({ startTimes: { enabled: false, published: true } }), false);
+    assert.equal(startlistaPublik(null), false);
+  });
+
+  test('antalet platser är högsta plats + 1, inte antalet patruller', () => {
+    assert.equal(antalStartplatser(COMP_IV, [P('a', 0), P('b', 1), P('c', 2)]), 3);   // utan luckor = antalet
+    assert.equal(antalStartplatser(COMP_IV, [P('a', 0), P('c', 2)]), 3);              // hål i mitten
+    assert.equal(antalStartplatser(medLuckor(COMP_IV, [3]), [P('a', 0), P('c', 2)]), 4);   // tömd sista plats
+    assert.equal(antalStartplatser(COMP_IV, [{ id: 'x' }, { id: 'y' }]), 0);          // ingen har startordning
+    assert.equal(antalStartplatser(COMP_IV, []), 0);
+  });
+
+  test('luckorna är varje tom plats, sparade och härledda — aldrig en upptagen', () => {
+    assert.deepEqual(startlistaLuckor(medLuckor(COMP_IV, [1, 4, 0]), [P('a', 0), P('c', 2)]), [1, 3, 4]);  // 0 upptagen igen
+    assert.deepEqual(startlistaLuckor(COMP_IV, [P('a', 0), P('b', 1)]), []);
+    assert.deepEqual(startlistaLuckorSparade({ startTimes: { luckor: [2, 'x', -1, 2.5] } }), [2]);
+    assert.deepEqual(startlistaLuckorSparade({}), []);
+  });
+
+  test('en borttagen patrull flyttar ingen annan — inte ens i läget starttid + sluttid', () => {
+    const patrols = [P('a', 0), P('b', 1), P('c', 2), P('d', 3)];   // 09:00 09:20 09:40 10:00
+    const fore = { comp: COMP_RANGE, patrols };
+    const efter = { comp: medLuckor(COMP_RANGE, [3]), patrols: patrols.slice(0, 3) };
+    assert.deepEqual(starttidsAndringar(fore, efter).map(a => [a.patrol.id, a.fran, a.till]), [['d', '10:00', null]]);
+    // Utan den sparade luckan hade intervallet räknats om: b och c flyttar
+    const utan = starttidsAndringar(fore, { comp: COMP_RANGE, patrols: patrols.slice(0, 3) });
+    assert.deepEqual(utan.map(a => a.patrol.id), ['b', 'c', 'd']);
+  });
+
+  test('fylla en lucka ändrar bara den flyttade; ta bort luckan flyttar alla efter; ny patrull sist', () => {
+    const patrols = [P('a', 0), P('c', 2), P('d', 3)];   // lucka på 1 (09:05)
+    const fyll = starttidsAndringar({ comp: COMP_IV, patrols }, { comp: COMP_IV, patrols: [P('a', 0), P('c', 2), P('d', 1)] });
+    assert.deepEqual(fyll.map(a => [a.patrol.id, a.fran, a.till]), [['d', '09:15', '09:05']]);
+    const kompakt = starttidsAndringar({ comp: COMP_IV, patrols }, { comp: COMP_IV, patrols: [P('a', 0), P('c', 1), P('d', 2)] });
+    assert.deepEqual(kompakt.map(a => [a.patrol.id, a.fran, a.till]), [['c', '09:10', '09:05'], ['d', '09:15', '09:10']]);
+    const ny = P('ny', 4);
+    assert.deepEqual(starttidsAndringar({ comp: COMP_IV, patrols }, { comp: COMP_IV, patrols: [...patrols, ny] })
+      .map(a => [a.patrol.id, a.fran, a.till]), [['ny', null, '09:20']]);          // intervall: ingen annan flyttar
+    assert.ok(starttidsAndringar({ comp: COMP_RANGE, patrols }, { comp: COMP_RANGE, patrols: [...patrols, ny] }).length > 1);  // sluttid: alla
+  });
+
+  test('varje yta räknar platser, inte patruller — annars flyttar en lucka allas tider', () => {
+    const filer = ['start.js', 'public.js', 'pdf.js', 'course.js', 'station.js', 'views/laget.js', 'views/patrols.js', 'views/startscreen.js'];
+    for (const f of filer) {
+      const src = readFileSync(new URL(`../public/js/${f}`, import.meta.url), 'utf8');
+      assert.ok(!/(patrolStartDateTime|patrolStartTime|effectiveIntervalSec)\([^)]*\.length\b/.test(src), `${f} skickar antalet patruller som antal platser`);
+      assert.match(src, /antalStartplatser\(/, `${f} räknar inte platserna`);
+    }
+    const verktyg = readFileSync(new URL('../functions/mcp/verktyg.js', import.meta.url), 'utf8');
+    assert.match(verktyg, /lagetKarna\.antalStartplatser\(comp, rå\.patrols\)/);
+    // MCP kan inte visa varningen — startordningen är låst där medan listan är publicerad
+    assert.equal((verktyg.match(/await vaktaStartlista\(db, cid, /g) || []).length, 2, 'både patrull_skapa och patrull_uppdatera ska vakta');
+    // Inställningarna får aldrig sopa luckorna när hela startTimes skrivs om, och varnar
+    const inst = readFileSync(new URL('../public/js/views/competition-settings.js', import.meta.url), 'utf8');
+    assert.match(inst, /luckor: comp\.startTimes\?\.luckor \|\| \[\]/);
+    assert.match(inst, /startlistaPublik\(comp\)/);
+    // Papperskorgen: en återställd patrull tar sin plats tillbaka; kompakteringen är borta
+    const store = readFileSync(new URL('../public/js/store.js', import.meta.url), 'utf8');
+    assert.match(store, /arrayRemove\(Number\(post\.data\.startOrder\)\)/);
+    assert.ok(!/updatePatrolOrders/.test(store), 'drag-och-släpp får inte längre skriva 0..N-1 på alla');
+    assert.match(store, /published: false, luckor: \[\]/, 'årgångskopian ska börja utan luckor');
+    // Patrullistan: borttagning lämnar en lucka, varje ändring går genom genomforStartlista
+    const pl = readFileSync(new URL('../public/js/views/patrols.js', import.meta.url), 'utf8');
+    assert.match(pl, /sparaStartlista\(cid, \[\], \[\.\.\.startlistaLuckorSparade\(comp\), plats\]\)/);
+    assert.equal((pl.match(/await genomforStartlista\(/g) || []).length, 3, 'drag, ta bort lucka och fyll-knappen ska gå samma väg');
+  });
+});
+
+describe('firebase.js: varje namn som importeras därifrån måste exporteras därifrån', () => {
+  // firebase.js är SDK:ns enda dörr in i appen. Ett namn som importeras men
+  // inte finns i export-blocket är ett SyntaxError vid modullänkningen — och
+  // eftersom store.js ligger i varje vys modulgraf dör HELA adminappen på
+  // "Sidan kunde inte laddas", inte bara vyn som behövde namnet. Hände med
+  // arrayRemove, fångat i emulatorn en minut innan det hade gått till prod.
+  test('inga saknade exporter', () => {
+    const fb = readFileSync(new URL('../public/js/firebase.js', import.meta.url), 'utf8');
+    const exportBlock = fb.match(/^export \{([\s\S]*?)\};/m);
+    assert.ok(exportBlock, 'export-blocket saknas');
+    const exporterade = new Set(exportBlock[1].split(',').map(x => x.trim()).filter(Boolean));
+    const dir = new URL('../public/js/', import.meta.url);
+    const filer = readdirSync(dir, { recursive: true }).filter(f => String(f).endsWith('.js'));
+    let kontrollerade = 0;
+    for (const f of filer) {
+      const src = readFileSync(new URL(String(f), dir), 'utf8');
+      for (const m of src.matchAll(/import \{([^}]*)\} from '(?:\.\.\/)?\.\/firebase\.js'/g)) {
+        for (const namn of m[1].split(',').map(x => x.trim().split(/\s+as\s+/)[0]).filter(Boolean)) {
+          kontrollerade++;
+          assert.ok(exporterade.has(namn), `${f} importerar ${namn} från firebase.js, som inte exporterar det`);
+        }
+      }
+    }
+    assert.ok(kontrollerade > 30, `bara ${kontrollerade} importer hittades — regexen har tappat greppet`);
   });
 });

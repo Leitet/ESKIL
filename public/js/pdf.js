@@ -4,7 +4,7 @@
 //
 // jsPDF and qrcodejs are loaded lazily from CDN on first use.
 
-import { courseHidden,
+import { antalStartplatser, courseHidden,
   reportUrl, startUrl, allInstructionGroups, publicManagement, patrolStartTime, patrolLabel,
   swishQrString
 } from './utils.js';
@@ -1614,7 +1614,7 @@ export async function downloadManualStartPdf(comp, patrols, controls, track, pla
   for (const patrol of lista) {
     pdf = await generateManualStartPdf(comp, patrol, ordered, {
       mapUrl: karta?.url || null, places, coursePlaceNodes,
-      startTid: patrol ? patrolStartTime(comp, patrol, lista.length > 1 ? lista.length : null) : null,
+      startTid: patrol ? patrolStartTime(comp, patrol, antalStartplatser(comp, lista)) : null,
       pdf
     });
   }

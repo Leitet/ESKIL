@@ -20,12 +20,7 @@ import {
   db, doc, getDoc, getDocs, collection, query, where
 } from '../firebase.js';
 import {
-  escapeHtml, toast, withBusy, confirmDialog, confirmHardDelete, wireOverlayClose,
-  registrationSettings, REG_PRICING_MODELS, registrationUrl, copyToClipboard,
-  AVDELNINGAR, allowedAvdelningar,
-  isCompAdminUser, normEmail, ekonomiFromManagement,
-  normSlug, isValidSlug, suggestSlug, startFinishPoints,
-  formatDate
+  startlistaPublik, startTimeSettings, confirmDialog, escapeHtml, toast, withBusy, confirmHardDelete, wireOverlayClose, registrationSettings, REG_PRICING_MODELS, registrationUrl, copyToClipboard, AVDELNINGAR, allowedAvdelningar, isCompAdminUser, normEmail, ekonomiFromManagement, normSlug, isValidSlug, suggestSlug, startFinishPoints, formatDate
 } from '../utils.js';
 import { createManagementForm } from '../managementform.js';
 import { MCP_KLIENTER, medAdress, hittaKlient } from '../mcp-klienter.js';
@@ -155,7 +150,9 @@ function wireSave(host, handler, label = 'Sparar…') {
     if (form && !form.reportValidity()) return;
     await withBusy(btn, label, async () => {
       try {
-        await handler();
+        // `false` = avbrutet av användaren (t.ex. varningen för publicerad
+        // startlista) — då är inget sparat och ingen kvittens ska visas.
+        if (await handler() === false) return;
         toast('Sparat', 'success');
       } catch (err) {
         console.error(err);
@@ -834,6 +831,27 @@ function renderRulesTab(comp, cid, refresh, readOnly) {
   card.querySelectorAll('input[name="st-mode"]').forEach(r => r.addEventListener('change', applyStMode));
 
   wireSave(card, async () => {
+    const nyaStartTimes = {
+      enabled: card.querySelector('#st-enabled').checked,
+      mode: card.querySelector('input[name="st-mode"]:checked').value,
+      firstStart: card.querySelector('#st-firstStart').value || '09:00',
+      intervalMinutes: Number(card.querySelector('#st-interval').value) || 5,
+      lastStart: card.querySelector('#st-lastStart').value || null,
+      maxTimeMinutes: Number(card.querySelector('#st-maxtime').value) || null,
+      published: card.querySelector('#st-published').checked,
+      // Luckorna ägs av patrullistan — en hel objektskrivning får inte sopa dem.
+      luckor: comp.startTimes?.luckor || []
+    };
+    // Publicerad startlista: en annan första start, ett annat intervall eller
+    // ett annat läge flyttar ALLA patrullers tider. Kårerna har redan bokat
+    // tåg och bilar efter dem, så det varnas skarpt innan något skrivs.
+    if (startlistaPublik(comp) && nyaStartTimes.enabled) {
+      const fore = startTimeSettings(comp), efter = startTimeSettings({ startTimes: nyaStartTimes });
+      const flyttar = ['mode', 'firstStart', 'intervalMinutes', 'lastStart'].some(k => (fore[k] ?? null) !== (efter[k] ?? null));
+      if (flyttar && !await confirmDialog(
+        'STARTLISTAN ÄR PUBLICERAD.\n\nKårerna planerar resor efter starttiderna. Den här ändringen flyttar starttiden för ALLA patruller och bör inte göras nu utan att kårerna får veta.\n\nSpara ändå?',
+        { okLabel: 'Ja, flytta alla starttider', danger: true })) return false;
+    }
     await updateCompetition(cid, {
       anonymousControls: card.querySelector('#anonymousControls').checked,
       publicScores: card.querySelector('#publicScores').checked,
@@ -841,15 +859,7 @@ function renderRulesTab(comp, cid, refresh, readOnly) {
       autoReleaseControls: card.querySelector('#autoReleaseControls').checked,
       courseHidden: card.querySelector('#courseHidden').checked,
       autoCloseControls: card.querySelector('#autoCloseControls').checked,
-      startTimes: {
-        enabled: card.querySelector('#st-enabled').checked,
-        mode: card.querySelector('input[name="st-mode"]:checked').value,
-        firstStart: card.querySelector('#st-firstStart').value || '09:00',
-        intervalMinutes: Number(card.querySelector('#st-interval').value) || 5,
-        lastStart: card.querySelector('#st-lastStart').value || null,
-        maxTimeMinutes: Number(card.querySelector('#st-maxtime').value) || null,
-        published: card.querySelector('#st-published').checked
-      },
+      startTimes: nyaStartTimes,
       selfStart: card.querySelector('#selfStart').checked,
       fieldMessaging: card.querySelector('#fieldMessaging').checked,
       selfFinish: card.querySelector('#selfFinish').checked,

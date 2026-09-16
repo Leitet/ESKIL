@@ -14,7 +14,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { beraknaLaget as esmBerakna, WARN_SILENT_MIN, CTRL_STALE_MIN } from '../public/js/laget-core.js';
-import { patrolStartDateTime as esmStart, effectiveIntervalSec as esmInterval } from '../public/js/utils.js';
+import { patrolStartDateTime as esmStart, effectiveIntervalSec as esmInterval, antalStartplatser as esmPlatser } from '../public/js/utils.js';
 
 const require = createRequire(import.meta.url);
 const cjs = require('../functions/mcp/laget.js');
@@ -160,6 +160,17 @@ describe('spegeln: ESM och CJS måste ge IDENTISKT utfall', () => {
       const c = { startTimes: { enabled: true, mode: 'range', firstStart: '09:00', lastStart: '12:00' } };
       assert.equal(cjs.effectiveIntervalSec(c, n), esmInterval(c, n), `n=${n}`);
     }
+  });
+
+  test('antalet startplatser likaså — luckor räknas, patruller utan ordning inte', () => {
+    const fall = [
+      [{}, patrols],
+      [{ startTimes: { luckor: [9] } }, patrols],
+      [{ startTimes: { luckor: [1] } }, [{ startOrder: 0 }, { startOrder: 2 }]],
+      [{}, [{ name: 'utan' }]],
+      [{}, []]
+    ];
+    for (const [c, ps] of fall) assert.equal(cjs.antalStartplatser(c, ps), esmPlatser(c, ps));
   });
 });
 

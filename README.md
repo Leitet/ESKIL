@@ -177,6 +177,15 @@ att köra gratis på Spark-planen.
   (`autoReleaseControls`) släpper öppna publika sidor banan av sig själva
   5 min före första patrullens starttid på tävlingsdatumet (kräver datum +
   starttider); kartans bildtext visar när.
+- **Publicerad startlista** (starttider på + "Visa starttiderna" på): kårerna
+  planerar resor efter den, så en borttagen patrull lämnar en **lucka** — en
+  tom starttid som visas som en egen rad — i stället för att flytta de andra,
+  och varje ändring som flyttar någon annans tid varnas med namnen på dem som
+  drabbas (även första start/intervall under Inställningar; via MCP är
+  startordningen låst). Luckan fylls genom att dra en patrull intill den eller
+  med "Fyll luckan…"; "Ta bort luckan" sluter schemat. Ny patrull hamnar sist
+  eller i en vald lucka. Antalet startplatser räknas ur platserna, inte
+  patrullerna, så det håller även i läget starttid + sluttid.
   **Hemligt spår** ("Dölj spåret för scouterna under hela tävlingen",
   `courseHidden`) håller området kvar hela tävlingen oavsett släpp — för banor
   där patrullerna ska följa snitslar och markeringar. Spårlängd och måltid

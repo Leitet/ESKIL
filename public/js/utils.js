@@ -805,6 +805,78 @@ export function patrolStartTime(comp, patrol, totalPatrols = null, today = new D
   return d.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
 }
 
+// --- Startlistan: platser, luckor och vad en ändring gör ---------------------
+// Startlistan är PUBLIK när starttiderna är aktiverade och "Visa starttiderna"
+// är på. Då planerar kårerna tåg och bilar efter den, och varje ändring som
+// flyttar någon annans starttid ska föregås av en varning som säger exakt
+// vilka patruller som drabbas.
+export function startlistaPublik(comp) {
+  return startTimeSettings(comp).enabled && startTimesPublished(comp);
+}
+
+// Sparade luckor: platser som tömts ligger i `startTimes.luckor` på tävlingen.
+// De BEHÖVS bara för en tömd SISTA plats — den syns inte på någon patrull, och
+// utan den hade antalet platser krympt och (i läget starttid + sluttid)
+// flyttat allas tider. Hålen mellan patrullerna härleds ändå.
+export function startlistaLuckorSparade(comp) {
+  const arr = comp?.startTimes?.luckor;
+  return Array.isArray(arr) ? arr.map(Number).filter(n => Number.isInteger(n) && n >= 0) : [];
+}
+
+// Antal startplatser = högsta upptagna eller tömda plats + 1, INTE antalet
+// patruller. Så lämnar en borttagen patrull sin plats tom i stället för att
+// flytta alla efter — även i läget starttid + sluttid, där intervallet räknas
+// över platserna. Utan luckor är det samma tal som antalet patruller med
+// startordning, så en lista utan luckor får exakt samma tider som förut.
+// 0 när ingen plats finns. Det är detta som ska skickas som `totalPatrols`.
+export function antalStartplatser(comp, patrols) {
+  let max = -1;
+  for (const p of patrols || []) {
+    const o = Number(p?.startOrder);
+    if (Number.isFinite(o)) max = Math.max(max, o);
+  }
+  for (const l of startlistaLuckorSparade(comp)) max = Math.max(max, l);
+  return max + 1;
+}
+
+// Luckorna: varje plats utan patrull, sorterade. En sparad lucka som någon
+// flyttats in i (t.ex. återställd ur papperskorgen) räknas inte.
+export function startlistaLuckor(comp, patrols) {
+  const upptagna = new Set();
+  for (const p of patrols || []) {
+    const o = Number(p?.startOrder);
+    if (Number.isFinite(o)) upptagna.add(o);
+  }
+  const ut = [];
+  const n = antalStartplatser(comp, patrols);
+  for (let i = 0; i < n; i++) if (!upptagna.has(i)) ut.push(i);
+  return ut;
+}
+
+// Vilka patruller får en annan starttid om listan går från `fore` till
+// `efter`? Båda är { comp, patrols }. En flytt, en borttagning, en ny patrull
+// och en ändrad inställning jämförs med samma funktion, så varningen kan
+// säga exakt vilka som drabbas. `till` är null om patrullen försvinner,
+// `fran` null om den är ny.
+export function starttidsAndringar(fore, efter, today = new Date()) {
+  const nFore = antalStartplatser(fore.comp, fore.patrols);
+  const nEfter = antalStartplatser(efter.comp, efter.patrols);
+  const efterById = new Map((efter.patrols || []).map(p => [p.id, p]));
+  const ut = [];
+  for (const p of fore.patrols || []) {
+    const q = efterById.get(p.id);
+    const fran = patrolStartTime(fore.comp, p, nFore, today);
+    const till = q ? patrolStartTime(efter.comp, q, nEfter, today) : null;
+    if (fran !== till) ut.push({ patrol: p, fran, till });
+  }
+  for (const q of efter.patrols || []) {
+    if ((fore.patrols || []).some(p => p.id === q.id)) continue;
+    const till = patrolStartTime(efter.comp, q, nEfter, today);
+    if (till) ut.push({ patrol: q, fran: null, till });
+  }
+  return ut;
+}
+
 // Pick the instruction text that applies to an avdelning.
 // Returns { text, avdelningar } — falls back to the default (empty avdelningar) group.
 // Legacy controls with a plain `information` string are treated as a single default group.

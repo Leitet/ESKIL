@@ -11,7 +11,7 @@ import {
   watchSelfPassages, confirmSelfPassage, sendThreadMessage
 } from './store.js';
 import { courseLegs, drawCourseOnMap, addCourseChip, legLatLngs, courseEtaCalibrated, patrolFinishEtaMs, fmtDist, fmtMin, competitionArea, bearingDeg, kompassnamn } from './course.js';
-import { courseHidden,
+import { antalStartplatser, courseHidden,
   escapeHtml, formatDate, publicManagement, patrolStartTime, patrolStartDateTime, startTimesPublished,
   startFinishPoints, startTimeSettings,
   effectiveIntervalSec as effectiveIntervalSecValue,
@@ -219,7 +219,7 @@ function selfFinished() { return !!selfFinishAt; }
 // Knappen tänds när patrullens egen starttid passerats. Saknar tävlingen
 // starttider finns ingenting att vänta på — då är den tänd direkt.
 function mayConfirmStart(now = new Date()) {
-  const dt = patrolStartDateTime(comp, patrol, now, patrols.length);
+  const dt = patrolStartDateTime(comp, patrol, now, antalStartplatser(comp, patrols));
   return !dt || now >= dt;
 }
 
@@ -239,7 +239,7 @@ function cardPhase() {
 // annars den planerade tiden.
 function effectiveStartMs() {
   if (selfStartAt) return selfStartAt.getTime();
-  const dt = patrolStartDateTime(comp, patrol, new Date(), patrols.length);
+  const dt = patrolStartDateTime(comp, patrol, new Date(), antalStartplatser(comp, patrols));
   return dt ? dt.getTime() : null;
 }
 
@@ -487,7 +487,7 @@ function renderEtaLine(t) {
       const t = s?.clientReportedAt ?? s?.reportedAt;
       if (t) reports[ctrlId] = t;
     }
-    const startDt = patrolStartDateTime(comp, patrol, now, patrols.length);
+    const startDt = patrolStartDateTime(comp, patrol, now, antalStartplatser(comp, patrols));
     const finMs = patrolFinishEtaMs(eta, reports, startDt ? startDt.getTime() : null);
     const minLeft = finMs != null
       ? Math.max(0, (finMs - now.getTime()) / 60000)
@@ -695,7 +695,7 @@ function render() {
         ${escapeHtml(patrol.avdelning || '')}${patrol.kar ? ' · ' + escapeHtml(patrol.kar) : ''}${patrol.antal ? ' · ' + patrol.antal + ' deltagare' : ''}
       </div>
       ${(() => {
-        const t = patrolStartTime(comp, patrol, patrols.length);
+        const t = patrolStartTime(comp, patrol, antalStartplatser(comp, patrols));
         if (!t) return '';
         // Opublicerade tider: ledningen har ett utkast men vill inte att
         // scouterna planerar efter det. Ingen tid, ingen nedräkning — bara
@@ -704,7 +704,7 @@ function render() {
         if (!startTimesPublished(comp)) {
           return `<div class="start-time-chip is-pending">${icon('clock', { size: 18 })}<span>Starttid: inte publicerad ännu</span></div>`;
         }
-        const dt = patrolStartDateTime(comp, patrol, new Date(), patrols.length);
+        const dt = patrolStartDateTime(comp, patrol, new Date(), antalStartplatser(comp, patrols));
         const maxMin = Number(comp.startTimes?.maxTimeMinutes) || 0;
         // Maxtiden räknas från när patrullen FAKTISKT gick. Med
         // självbekräftad start är det bekräftelsen — annars hade

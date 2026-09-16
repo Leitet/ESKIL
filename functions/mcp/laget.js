@@ -341,8 +341,26 @@ function varningar({ perPatrol, ctrlStats, beaconByCtrl, now, patrullEtikett }) 
   return ut;
 }
 
+// Spegel av utils.js startlistaLuckorSparade/antalStartplatser — platser,
+// inte patruller: en tömd plats (lucka) får inte flytta de andras tider.
+// Parity-testat i test/laget.test.js.
+function startlistaLuckorSparade(comp) {
+  const arr = comp?.startTimes?.luckor;
+  return Array.isArray(arr) ? arr.map(Number).filter(n => Number.isInteger(n) && n >= 0) : [];
+}
+function antalStartplatser(comp, patrols) {
+  let max = -1;
+  for (const p of patrols || []) {
+    const o = Number(p?.startOrder);
+    if (Number.isFinite(o)) max = Math.max(max, o);
+  }
+  for (const l of startlistaLuckorSparade(comp)) max = Math.max(max, l);
+  return max + 1;
+}
+
 module.exports = {
   beraknaLaget, slaIhopPassager, varningar,
   patrolStartDateTime, startTimeSettings, effectiveIntervalSec, mergeBeacons,
+  antalStartplatser, startlistaLuckorSparade,
   toDate, minSince, WARN_SILENT_MIN, CTRL_STALE_MIN
 };

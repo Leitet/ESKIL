@@ -319,7 +319,8 @@ export const HELP = {
     faq: [
       { q: 'Intervall eller sluttid?', a: 'Med intervall bestämmer du minuterna mellan patrullerna. Med sluttid anger du sista start i stället, så räknas intervallet ut från antalet patruller — bra när startfönstret är låst.' },
       { q: 'Fungerar det över midnatt?', a: 'Ja, en tävling som startar 22:00 och sista start 02:00 hanteras korrekt.' },
-      { q: 'Kan jag dölja tiderna tills schemat är klart?', a: 'Ja — kryssrutan "Visa starttiderna för patruller och anhöriga". Är den av säger startkorten, tävlingssidan och kårernas anmälningssidor att starttiderna inte är publicerade ännu, medan ledningen ser tiderna hela tiden. Förkontrollen på översikten påminner om den fortfarande är av.' }
+      { q: 'Kan jag dölja tiderna tills schemat är klart?', a: 'Ja — kryssrutan "Visa starttiderna för patruller och anhöriga". Är den av säger startkorten, tävlingssidan och kårernas anmälningssidor att starttiderna inte är publicerade ännu, medan ledningen ser tiderna hela tiden. Förkontrollen på översikten påminner om den fortfarande är av.' },
+      { q: 'Vad händer med schemat när jag tar bort en patrull?', a: 'Ingen annan flyttas — platsen blir en lucka i patrullistan. Är starttiderna visade varnas du dessutom innan, och ändringar av första start eller intervall varnas på samma sätt: kårerna har bokat resor efter tiderna.' }
     ]
   },
 
@@ -606,7 +607,22 @@ export const HELP = {
     title: 'Startordning',
     body: [
       'Startordningen avgör patrullens starttid: första start plus ordningsnummer gånger intervallet. Den styr också turordningen på startskärmen och i startlistan.',
-      'Ordningen sätts genom att dra patrullerna i listan. Numret är alltså positionen i listan, inte ett fritt fält.'
+      'Ordningen sätts genom att dra patrullerna i listan. En borttagen patrull lämnar en lucka — en tom starttid som visas som en egen rad — så att ingen annan patrulls tid flyttas. Dra en patrull intill luckan, eller välj "Fyll luckan…", så tar den luckan. "Ta bort luckan" flyttar alla efter ett steg tidigare.'
+    ],
+    faq: [
+      { q: 'Varför flyttas inte de andra när jag tar bort en patrull?', a: 'För att starttiderna kan vara publicerade och kårerna har planerat resor efter dem. Vill du sluta luckan trycker du "Ta bort luckan" — då sägs det uttryckligen vilka som får ny tid.' }
+    ]
+  },
+
+  'patrol.startlista': {
+    title: 'Publicerad startlista',
+    body: [
+      'När starttiderna är aktiverade och visade för patruller och anhöriga är startlistan publicerad. Kårerna planerar tåg, bilar och samåkning efter den, så ESKIL bromsar ändringar: varje ändring som flyttar någon annans starttid föregås av en varning som räknar upp exakt vilka patruller som får ny tid.',
+      'En borttagen patrull lämnar en lucka i stället för att flytta de andra. Luckan visas som en rad i listan och kan fyllas genom att dra en patrull dit — bara den flyttade patrullen får ny tid. Även ändringar av första start, intervall och läge under Inställningar varnas, och via MCP-kopplingen går startordningen inte att ändra alls så länge listan är publicerad.'
+    ],
+    faq: [
+      { q: 'Hur låser jag upp?', a: 'Det finns inget lås — bara varningar. Bekräftar du varningen görs ändringen, och den skrivs i sekretariatets logg med de tider som ändrades.' },
+      { q: 'Vi har en efteranmäld patrull, var hamnar den?', a: 'Sist i listan som standard, eller i en lucka om du väljer det när patrullen skapas. Sist flyttar ingen annan i intervall-läget; i läget starttid + sluttid räknas intervallet om och du varnas.' }
     ]
   },
 

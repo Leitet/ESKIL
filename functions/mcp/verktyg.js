@@ -247,7 +247,7 @@ async function sammanstallLaget(db, cid, comp) {
   const res = lagetKarna.beraknaLaget({
     comp, controls: rå.controls, patrols: rå.patrols, passages,
     scoresByCtrl: rå.scoresByCtrl, now,
-    plannedStartAt: (p) => lagetKarna.patrolStartDateTime(comp, p, now, rå.patrols.length)
+    plannedStartAt: (p) => lagetKarna.patrolStartDateTime(comp, p, now, lagetKarna.antalStartplatser(comp, rå.patrols))
   });
 
   const halvtimmen = now.getTime() - 30 * 60000;
@@ -384,6 +384,20 @@ function hittaPatrullI(patrols, namn, kar) {
   return träff[0];
 }
 
+// Publicerad startlista: kårerna har bokat resor efter tiderna, och ESKIL
+// varnar ledningen med namnen på dem som får ny tid innan något skrivs. Den
+// varningen går inte att visa här — så startordningen kan inte ändras via
+// MCP medan listan är publicerad. Samma växel som startlistaPublik i utils.js.
+async function vaktaStartlista(db, cid, patch) {
+  if (!patch || !('startOrder' in patch)) return;
+  const comp = (await db.doc(`competitions/${cid}`).get()).data() || {};
+  const st = comp.startTimes || {};
+  if (st.enabled === true && st.published !== false) {
+    throw new Error('Startlistan är publicerad — startordningen ändras i ESKIL under Patruller, '
+      + 'där ledningen ser vilka patruller som får ny starttid innan ändringen görs.');
+  }
+}
+
 async function hittaPatrull(db, cid, namn, kar) {
   const snap = await db.collection(`competitions/${cid}/patrols`).get();
   const n = String(namn || '').trim().toLowerCase();
@@ -513,6 +527,7 @@ const VERKTYG = [
     },
     async kor(a, { db, cid }) {
       const data = kontrollera(a, PATRULL_SKRIVBART, 'patrullen');
+      await vaktaStartlista(db, cid, data);
       await db.collection(`competitions/${cid}/patrols`).add(data);
       return { skapad: `${a.name}${a.kar ? ' (' + a.kar + ')' : ''}` };
     }
@@ -536,6 +551,7 @@ const VERKTYG = [
     async kor(a, { db, cid }) {
       const doc = await hittaPatrull(db, cid, a.name, a.kar);
       const patch = kontrollera(a.andra, PATRULL_SKRIVBART, 'patrullen');
+      await vaktaStartlista(db, cid, patch);
       await doc.ref.update(patch);
       return { andrade: Object.keys(patch), patrull: a.name };
     }

@@ -8,7 +8,7 @@ import { db, doc, getDoc, onSnapshot, collection, auth, onAuthStateChanged } fro
 const fas = (n) => { try { window.__eskilFas?.(n); } catch {} };
 import { getCompetition, resolveCompetition, listPatrols, listControls, getTrack, watchBroadcastMessages } from './store.js';
 import { courseLegs, drawCourseOnMap, addCourseChip, competitionArea, courseDistance, fmtDist, courseEtaCalibrated, patrolFinishEtaMs } from './course.js';
-import { courseHidden,
+import { antalStartplatser, courseHidden,
   AVDELNINGAR, escapeHtml, publicNotices, anslagSynlig, linkifyText, formatDate, publicManagement, patrolStartTime,
   patrolStartDateTime, startTimeSettings, startTimesPublished, allowedAvdelningar, publikKontrollnamn,
   registrationSettings, registrationState,
@@ -785,10 +785,10 @@ function klockslag(at) {
 // Patruller anropade patrolStartTime direkt och visade tiderna trots att
 // växeln var av — en ny yta ska inte kunna göra om det.
 function publikStarttid(p) {
-  return startTimesPublished(comp) ? patrolStartTime(comp, p, patrols.length) : '';
+  return startTimesPublished(comp) ? patrolStartTime(comp, p, antalStartplatser(comp, patrols)) : '';
 }
 function publikStartDt(p, now = new Date()) {
-  return startTimesPublished(comp) ? patrolStartDateTime(comp, p, now, patrols.length) : null;
+  return startTimesPublished(comp) ? patrolStartDateTime(comp, p, now, antalStartplatser(comp, patrols)) : null;
 }
 
 // Beräknad målgång på de publika patrullytorna (korten under Patruller och
@@ -919,7 +919,7 @@ function startRows(now = new Date()) {
   if (!startTimesPublished(comp) || !patrols.length) return [];
   if (!comp.demo && comp.date && daysUntilComp() !== 0) return [];
   return patrols
-    .map(p => ({ p, dt: patrolStartDateTime(comp, p, now, patrols.length) }))
+    .map(p => ({ p, dt: patrolStartDateTime(comp, p, now, antalStartplatser(comp, patrols)) }))
     .filter(x => x.dt)
     .sort((a, b) => a.dt - b.dt);
 }
@@ -1177,7 +1177,7 @@ function renderPatrols(totals) {
   const iStartordning = startTimesPublished(comp);
   const nu = new Date();
   const startMs = new Map(patrols.map(p => {
-    const dt = iStartordning ? patrolStartDateTime(comp, p, nu, patrols.length) : null;
+    const dt = iStartordning ? patrolStartDateTime(comp, p, nu, antalStartplatser(comp, patrols)) : null;
     return [p.id, dt ? dt.getTime() : Infinity];
   }));
   const rows = patrols

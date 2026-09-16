@@ -17,7 +17,7 @@ import {
 import { deleteField } from '../firebase.js';
 import { compPlaces, placeKind, drawPlaces } from '../places.js';
 import { courseLegs, drawCourseOnMap, courseEtaCalibrated, patrolFinishEtaMs } from '../course.js';
-import {
+import { antalStartplatser,
   escapeHtml, toast, copyToClipboard, formatTime, patrolStartTime, patrolStartDateTime, avdShort, patrolLabel,
   isCompAdminUser, withBusy, confirmDialog, promptDialog, startFinishPoints
 } from '../utils.js';
@@ -323,7 +323,7 @@ export async function renderLaget(app, user, cid) {
     const now = virtualNow();
     const { perPatrol, ctrlStats, ordered } = beraknaLaget({
       comp, controls, patrols, passages, scoresByCtrl, now,
-      plannedStartAt: (p) => patrolStartDateTime(comp, p, now, patrols.length)
+      plannedStartAt: (p) => patrolStartDateTime(comp, p, now, antalStartplatser(comp, patrols))
     });
 
     // Kalibrerad målgång per aktiv patrull — samma motor som stationens
@@ -669,7 +669,7 @@ export async function renderLaget(app, user, cid) {
         <tbody>
           ${rows.map(pp => {
             const p = pp.patrol;
-            const planned = patrolStartTime(comp, p, patrols.length, now);
+            const planned = patrolStartTime(comp, p, antalStartplatser(comp, patrols), now);
             const status = pp.utgatt ? `<span class="badge badge-gray" title="${escapeHtml(utgattNoteById[p.id] || '')}">Utgått${pp.utgatt.at ? ' ' + formatTime(pp.utgatt.at) : ''}</span>`
               : pp.finishAt ? `<span class="badge badge-green" title="${pp.autoFinished
                     ? 'Härledd ur sista kontrollrapporten — ingen har sett patrullen i mål'

@@ -10,7 +10,7 @@ import {
   getCompetition, getStation, listPatrols, watchPassages, watchSelfPassages, setPassage,
   listControls, getTrack
 } from './store.js';
-import { escapeHtml, toast, confirmDialog, patrolStartTime, patrolStartDateTime, avdShort, patrolLabel } from './utils.js';
+import { antalStartplatser, escapeHtml, toast, confirmDialog, patrolStartTime, patrolStartDateTime, avdShort, patrolLabel } from './utils.js';
 import { bindTap } from './haptic.js';
 import { updateBroadcast } from './broadcast.js';
 import { courseEtaCalibrated, patrolFinishEtaMs } from './course.js';
@@ -214,7 +214,7 @@ function lateToStartMin(p) {
   if (p.utgatt) return 0; // DNF — kommer inte, ska inte larma
   const pass = passages[p.id] || {};
   if (pass.startAt) return 0;
-  const plannedAt = patrolStartDateTime(comp, p, virtualNow(), patrols.length);
+  const plannedAt = patrolStartDateTime(comp, p, virtualNow(), antalStartplatser(comp, patrols));
   if (!plannedAt) return 0;
   const min = Math.floor((virtualNow() - plannedAt) / 60000);
   return min >= 3 ? min : 0;
@@ -309,7 +309,7 @@ function patrolBtn(p) {
   const pass = passages[p.id] || {};
   const field = mode === 'start' ? 'startAt' : 'finishAt';
   const checked = !!pass[field];
-  const planned = mode === 'start' ? patrolStartTime(comp, p, patrols.length, virtualNow()) : null;
+  const planned = mode === 'start' ? patrolStartTime(comp, p, antalStartplatser(comp, patrols), virtualNow()) : null;
   const lateMin = mode === 'start' ? lateToStartMin(p) : 0;
   // Beräknad målgång + försening (ute-patruller på målfliken).
   const etaMs = mode === 'mal' ? etaFinishMs(p) : null;

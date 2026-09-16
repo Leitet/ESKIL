@@ -4,7 +4,7 @@ import {
   auth,
   db, doc, getDoc, setDoc, updateDoc, deleteDoc,
   collection, addDoc, getDocs, onSnapshot, query, where, orderBy,
-  serverTimestamp, deleteField, writeBatch, Timestamp
+  serverTimestamp, deleteField, writeBatch, Timestamp, arrayRemove
 } from './firebase.js';
 import { normDistrict } from './districts.js';
 import { mergeBeacons, splitManagement, mergeManagement, isValidSlug } from './utils.js';
@@ -472,7 +472,7 @@ export async function copyCompetition(cid, { name, shortName, year, date }, user
   // ett utkast tills startordningen är spikad, och kopian ska inte visa
   // fjolårets tider på nya startkort. Samma skäl som anmälan stängs ovan;
   // förkontrollen (startklar.js) påminner om växeln.
-  if (data.startTimes) data.startTimes = { ...data.startTimes, published: false };
+  if (data.startTimes) data.startTimes = { ...data.startTimes, published: false, luckor: [] };
 
   const newCid = await createCompetition(data, user);
 
@@ -1022,13 +1022,30 @@ export async function setPatrolUtgatt(cid, pid, utgatt) {
     .catch(() => { /* noten är en bonus — statusen får aldrig hänga på den */ });
 }
 
-// Write `startOrder: idx` on each patrol in one batched commit.
-export async function updatePatrolOrders(cid, orderedIds) {
+// Startlistan skrivs i EN batch: patrullernas startOrder och tävlingens sparade
+// luckor (`startTimes.luckor`, se antalStartplatser i utils.js för varför en
+// tömd sista plats måste sparas). Aldrig en kompaktering på köpet: en plats
+// som inte nämns rörs inte. Förut skrev drag-och-släpp 0..N-1 på ALLA
+// patruller och sopade tyst igen varje lucka — allt efter luckan fick en
+// tidigare starttid utan att någon sagt det.
+export async function sparaStartlista(cid, tilldelning, luckor) {
   const batch = writeBatch(db);
-  orderedIds.forEach((id, idx) => {
-    batch.update(doc(db, 'competitions', cid, 'patrols', id), { startOrder: idx });
-  });
+  for (const { id, startOrder } of tilldelning || []) {
+    batch.update(doc(db, 'competitions', cid, 'patrols', id), { startOrder });
+  }
+  const unika = [...new Set((luckor || []).map(Number).filter(n => Number.isInteger(n) && n >= 0))]
+    .sort((a, b) => a - b);
+  batch.update(doc(db, 'competitions', cid), { 'startTimes.luckor': unika });
   await batch.commit();
+}
+
+// hydrateComp är ASYNKRON (den läser private/access) — därför .then, inte
+// ett direkt cb(). Utan det fick vyn ett Promise i stället för tävlingen och
+// luckorna försvann tyst ur listan (uppmätt i emulatorn).
+export function watchCompetition(cid, cb) {
+  return onSnapshot(doc(db, 'competitions', cid),
+    snap => { if (snap.exists()) hydrateComp(snap).then(cb).catch(() => {}); },
+    () => { /* rättighetsfel hanteras av vyn som redan läst tävlingen */ });
 }
 
 // Renumber controls 1..N based on the given ordered ID list (one batched
@@ -1353,6 +1370,11 @@ export async function aterstallFranPapperskorg(cid, korgId) {
   const post = snap.data();
   const bas = post.sort === 'patrull' ? 'patrols' : 'controls';
   await setDoc(doc(db, 'competitions', cid, bas, post.ursprungsId), post.data);
+  // Platsen är upptagen igen — stryk den ur startlistans sparade luckor.
+  if (post.sort === 'patrull' && Number.isFinite(Number(post.data?.startOrder))) {
+    await updateDoc(doc(db, 'competitions', cid), { 'startTimes.luckor': arrayRemove(Number(post.data.startOrder)) })
+      .catch(() => { /* luckan är en bonus — återställningen får aldrig hänga på den */ });
+  }
   if (post.meta) {
     await setDoc(doc(db, 'competitions', cid, bas, post.ursprungsId, 'private', 'meta'), post.meta);
     // Spegeln återskapas när token skrivs tillbaka. Utan detta står den

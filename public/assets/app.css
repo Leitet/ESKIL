@@ -371,6 +371,28 @@ tr.drag-chosen {
   box-shadow: 0 4px 12px rgba(0, 54, 96, 0.12);
 }
 
+/* Startlistan: en lucka är en tom starttid — ritas som en egen, streckad rad
+   så att hålet syns i stället för att de andra tyst flyttas upp. */
+table.t tr.start-lucka td {
+  background: repeating-linear-gradient(135deg, transparent 0 8px, rgba(0, 54, 96, 0.045) 8px 16px);
+  border-top: 1px dashed var(--border);
+  border-bottom: 1px dashed var(--border);
+}
+table.t tr.start-lucka td.time-col { color: var(--fg3); }
+table.t tr.start-lucka .lucka-cell { color: var(--fg2); }
+table.t tr.start-lucka .lucka-text {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-right: 12px; font-style: italic;
+}
+.startlista-banner {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 12px 14px; margin: 0 0 var(--sp-4);
+  border: 1px solid var(--avent-orange); border-left-width: 4px; border-radius: 8px;
+  background: rgba(233, 95, 19, 0.06); color: var(--fg2);
+}
+.startlista-banner > svg { flex: none; color: var(--avent-orange); margin-top: 2px; }
+.startlista-banner strong { display: block; color: var(--fg1, inherit); margin-bottom: 2px; }
+
 /* Start/finish pseudo-rows in the controls table */
 table.t tr.sf-row td {
   background: #fffde6;       /* tint of rover-yellow */

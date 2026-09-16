@@ -8,7 +8,7 @@
 // doc (competitions/<cid>/track/main) only stores waypoints per leg keyed
 // "<fromKey>__<toKey>" plus the chosen walking pace.
 
-import { startFinishPoints, patrolStartDateTime } from './utils.js';
+import { antalStartplatser, startFinishPoints, patrolStartDateTime } from './utils.js';
 import { coursePlaces } from './places.js';
 
 export const DEFAULT_SPEED_KMH = 4;
@@ -215,7 +215,7 @@ export function courseEtaCalibrated(comp, controls, track, scores = [], patrols 
   // Startankare för första benets mellantid: faktisk start när den finns,
   // annars planerad.
   const plannedMs = new Map();
-  const total = (patrols || []).length;
+  const total = antalStartplatser(comp, patrols || []);
   for (const p of patrols || []) {
     const actual = startMsByPatrol?.[p.id];
     if (actual != null) { plannedMs.set(p.id, actual); continue; }
@@ -331,7 +331,7 @@ export function controlEtaWindow(comp, controls, track, patrols, ctrlId, now = n
   const entry = eta.byKey[ctrlId];
   if (!entry || !(entry.dist > 0)) return null;
   const times = (patrols || [])
-    .map(p => patrolStartDateTime(comp, p, now, patrols.length))
+    .map(p => patrolStartDateTime(comp, p, now, antalStartplatser(comp, patrols)))
     .filter(Boolean).map(d => d.getTime());
   if (!times.length) return null;
   const fmt = (t) => new Date(t + entry.etaMin * 60000)

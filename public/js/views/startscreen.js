@@ -11,7 +11,7 @@
 
 import { getCompetition, watchPatrols, ensureThreadToken } from '../store.js';
 import { db, doc, onSnapshot } from '../firebase.js';
-import {
+import { antalStartplatser,
   escapeHtml, startTimeSettings, patrolStartDateTime, effectiveIntervalSec, startUrl,
   isCompAdminUser
 } from '../utils.js';
@@ -164,7 +164,7 @@ function computeSchedule(comp, patrols, now) {
     .filter(p => Number.isFinite(Number(p.startOrder)))
     .sort((a, b) => (a.startOrder || 0) - (b.startOrder || 0));
 
-  const total = sorted.length;
+  const total = antalStartplatser(comp, sorted);
   const intervalMs = effectiveIntervalSec(comp, total) * 1000;
   const winBefore = intervalMs * FUTURE_OFFSET_FRAC;
   const winAfter  = intervalMs * PAST_OFFSET_FRAC;

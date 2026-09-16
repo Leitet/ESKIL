@@ -1,13 +1,13 @@
 import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import {
-  getCompetition, watchPatrols, createPatrol, updatePatrol, flyttaTillPapperskorg,
-  updatePatrolOrders, getPatrolMeta, migratePatrolMeta, listControls, getTrack, ensureThreadToken
+  getCompetition, watchCompetition, watchPatrols, createPatrol, updatePatrol, flyttaTillPapperskorg,
+  sparaStartlista, loggHandelse, getPatrolMeta, migratePatrolMeta, listControls, getTrack, ensureThreadToken
 } from '../store.js';
 import {
   allowedAvdelningar, escapeHtml, toast, confirmDialog, withBusy, startUrl,
   copyToClipboard, patrolStartTime, startTimeSettings, effectiveIntervalSec,
-  wireOverlayClose,
-  isCompAdminUser
+  wireOverlayClose, isCompAdminUser,
+  startlistaPublik, antalStartplatser, startlistaLuckor, startlistaLuckorSparade, starttidsAndringar
 } from '../utils.js';
 import { renderQrToImg, downloadStartPdf, downloadManualStartPdf } from '../pdf.js';
 import { icon } from '../icons.js';
@@ -16,6 +16,7 @@ import { compPlaces } from '../places.js';
 import { compHeader, compLabel, setDocTitle } from '../nav.js';
 
 let unsub = null;
+let unsubComp = null;
 let sortableInstance = null;
 
 // Lazy-load SortableJS on first use (touch + desktop drag-reorder).
@@ -42,12 +43,15 @@ export async function renderPatrols(app, user, cid) {
   wrap.innerHTML = `<div class="muted">Laddar…</div>`;
   layout(wrap);
 
-  const comp = await getCompetition(cid).catch(() => null);
+  let comp = await getCompetition(cid).catch(() => null);
   if (!wrap.isConnected) return; // navigated away while loading
   if (!comp) { wrap.innerHTML = `<div class="empty"><h3>Tävlingen hittades inte</h3></div>`; return; }
   setTopbarCompetition(cid, comp, user);
   const isAdmin = isCompAdminUser(comp, user);
-  const st = startTimeSettings(comp);
+  let st = startTimeSettings(comp);
+  // Publicerad startlista: kårerna har bokat resor efter tiderna. Varje
+  // ändring som flyttar någon annans starttid varnas — se genomforStartlista.
+  let publik = startlistaPublik(comp);
 
   let state = {
     rows: [],
@@ -76,14 +80,85 @@ export async function renderPatrols(app, user, cid) {
         <option value="alla">Alla avdelningar</option>
         ${allowedAvdelningar(comp).map(a => `<option value="${a.key}">${a.key}</option>`).join('')}
       </select>
-      ${st.enabled && isAdmin ? `<span class="muted t-sm" id="drag-hint">Dra patruller för att ändra starttid</span>` : ''}
+      ${st.enabled && isAdmin ? `<span class="muted t-sm" id="drag-hint">Dra patruller för att ändra starttid · släpp intill en lucka så tar patrullen luckan</span>` : ''}
     </div>
 
+    <div id="startlista-banner"></div>
     <div id="tbl"></div>
   `;
 
+  // Platsvyn: hela listan i startordning, plats för plats, med luckorna som
+  // egna rader. Patruller utan startordning sist.
+  const platsRader = (rows, platser) => {
+    const perPlats = new Map(); const utan = [];
+    for (const r of rows) {
+      const o = Number(r.startOrder);
+      if (Number.isFinite(o)) { if (!perPlats.has(o)) perPlats.set(o, []); perPlats.get(o).push(r); }
+      else utan.push(r);
+    }
+    const ut = [];
+    for (let i = 0; i < platser; i++) {
+      const har = perPlats.get(i);
+      if (har) har.forEach(r => ut.push({ typ: 'patrull', r }));
+      else ut.push({ typ: 'lucka', plats: i });
+    }
+    utan.forEach(r => ut.push({ typ: 'patrull', r }));
+    return ut;
+  };
+
+  const patrullRad = (r, platser, dragEnabled) => {
+    const t = patrolStartTime(comp, r, platser);
+    return `<tr data-id="${r.id}">
+      ${dragEnabled ? `<td class="drag-col" aria-label="Dra för att ändra ordning">${icon('grip-vertical', { size: 18, class: 'drag-handle' })}</td>` : ''}
+      ${st.enabled ? `<td class="num time-col">${t ?? '<span class="muted">—</span>'}</td>` : ''}
+      <td class="num">${escapeHtml(String(r.number ?? ''))}</td>
+      <td><strong>${escapeHtml(r.name || '—')}</strong></td>
+      <td><span class="dot ${shortOf(r.avdelning)}"></span>${escapeHtml(r.avdelning || '')}</td>
+      <td>${escapeHtml(r.kar || '')}</td>
+      <td class="num">${escapeHtml(String(r.antal ?? ''))}</td>
+      <td class="muted">${escapeHtml((r.notering || '').slice(0, 60))}</td>
+      ${isAdmin ? `<td class="actions">
+        <a class="btn btn-ghost btn-sm" href="/app/c/${cid}/meddelanden?patrull=${encodeURIComponent(r.id)}" data-link
+           title="Skicka meddelande till den här patrullen" aria-label="Skicka meddelande till patrull ${r.number ?? ''}">${icon('send', { size: 15 })}</a>
+        <button class="btn btn-secondary btn-sm" data-start="${r.id}">Startkort</button>
+        <button class="btn btn-ghost btn-sm" data-edit="${r.id}">Redigera</button>
+        <button class="btn btn-ghost btn-sm" data-del="${r.id}" style="color:var(--utm-pink);">Ta bort</button>
+      </td>` : ''}
+    </tr>`;
+  };
+
+  // En lucka är en tom starttid — en rad, så hålet syns i stället för att de
+  // andra tyst flyttas upp. Går att fylla (drag eller knapp) eller ta bort.
+  const luckaRad = (plats, platser, kolumner, dragEnabled) => {
+    const t = patrolStartTime(comp, { startOrder: plats }, platser) || '—';
+    return `<tr class="start-lucka" data-lucka="${plats}">
+      ${dragEnabled ? '<td class="drag-col"></td>' : ''}
+      <td class="num time-col">${escapeHtml(t)}</td>
+      <td colspan="${kolumner}" class="lucka-cell">
+        <span class="lucka-text">${icon('clock', { size: 14 })} Lucka — ingen patrull startar ${escapeHtml(t)}</span>
+        ${isAdmin ? `<button class="btn btn-ghost btn-sm" data-fyll="${plats}">Fyll luckan…</button>
+        <button class="btn btn-ghost btn-sm" data-ta-bort-lucka="${plats}">Ta bort luckan</button>` : ''}
+      </td>
+    </tr>`;
+  };
+
+  const ritaBanner = () => {
+    const host = wrap.querySelector('#startlista-banner');
+    if (!host) return;
+    if (!publik) { host.innerHTML = ''; return; }
+    const luckor = startlistaLuckor(comp, state.rows);
+    host.innerHTML = `<div class="startlista-banner" role="status">
+      ${icon('triangle-alert', { size: 20 })}
+      <div>
+        <strong>Startlistan är publicerad ${help('patrol.startlista')}</strong>
+        <span>Kårerna planerar resor efter tiderna. En ändring som flyttar någon annans starttid varnas först, och en borttagen patrull lämnar en lucka i stället för att flytta de andra.${luckor.length ? ` Just nu ${luckor.length === 1 ? 'en lucka' : luckor.length + ' luckor'} — dra en patrull dit eller ta bort luckan.` : ''}</span>
+      </div>
+    </div>`;
+  };
+
   const render = () => {
     if (sortableInstance) { sortableInstance.destroy(); sortableInstance = null; }
+    ritaBanner();
     let rows = [...state.rows];
     const isFiltering = state.q.trim() !== '' || state.filter !== 'alla';
     if (state.filter !== 'alla') rows = rows.filter(r => r.avdelning === state.filter);
@@ -103,10 +178,12 @@ export async function renderPatrols(app, user, cid) {
       return state.dir * String(A).localeCompare(String(B), 'sv');
     });
 
-    // Drag only enabled when: admin + startTimes on + not filtered/searched + default sort.
-    const dragEnabled = isAdmin && st.enabled
-      && !isFiltering
-      && state.sort === 'startOrder' && state.dir === 1;
+    // Bara i platsvyn går det att dra: i en filtrerad eller omsorterad lista
+    // säger radföljden inget om platserna.
+    const platsVy = st.enabled && !isFiltering && state.sort === 'startOrder' && state.dir === 1;
+    const dragEnabled = isAdmin && platsVy;
+    const platser = antalStartplatser(comp, state.rows);
+    const radlista = platsVy ? platsRader(rows, platser) : rows.map(r => ({ typ: 'patrull', r }));
 
     const tbl = wrap.querySelector('#tbl');
     if (!rows.length) {
@@ -116,6 +193,7 @@ export async function renderPatrols(app, user, cid) {
       </div>`;
       return;
     }
+    const kolumner = 6 + (isAdmin ? 1 : 0);
     tbl.innerHTML = `
       <div class="table-wrap">
         <table class="t">
@@ -133,26 +211,9 @@ export async function renderPatrols(app, user, cid) {
             </tr>
           </thead>
           <tbody id="patrol-body">
-            ${rows.map(r => {
-              const t = patrolStartTime(comp, r, state.rows.length);
-              return `<tr data-id="${r.id}">
-                ${dragEnabled ? `<td class="drag-col" aria-label="Dra för att ändra ordning">${icon('grip-vertical', { size: 18, class: 'drag-handle' })}</td>` : ''}
-                ${st.enabled ? `<td class="num time-col">${t ?? '<span class="muted">—</span>'}</td>` : ''}
-                <td class="num">${escapeHtml(String(r.number ?? ''))}</td>
-                <td><strong>${escapeHtml(r.name || '—')}</strong></td>
-                <td><span class="dot ${shortOf(r.avdelning)}"></span>${escapeHtml(r.avdelning || '')}</td>
-                <td>${escapeHtml(r.kar || '')}</td>
-                <td class="num">${escapeHtml(String(r.antal ?? ''))}</td>
-                <td class="muted">${escapeHtml((r.notering || '').slice(0, 60))}</td>
-                ${isAdmin ? `<td class="actions">
-                  <a class="btn btn-ghost btn-sm" href="/app/c/${cid}/meddelanden?patrull=${encodeURIComponent(r.id)}" data-link
-                     title="Skicka meddelande till den här patrullen" aria-label="Skicka meddelande till patrull ${r.number ?? ''}">${icon('send', { size: 15 })}</a>
-                  <button class="btn btn-secondary btn-sm" data-start="${r.id}">Startkort</button>
-                  <button class="btn btn-ghost btn-sm" data-edit="${r.id}">Redigera</button>
-                  <button class="btn btn-ghost btn-sm" data-del="${r.id}" style="color:var(--utm-pink);">Ta bort</button>
-                </td>` : ''}
-              </tr>`;
-            }).join('')}
+            ${radlista.map(rad => rad.typ === 'lucka'
+              ? luckaRad(rad.plats, platser, kolumner, dragEnabled)
+              : patrullRad(rad.r, platser, dragEnabled)).join('')}
           </tbody>
         </table>
       </div>
@@ -181,55 +242,185 @@ export async function renderPatrols(app, user, cid) {
           openStartCardModal(cid, row, st.enabled);
         });
       });
-      tbl.querySelectorAll('[data-del]').forEach(b => {
-        b.addEventListener('click', async () => {
-          const row = state.rows.find(r => r.id === b.dataset.del);
-          if (await confirmDialog(
-            `Flytta patrull "${row?.name || ''}" till papperskorgen? Poängen följer med och går att återställa tills tävlingen avslutas.`,
-            { okLabel: 'Flytta till papperskorgen', danger: true })) {
-            try {
-              await flyttaTillPapperskorg(cid, 'patrull', row.id);
-              toast('Flyttad till papperskorgen — går att återställa under Inställningar');
-            } catch (e) { toast(e.message, 'error'); }
-          }
-        });
-      });
+      tbl.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => taBortPatrull(b.dataset.del)));
+      tbl.querySelectorAll('[data-fyll]').forEach(b => b.addEventListener('click', () => openFyllLuckaModal(Number(b.dataset.fyll))));
+      tbl.querySelectorAll('[data-ta-bort-lucka]').forEach(b => b.addEventListener('click', () => taBortLucka(Number(b.dataset.taBortLucka))));
     }
 
     if (dragEnabled) {
       const body = tbl.querySelector('#patrol-body');
       ensureSortable().then(Sortable => {
+        if (!body.isConnected) return;
         sortableInstance = new Sortable(body, {
           handle: '.drag-col',
+          filter: '.start-lucka',        // luckor dras inte — men går att släppa intill
+          preventOnFilter: false,        // annars dör knapparna i luckraden på touch
           animation: 150,
           ghostClass: 'drag-ghost',
           chosenClass: 'drag-chosen',
           forceFallback: true,      // nicer cross-browser feedback; also fixes touch
           fallbackTolerance: 5,
-          onEnd: async () => {
-            const ids = [...body.querySelectorAll('tr[data-id]')].map(tr => tr.dataset.id);
-            try {
-              await updatePatrolOrders(cid, ids);
-              toast('Startordning sparad', 'success');
-            } catch (e) {
-              toast('Kunde inte spara: ' + e.message, 'error');
-            }
-          }
+          onEnd: (evt) => draSlappt(evt, body)
         });
       });
     }
   };
 
+  // Släppt intill en lucka = patrullen tar luckan och lämnar sin gamla plats
+  // tom. Annars en vanlig ordningsändring: raderna i tabellen, luckor
+  // inräknade, blir platserna 0, 1, 2 … (så en lucka mitt i listan består).
+  const draSlappt = async (evt, body) => {
+    const id = evt.item?.dataset?.id;
+    const patrull = state.rows.find(r => r.id === id);
+    if (!patrull || evt.oldIndex === evt.newIndex) { render(); return; }
+    const granne = [evt.item.previousElementSibling, evt.item.nextElementSibling]
+      .find(el => el?.dataset?.lucka != null);
+    const plan = granne ? planFyllLucka(patrull, Number(granne.dataset.lucka)) : planFranRader(body);
+    await genomforStartlista(plan, { flyttad: patrull, handling: 'Startordning ändrad' });
+  };
+
+  const planFyllLucka = (patrull, plats) => {
+    const gammal = Number(patrull.startOrder);
+    const luckor = startlistaLuckorSparade(comp).filter(l => l !== plats);
+    if (Number.isFinite(gammal)) luckor.push(gammal);
+    return { tilldelning: [{ id: patrull.id, startOrder: plats }], luckor };
+  };
+
+  const planFranRader = (body) => {
+    const tilldelning = []; const luckor = [];
+    [...body.children].forEach((tr, i) => {
+      if (tr.dataset.id) {
+        const r = state.rows.find(x => x.id === tr.dataset.id);
+        if (r && Number(r.startOrder) !== i) tilldelning.push({ id: r.id, startOrder: i });
+      } else if (tr.dataset.lucka != null) luckor.push(i);
+    });
+    return { tilldelning, luckor };
+  };
+
+  const sammaLuckor = (luckor) => {
+    const norm = (a) => [...new Set(a)].sort((x, y) => x - y).join(',');
+    return norm(luckor) === norm(startlistaLuckorSparade(comp));
+  };
+
+  const namnet = (p) => `${p.name || 'Patrull'}${p.kar ? ' (' + p.kar + ')' : ''}`;
+  const andringsrad = (a) => `${namnet(a.patrol)}: ${a.fran ?? '—'} → ${a.till ?? '—'}`;
+
+  // EN väg för varje ändring av startlistan: räkna ut vilka som får ny tid,
+  // varna om listan är publicerad, skriv, logga. `flyttad` är den patrull
+  // användaren själv flyttade — dess egen tidsändring är avsikten, alla
+  // andras är bieffekten som varningen räknar upp.
+  const genomforStartlista = async (plan, { flyttad = null, handling = 'Startlista' } = {}) => {
+    const efterPatrols = state.rows.map(r => {
+      const t = plan.tilldelning.find(x => x.id === r.id);
+      return t ? { ...r, startOrder: t.startOrder } : r;
+    });
+    const efterComp = { ...comp, startTimes: { ...(comp.startTimes || {}), luckor: plan.luckor } };
+    const andringar = starttidsAndringar({ comp, patrols: state.rows }, { comp: efterComp, patrols: efterPatrols });
+    if (!plan.tilldelning.length && sammaLuckor(plan.luckor)) { render(); return false; }
+    if (publik) {
+      const andra = andringar.filter(a => a.patrol.id !== flyttad?.id);
+      const egen = andringar.find(a => a.patrol.id === flyttad?.id);
+      let text = null, okLabel = 'Fortsätt';
+      if (andra.length) {
+        text = `STARTLISTAN ÄR PUBLICERAD.\n\nKårerna planerar resor efter tiderna. Den här ändringen flyttar starttiden för ${andra.length} ${andra.length === 1 ? 'annan patrull' : 'andra patruller'}:\n\n${andra.slice(0, 12).map(andringsrad).join('\n')}${andra.length > 12 ? `\n… och ${andra.length - 12} till` : ''}\n\nDet bör inte göras nu utan att kårerna får veta. Fortsätt ändå?`;
+        okLabel = 'Ja, flytta starttiderna';
+      } else if (egen) {
+        text = `Startlistan är publicerad.\n\n${andringsrad(egen)}\n\nIngen annan patrulls starttid ändras. Fortsätt?`;
+        okLabel = 'Flytta patrullen';
+      }
+      if (text && !await confirmDialog(text, { okLabel, danger: andra.length > 0 })) { render(); return false; }
+    }
+    try {
+      await sparaStartlista(cid, plan.tilldelning, plan.luckor);
+      if (publik && andringar.length) {
+        loggHandelse(cid, { vad: 'startlista', av: user?.email || '',
+          text: `${handling} i publicerad startlista: ${andringar.slice(0, 8).map(andringsrad).join('; ')}${andringar.length > 8 ? ` … +${andringar.length - 8}` : ''}` });
+      }
+      toast('Startordning sparad', 'success');
+      return true;
+    } catch (e) {
+      toast('Kunde inte spara: ' + e.message, 'error');
+      render();
+      return false;
+    }
+  };
+
+  // Borttagning lämnar ALLTID en lucka — de andras tider rörs inte. Är listan
+  // publicerad säger dialogen det skarpt; annars bara att luckan uppstår.
+  const taBortPatrull = async (id) => {
+    const row = state.rows.find(r => r.id === id);
+    if (!row) return;
+    const plats = Number(row.startOrder);
+    const tid = Number.isFinite(plats) ? patrolStartTime(comp, row, antalStartplatser(comp, state.rows)) : null;
+    const text = publik && tid
+      ? `STARTLISTAN ÄR PUBLICERAD.\n\nKårerna planerar resor efter tiderna. "${namnet(row)}" flyttas till papperskorgen och starttiden ${tid} blir en tom lucka — ingen annan patrulls starttid ändras. Luckan går att fylla genom att dra en annan patrull dit.\n\nFortsätt?`
+      : `Flytta patrull "${row.name || ''}" till papperskorgen? Poängen följer med och går att återställa tills tävlingen avslutas.${tid ? ` Starttiden ${tid} blir en lucka.` : ''}`;
+    if (!await confirmDialog(text, { okLabel: 'Flytta till papperskorgen', danger: true })) return;
+    try {
+      await flyttaTillPapperskorg(cid, 'patrull', row.id);
+      if (Number.isFinite(plats)) await sparaStartlista(cid, [], [...startlistaLuckorSparade(comp), plats]);
+      if (publik && tid) {
+        loggHandelse(cid, { vad: 'startlista', av: user?.email || '',
+          text: `Patrull borttagen ur publicerad startlista: ${namnet(row)}, ${tid} blev en lucka` });
+      }
+      toast('Flyttad till papperskorgen — går att återställa under Inställningar');
+    } catch (e) { toast(e.message, 'error'); }
+  };
+
+  // Tar bort luckan: allt efter platsen flyttas ett steg tidigare. Det ÄR en
+  // ändring av andras tider — en publicerad lista varnar med namnen.
+  const taBortLucka = async (plats) => {
+    const tilldelning = state.rows
+      .filter(r => Number.isFinite(Number(r.startOrder)) && Number(r.startOrder) > plats)
+      .map(r => ({ id: r.id, startOrder: Number(r.startOrder) - 1 }));
+    const luckor = startlistaLuckorSparade(comp).filter(l => l !== plats).map(l => l > plats ? l - 1 : l);
+    await genomforStartlista({ tilldelning, luckor }, { handling: 'Lucka borttagen' });
+  };
+
+  const openFyllLuckaModal = (plats) => {
+    const platser = antalStartplatser(comp, state.rows);
+    const tid = patrolStartTime(comp, { startOrder: plats }, platser) || '';
+    const kandidater = [...state.rows].sort((a, b) => (Number(a.number) || 0) - (Number(b.number) || 0));
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal" style="max-width:480px;">
+        <div class="modal-head"><h3>Fyll luckan ${escapeHtml(tid)}</h3><button class="icon-btn" id="x" aria-label="Stäng">${icon('x')}</button></div>
+        <div class="modal-body">
+          <p class="muted t-sm" style="margin-top:0;">Patrullen får starttiden ${escapeHtml(tid)}. Dess gamla plats blir en lucka.</p>
+          <label class="field" for="fl-patrull">Patrull</label>
+          <select class="select" id="fl-patrull">
+            ${kandidater.map(r => `<option value="${r.id}">#${escapeHtml(String(r.number ?? ''))} ${escapeHtml(r.name || '')}${r.kar ? ' (' + escapeHtml(r.kar) + ')' : ''} — ${escapeHtml(patrolStartTime(comp, r, platser) || 'ingen starttid')}</option>`).join('')}
+          </select>
+        </div>
+        <div class="modal-foot">
+          <button class="btn btn-ghost" id="cancel">Avbryt</button>
+          <button class="btn btn-primary" id="ok">Flytta hit</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    wireOverlayClose(overlay, close);
+    overlay.querySelector('#x').onclick = close;
+    overlay.querySelector('#cancel').onclick = close;
+    overlay.querySelector('#ok').addEventListener('click', async () => {
+      const patrull = state.rows.find(r => r.id === overlay.querySelector('#fl-patrull').value);
+      close();
+      if (patrull) await genomforStartlista(planFyllLucka(patrull, plats), { flyttad: patrull, handling: 'Lucka fylld' });
+    });
+  };
+
   wrap.querySelector('#q').addEventListener('input', e => { state.q = e.target.value; render(); });
   wrap.querySelector('#avd').addEventListener('change', e => { state.filter = e.target.value; render(); });
   if (isAdmin) {
-    wrap.querySelector('#new').addEventListener('click', () => openPatrolModal(cid, comp, null, state.rows.length, onPatrolSaved));
+    wrap.querySelector('#new').addEventListener('click', () => openPatrolModal(cid, comp, null, { rows: state.rows, publik, user }, onPatrolSaved));
     wrap.querySelector('#manual-all').addEventListener('click',
       () => openManualPdfModal(cid, comp, state.rows));
   }
 
   registerViewCleanup(() => {
     if (unsub) { unsub(); unsub = null; }
+    if (unsubComp) { unsubComp(); unsubComp = null; }
     if (sortableInstance) { sortableInstance.destroy(); sortableInstance = null; }
   });
   // notering lives in each patrol's member-only private/meta subdoc — merge it
@@ -254,13 +445,21 @@ export async function renderPatrols(app, user, cid) {
     const header = wrap.querySelector('#st-header');
     if (header && st.enabled) {
       if (st.mode === 'range' && st.lastStart && rows.length >= 2) {
-        const sec = effectiveIntervalSec(comp, rows.length);
+        const sec = effectiveIntervalSec(comp, antalStartplatser(comp, rows));
         const mins = (sec / 60).toFixed(sec % 60 ? 1 : 0);
         header.innerHTML = `Starttider ${escapeHtml(st.firstStart)} → ${escapeHtml(st.lastStart)} · ≈ ${mins} min mellan starter`;
       } else {
         header.innerHTML = `Starttid från ${escapeHtml(st.firstStart)} · ${st.intervalMinutes} min intervall`;
       }
     }
+    render();
+  });
+  // Luckorna och publicerings-växeln bor på tävlingen — håll dem färska så
+  // att en kollega som tar bort en patrull i en annan flik syns här direkt.
+  unsubComp = watchCompetition(cid, c => {
+    comp = { ...comp, ...c };
+    st = startTimeSettings(comp);
+    publik = startlistaPublik(comp);
     render();
   });
 }
@@ -420,8 +619,19 @@ function openManualPdfModal(cid, comp, rows) {
     skapa(allaBtn, patruller, `${patruller.length} startkort skapade`));
 }
 
-function openPatrolModal(cid, comp, patrol, fallbackOrder = null, onSaved = null) {
+const ny_or = (data, startOrder) => ({ ...data, startOrder });
+
+function openPatrolModal(cid, comp, patrol, ctx = null, onSaved = null) {
   const isEdit = !!patrol;
+  // Ny patrull: sist i listan som standard, eller i en lucka om ledningen
+  // väljer det. Sist flyttar ingen annan i intervall-läget; i läget starttid
+  // + sluttid räknas intervallet om — det varnas nedan om listan är publicerad.
+  const st = startTimeSettings(comp);
+  const rows = ctx?.rows || [];
+  const platsVal = !isEdit && st.enabled;
+  const platser = antalStartplatser(comp, rows);
+  const luckor = platsVal ? startlistaLuckor(comp, rows) : [];
+  const sistTid = platsVal ? patrolStartTime(comp, { startOrder: platser }, platser + 1) : null;
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.innerHTML = `
@@ -454,6 +664,13 @@ function openPatrolModal(cid, comp, patrol, fallbackOrder = null, onSaved = null
             <label class="field" for="kar">Kår</label>
             <input class="input" id="kar" value="${escapeHtml(patrol?.kar || '')}" placeholder="Ex. Lindsdals Scoutkår">
           </div>
+          ${platsVal ? `<div>
+            <label class="field" for="plats">Startplats ${help('patrol.startOrder')}</label>
+            <select class="select" id="plats">
+              <option value="sist">Sist i listan${sistTid ? ` (${escapeHtml(sistTid)})` : ''}</option>
+              ${luckor.map(l => `<option value="${l}">Lucka ${escapeHtml(patrolStartTime(comp, { startOrder: l }, platser) || String(l + 1))}</option>`).join('')}
+            </select>
+          </div>` : ''}
           <div>
             <label class="field" for="notering">Notering</label>
             <textarea class="textarea" id="notering">${escapeHtml(patrol?.notering || '')}</textarea>
@@ -492,9 +709,29 @@ function openPatrolModal(cid, comp, patrol, fallbackOrder = null, onSaved = null
           await updatePatrol(cid, patrol.id, data);
           savedId = patrol.id;
         } else {
-          // Put new patrol at the end of the start queue by default.
-          if (fallbackOrder != null) data.startOrder = fallbackOrder;
+          const val = overlay.querySelector('#plats')?.value;
+          const startOrder = val == null ? null : (val === 'sist' ? platser : Number(val));
+          if (startOrder != null) data.startOrder = startOrder;
+          if (ctx?.publik && startOrder != null) {
+            const ny = { id: '__ny', name: data.name, kar: data.kar, startOrder };
+            const luckorEfter = startlistaLuckorSparade(comp).filter(l => l !== startOrder);
+            const andra = starttidsAndringar(
+              { comp, patrols: rows },
+              { comp: { ...comp, startTimes: { ...(comp.startTimes || {}), luckor: luckorEfter } }, patrols: [...rows, ny] }
+            ).filter(a => a.patrol.id !== '__ny');
+            if (andra.length && !await confirmDialog(
+              `STARTLISTAN ÄR PUBLICERAD.\n\nKårerna planerar resor efter tiderna. Den nya patrullen flyttar starttiden för ${andra.length} ${andra.length === 1 ? 'annan patrull' : 'andra patruller'}:\n\n${andra.slice(0, 12).map(a => `${a.patrol.name || 'Patrull'}${a.patrol.kar ? ' (' + a.patrol.kar + ')' : ''}: ${a.fran ?? '—'} → ${a.till ?? '—'}`).join('\n')}${andra.length > 12 ? `\n… och ${andra.length - 12} till` : ''}\n\nLägg patrullen i en lucka i stället, eller fortsätt ändå?`,
+              { okLabel: 'Ja, flytta starttiderna', danger: true })) return;
+          }
           savedId = await createPatrol(cid, data);
+          // Tog patrullen en sparad lucka: stryk den.
+          if (startOrder != null && startlistaLuckorSparade(comp).includes(startOrder)) {
+            await sparaStartlista(cid, [], startlistaLuckorSparade(comp).filter(l => l !== startOrder));
+          }
+          if (ctx?.publik && startOrder != null) {
+            loggHandelse(cid, { vad: 'startlista', av: ctx.user?.email || '',
+              text: `Ny patrull i publicerad startlista: ${data.name}${data.kar ? ' (' + data.kar + ')' : ''}, ${patrolStartTime(comp, ny_or(data, startOrder), Math.max(platser, startOrder + 1)) || 'ingen tid'}` });
+          }
         }
         onSaved?.(savedId, data);
         close();

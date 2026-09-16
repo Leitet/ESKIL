@@ -1024,7 +1024,30 @@ BÅDA ställena.
   och stationen visar utkastet, för ledningen behöver det för att spika
   schemat. Årgångskopian slår AV den och `startklar.js` varnar tills den är
   på. Ett test i logic.test.js kräver att de tre publika filerna frågar och
-  att ledningens vyer INTE gör det);
+  att ledningens vyer INTE gör det.
+  **Publicerad startlista = `startlistaPublik(comp)`** (starttider på OCH
+  visade): kårerna bokar tåg och bilar efter den. Tre regler följer.
+  (1) **Platser, inte patruller.** `antalStartplatser(comp, patrols)` =
+  högsta plats + 1, och det är DET som skickas som `totalPatrols` till
+  `patrolStartDateTime`/`effectiveIntervalSec` — överallt, källtestat. Utan
+  luckor är talet detsamma som antalet patruller, så inga befintliga tider
+  ändras. (2) **Borttagning lämnar en LUCKA**, aldrig en förskjutning — även
+  i läget starttid + sluttid, där intervallet räknas över platserna. Hål
+  mellan patruller härleds; en tömd SISTA plats syns inte på någon patrull
+  och sparas därför i `startTimes.luckor` (skrivs av `sparaStartlista`,
+  aldrig av inställningssidan, som måste bära fältet med när den skriver om
+  `startTimes`; papperskorgens återställning stryker platsen; årgångskopian
+  nollar listan). Luckan är en rad i patrullistan: "Fyll luckan…", drag
+  intill den (patrullen tar luckan, dess gamla plats blir lucka) eller "Ta
+  bort luckan" (allt efter flyttas ett steg). `updatePatrolOrders`, som skrev
+  0..N-1 på ALLA vid varje drag och tyst sopade igen luckorna, finns inte
+  längre. (3) **Varje ändring går genom `genomforStartlista` i patrols.js**,
+  som räknar `starttidsAndringar()` och — om listan är publicerad — varnar
+  med NAMNEN på dem som får ny tid innan något skrivs, och loggar i
+  sekretariatets logg (`vad: 'startlista'`). Inställningssidan varnar på
+  samma sätt för första start/intervall/läge, och MCP:s `patrull_skapa`/
+  `patrull_uppdatera` vägrar `startOrder` helt medan listan är publicerad —
+  servern kan inte visa varningen. `startklar.js` varnar för luckor);
   `courseHidden` (**hemligt spår** — läs den via `courseHidden(comp)` i
   utils.js; `=== true`, saknas = visat. Går FÖRE släppet i både
   `controlsPublic()` på /t och `positionsVisible()` på startkortet, och
