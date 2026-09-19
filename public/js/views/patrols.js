@@ -62,9 +62,10 @@ export async function renderPatrols(app, user, cid) {
   let state = {
     rows: [],
     filter: 'alla',
-    sort: st.enabled ? 'startOrder' : 'number',
+    sort: st.enabled ? 'startOrder' : 'name',
     dir: 1,
-    q: ''
+    q: '',
+    oppen: null   // patrullens id när dess rad är utfälld — EN åt gången
   };
 
   setDocTitle('Patruller', compLabel(comp));
@@ -77,7 +78,10 @@ export async function renderPatrols(app, user, cid) {
         ${isAdmin ? helpOnButton(
           `<button class="btn btn-secondary btn-sm" id="manual-all">${icon('file-text', { size: 14 })} Manuella startkort</button>`,
           'comp.manualStartkort') : ''}
-        ${isAdmin ? '<button class="btn btn-primary" id="new">+ Ny patrull</button>' : ''}`
+        ${isAdmin ? '<button class="btn btn-primary" id="new">+ Ny patrull</button>' : ''}
+        ${st.enabled && isAdmin ? helpOnButton(
+          `<button class="btn btn-secondary btn-sm" id="luft">${icon('clock', { size: 14 })} Lägg in luft…</button>`,
+          'patrol.luft') : ''}`
     })}
 
     <div class="scoreboard-controls">
@@ -86,9 +90,6 @@ export async function renderPatrols(app, user, cid) {
         <option value="alla">Alla avdelningar</option>
         ${allowedAvdelningar(comp).map(a => `<option value="${a.key}">${a.key}</option>`).join('')}
       </select>
-      ${st.enabled && isAdmin ? helpOnButton(
-        `<button class="btn btn-secondary btn-sm" id="luft">${icon('clock', { size: 14 })} Lägg in luft…</button>`,
-        'patrol.luft') : ''}
       ${st.enabled && isAdmin ? `<span class="muted t-sm" id="drag-hint">Dra patruller för att ändra starttid · släpp intill en lucka så tar patrullen luckan</span>` : ''}
     </div>
 
@@ -240,20 +241,121 @@ export async function renderPatrols(app, user, cid) {
       ${dragEnabled ? `<td class="drag-col" aria-label="Dra för att ändra ordning">${icon('grip-vertical', { size: 18, class: 'drag-handle' })}</td>` : ''}
       ${st.enabled ? `<td class="num time-col">${t ?? '<span class="muted">—</span>'}</td>` : ''}
       <td class="status-col">${statusCell(r)}</td>
-      <td class="num">${escapeHtml(String(r.number ?? ''))}</td>
       <td><strong>${escapeHtml(r.name || '—')}</strong> <span class="badge badge-blue pa-skarm-badge">${icon('monitor', { size: 12 })} På startskärmen</span></td>
       <td><span class="dot ${shortOf(r.avdelning)}"></span>${escapeHtml(r.avdelning || '')}</td>
       <td>${escapeHtml(r.kar || '')}</td>
       <td class="num">${escapeHtml(String(r.antal ?? ''))}</td>
       <td class="muted">${escapeHtml((r.notering || '').slice(0, 60))}</td>
-      ${isAdmin ? `<td class="actions">
-        <a class="btn btn-ghost btn-sm" href="/app/c/${cid}/meddelanden?patrull=${encodeURIComponent(r.id)}" data-link
-           title="Skicka meddelande till den här patrullen" aria-label="Skicka meddelande till patrull ${r.number ?? ''}">${icon('send', { size: 15 })}</a>
-        <button class="btn btn-secondary btn-sm" data-start="${r.id}">Startkort</button>
-        <button class="btn btn-ghost btn-sm" data-edit="${r.id}">Redigera</button>
-        <button class="btn btn-ghost btn-sm" data-del="${r.id}" style="color:var(--utm-pink);">Ta bort</button>
-      </td>` : ''}
-    </tr>`;
+      <td class="actions rad-ikoner">
+        ${isAdmin ? `<a class="icon-btn" href="/app/c/${cid}/meddelanden?patrull=${encodeURIComponent(r.id)}" data-link
+           title="Skicka meddelande" aria-label="Skicka meddelande till ${escapeHtml(r.name || 'patrullen')}">${icon('send', { size: 17 })}</a>
+        <button type="button" class="icon-btn" data-edit="${r.id}" title="Redigera" aria-label="Redigera ${escapeHtml(r.name || 'patrullen')}">${icon('pencil', { size: 17 })}</button>
+        <button type="button" class="icon-btn icon-btn-fara" data-del="${r.id}" title="Ta bort" aria-label="Ta bort ${escapeHtml(r.name || 'patrullen')}">${icon('trash-2', { size: 17 })}</button>` : ''}
+        <button type="button" class="icon-btn rad-pil" data-oppna="${r.id}" aria-expanded="${state.oppen === r.id}"
+          title="${state.oppen === r.id ? 'Fäll ihop' : 'Visa mer'}" aria-label="${state.oppen === r.id ? 'Fäll ihop' : 'Visa mer om'} ${escapeHtml(r.name || 'patrullen')}">${icon('chevron-down', { size: 18 })}</button>
+      </td>
+    </tr>${state.oppen === r.id ? detaljRad(r, platser, dragEnabled) : ''}`;
+  };
+
+  // --- Den utfällda raden ---------------------------------------------------
+  // Allt som förut låg i Startkort-modalen (QR, länk, PDF:er) plus patrullens
+  // uppgifter. QR-bilden och samtalstoken CACHAS per patrull: tabellen ritas
+  // om vid varje snapshot, och utan cachen blinkade QR-koden och token
+  // mintades om varje gång någon prickade av en start.
+  const tokenCache = new Map();   // patrolId -> Promise<token>
+  const qrCache = new Map();      // patrolId -> Promise<HTMLImageElement>
+  const startkortUrl = (r) => {
+    if (!tokenCache.has(r.id)) {
+      // Mintningen är en skrivning — demot nekar den, och länken fungerar utan.
+      tokenCache.set(r.id, r.threadToken ? Promise.resolve(r.threadToken)
+        : comp.demo ? Promise.resolve('') : ensureThreadToken(cid, 'patrull', r.id).catch(() => ''));
+    }
+    return tokenCache.get(r.id).then(tok => startUrl(cid, r.id, tok));
+  };
+  const detaljRad = (r, platser, dragEnabled) => {
+    const s = startInfo(r.id);
+    const t = st.enabled ? patrolStartTime(comp, r, platser) : null;
+    const falt = (etikett, varde) => `<div class="pd-falt"><dt>${etikett}</dt><dd>${varde}</dd></div>`;
+    const kolspann = (dragEnabled ? 1 : 0) + (st.enabled ? 1 : 0) + 7;
+    return `<tr class="patrull-detalj" data-detalj-for="${r.id}"><td colspan="${kolspann}">
+      <div class="pd">
+        ${isAdmin ? `<div class="pd-qr" data-qr="${r.id}" aria-label="QR-kod till startkortet"></div>` : ''}
+        <div class="pd-huvud">
+          <dl class="pd-lista">
+            ${falt('Patrullnummer', `#${escapeHtml(String(r.number ?? '—'))}`)}
+            ${st.enabled ? falt('Starttid', t ? escapeHtml(t) : '<span class="muted">ingen plats i startlistan</span>') : ''}
+            ${falt('Status', r.utgatt ? 'Utgått' : s ? `Startat ${escapeHtml(klockslag(s.at))}${s.kalla === 'sjalv' ? ' · bekräftat av patrullen själv' : ''}` : 'Ej startat')}
+            ${falt('Avdelning', escapeHtml(r.avdelning || '—'))}
+            ${falt('Kår', escapeHtml(r.kar || '—'))}
+            ${falt('Antal', escapeHtml(String(r.antal ?? '—')))}
+          </dl>
+          ${r.notering ? `<div class="pd-notering"><span class="pd-etikett">Notering</span>${escapeHtml(r.notering)}</div>` : ''}
+          ${isAdmin ? `
+          <div class="pd-startkort">
+            <span class="pd-etikett">Startkort</span>
+            <p class="muted t-sm" style="margin:0 0 8px;">Ge länken eller QR-koden till patrullen — den öppnar deras digitala startkort med kontrollerna, kartan och poängen.</p>
+            <div class="row">
+              <input class="input mono t-sm js-selectall" readonly value="Hämtar länken…" data-url-input="${r.id}" aria-label="Länk till startkortet">
+              <button type="button" class="btn btn-secondary btn-sm" data-kopiera="${r.id}">${icon('copy', { size: 14 })} Kopiera</button>
+            </div>
+            <div class="btn-row mt-2">
+              <button type="button" class="btn btn-primary btn-sm" data-qrblad="${r.id}">${icon('download', { size: 14 })} QR-blad (PDF)</button>
+              <button type="button" class="btn btn-secondary btn-sm" data-manuellt="${r.id}">${icon('file-text', { size: 14 })} Manuellt startkort</button>
+              <a class="btn btn-ghost btn-sm" data-oppna-kort="${r.id}" target="_blank" rel="noopener">${icon('external', { size: 14 })} Öppna startkort</a>
+              ${st.enabled ? `<a class="btn btn-ghost btn-sm" href="/app/c/${cid}/startscreen" target="_blank" rel="noopener">${icon('monitor', { size: 14 })} Startskärm</a>` : ''}
+            </div>
+          </div>` : ''}
+        </div>
+      </div>
+    </td></tr>`;
+  };
+
+  // Kopplar den utfällda radens innehåll efter en rendering.
+  const kopplaDetalj = (tbl) => {
+    const r = state.oppen && state.rows.find(x => x.id === state.oppen);
+    const rad = tbl.querySelector('tr.patrull-detalj');
+    if (!r || !rad || !isAdmin) return;
+    const inp = rad.querySelector('[data-url-input]');
+    const lank = rad.querySelector('[data-oppna-kort]');
+    startkortUrl(r).then(url => {
+      if (!rad.isConnected) return;
+      inp.value = url; lank.href = url;
+      if (!qrCache.has(r.id)) qrCache.set(r.id, renderQrToImg(url, 180));
+      qrCache.get(r.id).then(img => {
+        const host = rad.isConnected && rad.querySelector('[data-qr]');
+        if (host) { host.innerHTML = ''; host.appendChild(img); }
+      }).catch(() => {
+        qrCache.delete(r.id);
+        const host = rad.querySelector('[data-qr]');
+        if (host) host.innerHTML = '<span class="muted t-sm">QR-koden kunde inte laddas.</span>';
+      });
+    });
+    inp.addEventListener('click', () => inp.select());
+    rad.querySelector('[data-kopiera]').addEventListener('click', async () => {
+      await copyToClipboard(await startkortUrl(r));
+      toast('Länk kopierad', 'success');
+    });
+    const qrBlad = rad.querySelector('[data-qrblad]');
+    qrBlad.addEventListener('click', () => withBusy(qrBlad, 'Skapar PDF…', async () => {
+      try {
+        // Länken i PDF:en byggs ur patrol.threadToken — se till att den finns.
+        await startkortUrl(r);
+        const tok = await tokenCache.get(r.id);
+        await downloadStartPdf({ id: cid, ...comp }, { ...r, threadToken: tok || r.threadToken });
+      } catch (e) { console.error(e); toast('Kunde inte skapa PDF: ' + e.message, 'error'); }
+    }));
+    const manuellt = rad.querySelector('[data-manuellt]');
+    manuellt.addEventListener('click', () => withBusy(manuellt, 'Ritar kartan…', async () => {
+      try {
+        const [controls, track] = await Promise.all([listControls(cid), getTrack(cid).catch(() => null)]);
+        await downloadManualStartPdf({ id: cid, ...comp }, r, controls, track, compPlaces(comp));
+      } catch (e) { console.error(e); toast('Kunde inte skapa PDF: ' + e.message, 'error'); }
+    }));
+  };
+
+  const vaxlaRad = (id) => {
+    state.oppen = state.oppen === id ? null : id;
+    render();
   };
 
   // En lucka är en tom starttid — en rad, så hålet syns i stället för att de
@@ -277,7 +379,9 @@ export async function renderPatrols(app, user, cid) {
     const host = wrap.querySelector('#startlista-banner');
     if (!host) return;
     if (!publik) { host.innerHTML = ''; return; }
-    const luckor = startlistaLuckor(comp, state.rows);
+    // Luft är planerad och ska inte räknas upp som något att åtgärda.
+    const luftplatser = new Set(startlistaLuft(comp, state.rows));
+    const luckor = startlistaLuckor(comp, state.rows).filter(l => !luftplatser.has(l));
     host.innerHTML = `<div class="startlista-banner" role="status">
       ${icon('triangle-alert', { size: 20 })}
       <div>
@@ -324,23 +428,22 @@ export async function renderPatrols(app, user, cid) {
       </div>`;
       return;
     }
-    const kolumner = 7 + (isAdmin ? 1 : 0);
+    const kolumner = 7;   // allt efter tidskolumnen: status, namn, avdelning, kår, antal, notering, åtgärder
     const luft = new Set(startlistaLuft(comp, state.rows));
     tbl.innerHTML = `
-      <div class="table-wrap">
+      <div class="table-wrap patrull-wrap">
         <table class="t">
           <thead>
             <tr>
               ${dragEnabled ? '<th style="width:36px;"></th>' : ''}
               ${st.enabled ? th('startOrder', 'Start', state, { num: true, help: 'patrol.startOrder' }) : ''}
               <th>Status ${help('patrol.startat')}</th>
-              ${th('number', 'Nr', state, { num: true })}
               ${th('name', 'Namn', state)}
               ${th('avdelning', 'Avdelning', state)}
               ${th('kar', 'Kår', state)}
               ${th('antal', 'Antal', state, { num: true })}
               <th>Notering</th>
-              ${isAdmin ? '<th class="actions"></th>' : ''}
+              <th class="actions"></th>
             </tr>
           </thead>
           <tbody id="patrol-body">
@@ -363,18 +466,21 @@ export async function renderPatrols(app, user, cid) {
       });
     });
     tbl.querySelectorAll('[data-startat]').forEach(b => b.addEventListener('click', () => vaxlaStart(b.dataset.startat, b)));
+    // Hela raden fäller ut patrullen — utom där raden redan har något eget att
+    // trycka på. Pilen är samma sak för tangentbord och skärmläsare.
+    tbl.querySelectorAll('tr[data-id]').forEach(tr => tr.addEventListener('click', (e) => {
+      if (e.target.closest('button, a, input, select, label, .drag-col')) return;
+      if (String(window.getSelection?.() || '')) return;   // man markerade text, man klickade inte
+      vaxlaRad(tr.dataset.id);
+    }));
+    tbl.querySelectorAll('[data-oppna]').forEach(b => b.addEventListener('click', () => vaxlaRad(b.dataset.oppna)));
+    kopplaDetalj(tbl);
     uppdateraTidslage();
     if (isAdmin) {
       tbl.querySelectorAll('[data-edit]').forEach(b => {
         b.addEventListener('click', () => {
           const row = state.rows.find(r => r.id === b.dataset.edit);
           openPatrolModal(cid, comp, row, null, onPatrolSaved);
-        });
-      });
-      tbl.querySelectorAll('[data-start]').forEach(b => {
-        b.addEventListener('click', () => {
-          const row = state.rows.find(r => r.id === b.dataset.start);
-          openStartCardModal(cid, row, st.enabled);
         });
       });
       tbl.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => taBortPatrull(b.dataset.del)));
@@ -395,7 +501,16 @@ export async function renderPatrols(app, user, cid) {
           chosenClass: 'drag-chosen',
           forceFallback: true,      // nicer cross-browser feedback; also fixes touch
           fallbackTolerance: 5,
-          onStart: () => { drar = true; },
+          onStart: (evt) => {
+            drar = true;
+            // En utfälld rad ligger som ett eget <tr> i samma tbody. Den ska
+            // inte följa med i platsräkningen och inte stå kvar ensam när dess
+            // patrull dras iväg — fäll ihop innan draget börjar.
+            state.oppen = null;
+            body.querySelectorAll('tr.patrull-detalj').forEach(tr => tr.remove());
+            body.querySelectorAll('[data-oppna]').forEach(b => b.setAttribute('aria-expanded', 'false'));
+            utgangslage = grannar(evt.item);
+          },
           onEnd: async (evt) => {
             drar = false;
             await draSlappt(evt, body);
@@ -409,10 +524,18 @@ export async function renderPatrols(app, user, cid) {
   // Släppt intill en lucka = patrullen tar luckan och lämnar sin gamla plats
   // tom. Annars en vanlig ordningsändring: raderna i tabellen, luckor
   // inräknade, blir platserna 0, 1, 2 … (så en lucka mitt i listan består).
+  // "Flyttades den?" avgörs på GRANNARNA, inte på Sortables index: oldIndex
+  // räknas innan den utfällda raden tagits bort i onStart, och stämmer då inte
+  // med newIndex. Och frågan måste besvaras rätt — en patrull som släpps där
+  // den stod, intill en lucka, skulle annars flyttas IN i luckan.
+  let utgangslage = '';
+  const radnyckel = (el) => el?.dataset?.id || (el?.dataset?.lucka != null ? 'lucka:' + el.dataset.lucka : '');
+  const grannar = (item) => radnyckel(item.previousElementSibling) + '|' + radnyckel(item.nextElementSibling);
+
   const draSlappt = async (evt, body) => {
     const id = evt.item?.dataset?.id;
     const patrull = state.rows.find(r => r.id === id);
-    if (!patrull || evt.oldIndex === evt.newIndex) { render(); return; }
+    if (!patrull || grannar(evt.item) === utgangslage) { render(); return; }
     const granne = [evt.item.previousElementSibling, evt.item.nextElementSibling]
       .find(el => el?.dataset?.lucka != null);
     const plan = granne ? planFyllLucka(patrull, Number(granne.dataset.lucka)) : planFranRader(body);
@@ -431,7 +554,9 @@ export async function renderPatrols(app, user, cid) {
 
   const planFranRader = (body) => {
     const tilldelning = []; const luckor = []; const luft = [];
-    [...body.children].forEach((tr, i) => {
+    // Bara PLATSRADER räknas — en rad som varken är patrull eller lucka (den
+    // utfällda panelen) får aldrig ta en plats i startlistan.
+    [...body.children].filter(tr => tr.dataset.id || tr.dataset.lucka != null).forEach((tr, i) => {
       if (tr.dataset.id) {
         const r = state.rows.find(x => x.id === tr.dataset.id);
         if (r && Number(r.startOrder) !== i) tilldelning.push({ id: r.id, startOrder: i });
@@ -693,83 +818,6 @@ function th(key, label, state, opts = {}) {
 
 function shortOf(avd) {
   return { 'Spårare':'sp','Upptäckare':'up','Äventyrare':'av','Utmanare':'ut','Rover':'ro','Ledare':'le' }[avd] || 'le';
-}
-
-async function openStartCardModal(cid, patrol, startScreenAvailable = false) {
-  if (!patrol) return;
-  // Se control-detail.js: token mintas där länken byggs.
-  if (!patrol.threadToken) {
-    patrol.threadToken = await ensureThreadToken(cid, 'patrull', patrol.id).catch(() => '');
-  }
-  const url = startUrl(cid, patrol.id, patrol.threadToken);
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-overlay';
-  overlay.innerHTML = `
-    <div class="modal" style="max-width:560px;">
-      <div class="modal-head">
-        <h3>Startkort · Patrull #${escapeHtml(String(patrol.number ?? ''))} ${escapeHtml(patrol.name || '')}</h3>
-        <button class="icon-btn" id="x" aria-label="Stäng">${icon('x')}</button>
-      </div>
-      <div class="modal-body">
-        <p class="muted t-sm" style="margin-top:0;">Distribuera denna länk eller QR-kod till patrullen. Skannas på sekretariatet för att få sitt digitala startkort — kontrollerna, kartan och poängen.</p>
-        <div id="qr" class="row" style="justify-content:center;padding:12px 0;"></div>
-        <label class="field">Länk</label>
-        <div class="row">
-          <input class="input mono t-sm" readonly value="${escapeHtml(url)}" id="url-input">
-          <button class="btn btn-secondary btn-sm" id="copy">Kopiera</button>
-        </div>
-        <div class="btn-row mt-4">
-          <button class="btn btn-primary" id="pdf">${icon('download', { size: 16 })} QR-blad (PDF)</button>
-          <button class="btn btn-secondary" id="manual-pdf">${icon('file-text', { size: 16 })} Manuellt startkort</button>
-          <a class="btn btn-ghost" href="${url}" target="_blank" rel="noopener">Öppna startkort</a>
-          ${startScreenAvailable ? `<a class="btn btn-secondary" href="/app/c/${cid}/startscreen" target="_blank" rel="noopener">Startskärm</a>` : ''}
-        </div>
-      </div>
-      <div class="modal-foot">
-        <button class="btn btn-ghost" id="close">Stäng</button>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(overlay);
-
-  const close = () => overlay.remove();
-  wireOverlayClose(overlay, close);
-  overlay.querySelector('#x').onclick = close;
-  overlay.querySelector('#close').onclick = close;
-
-  const qrHost = overlay.querySelector('#qr');
-  renderQrToImg(url, 200)
-    .then(img => { qrHost.innerHTML = ''; qrHost.appendChild(img); })
-    .catch(() => { qrHost.innerHTML = '<span class="muted t-sm">QR-koden kunde inte laddas — ladda om sidan.</span>'; });
-
-  overlay.querySelector('#copy').addEventListener('click', async () => {
-    await copyToClipboard(url);
-    toast('Länk kopierad', 'success');
-  });
-
-  // Manuellt startkort — för patruller utan mobil. A4 som viks till A5.
-  const manBtn = overlay.querySelector('#manual-pdf');
-  manBtn.addEventListener('click', () => withBusy(manBtn, 'Ritar kartan…', async () => {
-    try {
-      const comp = await getCompetition(cid);
-      const [controls, track] = await Promise.all([listControls(cid), getTrack(cid).catch(() => null)]);
-      await downloadManualStartPdf({ id: cid, ...comp }, patrol, controls, track, compPlaces(comp));
-    } catch (e) {
-      console.error(e);
-      toast('Kunde inte skapa PDF: ' + e.message, 'error');
-    }
-  }));
-
-  const pdfBtn = overlay.querySelector('#pdf');
-  pdfBtn.addEventListener('click', () => withBusy(pdfBtn, 'Skapar PDF…', async () => {
-    try {
-      const comp = await getCompetition(cid);
-      await downloadStartPdf({ id: cid, ...comp }, patrol);
-    } catch (e) {
-      console.error(e);
-      toast('Kunde inte skapa PDF: ' + e.message, 'error');
-    }
-  }));
 }
 
 // Två sätt att använda samma kort: namngivna åt alla patruller, eller tomma

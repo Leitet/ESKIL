@@ -3073,3 +3073,71 @@ describe('patrullistan: luft, startstatus och startskärmen', () => {
     assert.match(hj, /'patrol\.startat': \{/);
   });
 });
+
+
+// ---------------------------------------------------------------------------
+// Patrullistans rad: klickbar, fäller ut patrullen. Startkort-modalen är borta
+// — dess innehåll ligger i den utfällda panelen.
+// ---------------------------------------------------------------------------
+describe('patrullistan: utfälld rad, ikoner och drag som tål en öppen panel', () => {
+  const src = readFileSync(new URL('../public/js/views/patrols.js', import.meta.url), 'utf8');
+
+  test('Startkort-modalen och NR-kolumnen är borta — och innehållet finns kvar i panelen', () => {
+    assert.doesNotMatch(src, /openStartCardModal|data-start=/);
+    assert.doesNotMatch(src, /th\('number'/, 'NR-kolumnen är tillbaka');
+    const panel = src.slice(src.indexOf('const detaljRad = ('), src.indexOf('const vaxlaRad = ('));
+    for (const bit of ['data-qr=', 'data-url-input=', 'data-kopiera=', 'data-qrblad=', 'data-manuellt=', 'data-oppna-kort=', '/startscreen', 'Patrullnummer'])
+      assert.ok(panel.includes(bit), `panelen saknar ${bit} — det fanns i modalen`);
+    assert.match(panel, /downloadStartPdf\(/);
+    assert.match(panel, /downloadManualStartPdf\(/);
+  });
+
+  test('åtgärderna är ikoner med namn — en ikon utan aria-label är en tom knapp för en skärmläsare', () => {
+    const rad = src.slice(src.indexOf('const patrullRad = ('), src.indexOf('// --- Den utfällda raden'));
+    for (const i of ['send', 'pencil', 'trash-2', 'chevron-down']) {
+      assert.match(rad, new RegExp(`icon\\('${i}'`), i);
+      assert.ok(hasIcon(i), `${i} finns inte i icons.js`);
+    }
+    assert.equal((rad.match(/class="icon-btn[^"]*"/g) || []).length, 4);
+    assert.equal((rad.match(/aria-label="/g) || []).length >= 5, true, 'varje ikonknapp (och draghandtaget) ska ha ett namn');
+    assert.match(rad, /aria-expanded="\$\{state\.oppen === r\.id\}"/);
+    assert.doesNotMatch(rad, />Redigera<|>Ta bort<|>Startkort</, 'textknapparna är tillbaka');
+  });
+
+  test('hela raden är klickbar — men aldrig där raden har något eget att trycka på', () => {
+    assert.match(src, /if \(e\.target\.closest\('button, a, input, select, label, \.drag-col'\)\) return;/,
+      'ett klick på Startat-pillret, en ikon eller draghandtaget får inte också fälla ut raden');
+    assert.match(src, /tbl\.querySelectorAll\('\[data-oppna\]'\)/, 'pilen är vägen in för tangentbord');
+  });
+
+  test('QR-kod och samtalstoken cachas — tabellen ritas om vid varje snapshot', () => {
+    assert.match(src, /const tokenCache = new Map\(\);/);
+    assert.match(src, /if \(!qrCache\.has\(r\.id\)\) qrCache\.set\(r\.id, renderQrToImg\(url, 180\)\);/);
+    assert.match(src, /comp\.demo \? Promise\.resolve\(''\) : ensureThreadToken\(cid, 'patrull', r\.id\)/, 'mintningen är en skrivning — demot nekar den');
+  });
+
+  test('draget tål en öppen panel: den tar aldrig en plats i startlistan', () => {
+    const plan = src.slice(src.indexOf('const planFranRader = (body) => {'), src.indexOf('const sammaLuckor ='));
+    assert.match(plan, /\.filter\(tr => tr\.dataset\.id \|\| tr\.dataset\.lucka != null\)\.forEach\(\(tr, i\)/,
+      'panelen är ett eget <tr> i samma tbody — räknas den med får alla efter den fel plats');
+    const start = src.slice(src.indexOf('onStart: (evt) => {'), src.indexOf('onEnd: async (evt)'));
+    assert.match(start, /state\.oppen = null;/);
+    assert.match(start, /querySelectorAll\('tr\.patrull-detalj'\)\.forEach\(tr => tr\.remove\(\)\)/);
+    assert.match(start, /utgangslage = grannar\(evt\.item\);/);
+    const slapp = src.slice(src.indexOf('const draSlappt = async'), src.indexOf('const planFyllLucka ='));
+    assert.match(slapp, /grannar\(evt\.item\) === utgangslage/);
+    assert.doesNotMatch(slapp, /oldIndex|newIndex/, 'Sortables index räknas innan panelen tagits bort och stämmer inte');
+  });
+
+  test('"Lägg in luft…" står i rubrikens åtgärder, till höger om Ny patrull', () => {
+    const huvud = src.slice(src.indexOf('${compHeader(cid, comp, user, {'), src.indexOf('<div class="scoreboard-controls">'));
+    assert.ok(huvud.indexOf('id="new"') > 0 && huvud.indexOf('id="luft"') > huvud.indexOf('id="new"'));
+    const verktyg = src.slice(src.indexOf('<div class="scoreboard-controls">'), src.indexOf('<div id="startlista-banner">'));
+    assert.doesNotMatch(verktyg, /id="luft"/);
+  });
+
+  test('bannern räknar inte luft som något att åtgärda', () => {
+    const b = src.slice(src.indexOf('const ritaBanner = () => {'), src.indexOf('const render = () => {'));
+    assert.match(b, /startlistaLuckor\(comp, state\.rows\)\.filter\(l => !luftplatser\.has\(l\)\)/);
+  });
+});

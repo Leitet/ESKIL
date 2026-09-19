@@ -1331,7 +1331,12 @@ table.t tr.har-gatt .dot { opacity: .5; }
 /* Tiden har passerat utan avprickning: den här raden ska SYNAS. */
 table.t tr.start-missad td.time-col { color: #b84a0a; font-weight: 700; }
 table.t tr.start-missad .start-pill-nej { background: #fde5d4; border-color: #e9a877; color: #b84a0a; }
-table.t tr.start-missad .start-pill-nej::after { content: ' · tiden har gått'; font-weight: 500; }
+/* Egen rad under pillret, inte i det: med texten i pillret blev kolumnen 200 px
+   och tabellen bredare än ett 1024-fönster — då hamnade radens ikoner utanför. */
+table.t tr.start-missad td.status-col::after {
+  content: 'tiden har gått'; display: block; margin: 3px 0 0 4px;
+  font-size: 11.5px; font-weight: 600; color: #b84a0a;
+}
 
 /* Luft: samma rad som en lucka, men lugnare — den är planerad. */
 table.t tr.start-luft .lucka-text { color: var(--scout-blue); }
@@ -1339,3 +1344,43 @@ table.t tr.start-luft .lucka-text { color: var(--scout-blue); }
 .luft-val { display: flex; align-items: center; gap: 10px; margin: 12px 0 4px; }
 .luft-val input[type="radio"] { flex: none; }
 .luft-hint { margin: 0 0 4px 28px; }
+
+/* ---------------------------------------------------------------------------
+   Patrullistan: klickbar rad som fäller ut patrullen, och åtgärder som ikoner.
+   --------------------------------------------------------------------------- */
+#patrol-body tr[data-id] { cursor: pointer; }
+#patrol-body tr[data-id]:hover td { background: var(--gray-50, #f7f9fb); }
+#patrol-body tr.pa-startskarmen:hover td { background: var(--scout-blue-100); }
+table.t td.rad-ikoner { padding-right: var(--sp-2); }
+table.t td.rad-ikoner .icon-btn { display: inline-flex; vertical-align: middle; text-decoration: none; padding: 6px; }
+.icon-btn-fara:hover { background: #fad4e2; color: #a6004a; }
+.rad-pil svg { transition: transform .15s ease; }
+.rad-pil[aria-expanded="true"] svg { transform: rotate(180deg); }
+.rad-pil[aria-expanded="true"] { color: var(--scout-blue); }
+
+/* Den utfällda panelen hör ihop med raden ovanför: ingen skiljelinje emellan,
+   en markerad vänsterkant nedåt. */
+table.t tr.patrull-detalj td {
+  padding: 0; background: var(--gray-50, #f7f9fb);
+  box-shadow: inset 4px 0 0 var(--scout-blue);
+}
+/* På en smal skärm rullar tabellen i sidled. Panelen ska då fylla det man SER,
+   inte tabellens hela bredd — annars ligger Kopiera-knappen utanför bild.
+   100cqw = omslagets bredd; utan stöd för enheten blir bredden som förut. */
+.patrull-wrap { container-type: inline-size; }
+.pd { display: flex; gap: var(--sp-5, 24px); padding: var(--sp-4, 16px) var(--sp-5, 24px) var(--sp-5, 24px); align-items: flex-start;
+  box-sizing: border-box; position: sticky; left: 0; width: 100cqw; max-width: 100%; }
+.pd-qr { flex: none; width: 180px; min-height: 180px; background: #fff; border: 1px solid var(--gray-200, #e3e8ee);
+  border-radius: var(--r-md); padding: 8px; display: flex; align-items: center; justify-content: center; }
+.pd-qr img { width: 100%; height: auto; display: block; }
+.pd-huvud { flex: 1; min-width: 0; }
+.pd-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 20px; margin: 0 0 14px; }
+.pd-falt dt, .pd-etikett { display: block; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--fg3); margin-bottom: 2px; }
+.pd-falt dd { margin: 0; font-weight: 600; color: var(--fg1); }
+.pd-notering { margin: 0 0 14px; white-space: pre-wrap; color: var(--fg1); }
+.pd-startkort .row { gap: var(--sp-2); }
+.pd-startkort .input { flex: 1; min-width: 0; }
+@media (max-width: 720px) {
+  .pd { flex-direction: column; }
+  .pd-qr { width: 160px; min-height: 160px; }
+}

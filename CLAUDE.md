@@ -1212,7 +1212,29 @@ BÅDA ställena.
   `har-gatt` (startat — eller tiden har gått i en tävling där INGEN prickar av
   starter, för då är klockan det enda vi har) och `start-missad` (tiden har
   gått utan avprickning i en tävling där starter faktiskt prickas av: den
-  raden ska synas, inte gråna);
+  raden ska synas, inte gråna).
+  **Raden i patrullistan är klickbar och fäller ut patrullen** (`state.oppen`,
+  EN åt gången). Panelen bär det som förut var Startkort-modalen — QR, länk,
+  QR-blad, manuellt startkort — plus patrullens uppgifter, inklusive
+  patrullnumret, som inte längre har en egen kolumn. Klicket ignoreras där
+  raden har något eget att trycka på (`closest('button, a, input, select,
+  label, .drag-col')`), annars fäller ett tryck på Startat-pillret också ut
+  raden; pilen längst till höger är samma sak för tangentbord. QR-bild och
+  samtalstoken CACHAS per patrull — tabellen ritas om vid varje snapshot, och
+  utan cachen blinkade QR-koden och token mintades om vid varje avprickning.
+  **Panelen är ett eget `<tr>` i samma `<tbody>` som Sortable drar i**, och det
+  är fällan: (1) `planFranRader` räknar bara PLATSRADER (patrull eller lucka) —
+  räknades panelen med fick alla efter den fel plats; (2) `onStart` fäller ihop
+  panelen innan draget börjar; (3) "flyttades den?" avgörs på GRANNARNA före
+  och efter (`grannar()` / `utgangslage`), aldrig på Sortables
+  `oldIndex`/`newIndex` — oldIndex räknas innan panelen tagits bort och
+  stämmer då inte, och frågan måste besvaras rätt: en patrull som släpps där
+  den stod, intill en lucka, skulle annars flyttas IN i luckan. Verifierat i
+  emulatorn med öppen panel; källtestat.
+  Tabellen ska rymmas i ett 1024-fönster: "tiden har gått" står därför på en
+  egen rad under pillret (i pillret blev statuskolumnen 200 px och radens
+  ikoner hamnade utanför bild), och på smalare skärmar följer panelen den
+  SYNLIGA bredden (`100cqw` mot `.patrull-wrap`), inte tabellens;
   `courseHidden` (**hemligt spår** — läs den via `courseHidden(comp)` i
   utils.js; `=== true`, saknas = visat. Går FÖRE släppet i både
   `controlsPublic()` på /t och `positionsVisible()` på startkortet, och
