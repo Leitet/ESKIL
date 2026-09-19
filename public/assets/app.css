@@ -1178,6 +1178,14 @@ table.t tr.sf-row.park-row td {
 }
 
 /* Hård-raderingsgrinden — två steg som måste klaras innan knappen tänds. */
+.hd-varning {
+  border: 2px solid var(--utm-pink); border-radius: 10px;
+  background: rgba(218, 0, 94, 0.06); padding: 12px 14px;
+}
+.hd-varning strong { display: block; color: var(--utm-pink); font-size: 15px; margin-bottom: 6px; }
+.hd-varning p { margin: 0 0 8px; font-size: 14px; }
+.hd-varning label { display: flex; gap: 8px; align-items: flex-start; font-weight: 600; font-size: 14px; cursor: pointer; margin-top: 4px; }
+.hd-varning input { margin-top: 3px; flex: none; }
 .hd-step { border: 1px solid var(--border); border-radius: var(--r-md); padding: 12px 14px; }
 .hd-step-head { font-weight: 700; color: var(--scout-blue); display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .hd-num {

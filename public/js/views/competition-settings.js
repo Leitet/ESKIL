@@ -623,11 +623,22 @@ function renderBasicTab(comp, cid, refresh, readOnly, isSuperAdmin, user) {
       <button class="btn btn-danger mt-4" id="delete-comp">${icon('trash', { size: 16 })} Ta bort tävling</button>
     `;
     danger.querySelector('#delete-comp').addEventListener('click', async () => {
+      // Har tävlingen en överlämningskod drabbar raderingen någon ANNAN: en
+      // aktiv kod dör (och går inte att återskapa), en inlöst kod betyder att
+      // nästa arrangörs tävling länkar hit. Läses färskt — koden kan ha lösts
+      // in sedan sidan laddades. Går den inte att läsa visas ingen varning;
+      // raderingen ska aldrig hänga på det.
+      let varning = null;
+      try {
+        const [{ getOverlamning }, { overlamningsvarning }] = await Promise.all([import('../store.js'), import('../utvardering.js')]);
+        varning = overlamningsvarning(await getOverlamning(cid));
+      } catch { /* ingen kod att varna för */ }
       // Grinden: färsk backup + namnet skrivet. Ett felklick här raderade
       // annars en hel tävlings poäng utan kopia.
       const ok = await confirmHardDelete({
         what: 'tävlingen',
         name: comp.name,
+        varning,
         hint: 'Patruller, kontroller och alla poäng försvinner.',
         onBackup: async () => {
           const { downloadBackup } = await import('../backup.js');

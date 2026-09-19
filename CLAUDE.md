@@ -1191,6 +1191,15 @@ BÅDA ställena.
   Den gamla arrangören ser i formuläret ATT koden lösts in och från vilken
   adress — det är den de lämnade över till, och de ska kunna upptäcka om det
   inte är det. Står i /integritet.
+  **Radering av en tävling med kod varnar skarpt** (`overlamningsvarning()` i
+  utvardering.js → `varning` i `confirmHardDelete`). Två olika skador: en
+  AKTIV kod dör och går inte att återskapa (den följer aldrig med i backupen),
+  en INLÖST kod betyder att nästa arrangörs tävling länkar hit som
+  "Föregående årgång" och att arkivet försvinner för båda. Varningen har en
+  EGEN kryssruta som spärrar knappen — backup + namn skyddar mot felklick, men
+  här drabbas någon annan än den som trycker, och en mening i brödtexten läses
+  inte av den som redan bestämt sig. Koden läses FÄRSKT när dialogen öppnas:
+  den kan ha lösts in sedan sidan laddades.
 - `.../track/main` — the drawn course ("Spår" tab): waypoints per leg keyed
   `<fromKey>__<toKey>` plus `speedKmh`. The leg sequence itself is derived
   from control number order at render time, never stored. Publicly readable

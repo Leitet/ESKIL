@@ -110,6 +110,45 @@ export const OVERLAMNING_ARRANGOR = {
   ]
 };
 
+// Varningen i raderingsdialogen när tävlingen har en överlämningskod. `ovl` är
+// private/overlamning. Två lägen, och de är olika slags skada:
+//   AKTIV kod   — nästa arrangör står med en rapport vars kod dör i samma
+//                 ögonblick, och den går inte att återskapa (koden följer
+//                 medvetet aldrig med i backupen).
+//   INLÖST kod  — deras tävling klarar sig, men den länkar hit som "Föregående
+//                 årgång", och arkivet de fick utvärderingen ur försvinner.
+// Ingen kod = ingen varning (null).
+export function overlamningsvarning(ovl) {
+  if (!ovl?.kod) return null;
+  const datum = (iso) => {
+    const t = Date.parse(iso || '');
+    return Number.isFinite(t) ? new Date(t).toLocaleDateString('sv-SE', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+  };
+  if (ovl.anvand) {
+    const nar = datum(ovl.anvand.at);
+    return {
+      lage: 'inlost',
+      rubrik: 'Tävlingen har lämnats över till en ny arrangör',
+      rader: [
+        `Överlämningskoden löstes in${nar ? ' ' + nar : ''}${ovl.anvand.av ? ' av ' + ovl.anvand.av : ''}. Deras tävling finns kvar och påverkas inte — men den länkar hit som "Föregående årgång", och den länken leder efter raderingen till en sida som inte finns.`,
+        'Det här är arkivet som överlämningen byggde på: resultaten, banan och utvärderingen försvinner för både er och dem.',
+        'En AVSLUTAD tävling ligger kvar utan personuppgifter (bara tävlingsledningens namn och e-post). Det är nästan alltid rätt val i stället för att radera.'
+      ],
+      kvittens: 'Jag förstår att arkivet och länken från nästa arrangörs tävling försvinner'
+    };
+  }
+  return {
+    lage: 'aktiv',
+    rubrik: 'Tävlingen har en AKTIV överlämningskod',
+    rader: [
+      'Raderas tävlingen slutar koden gälla i samma ögonblick. Nästa arrangör kan inte ta över med den, och en tävlingsrapport som redan lämnats ut bär en kod som inte fungerar.',
+      'Koden går INTE att få tillbaka — inte ens ur backupen, som medvetet aldrig bär den. En återställd tävling måste skapa en ny kod och ta ut rapporten på nytt.',
+      'Ska tävlingen lämnas över: låt den ligga kvar, avslutad, tills koden är inlöst.'
+    ],
+    kvittens: 'Jag förstår att överlämningskoden slutar gälla och inte kan återskapas'
+  };
+}
+
 export const UTV_NYCKLAR = UTV_SEKTIONER.map(s => s.key);
 export const UTV_ALLA_NYCKLAR = [...UTV_NYCKLAR, UTV_ANTECKNINGAR.key];
 export const MAX_BILDER_PER_SEKTION = 6;

@@ -299,3 +299,38 @@ describe('guiden i rapporten påstår bara det koden gör', () => {
     assert.ok(!/kod|overlamning/i.test(JSON.stringify(cjs.utvarderingForNastaAr({ bra: 'x', nyArrangor: true }, KALLA)).replace(/nyArrangor/g, '')));
   });
 });
+
+describe('radering av en tävling med överlämningskod varnar skarpt', () => {
+  const las = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
+
+  test('ingen kod = ingen varning; aktiv och inlöst kod är olika varningar', () => {
+    assert.equal(esmUtv.overlamningsvarning(null), null);
+    assert.equal(esmUtv.overlamningsvarning({}), null);
+    assert.equal(esmUtv.overlamningsvarning({ skapad: '2026-10-13' }), null);
+    const aktiv = esmUtv.overlamningsvarning({ kod: 'ABCDEFGH2345', skapad: '2026-10-13T10:00:00Z' });
+    assert.equal(aktiv.lage, 'aktiv');
+    assert.match(aktiv.rubrik, /AKTIV överlämningskod/);
+    assert.ok(aktiv.rader.some(r => /inte ens ur backupen/.test(r)), 'att koden inte går att återskapa är själva skadan');
+    const inlost = esmUtv.overlamningsvarning({ kod: 'ABCDEFGH2345', anvand: { at: '2026-11-02T09:00:00Z', av: 'ny@oskarshamn.se', nyCid: 'x' } });
+    assert.equal(inlost.lage, 'inlost');
+    assert.ok(inlost.rader[0].includes('ny@oskarshamn.se') && inlost.rader[0].includes('2 november 2026'));
+    assert.ok(inlost.rader.some(r => /Föregående årgång/.test(r)));
+    assert.ok(inlost.rader.some(r => /AVSLUTAD tävling ligger kvar/.test(r)), 'varningen ska peka på alternativet');
+    assert.notEqual(aktiv.kvittens, inlost.kvittens);
+    // Ett trasigt datum får inte ge "Invalid Date" i en varning
+    assert.ok(!/Invalid/.test(JSON.stringify(esmUtv.overlamningsvarning({ kod: 'X', anvand: { at: 'skräp' } }))));
+  });
+
+  test('dialogen kräver en egen kvittens, och raderingen läser koden FÄRSKT', () => {
+    const utils = las('../public/js/utils.js');
+    const dlg = utils.slice(utils.indexOf('export function confirmHardDelete'), utils.indexOf('export function confirmHardDelete') + 3800);
+    assert.match(dlg, /data-kvittens/);
+    assert.match(dlg, /\(!kvittens \|\| kvittens\.checked\)/, 'utan kvittensen är varningen bara en text man scrollar förbi');
+    assert.match(dlg, /kvittens\?\.addEventListener\('change', uppdatera\)/);
+    const inst = las('../public/js/views/competition-settings.js');
+    const rad = inst.slice(inst.indexOf("#delete-comp').addEventListener"), inst.indexOf('await deleteCompetition(cid);'));
+    assert.match(rad, /overlamningsvarning\(await getOverlamning\(cid\)\)/, 'koden kan ha lösts in sedan sidan laddades');
+    assert.match(rad, /varning,/);
+    assert.ok(rad.indexOf('getOverlamning') < rad.indexOf('confirmHardDelete({'), 'varningen måste finnas innan dialogen öppnas');
+  });
+});

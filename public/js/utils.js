@@ -319,13 +319,24 @@ export function confirmDialog(message, { okLabel = 'Ta bort', danger = true } = 
 // raderade annars data utan kopia och utan spår — och "är du säker?" har
 // aldrig stoppat en stressad tumme. Backupen är obligatorisk med flit: den
 // är enda vägen tillbaka när raderingen ändå var fel.
-export function confirmHardDelete({ what, name, hint = '', onBackup }) {
+// `varning` ({ rubrik, rader[], kvittens }) lägger en röd ruta ÖVERST med en
+// egen kryssruta som måste bockas i. Backup + namn skyddar mot ett felklick;
+// varningen är till för när raderingen drabbar någon ANNAN än den som trycker
+// (t.ex. en tävling med överlämningskod), och då räcker inte en mening i
+// brödtexten — den läses inte av den som redan bestämt sig.
+export function confirmHardDelete({ what, name, hint = '', onBackup, varning = null }) {
   return new Promise(resolve => {
     const overlay = el('div', { class: 'modal-overlay' });
     const modal = el('div', { class: 'modal' });
     modal.innerHTML = `
       <div class="modal-head"><h3 style="color:var(--utm-pink);">Ta bort ${escapeHtml(what)}</h3></div>
       <div class="modal-body field-group">
+        ${varning ? `
+        <div class="hd-varning" role="alert">
+          <strong>${escapeHtml(varning.rubrik)}</strong>
+          ${(varning.rader || []).map(r => `<p>${escapeHtml(r)}</p>`).join('')}
+          <label><input type="checkbox" data-kvittens> <span>${escapeHtml(varning.kvittens)}</span></label>
+        </div>` : ''}
         <p style="margin:0;">Det här går inte att ångra.${hint ? ' ' + escapeHtml(hint) : ''}</p>
         <div class="hd-step">
           <div class="hd-step-head"><span class="hd-num">1</span> Ladda ner en färsk backup</div>
@@ -348,10 +359,12 @@ export function confirmHardDelete({ what, name, hint = '', onBackup }) {
     let backupKlar = false;
     const ok = modal.querySelector('[data-ok]');
     const inp = modal.querySelector('[data-name]');
+    const kvittens = modal.querySelector('[data-kvittens]');
     const uppdatera = () => {
-      ok.disabled = !(backupKlar && inp.value.trim() === String(name).trim());
+      ok.disabled = !(backupKlar && inp.value.trim() === String(name).trim() && (!kvittens || kvittens.checked));
     };
     inp.addEventListener('input', uppdatera);
+    kvittens?.addEventListener('change', uppdatera);
 
     modal.querySelector('[data-backup]').addEventListener('click', async (e) => {
       const b = e.currentTarget, st = modal.querySelector('[data-backup-status]');
