@@ -334,3 +334,113 @@ describe('radering av en tävling med överlämningskod varnar skarpt', () => {
     assert.ok(rad.indexOf('getOverlamning') < rad.indexOf('confirmHardDelete({'), 'varningen måste finnas innan dialogen öppnas');
   });
 });
+
+
+// ---------------------------------------------------------------------------
+// KODER SOM REDAN STÅR TRYCKTA.
+//
+// En överlämningskod skrivs ut i en tävlingsrapport och löses kanske in ett år
+// senare — av någon som aldrig sett ESKIL, med ett papper i handen. Allt här
+// nedan är därför ett LÖFTE till koder som redan finns i produktion, inte en
+// beskrivning av hur koden råkar se ut i dag. Parity-testerna ovan räcker
+// inte: de är gröna om webbläsaren och servern glider ÅT SAMMA HÅLL.
+//
+// Faller ett test här: ändra inte facit. Gör ändringen bakåtkompatibel
+// (läs båda formerna) eller migrera varje utestående kod först.
+// ---------------------------------------------------------------------------
+describe('koder som redan står tryckta går att lösa in', () => {
+  const las = (f) => readFileSync(new URL(f, import.meta.url), 'utf8');
+  // Facit räknat med rå sha256 över 'ABCDEFGH2345' — oberoende av vår kod.
+  const KOD = 'ABCD-EFGH-2345';
+  const HASH = '77485ffa630b96946173a2d8ecff374327af1d230aafd5f8c18ddf9177441900';
+
+  test('samma kod ger samma dokument-id som den dag den mintades', async () => {
+    assert.equal(cjs.kodHash(KOD), HASH);
+    assert.equal(await esmKod.kodHash(KOD), HASH);
+    // Så som folk skriver av den från ett papper.
+    for (const s of ['abcd-efgh-2345', ' ABCD EFGH 2345 ', 'abcdefgh2345', 'ABCD–EFGH–2345']) {
+      assert.equal(cjs.kodHash(s), HASH, s);
+      assert.equal(await esmKod.kodHash(s), HASH, s);
+    }
+  });
+
+  test('formen får vidgas men aldrig krympa: 2026 års koder är giltiga', () => {
+    assert.equal(esmKod.KOD_ALFABET, 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789');
+    assert.equal(cjs.KOD_ALFABET, esmKod.KOD_ALFABET);
+    for (const k of [KOD, 'ZZZZ-9999-AAAA', '2345-6789-BCDF']) {
+      assert.ok(esmKod.arGiltigKod(k), k);
+      assert.ok(cjs.arGiltigKod(k), k);
+    }
+  });
+
+  // En databas så som den SÅG UT hösten 2026 — skriven för hand och med flit
+  // inte härledd ur KALLA ovan: ändras fixturen tillsammans med koden döljer
+  // testet precis det brott det ska fånga. Lägg aldrig till fält här.
+  const db2026 = () => ({
+    [`overlamningskoder/${HASH}`]: { cid: 'ah26doc', skapad: '2026-10-13T08:00:00.000Z', skapadAv: 'anna@lindsdal.se' },
+    'competitions/ah26doc': {
+      name: 'Älghornsjakten 2026', shortName: 'Älghornsjakten', year: 2026, date: '2026-10-04', slug: 'ah26',
+      organizer: 'Lindsdals Scoutkår', district: 'smaland', closed: true, closedAt: '2026-10-12T10:00:00.000Z',
+      management: [{ id: 'tl', label: 'Tävlingsledare', visibility: 'public', ekonomi: false,
+        name: 'Anna Andersson', phone: '', email: 'anna@lindsdal.se' }],
+      registration: { enabled: false, methods: [{ type: 'swish', label: 'Swish', number: '123 456 78 90' }] }
+    },
+    'competitions/ah26doc/private/handover': { bra: 'Banan höll', mindreBra: '', forbattringar: 'Börja i juni',
+      sammanfattning: '', text: '', nyArrangor: true, bilder: [{ id: 'bron2026a', sektion: 'bra', bildtext: 'Bron' }] },
+    'competitions/ah26doc/private/utv-bild-bron2026a': { dataUrl: 'data:bron', sektion: 'bra' },
+    'competitions/ah26doc/private/overlamning': { kod: 'ABCDEFGH2345', skapad: '2026-10-13T08:00:00.000Z' },
+    'competitions/ah26doc/controls/c1': { nummer: 1, name: 'Spårkoll', maxPoang: 10, minPoang: 0, open: false, lat: 56.7, lng: 16.2 },
+    'competitions/ah26doc/controls/c2': { nummer: 2, name: 'Tidsloppet', tidtagning: true, maxPoang: 10, minPoang: 5, open: false },
+    'competitions/ah26doc/track/main': { speedKmh: 4, legs: { '__start__c1': [{ lat: 56.7, lng: 16.2 }], 'c1__c2': [{ lat: 56.71, lng: 16.21 }] } }
+  });
+
+  test('en kod ur 2026 års databas ger en tävling — med dagens kod', async () => {
+    const a = attrapp(db2026());
+    const ut = await cjs.losInKod(a.db, a.FieldValue, { kod: 'abcd efgh 2345', email: 'ny@oskarshamn.se', uid: 'uNy' });
+    const ny = `competitions/${ut.cid}`;
+    assert.equal(a.docs.get(ny).name, 'Älghornsjakten 2027');
+    assert.deepEqual(a.docs.get(`${ny}/private/access`).adminEmails, ['ny@oskarshamn.se']);
+    assert.equal([...a.docs.keys()].filter(k => k.startsWith(`${ny}/controls/`)).length, 2);
+    assert.equal(Object.keys(a.docs.get(`${ny}/track/main`).legs).length, 2);
+    assert.equal(a.docs.get(`${ny}/private/handover`).foregaende.forbattringar, 'Börja i juni');
+    assert.equal(a.docs.get(`${ny}/private/utv-bild-bron2026a`).dataUrl, 'data:bron');
+  });
+
+  test('en källa med bara ett namn — inga kontroller, inget spår, ingen utvärdering — ger ändå en tävling', async () => {
+    const a = attrapp({
+      [`overlamningskoder/${HASH}`]: { cid: 'mager', skapad: '2026-10-13', skapadAv: 'a@b.se' },
+      'competitions/mager': { name: 'Höstspåret 2026', closed: true }
+    });
+    const ut = await cjs.losInKod(a.db, a.FieldValue, { kod: KOD, email: 'ny@oskarshamn.se', uid: 'u' });
+    assert.ok(a.docs.get(`competitions/${ut.cid}`).name);
+    assert.deepEqual(a.docs.get(`competitions/${ut.cid}/private/access`).adminEmails, ['ny@oskarshamn.se']);
+  });
+
+  test('adressen på pappret finns kvar: rutt, rewrite, QR och serverns funktion', () => {
+    const app = las('../public/js/app.js');
+    assert.match(app, /route\('\/overlamning',/);
+    assert.match(app, /route\('\/overlamning\/:kod',/, 'QR-koden i rapporten pekar på /overlamning/<kod>');
+    const kallor = JSON.parse(las('../firebase.json')).hosting.rewrites.map(r => r.source);
+    assert.ok(kallor.includes('/overlamning') && kallor.includes('/overlamning/**'), 'utan rewrite är den tryckta adressen ett 404 i produktion');
+    assert.equal(esmUtv.OVERLAMNING_ADRESS, 'eskilscout.se/overlamning');
+    assert.match(las('../functions/index.js'), /exports\.losInOverlamningskod = onCall\(/);
+    assert.match(las('../public/js/views/overlamning.js'), /httpsCallable\(functions, 'losInOverlamningskod'\)/);
+    assert.match(las('../functions/overlamning.js'), /db\.doc\(`overlamningskoder\/\$\{kodHash\(kod\)\}`\)/);
+  });
+
+  test('löftet står i BÅDA instruktionsfilerna — en agent som bara läser den ena ska inte kunna missa det', () => {
+    const avsnitt = (f) => {
+      const t = las(f);
+      const i = t.indexOf('## ESKIL är LIVE');
+      assert.ok(i >= 0, `${f} saknar avsnittet`);
+      const slut = t.indexOf('\n## ', i + 1);
+      return (slut < 0 ? t.slice(i) : t.slice(i, slut)).trim();
+    };
+    const claude = avsnitt('../CLAUDE.md');
+    assert.match(claude, /Utestående överlämningskoder är ett löfte/);
+    assert.match(claude, /test\/overlamning\.test\.js/);
+    // Ordagrant lika: två versioner av ett löfte är två löften, och den som
+    // bara läser den ena filen följer då den som råkade bli kvar.
+    assert.equal(avsnitt('../AGENTS.md'), claude, 'avsnittet har glidit isär mellan AGENTS.md och CLAUDE.md');
+  });
+});
