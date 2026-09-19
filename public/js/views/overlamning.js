@@ -119,7 +119,10 @@ export function renderOverlamning(app, user, kodFranUrl = '') {
 
     withBusy(knapp, 'Skapar tävlingen…', async () => {
       try {
-        const res = await httpsCallable(functions, 'losInOverlamningskod')({ kod: normKod(kod) });
+        // Servern får arbeta i upp till fem minuter (en kopia med många bilder
+        // tar tid); webbläsarens standard är 70 s, och gav den upp först stod
+        // inlösaren med ett fel medan tävlingen skapades i bakgrunden.
+        const res = await httpsCallable(functions, 'losInOverlamningskod', { timeout: 310000 })({ kod: normKod(kod) });
         glomVantande();
         toast(`Tävlingen "${res.data.name}" är skapad`, 'success');
         navigate(`/app/c/${res.data.cid}/settings`);
@@ -127,6 +130,10 @@ export function renderOverlamning(app, user, kodFranUrl = '') {
         console.error(err);
         // Fel kod är användarens att rätta — glöm den, annars skickas de hit igen.
         if (err.code === 'functions/not-found') glomVantande();
+        if (err.code === 'functions/deadline-exceeded') {
+          visa('Det tog längre tid än väntat. Titta under <a href="/app" data-link>Tävlingar</a> om en stund — tävlingen kan ha skapats ändå. Finns den inte där: vänta en kvart och försök igen. Koden är inte förbrukad.', 'fel');
+          return;
+        }
         visa(escapeHtml(err.message || 'Tävlingen kunde inte skapas.'), 'fel');
       }
     });

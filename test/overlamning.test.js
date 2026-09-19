@@ -187,7 +187,8 @@ function attrapp(start = {}) {
   const db = {
     doc: ref, collection: col,
     batch: () => { const ops = []; return { set: (r, d) => ops.push(() => r.set(d)), commit: async () => { for (const o of ops) await o(); } }; },
-    runTransaction: async (fn) => fn({ get: (r) => r.get(), update: (r, d) => r.update(d), set: (r, d) => r.set(d) })
+    runTransaction: async (fn) => fn({ get: (r) => r.get(), update: (r, d) => r.update(d), set: (r, d) => r.set(d) }),
+    recursiveDelete: async (r) => { for (const k of [...docs.keys()]) if (k === r.path || k.startsWith(r.path + '/')) docs.delete(k); }
   };
   return { db, docs, FieldValue: { serverTimestamp: () => NU, delete: () => RADERA } };
 }
@@ -254,6 +255,8 @@ describe('inlösningen: en kod, en tävling', () => {
     a.db.collection = (p) => { if (p === 'competitions/kalla1/controls') return { get: async () => { throw new Error('nätet dog'); } }; return riktig(p); };
     await assert.rejects(() => cjs.losInKod(a.db, a.FieldValue, { kod: KOD, email: 'ny@oskarshamn.se', uid: 'u1' }), /nätet dog/);
     assert.equal(a.docs.get(`overlamningskoder/${cjs.kodHash(KOD)}`).anvand, undefined, 'koden står kvar som använd');
+    // Utvärderingen och bilderna hann skrivas före haveriet — de ska vara borta.
+    assert.deepEqual([...a.docs.keys()].filter(k => k.startsWith('competitions/auto')), [], 'en halv kopia ligger kvar');
     a.db.collection = riktig;
     const ut = await cjs.losInKod(a.db, a.FieldValue, { kod: KOD, email: 'ny@oskarshamn.se', uid: 'u1' });
     assert.ok(ut.cid);
@@ -276,7 +279,7 @@ describe('guiden i rapporten påstår bara det koden gör', () => {
     assert.match(las('../public/js/app.js'), /route\('\/overlamning\/:kod',/);
     const rw = JSON.parse(las('../firebase.json')).hosting.rewrites.map(r => r.source);
     assert.ok(rw.includes('/overlamning') && rw.includes('/overlamning/**'));
-    assert.match(las('../public/js/views/overlamning.js'), /httpsCallable\(functions, 'losInOverlamningskod'\)/);
+    assert.match(las('../public/js/views/overlamning.js'), /httpsCallable\(functions, 'losInOverlamningskod'[,)]/);
     assert.match(las('../functions/index.js'), /exports\.losInOverlamningskod = onCall\(/);
     assert.match(las('../public/js/rapport-pdf.js'), /https:\/\/\$\{OVERLAMNING_ADRESS\}\/\$\{kod\}/, 'QR-koden ska peka på inlösningssidan med koden ifylld');
   });
@@ -335,6 +338,139 @@ describe('radering av en tävling med överlämningskod varnar skarpt', () => {
   });
 });
 
+
+// ---------------------------------------------------------------------------
+// En reservation som ingen avslutar. Catch-grenen släpper koden om kopian
+// havererar — men en catch körs bara om processen lever. Dör funktionen mitt
+// i (tidsgräns, minne) låg `anvand.pagar` förut kvar för alltid: koden bränd,
+// ingen tävling, och den som stod med pappret fick "redan använd".
+// ---------------------------------------------------------------------------
+describe('en reservation som ingen avslutar bränner inte koden', () => {
+  const KOD = 'ABCD-EFGH-2345';
+  const NU = Date.UTC(2027, 8, 1, 12, 0, 0);
+  const MIN = 60 * 1000;
+  const nyckel = `overlamningskoder/${cjs.kodHash(KOD)}`;
+  const grund = (anvand) => ({
+    [nyckel]: { cid: 'kalla1', skapad: '2026-10-13', skapadAv: 'anna@lindsdal.se', ...(anvand ? { anvand } : {}) },
+    'competitions/kalla1': { ...KALLA, id: undefined },
+    'competitions/kalla1/private/handover': UTV[2],
+    'competitions/kalla1/private/utv-bild-bildbra01': { dataUrl: 'data:bra', sektion: 'bra' },
+    'competitions/kalla1/controls/k1': KONTROLLER[0],
+    'competitions/kalla1/track/main': { speedKmh: 5, legs: SPAR }
+  });
+  const tavlingar = (a) => [...a.docs.keys()].filter(k => /^competitions\/(?!kalla1)[^/]+$/.test(k));
+  const losIn = (a, extra = {}) => cjs.losInKod(a.db, a.FieldValue, { kod: KOD, email: 'ny@oskarshamn.se', uid: 'uNy', nu: NU, ...extra });
+
+  test('livslängden är längre än funktionen kan leva — annars kan en LEVANDE inlösning tas över', () => {
+    assert.ok(cjs.RESERVATION_TTL_MS >= cjs.INLOSNING_TIMEOUT_S * 1000 * 2,
+      'en reservation får inte räknas som död medan funktionen som skrev den kan vara vid liv');
+    const index = readFileSync(new URL('../functions/index.js', import.meta.url), 'utf8');
+    assert.match(index, /losInOverlamningskod = onCall\(\{ timeoutSeconds: overlamning\.INLOSNING_TIMEOUT_S \}/,
+      'funktionens tidsgräns och reservationens livslängd måste komma ur samma fil');
+  });
+
+  test('en FÄRSK reservation respekteras — och felet säger att koden inte är förbrukad', async () => {
+    const a = attrapp(grund({ at: 'NU', pagar: true, sedan: NU - 2 * MIN, pagarCid: 'annan', av: 'ny@oskarshamn.se' }));
+    await assert.rejects(() => losIn(a), (e) => e instanceof cjs.KodUpptagen && /inte förbrukad/.test(e.message));
+    assert.deepEqual(tavlingar(a), []);
+    assert.equal(a.docs.get(nyckel).anvand.pagarCid, 'annan', 'den pågående inlösningens reservation skrevs över');
+  });
+
+  test('en reservation från koden FÖRE ändringen (utan ålder) räknas som hängande', async () => {
+    const a = attrapp(grund({ at: 'NU', pagar: true }));
+    const ut = await losIn(a);
+    assert.equal(a.docs.get(nyckel).anvand.nyCid, ut.cid);
+    assert.equal(tavlingar(a).length, 1);
+  });
+
+  test('en gammal reservation med en HALV kopia: halvan städas, en hel tävling skapas', async () => {
+    const a = attrapp({
+      ...grund({ at: 'NU', pagar: true, sedan: NU - 20 * MIN, pagarCid: 'halv', av: 'ny@oskarshamn.se' }),
+      // Det förra försöket hann med utvärderingen och en kontroll, sedan dog det.
+      'competitions/halv/private/handover': { text: 'x' },
+      'competitions/halv/controls/c9': { nummer: 1 }
+    });
+    const ut = await losIn(a);
+    assert.notEqual(ut.cid, 'halv');
+    assert.deepEqual([...a.docs.keys()].filter(k => k.startsWith('competitions/halv')), [], 'den halva kopian ligger kvar');
+    assert.deepEqual(tavlingar(a), [`competitions/${ut.cid}`]);
+    assert.equal(ut.kontroller, 1);
+  });
+
+  test('en gammal reservation vars kopia blev KLAR: samma inlösare får SIN tävling, ingen dubblett', async () => {
+    const a = attrapp({
+      ...grund({ at: 'NU', pagar: true, sedan: NU - 20 * MIN, pagarCid: 'klar27', av: 'ny@oskarshamn.se' }),
+      'competitions/klar27': { name: 'Älghornsjakten 2027', admins: ['uNy'] },
+      'competitions/klar27/controls/c1': { nummer: 1 },
+      'competitions/klar27/controls/c2': { nummer: 2 }
+    });
+    const ut = await losIn(a);
+    assert.deepEqual(ut, { cid: 'klar27', name: 'Älghornsjakten 2027', fran: 'Älghornsjakten 2026', kontroller: 2 });
+    assert.deepEqual(tavlingar(a), ['competitions/klar27']);
+    assert.equal(a.docs.get(nyckel).anvand.nyCid, 'klar27');
+    assert.equal(a.docs.get(nyckel).anvand.pagar, undefined);
+    assert.deepEqual([a.docs.get('competitions/kalla1/private/overlamning').anvand.av, a.docs.get('competitions/kalla1/private/overlamning').anvand.nyCid],
+      ['ny@oskarshamn.se', 'klar27'], 'den gamla arrangören ser inte att koden lösts in');
+  });
+
+  test('…och någon ANNAN får "redan använd" — men koden bokförs som inlöst av den första', async () => {
+    const a = attrapp({
+      ...grund({ at: 'NU', pagar: true, sedan: NU - 20 * MIN, pagarCid: 'klar27', av: 'ny@oskarshamn.se' }),
+      'competitions/klar27': { name: 'Älghornsjakten 2027', admins: ['uNy'] }
+    });
+    await assert.rejects(() => losIn(a, { email: 'annan@example.se', uid: 'uAnnan' }),
+      (e) => e instanceof cjs.KodFel && !(e instanceof cjs.KodUpptagen));
+    assert.deepEqual(tavlingar(a), ['competitions/klar27']);
+    assert.equal(a.docs.get(nyckel).anvand.nyCid, 'klar27');
+    assert.equal(a.docs.get('competitions/kalla1/private/overlamning').anvand.av, 'ny@oskarshamn.se');
+    // Och den klara tävlingen är orörd — städningen får aldrig röra en tävling som finns.
+    assert.deepEqual(a.docs.get('competitions/klar27'), { name: 'Älghornsjakten 2027', admins: ['uNy'] });
+  });
+
+  test('tävlingsdokumentet skrivs SIST: dör kopian finns ingen halv tävling att se', async () => {
+    const a = attrapp(grund());
+    const ordning = [];
+    const riktigDoc = a.db.doc, riktigCol = a.db.collection;
+    const spana = (r) => ({ ...r, set: async (d, o) => { ordning.push(r.path); return r.set(d, o); },
+      collection: (n) => { const c = r.collection(n); return { ...c, doc: (id) => spana(c.doc(id)) }; } });
+    a.db.collection = (p) => { const c = riktigCol(p); return { ...c, doc: (id) => spana(c.doc(id)) }; };
+    a.db.doc = (p) => spana(riktigDoc(p));
+    const ut = await losIn(a);
+    const egna = ordning.filter(p => p.startsWith(`competitions/${ut.cid}`));
+    assert.equal(egna.at(-1), `competitions/${ut.cid}`, `tävlingsdokumentet skrevs inte sist: ${egna.join(', ')}`);
+    assert.equal(egna.at(-2), `competitions/${ut.cid}/private/access`);
+  });
+
+  test('ett fel i BOKFÖRINGEN släpper inte koden — tävlingen finns, och då vore den inlösbar en gång till', async () => {
+    const a = attrapp(grund());
+    const riktigDoc = a.db.doc;
+    a.db.doc = (p) => {
+      const r = riktigDoc(p);
+      if (p !== nyckel) return r;
+      return { ...r, update: async (d) => { if (d.anvand && d.anvand.nyCid) throw new Error('nätet dog'); return r.update(d); } };
+    };
+    const ut = await losIn(a);
+    assert.ok(ut.cid, 'inlösaren har sin tävling och ska inte få ett fel');
+    const kvar = a.docs.get(nyckel).anvand;
+    assert.ok(kvar && kvar.pagar === true && kvar.pagarCid === ut.cid, 'reservationen ska ligga kvar och peka på den färdiga tävlingen');
+    // Nästa försök, efter livslängden: bokför den färdiga, skapar ingen ny.
+    a.db.doc = riktigDoc;
+    const igen = await losIn(a, { nu: NU + 20 * MIN });
+    assert.equal(igen.cid, ut.cid);
+    assert.equal(tavlingar(a).length, 1);
+    assert.equal(a.docs.get(nyckel).anvand.nyCid, ut.cid);
+  });
+
+  test('servern skiljer upptagen från fel kod, och sidan glömmer bara koden vid fel kod', () => {
+    const index = readFileSync(new URL('../functions/index.js', import.meta.url), 'utf8');
+    const i = index.indexOf('instanceof overlamning.KodUpptagen'), j = index.indexOf('instanceof overlamning.KodFel)');
+    assert.ok(i > 0 && i < j, 'KodUpptagen ärver KodFel — prövas den inte först blir den "fel kod"');
+    const vy = readFileSync(new URL('../public/js/views/overlamning.js', import.meta.url), 'utf8');
+    assert.match(vy, /httpsCallable\(functions, 'losInOverlamningskod', \{ timeout: 310000 \}\)/,
+      'webbläsarens standard är 70 s — kortare än servern får arbeta');
+    assert.match(vy, /functions\/deadline-exceeded/);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // KODER SOM REDAN STÅR TRYCKTA.
@@ -424,7 +560,7 @@ describe('koder som redan står tryckta går att lösa in', () => {
     assert.ok(kallor.includes('/overlamning') && kallor.includes('/overlamning/**'), 'utan rewrite är den tryckta adressen ett 404 i produktion');
     assert.equal(esmUtv.OVERLAMNING_ADRESS, 'eskilscout.se/overlamning');
     assert.match(las('../functions/index.js'), /exports\.losInOverlamningskod = onCall\(/);
-    assert.match(las('../public/js/views/overlamning.js'), /httpsCallable\(functions, 'losInOverlamningskod'\)/);
+    assert.match(las('../public/js/views/overlamning.js'), /httpsCallable\(functions, 'losInOverlamningskod'[,)]/);
     assert.match(las('../functions/overlamning.js'), /db\.doc\(`overlamningskoder\/\$\{kodHash\(kod\)\}`\)/);
   });
 

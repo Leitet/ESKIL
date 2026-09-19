@@ -49,7 +49,12 @@ brytas, och varför:
    VIDGAS (fler tecken, längre koder bredvid) men aldrig krympa:
    `arGiltigKod()` är första raden i inlösningen, och en skärpning där avvisar
    2026 års koder innan uppslagningen ens görs. `anvand` är enda spärren mot
-   dubbel inlösning — byt aldrig dess betydelse.
+   dubbel inlösning och har tre lägen — byt aldrig deras betydelse: saknas =
+   ledig; `{pagar, sedan, pagarCid, av}` = en RESERVATION som dör av sig själv
+   efter en kvart; `{at, nyCid}` = inlöst. Inget får någonsin göra en kod
+   obrukbar utan att en tävling finns: en reservation som aldrig släpps är en
+   bränd kod, och det var den en gång (funktionen dog mitt i kopian, och ingen
+   catch körs i en död process).
 2. **Adressen står på papper.** `eskilscout.se/overlamning` och QR-kodens
    `/overlamning/<kod>`: rutterna i app.js, deras rewrites i firebase.json och
    den anropbara funktionen `losInOverlamningskod`. En omdöpt rutt är ett 404

@@ -612,7 +612,9 @@ const RESEND_MAX_PER_DAY = 5;
 // en tävling åt ingen och bränt koden, och vem som helst med koden hade kunnat
 // skapa tävlingar åt andra.
 const OVERLAMNING_MAX_PER_DAG = 20;
-exports.losInOverlamningskod = onCall(async (req) => {
+// Tidsgränsen är satt i overlamning.js bredvid reservationens livslängd: en
+// reservation räknas som död först när den är äldre än funktionen KAN leva.
+exports.losInOverlamningskod = onCall({ timeoutSeconds: overlamning.INLOSNING_TIMEOUT_S }, async (req) => {
   const email = String(req.auth?.token?.email || '').trim().toLowerCase();
   if (!req.auth?.uid || !email || req.auth.token.email_verified === false) {
     throw new HttpsError('unauthenticated', 'Logga in med din e-postadress först.');
@@ -635,6 +637,9 @@ exports.losInOverlamningskod = onCall(async (req) => {
     logger.info(`Överlämningskod inlöst: ny tävling ${ut.cid} (${ut.kontroller} kontroller)`);
     return { ok: true, ...ut };
   } catch (e) {
+    // Upptagen FÖRST (den ärver KodFel): koden är rätt, så sidan ska inte
+    // glömma den som den gör vid 'not-found'.
+    if (e instanceof overlamning.KodUpptagen) throw new HttpsError('unavailable', e.message);
     if (e instanceof overlamning.KodFel) throw new HttpsError('not-found', e.message);
     logger.error('Överlämningskoden kunde inte lösas in', e);
     throw new HttpsError('internal', 'Tävlingen kunde inte skapas. Försök igen om en stund — koden är inte förbrukad.');

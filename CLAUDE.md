@@ -34,7 +34,12 @@ brytas, och varför:
    VIDGAS (fler tecken, längre koder bredvid) men aldrig krympa:
    `arGiltigKod()` är första raden i inlösningen, och en skärpning där avvisar
    2026 års koder innan uppslagningen ens görs. `anvand` är enda spärren mot
-   dubbel inlösning — byt aldrig dess betydelse.
+   dubbel inlösning och har tre lägen — byt aldrig deras betydelse: saknas =
+   ledig; `{pagar, sedan, pagarCid, av}` = en RESERVATION som dör av sig själv
+   efter en kvart; `{at, nyCid}` = inlöst. Inget får någonsin göra en kod
+   obrukbar utan att en tävling finns: en reservation som aldrig släpps är en
+   bränd kod, och det var den en gång (funktionen dog mitt i kopian, och ingen
+   catch körs i en död process).
 2. **Adressen står på papper.** `eskilscout.se/overlamning` och QR-kodens
    `/overlamning/<kod>`: rutterna i app.js, deras rewrites i firebase.json och
    den anropbara funktionen `losInOverlamningskod`. En omdöpt rutt är ett 404
@@ -1251,6 +1256,29 @@ BÅDA ställena.
   3. **Koden tas i en transaktion och SLÄPPS om kopian havererar.** Två
      samtidiga inlösningar får inte ge två tävlingar, och ett nätfel får inte
      bränna koden. Båda testade mot en databasattrapp.
+     **Men en catch körs bara i en process som lever.** Dör funktionen mitt i
+     kopian (tidsgräns, minne) låg reservationen förut kvar för alltid — koden
+     bränd, ingen tävling. Reservationen har därför en ÅLDER (`sedan`,
+     funktionens klocka — en serverTimestamp går inte att räkna på i samma
+     transaktion) och räknas som död efter `RESERVATION_TTL_MS`. Den MÅSTE
+     vara längre än funktionen kan leva (`INLOSNING_TIMEOUT_S`, samma fil, och
+     index.js läser den därifrån) — annars tas en LEVANDE inlösning över och
+     det blir två tävlingar. Ett test kräver dubbel marginal. En reservation
+     utan `sedan` är skriven före ändringen och räknas som hängande.
+     **Tävlingsdokumentet skrivs SIST och är kvittot på en hel kopia.** Förut
+     skrevs det först, så en död funktion lämnade en halv tävling synlig i
+     inlösarens lista (uid:t står i `admins`). Nu finns en tävling hel eller
+     inte alls, och nästa försök frågar efter just det dokumentet
+     (`pagarCid`): finns det bokförs den färdiga tävlingen — samma inlösare
+     (`av`) får den tillbaka, alla andra får "redan använd" — och finns det
+     inte städas halvan (`stadaHalvKopia`, som ALDRIG rör ett id vars
+     tävlingsdokument finns) och en ny kopia görs. Ett fel i BOKFÖRINGEN efter
+     att tävlingen finns släpper inte koden och blir inget fel för inlösaren:
+     förut gav det en kod som gick att lösa in en gång till.
+     En färsk reservation svarar `KodUpptagen` → `unavailable`, inte
+     `not-found` — sidan glömmer den väntande koden vid "fel kod", och den här
+     koden är rätt. Webbläsarens anrop har `timeout: 310000`; standarden är
+     70 s, kortare än servern får arbeta.
   4. **`overlamningskoder/{sha256}` har `list: false` och `update: false` även
      för admin.** Klartexten ligger i tävlingens `private/overlamning` (den ska
      stå i rapporten; efter avslut är medlemmarna bara admins). Kunde en klient
