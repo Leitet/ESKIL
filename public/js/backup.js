@@ -20,8 +20,9 @@ import {
   getCompetition, listPatrols, listControls, listAllScores, listRegistrations,
   listStations, listUtskick, getTrack, createCompetition,
   getControlMeta, getPatrolMeta, setControlMeta, setPatrolMeta,
-  listSelfPassages, getHandover
+  listSelfPassages, getHandover, dumpaUtvarderingBilder, skrivUtvarderingBilder
 } from './store.js';
+import { utvarderingBildIds } from './utvardering.js';
 import { rankPatrols } from './utils.js';
 
 // v2 adds control/patrol private meta (telefon, notering). Imports still
@@ -30,7 +31,7 @@ import { rankPatrols } from './utils.js';
 // handover document. Båda raderas av deleteCompetition, och sedan
 // raderingsskyddet KRÄVER en färsk backup är det backupen som avgör om de
 // går att få tillbaka. Imports still accept v1/v2 dumps.
-export const BACKUP_VERSION = 4;
+export const BACKUP_VERSION = 5;
 
 // --- Timestamp-safe (de)serialization -----------------------------------------
 
@@ -82,6 +83,9 @@ export async function dumpCompetition(cid) {
     getHandover(cid).catch(() => null)
   ]);
   if (!comp) throw new Error('Tävlingen hittades inte.');
+  const handoverBilder = handover
+    ? await dumpaUtvarderingBilder(cid, utvarderingBildIds(handover)).catch(() => [])
+    : [];
 
   const scoresByCtrl = {};
   for (const s of scores) (scoresByCtrl[s.controlId] ||= []).push(s);
@@ -131,7 +135,10 @@ export async function dumpCompetition(cid) {
     utskick,
     track,
     selfPassages,
-    handover
+    handover,
+    // Utvärderingens bilder (version 5): en doc per bild i private/utv-bild-*.
+    // deleteCompetition sveper dem, alltså måste backupen bära dem.
+    handoverBilder
   });
 }
 
@@ -232,6 +239,7 @@ export async function importCompetitionBackup(rawDump, user) {
   if (dump.handover) {
     await setDoc(doc(db, 'competitions', newCid, 'private', 'handover'), dump.handover);
   }
+  if (Array.isArray(dump.handoverBilder)) await skrivUtvarderingBilder(newCid, dump.handoverBilder);
   return newCid;
 }
 

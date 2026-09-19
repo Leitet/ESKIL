@@ -177,6 +177,15 @@ att köra gratis på Spark-planen.
   (`autoReleaseControls`) släpper öppna publika sidor banan av sig själva
   5 min före första patrullens starttid på tävlingsdatumet (kräver datum +
   starttider); kartans bildtext visar när.
+- **Utvärdering och tävlingsrapport** (Inställningar → Grund): fyra delar —
+  vad som fungerade bra, mindre bra, förbättringsförslag och en kort
+  sammanfattning — med bilder per del, plus de löpande anteckningarna som
+  följer med år från år. Sparas i ESKIL och visas i nästa årgång som "förra
+  årets utvärdering". "Ladda ner tävlingsrapport" bygger en PDF i webbläsaren:
+  försättsblad, utvärderingen, bankarta med planerad mot verklig tid sträcka
+  för sträcka, kontrollerna med instruktioner och utfall, anmälningsstatistik,
+  start- och måltider, kompletta resultat, dagens meddelanden och logg samt
+  inställningarna. Ta ut den före avslut — avslutet gallrar ledningens namn.
 - **Publicerad startlista** (starttider på + "Visa starttiderna" på): kårerna
   planerar resor efter den, så en borttagen patrull lämnar en **lucka** — en
   tom starttid som visas som en egen rad — i stället för att flytta de andra,
@@ -431,6 +440,9 @@ public/
     places.js           # Intressepunkter (sort, symbol, färg) + kartritning
     place-modal.js      # Delad redigeringsdialog för en plats på kartan
     laget-core.js       # Lägets härledning (kö, tryck, tystnad) — delas med MCP
+    utvardering.js      # Utvärdering och överlämning — ren modell (delar, bilder, årgångskopia)
+    rapport-stat.js     # Tävlingsrapportens siffror (anmälningar, tider, kontroller, sträckor)
+    rapport-pdf.js      # Tävlingsrapporten (PDF) — ritar bara; delar resultatdelen med results-export.js
     seo.js              # Metadata per rutt (canonical, description, OG, noindex)
     mcp-klienter.js     # Katalog: hur varje LLM-klient kopplar in MCP-servern
     utils.js            # Hjälpare (inkl. prisberäkning + Swish-QR-payload)

@@ -1092,9 +1092,40 @@ BÅDA ställena.
   the competition silently drops out of the grouping on /app. Districts have
   no official colours (Scouterna's palette belongs to the age groups); the
   dot next to a district name is a scanability aid derived from the id.
-- `.../private/handover` — överlämningsdokument for next year's ledning
-  (free text; members read/admins write via the existing private/{doc}
-  rule). copyCompetition carries it over to the new year.
+- `.../private/handover` — **utvärdering och överlämning** (Inställningar →
+  Grund, `views/utvardering.js`; ren modell i `utvardering.js`). Fyra delar —
+  `bra`, `mindreBra`, `forbattringar`, `sammanfattning` — plus det GAMLA
+  fritextfältet `text`, som lever kvar som "Löpande anteckningar". Samma
+  dokument som förut: ett dokument med bara `text` är en giltig utvärdering med
+  fyra tomma delar, så inget behövde migreras. **Varje skrivning går via
+  `sparaUtvardering()` med `{ merge: true }`** — `setHandover` var en setDoc
+  utan merge och hade sopat de nya fälten vid varje sparning; den delegerar
+  numera. Källtestat. Bilderna ryms inte i dokumentet (1 MiB): en doc per bild
+  i `private/utv-bild-<id>` (täcks av private/{doc}-regeln, sveps av
+  deleteCompetition som redan tömmer hela private), med indexet `bilder:
+  [{id, sektion, bildtext}]` i handover-dokumentet. Indexet skrivs DIREKT när
+  en bild läggs till och FÖRE bildens radering — en föräldralös bild är skräp,
+  en indexrad utan bild syns som "bilden saknas"; ingetdera förstör något.
+  **Årgångskopian transformerar** (`utvarderingForNastaAr`): årets fyra delar
+  blir kopians `foregaende` (skrivskyddat, förbättringsförslagen överst),
+  `text` bärs vidare, bilderna kopieras med samma id:n; har årets ledning inte
+  skrivit något bärs den äldre `foregaende` vidare. Backupen bär bilderna
+  (`handoverBilder`, BACKUP_VERSION 5). Utvärderingen LIGGER KVAR vid
+  closeCompetition — den är skriven för nästa år — och formuläret säger därför
+  ifrån om personuppgifter och igenkännbara scouter (står i /integritet).
+  Skrivskyddet följer inte `closed`: utvärderingen skrivs efteråt.
+  **Tävlingsrapporten (`rapport-pdf.js`, `byggTavlingsrapport`) RITAR bara.**
+  Siffrorna räknas i `rapport-stat.js` (testad), resultatdelen är
+  `ritaResultat()` i results-export.js — SAMMA kod som den officiella
+  resultat-PDF:en, så de kan aldrig säga olika saker — kartan är
+  `courseMapDataUrl` och sträcktiderna `courseEtaCalibrated`. Rapporten bär
+  ledningens namn och e-post, inklusive interna roller, men ALDRIG telefon
+  (den sprids vidare; ett test förbjuder fältet i filen). Patrullernas tider
+  har samma företräde som Läget: funktionär > själv > härlett. Fritext går
+  genom `ren()`: jsPDF:s standardtypsnitt är WinAnsi, och en emoji ur en
+  utvärderingstext blir annars skräptecken som förskjuter raden. Rapporten
+  ska tas ut FÖRE avslut (avslutet gallrar ledningens namn och loggen) —
+  avslutsdialogen erbjuder den bredvid backupen.
 - `.../track/main` — the drawn course ("Spår" tab): waypoints per leg keyed
   `<fromKey>__<toKey>` plus `speedKmh`. The leg sequence itself is derived
   from control number order at render time, never stored. Publicly readable

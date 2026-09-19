@@ -384,6 +384,36 @@ table.t tr.start-lucka .lucka-text {
   display: inline-flex; align-items: center; gap: 6px;
   margin-right: 12px; font-style: italic;
 }
+/* Utvärdering och överlämning */
+.utv-sektion { margin-top: var(--sp-5); }
+.utv-sektion .field { display: flex; align-items: center; gap: 8px; }
+.utv-nr {
+  display: inline-grid; place-items: center; width: 22px; height: 22px; flex: none;
+  border-radius: 50%; background: var(--scout-blue); color: #fff;
+  font-size: 12px; font-weight: 700;
+}
+.utv-avdelare { border-top: 1px solid var(--border); margin-top: var(--sp-6); }
+.utv-bilder { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin: 10px 0 6px; }
+.utv-bilder:empty { display: none; }
+.utv-bild { margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.utv-bild img {
+  width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block;
+  border-radius: 8px; border: 1px solid var(--border); background: #f4f6f8;
+}
+.utv-bild figcaption { font-size: 13px; color: var(--fg2); }
+.utv-bild .input { padding: 6px 8px; font-size: 13px; }
+.utv-bild-saknas {
+  aspect-ratio: 4 / 3; display: grid; place-items: center; border-radius: 8px;
+  border: 1px dashed var(--border); color: var(--fg3); font-size: 13px;
+}
+.utv-foregaende {
+  border: 1px solid var(--border); border-left: 4px solid var(--scout-blue);
+  border-radius: 8px; padding: 12px 14px; margin-top: var(--sp-4); background: var(--scout-blue-50, #f3f7fb);
+}
+.utv-foregaende summary { cursor: pointer; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.utv-foreg-rubrik { margin: 14px 0 4px; font-size: 14px; color: var(--scout-blue); }
+.utv-foreg-text { margin: 0; white-space: normal; }
+
 .startlista-banner {
   display: flex; gap: 12px; align-items: flex-start;
   padding: 12px 14px; margin: 0 0 var(--sp-4);

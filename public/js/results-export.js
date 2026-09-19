@@ -14,7 +14,7 @@ import { courseLegs, courseDistance, fmtDist, fmtMin } from './course.js';
 // --- Shared computation --------------------------------------------------------
 
 // scores: flat list with {controlId, patrolId, poang, extraPoang, ...}
-function computeTotals(patrols, scores) {
+export function computeTotals(patrols, scores) {
   const map = {};
   for (const p of patrols) map[p.id] = { ...p, total: 0, extra: 0, count: 0, perControl: {} };
   for (const s of scores) {
@@ -29,7 +29,7 @@ function computeTotals(patrols, scores) {
   return Object.values(map);
 }
 
-function karRows(ranked) {
+export function karRows(ranked) {
   const byKar = {};
   for (const t of ranked) {
     const k = t.kar || '(Okänd)';
@@ -42,7 +42,7 @@ function karRows(ranked) {
   return rankKarer(Object.values(byKar).map(r => ({ ...r, grand: r.total + r.extra })));
 }
 
-function fileStem(comp) {
+export function fileStem(comp) {
   return `${(comp.shortName || comp.name || 'resultat')}-${comp.year || ''}`
     .toLowerCase().replace(/[^a-z0-9åäö]+/gi, '-').replace(/^-|-$/g, '');
 }
@@ -83,7 +83,7 @@ export function downloadResultsCsv(comp, patrols, controls, scores) {
 
 // --- PDF -----------------------------------------------------------------------
 
-function banner(pdf, W, comp, subtitle) {
+export function banner(pdf, W, comp, subtitle) {
   pdf.setFillColor(BLUE);
   pdf.rect(0, 0, W, 34, 'F');
   pdf.setTextColor(YELLOW);
@@ -105,7 +105,7 @@ function banner(pdf, W, comp, subtitle) {
   }
 }
 
-function footer(pdf, W, H) {
+export function footer(pdf, W, H) {
   pdf.setFont('helvetica', 'normal');
   pdf.setFontSize(8);
   pdf.setTextColor('#8a8a8a');
@@ -114,7 +114,7 @@ function footer(pdf, W, H) {
 }
 
 // Section heading; returns new y.
-function heading(pdf, y, text, color = BLUE) {
+export function heading(pdf, y, text, color = BLUE) {
   pdf.setFont('helvetica', 'bold');
   pdf.setFontSize(13);
   pdf.setTextColor(color);
@@ -123,7 +123,7 @@ function heading(pdf, y, text, color = BLUE) {
 }
 
 // Simple table renderer with page breaks. cols: [{label, w, align?, get}]
-function table(pdf, ctx, y, cols, rows, { highlightTop3 = false } = {}) {
+export function table(pdf, ctx, y, cols, rows, { highlightTop3 = false } = {}) {
   const { W, H, comp } = ctx;
   const x0 = 15;
   const drawHead = (yy) => {
@@ -168,7 +168,7 @@ function table(pdf, ctx, y, cols, rows, { highlightTop3 = false } = {}) {
   return y + 4;
 }
 
-function patrolCols(withAvd = true) {
+export function patrolCols(withAvd = true) {
   return [
     { label: '#', w: 10, get: r => r.rank, bold: true },
     { label: 'Patrull', w: withAvd ? 44 : 56, get: r => `${r.name || ''}`.slice(0, 30), bold: true },
@@ -181,23 +181,12 @@ function patrolCols(withAvd = true) {
   ];
 }
 
-// The official results + post mortem archive in one document:
-//   Resultat overall → per avdelning → per kår → utslagsfrågor →
-//   kontrollerna i siffror → tävlingsfakta & ledning → placeringsregler.
-export async function downloadResultsPdf(comp, patrols, controls, scores, registrations = null) {
-  await ensureLibs();
-  const { jsPDF } = window.jspdf;
-  const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
-  const W = pdf.internal.pageSize.getWidth();
-  const H = pdf.internal.pageSize.getHeight();
-  const ctx = { W, H, comp, subtitle: 'Officiella resultat' };
-
-  const totals = computeTotals(patrols, scores);
-  const ranked = rankPatrols(totals, controls).map(r => ({ ...r, _rank: r.rank }));
-
-  banner(pdf, W, comp, 'Officiella resultat');
-  let y = 46;
-
+// Resultatdelen — Overall, per avdelning, per kår och utslagsfrågorna. EN
+// implementation: både den officiella resultat-PDF:en och tävlingsrapporten
+// (rapport-pdf.js) ritar den härifrån, så att de aldrig kan säga olika saker.
+// Returnerar nytt y. `ctx.subtitle` avgör bannern på varje ny sida.
+export function ritaResultat(pdf, ctx, y, { patrols, controls, totals, ranked }) {
+  const { W, H, comp } = ctx;
   // Overall
   y = heading(pdf, y, 'Overall — samtliga patruller');
   y = table(pdf, ctx, y + 4, patrolCols(true), ranked, { highlightTop3: true });
@@ -250,6 +239,25 @@ export async function downloadResultsPdf(comp, patrols, controls, scores, regist
       ], uRows);
     } else { y += 8; }
   }
+  return y;
+}
+
+// The official results + post mortem archive in one document:
+//   Resultat overall → per avdelning → per kår → utslagsfrågor →
+//   kontrollerna i siffror → tävlingsfakta & ledning → placeringsregler.
+export async function downloadResultsPdf(comp, patrols, controls, scores, registrations = null) {
+  await ensureLibs();
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
+  const W = pdf.internal.pageSize.getWidth();
+  const H = pdf.internal.pageSize.getHeight();
+  const ctx = { W, H, comp, subtitle: 'Officiella resultat' };
+
+  const totals = computeTotals(patrols, scores);
+  const ranked = rankPatrols(totals, controls).map(r => ({ ...r, _rank: r.rank }));
+
+  banner(pdf, W, comp, 'Officiella resultat');
+  let y = ritaResultat(pdf, ctx, 46, { patrols, controls, totals, ranked });
 
   // --- Post mortem: tävlingen i siffror -------------------------------------
   footer(pdf, W, H);

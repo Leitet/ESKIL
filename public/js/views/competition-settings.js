@@ -371,6 +371,11 @@ function renderBasicTab(comp, cid, refresh, readOnly, isSuperAdmin, user) {
                 <p class="muted t-sm" style="margin:4px 0 10px;">En backup tagen efter avslutet saknar det som gallras. Senaste backup: <strong id="cl-last">${fmtBackup(comp.lastBackupAt)}</strong>.</p>
                 <button class="btn btn-secondary btn-sm" id="cl-backup">${icon('download', { size: 14 })} Ladda ner backup + export (ZIP)</button>
               </div>
+              <div style="border:1px solid var(--border);border-left:3px solid var(--scout-blue);border-radius:10px;padding:12px 14px;margin-top:10px;">
+                <strong>Ta ut tävlingsrapporten också</strong>
+                <p class="muted t-sm" style="margin:4px 0 10px;">Rapporten (PDF) samlar utvärderingen, banan, kontrollerna, anmälningarna och resultaten. Efter avslutet saknar den ledningens namn och sekretariatets logg. Utvärderingen själv går att skriva även efteråt.</p>
+                <button class="btn btn-secondary btn-sm" id="cl-rapport">${icon('file-text', { size: 14 })} Ladda ner tävlingsrapport (PDF)</button>
+              </div>
             </div>
             <div class="modal-foot">
               <button class="btn btn-ghost" id="cl-cancel">Avbryt</button>
@@ -391,6 +396,15 @@ function renderBasicTab(comp, cid, refresh, readOnly, isSuperAdmin, user) {
             if (el) el.textContent = fmtBackup(at);
             toast('Exporten laddas ner', 'success');
           } catch (err) { console.error(err); toast('Fel: ' + err.message, 'error'); }
+        }));
+        overlay.querySelector('#cl-rapport').addEventListener('click', (e) => withBusy(e.currentTarget, 'Samlar underlag…', async () => {
+          try {
+            const btn = e.currentTarget;
+            const label = btn.querySelector('.busy-label') || btn;
+            const { byggTavlingsrapport } = await import('../rapport-pdf.js');
+            await byggTavlingsrapport({ cid, comp, user }, { onProgress: (t) => { label.textContent = t; } });
+            toast('Tävlingsrapporten skapad', 'success');
+          } catch (err) { console.error(err); toast('Kunde inte skapa rapporten: ' + err.message, 'error'); }
         }));
         overlay.querySelector('#cl-confirm').addEventListener('click', (e) => withBusy(e.currentTarget, 'Avslutar…', async () => {
           try {
@@ -481,39 +495,19 @@ function renderBasicTab(comp, cid, refresh, readOnly, isSuperAdmin, user) {
     host.appendChild(copyCard);
   }
 
-  // Överlämning — ledningens fria anteckningar till nästa års ledning.
-  // Ligger i private/handover (medlemmar läser, admins skriver) och följer
-  // med automatiskt när tävlingen kopieras till en ny årgång.
+  // Utvärdering och överlämning — fyra delar med bilder, de löpande
+  // anteckningarna (det gamla fritextfältet, samma dokument) och knappen som
+  // bygger tävlingsrapporten. Ligger i private/handover (medlemmar läser,
+  // admins skriver) och följer med när tävlingen kopieras till en ny årgång.
+  // Skrivskyddet följer fliken (demo), inte `closed`: utvärderingen skrivs
+  // efteråt, ofta efter att tävlingen avslutats, och reglerna släpper in admin
+  // ändå. Hela inställningssidan är redan admin-only.
   if (!user?.demoViewer) {
-    const hoCard = document.createElement('section');
-    hoCard.className = 'card mt-6';
-    hoCard.innerHTML = `
-      <h3 class="t-h3" style="margin-top:0;">Överlämning till nästa år</h3>
-      <p class="muted">Skriv ner det som inte syns i systemet: hur ni brukar lägga banan, vilka
-      markägare som ska ringas, fällor att undvika, vem som har materiel. Dokumentet är internt
-      (syns bara för tävlingsledningen) och följer med när tävlingen kopieras till nästa årgång.</p>
-      <textarea class="textarea mt-3" id="ho-text" rows="7" placeholder="T.ex. Boka Tinnerö-stugan i januari. Markägare Nils: 070-… Kontroll 4 behöver eldningstillstånd…" disabled>Laddar…</textarea>
-      <div class="row mt-3" style="align-items:center;gap:var(--sp-3);">
-        ${readOnly ? '' : `<button class="btn btn-secondary btn-sm" id="ho-save">Spara överlämning</button>`}
-        <span class="muted t-sm" id="ho-meta"></span>
-      </div>
-    `;
-    host.appendChild(hoCard);
-    const hoText = hoCard.querySelector('#ho-text');
-    const hoMeta = hoCard.querySelector('#ho-meta');
-    import('../store.js').then(({ getHandover, setHandover }) => {
-      getHandover(cid).then(ho => {
-        hoText.value = ho?.text || '';
-        hoText.disabled = !!readOnly;
-        if (ho?.updatedAt) hoMeta.textContent = `Senast ändrad ${new Date(ho.updatedAt).toLocaleString('sv-SE', { dateStyle: 'medium', timeStyle: 'short' })}${ho.updatedBy ? ' av ' + ho.updatedBy : ''}`;
-      }).catch(() => { hoText.value = ''; hoText.disabled = !!readOnly; });
-      hoCard.querySelector('#ho-save')?.addEventListener('click', (e) => withBusy(e.currentTarget, 'Sparar…', async () => {
-        try {
-          await setHandover(cid, hoText.value, user);
-          toast('Överlämningen sparad', 'success');
-        } catch (err) { toast('Fel: ' + err.message, 'error'); }
-      }));
-    });
+    const utvHost = document.createElement('div');
+    host.appendChild(utvHost);
+    import('./utvardering.js')
+      .then(({ mountUtvardering }) => mountUtvardering(utvHost, { cid, comp, user, readOnly }))
+      .catch(err => { console.error(err); utvHost.innerHTML = '<section class="card mt-6"><p class="muted">Utvärderingen kunde inte laddas — ladda om sidan.</p></section>'; });
   }
 
   // Backup & export — full JSON dump (restorable), ZIP with structured data,

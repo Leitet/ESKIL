@@ -9,6 +9,10 @@ import {
 import { normDistrict } from './districts.js';
 import { mergeBeacons, splitManagement, mergeManagement, isValidSlug } from './utils.js';
 import { fordelaTidspoang } from './tidspoang.js';
+import {
+  UTV_ALLA_NYCKLAR, MAX_TEXT, BILD_PREFIX, normUtvardering, utvarderingForNastaAr,
+  utvarderingBildIds, harInnehall
+} from './utvardering.js';
 
 // --- System config (super-admin) --------------------------------------------
 // A single config/system doc holding operational settings that are useful to
@@ -476,10 +480,17 @@ export async function copyCompetition(cid, { name, shortName, year, date }, user
 
   const newCid = await createCompetition(data, user);
 
-  // Överlämningsdokumentet följer med — det är skrivet för nästa års ledning.
+  // Utvärderingen följer med — den är skriven för nästa års ledning. Årets
+  // fyra delar blir kopians "förra året" (skrivskyddat facit att följa upp
+  // mot), de löpande anteckningarna bärs vidare som de är, och bilderna
+  // kopieras med samma id:n. Se utvarderingForNastaAr i utvardering.js.
   try {
     const ho = await getHandover(cid);
-    if (ho?.text) await setDoc(doc(db, 'competitions', newCid, 'private', 'handover'), ho);
+    const ny = ho ? utvarderingForNastaAr(ho, src) : null;
+    if (harInnehall(ny)) {
+      await setDoc(doc(db, 'competitions', newCid, 'private', 'handover'), ny);
+      await skrivUtvarderingBilder(newCid, await dumpaUtvarderingBilder(cid, utvarderingBildIds(ny)));
+    }
   } catch { /* saknas eller ej läsbart — hoppa över */ }
 
   // Controls — new ids (fresh secret reporter URLs), everything closed,
@@ -774,6 +785,21 @@ export async function loggHandelse(cid, { vad, text, av }) {
   }
 }
 
+// Engångsläsningar för tävlingsrapporten (rapport-pdf.js). Rapporten ska bli
+// till även när en av dem nekas eller är tom, så anroparen fångar felen.
+export async function listLogg(cid) {
+  const snap = await getDocs(collection(db, 'competitions', cid, 'logg'));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+export async function listBroadcastMessages(cid) {
+  const snap = await getDocs(collection(db, 'competitions', cid, 'messages'));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+export async function listPassages(cid, stationId) {
+  const snap = await getDocs(collection(db, 'competitions', cid, 'stations', stationId, 'passages'));
+  return snap.docs.map(d => ({ id: d.id, patrolId: d.id, ...d.data() }));
+}
+
 export function watchLogg(cid, cb) {
   return onSnapshot(collection(db, 'competitions', cid, 'logg'),
     snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() }))
@@ -998,12 +1024,64 @@ export async function getHandover(cid) {
   const snap = await getDoc(doc(db, 'competitions', cid, 'private', 'handover'));
   return snap.exists() ? snap.data() : null;
 }
+// ALLTID merge. Dokumentet bär numera fyra utvärderingsdelar, bildindexet och
+// förra årets utvärdering utöver den gamla fritexten — en setDoc utan merge
+// (som den här funktionen en gång var) hade sopat alltihop varje gång någon
+// sparade anteckningarna. `bilder` är en array och ersätts därför HEL när den
+// skickas med; `foregaende` rörs aldrig härifrån.
+export async function sparaUtvardering(cid, falt, user) {
+  const data = { updatedAt: new Date().toISOString(), updatedBy: user?.email || '' };
+  for (const k of UTV_ALLA_NYCKLAR) {
+    if (typeof falt?.[k] === 'string') data[k] = falt[k].slice(0, MAX_TEXT);
+  }
+  if (Array.isArray(falt?.bilder)) data.bilder = normUtvardering({ bilder: falt.bilder }).bilder;
+  await setDoc(doc(db, 'competitions', cid, 'private', 'handover'), data, { merge: true });
+  return data;
+}
+// Gamla namnet, kvar för anropare som bara känner fritexten.
 export async function setHandover(cid, text, user) {
-  await setDoc(doc(db, 'competitions', cid, 'private', 'handover'), {
-    text: String(text || ''),
-    updatedAt: new Date().toISOString(),
-    updatedBy: user?.email || ''
+  return sparaUtvardering(cid, { text: String(text || '') }, user);
+}
+
+// Utvärderingens bilder: en doc per bild i private/utv-bild-<id> (1 MiB-taket
+// gör att de inte ryms i handover-dokumentet). Indexet i handover-dokumentet
+// bär ordning, del och bildtext — skriv det med sparaUtvardering direkt efter.
+// En bild utan indexrad är bara skräp som deleteCompetition sopar; en indexrad
+// utan bild visas som "bilden saknas". Ingen av dem förstör något.
+export async function laggTillUtvarderingBild(cid, { dataUrl, sektion }, user) {
+  const id = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`).replace(/[^A-Za-z0-9_-]/g, '');
+  await setDoc(doc(db, 'competitions', cid, 'private', BILD_PREFIX + id), {
+    dataUrl, sektion, skapad: new Date().toISOString(), av: user?.email || ''
   });
+  return id;
+}
+export async function taBortUtvarderingBild(cid, id) {
+  await deleteDoc(doc(db, 'competitions', cid, 'private', BILD_PREFIX + id));
+}
+// { id: dataUrl } för de id:n som finns. Saknade hoppas över tyst.
+export async function hamtaUtvarderingBilder(cid, ids) {
+  const ut = {};
+  await Promise.all((ids || []).map(async id => {
+    const snap = await getDoc(doc(db, 'competitions', cid, 'private', BILD_PREFIX + id)).catch(() => null);
+    if (snap?.exists() && typeof snap.data().dataUrl === 'string') ut[id] = snap.data().dataUrl;
+  }));
+  return ut;
+}
+// Hela bilddokumenten (för backupen).
+export async function dumpaUtvarderingBilder(cid, ids) {
+  const ut = [];
+  for (const id of ids || []) {
+    const snap = await getDoc(doc(db, 'competitions', cid, 'private', BILD_PREFIX + id)).catch(() => null);
+    if (snap?.exists()) ut.push({ id, ...snap.data() });
+  }
+  return ut;
+}
+export async function skrivUtvarderingBilder(cid, bilder) {
+  for (const b of bilder || []) {
+    if (!b || typeof b.id !== 'string' || typeof b.dataUrl !== 'string') continue;
+    const { id, ...data } = b;
+    await setDoc(doc(db, 'competitions', cid, 'private', BILD_PREFIX + id), data);
+  }
 }
 
 // DNF: markera en patrull som utgått (eller ångra med null). Patrulldokumentet

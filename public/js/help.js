@@ -324,6 +324,20 @@ export const HELP = {
     ]
   },
 
+  'comp.utvardering': {
+    title: 'Utvärdering och överlämning',
+    body: [
+      'Fyra delar i en medveten ordning: vad som fungerade bra (det ni vill göra om — det glöms först), vad som fungerade mindre bra (det som hände, inte det ni önskar), förbättringsförslag (konkreta åtgärder — det nästa ledning öppnar först) och en kort sammanfattning av helheten. Varje del kan ha bilder. De löpande anteckningarna är det som gäller år efter år: markägare, bokningar, vem som har materiel.',
+      'Allt sparas i ESKIL och följer med när tävlingen kopieras till nästa årgång — där visas det som "förra årets utvärdering", skrivskyddat, med förbättringsförslagen överst. Tävlingsrapporten (PDF) lägger till det systemet redan vet: försättsblad, bankarta med planerad och verklig tid, kontrollerna med instruktioner, anmälningsstatistik, start- och måltider, kompletta resultat, dagens meddelanden och inställningarna.'
+    ],
+    warn: 'Ta ut rapporten innan tävlingen avslutas. Avslutet gallrar ledningens namn, kontrollansvariga och sekretariatets logg — de saknas i en rapport som tas ut efteråt. Utvärderingen själv går bra att skriva efter avslutet.',
+    faq: [
+      { q: 'Vem kan läsa utvärderingen?', a: 'Tävlingens medlemmar — ledning och funktionärer. Den är aldrig publik. Bara administratörer kan ändra den.' },
+      { q: 'Vad händer med bilderna?', a: 'De skalas ner i webbläsaren och sparas i ESKIL, högst sex per del. De ligger kvar efter avslutet och följer med till nästa årgång, så välj bilder där enskilda scouter inte går att känna igen. De raderas när tävlingen raderas.' },
+      { q: 'Vi har redan skrivit i det gamla fritextfältet — är det kvar?', a: 'Ja. Det är samma dokument; texten ligger under "Löpande anteckningar".' }
+    ]
+  },
+
   'comp.maxTime': {
     title: 'Maxtid på banan',
     body: [

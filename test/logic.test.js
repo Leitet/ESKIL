@@ -28,6 +28,15 @@ import {
 } from '../public/js/utils.js';
 import { hasIcon } from '../public/js/icons.js';
 import { fordelaTidspoang, invNorm, formateraTid, tolkaTid } from '../public/js/tidspoang.js';
+import {
+  UTV_SEKTIONER, UTV_ALLA_NYCKLAR, normUtvardering, utvarderingTom, utvarderingForNastaAr,
+  utvarderingBildIds, harInnehall, bilderForSektion
+} from '../public/js/utvardering.js';
+import {
+  median, isoVecka, anmalningsStatistik, deltagarStatistik, patrullTider, tidsStatistik,
+  kontrollStatistik, strackStatistik
+} from '../public/js/rapport-stat.js';
+import { ren as renPdfText } from '../public/js/rapport-pdf.js';
 import { tolkaVader, vaderMeddelande, BY_VARNING_MS } from '../public/js/vader.js';
 import { byggDagskopia } from '../public/js/dagskopia.js';
 import { buildIcs, icsText, icsDate, foldLine } from '../public/js/ics.js';
@@ -2446,5 +2455,179 @@ describe('firebase.js: varje namn som importeras därifrån måste exporteras d�
       }
     }
     assert.ok(kontrollerade > 30, `bara ${kontrollerade} importer hittades — regexen har tappat greppet`);
+  });
+});
+
+describe('utvärdering och överlämning: samma dokument, inget förstörs', () => {
+  // private/handover bar förut bara `text`. Det dokumentet finns i produktion
+  // och ska fortsätta vara giltigt — med fyra tomma delar — utan migrering.
+  const B = (id, sektion, bildtext = '') => ({ id, sektion, bildtext });
+
+  test('ett gammalt dokument med bara fritext är en giltig, tom utvärdering', () => {
+    const u = normUtvardering({ text: 'Boka stugan i januari', updatedAt: '2026-01-01T10:00:00Z', updatedBy: 'a@b.se' });
+    assert.equal(u.text, 'Boka stugan i januari');
+    for (const s of UTV_SEKTIONER) assert.equal(u[s.key], '');
+    assert.deepEqual(u.bilder, []);
+    assert.equal(u.foregaende, null);
+    assert.equal(utvarderingTom(u), true);
+    assert.deepEqual(normUtvardering(null).bilder, []);
+    assert.equal(normUtvardering(undefined).text, '');
+  });
+
+  test('skräp i databasen blir aldrig skräp i formuläret', () => {
+    const u = normUtvardering({ bra: 42, bilder: [B('abc12345', 'bra'), B('abc12345', 'bra'), B('kort', 'bra'), B('xyz98765', 'okand'), null, { id: 7 }], foregaende: 'nej' });
+    assert.equal(u.bra, '');
+    assert.deepEqual(u.bilder, [B('abc12345', 'bra')]);     // dubblett, för kort id, okänd del och icke-objekt rensas
+    assert.equal(u.foregaende, null);
+    assert.equal(normUtvardering({ bilder: [B('abc12345', 'bra', 'x'.repeat(500))] }).bilder[0].bildtext.length, 200);
+  });
+
+  test('årets utvärdering blir nästa års "förra året"; anteckningarna bärs vidare som de är', () => {
+    const ar = { text: 'Markägare Nils', bra: 'Dubbel bemanning', mindreBra: 'Sen rekrytering', forbattringar: 'Börja i juni', sammanfattning: 'Soligt',
+      bilder: [B('bildbra01', 'bra', 'Kön vid 3:an'), B('bildtext1', 'text')], foregaende: { namn: 'AH25', ar: 2025, forbattringar: 'Gammalt' } };
+    const ny = utvarderingForNastaAr(ar, { shortName: 'Älghornsjakten', year: 2026 });
+    assert.equal(ny.text, 'Markägare Nils');
+    assert.deepEqual(ny.bilder, [B('bildtext1', 'text')]);                       // anteckningarnas bilder förblir egna
+    assert.equal(ny.foregaende.namn, 'Älghornsjakten');
+    assert.equal(ny.foregaende.ar, 2026);
+    assert.equal(ny.foregaende.forbattringar, 'Börja i juni');                 // årets, inte 2025:s
+    assert.deepEqual(ny.foregaende.bilder, [B('bildbra01', 'bra', 'Kön vid 3:an')]);
+    for (const k of ['bra', 'mindreBra', 'forbattringar', 'sammanfattning']) assert.equal(ny[k], undefined, 'nästa års egna delar ska börja tomma');
+    assert.deepEqual(utvarderingBildIds(ny).sort(), ['bildbra01', 'bildtext1']);
+    assert.equal(utvarderingTom(ny), true);
+    assert.equal(harInnehall(ny), true);
+  });
+
+  test('har årets ledning inte skrivit något bärs den äldre utvärderingen vidare', () => {
+    const ny = utvarderingForNastaAr({ text: '', foregaende: { namn: 'AH25', ar: 2025, forbattringar: 'Tre per kontroll' } }, { shortName: 'AH26', year: 2026 });
+    assert.equal(ny.foregaende.ar, 2025);
+    assert.equal(ny.foregaende.forbattringar, 'Tre per kontroll');
+    assert.equal(harInnehall(utvarderingForNastaAr(null, {})), false);
+    assert.equal(harInnehall(utvarderingForNastaAr({ text: '   ' }, {})), false);
+  });
+
+  test('bilderForSektion och bild-id:n', () => {
+    const u = { bilder: [B('bild00001', 'bra'), B('bild00002', 'mindreBra'), B('bild00003', 'bra')], foregaende: { bilder: [B('bild00001', 'bra'), B('bild00009', 'forbattringar')] } };
+    assert.deepEqual(bilderForSektion(u, 'bra').map(b => b.id), ['bild00001', 'bild00003']);
+    assert.deepEqual(utvarderingBildIds(u).sort(), ['bild00001', 'bild00002', 'bild00003', 'bild00009']);
+  });
+
+  test('lagringen: alltid merge, backupen bär bilderna, kopian transformerar', () => {
+    const store = readFileSync(new URL('../public/js/store.js', import.meta.url), 'utf8');
+    const spara = store.slice(store.indexOf('export async function sparaUtvardering'), store.indexOf('export async function setHandover'));
+    assert.match(spara, /\{ merge: true \}/, 'utan merge sopar varje sparning de andra fälten');
+    const gammal = store.slice(store.indexOf('export async function setHandover'), store.indexOf('export async function laggTillUtvarderingBild'));
+    assert.match(gammal, /return sparaUtvardering\(/, 'setHandover skrev förut HELA dokumentet');
+    assert.ok(!/setDoc\(/.test(gammal));
+    assert.match(store, /utvarderingForNastaAr\(ho, src\)/);
+    assert.match(store, /skrivUtvarderingBilder\(newCid, await dumpaUtvarderingBilder\(cid, utvarderingBildIds\(ny\)\)\)/);
+    const backup = readFileSync(new URL('../public/js/backup.js', import.meta.url), 'utf8');
+    assert.match(backup, /export const BACKUP_VERSION = 5;/);
+    assert.match(backup, /handoverBilder\n/);
+    assert.match(backup, /skrivUtvarderingBilder\(newCid, dump\.handoverBilder\)/, 'allt deleteCompetition sveper måste backupen kunna skriva tillbaka');
+    const inst = readFileSync(new URL('../public/js/views/competition-settings.js', import.meta.url), 'utf8');
+    assert.ok(!/setHandover\(/.test(inst), 'inställningssidan ska gå via utvärderingsvyn');
+    assert.match(inst, /mountUtvardering\(utvHost, \{ cid, comp, user, readOnly \}\)/);
+    assert.match(inst, /id="cl-rapport"/, 'avslutsdialogen ska erbjuda rapporten — avslutet gallrar ledningens namn');
+  });
+});
+
+describe('tävlingsrapporten: siffrorna', () => {
+  const COMP = { startTimes: { enabled: true, mode: 'interval', firstStart: '09:00', intervalMinutes: 10 }, date: '2026-10-04' };
+  const T = (hhmm) => new Date(`2026-10-04T${hhmm}:00`).getTime();
+
+  test('median och ISO-vecka', () => {
+    assert.equal(median([3, 1, 2]), 2);
+    assert.equal(median([4, 1, 3, 2]), 2.5);
+    assert.equal(median([]), null);
+    assert.equal(median([NaN, 5]), 5);
+    assert.deepEqual(isoVecka(new Date(2026, 0, 1)), { ar: 2026, vecka: 1 });
+    assert.deepEqual(isoVecka(new Date(2027, 0, 1)), { ar: 2026, vecka: 53 });   // 1 jan 2027 är en fredag
+  });
+
+  test('anmälningarna: avanmälda räknas för sig, betalt är facit och inte påstående', () => {
+    const regs = [
+      { kar: 'Lindsdals Scoutkår', createdAt: '2026-08-31T10:00:00Z', patrols: [{ avdelning: 'Spårare', antal: 6 }, { avdelning: 'Upptäckare', antal: 5 }],
+        payments: [{ reference: 'AH26-1', amount: 400 }, { reference: 'AH26-2', amount: 200 }], paidRefs: ['AH26-1'], paymentClaims: ['AH26-2'], efteranmalningar: [{}] },
+      { kar: 'Nybro Scoutkår', createdAt: '2026-09-02T10:00:00Z', patrols: [{ avdelning: 'Spårare', antal: 4 }], payments: [{ reference: 'AH26-3', amount: 200 }], paidRefs: [] },
+      { kar: 'Avhoppade', cancelled: true, patrols: [{ avdelning: 'Spårare', antal: 9 }], payments: [{ reference: 'X', amount: 999 }], paidRefs: ['X'] }
+    ];
+    const a = anmalningsStatistik(regs);
+    assert.equal(a.anmalningar, 2); assert.equal(a.avanmalda, 1);
+    assert.equal(a.patruller, 3); assert.equal(a.scouter, 15);
+    assert.equal(a.belopp, 800); assert.equal(a.betalt, 400); assert.equal(a.obetalt, 400);
+    assert.equal(a.efteranmalningar, 1);
+    assert.deepEqual(a.karer.map(k => [k.kar, k.scouter]), [['Lindsdals Scoutkår', 11], ['Nybro Scoutkår', 4]]);
+    assert.deepEqual(a.perAvdelning.find(x => x.avdelning === 'Spårare'), { avdelning: 'Spårare', patruller: 2, scouter: 10 });
+    assert.deepEqual(a.perVecka, [{ vecka: '2026-v36', antal: 2 }]);
+    assert.deepEqual(anmalningsStatistik(null).karer, []);
+  });
+
+  test('deltagandet: genrepspatrullen räknas aldrig', () => {
+    const d = deltagarStatistik([{ kar: 'A', avdelning: 'Spårare', antal: 5 }, { kar: 'A', avdelning: 'Spårare', antal: 4, utgatt: { at: 1 } }, { kar: 'Genrep', genrep: true, antal: 1 }]);
+    assert.equal(d.patruller, 2); assert.equal(d.scouter, 9); assert.equal(d.utgatt, 1);
+    assert.deepEqual(d.karer, [{ kar: 'A', patruller: 2, scouter: 9 }]);
+  });
+
+  test('tiderna: funktionär före patrullen själv före härlett — samma företräde som Läget', () => {
+    const patrols = [{ id: 'a', startOrder: 0 }, { id: 'b', startOrder: 1 }, { id: 'c', startOrder: 2 }, { id: 'g', startOrder: 3, genrep: true }];
+    const controls = [{ id: 'k1' }, { id: 'k2' }];
+    const scores = [
+      { patrolId: 'c', controlId: 'k1', clientReportedAt: new Date(T('10:00')) },
+      { patrolId: 'c', controlId: 'k2', clientReportedAt: new Date(T('11:05')), reportedAt: new Date(T('15:00')) },   // synkad sent — klienttiden gäller
+      { patrolId: 'b', controlId: 'k1', clientReportedAt: new Date(T('10:30')) }
+    ];
+    const tider = patrullTider({ comp: COMP, patrols, controls, scores,
+      stationPassages: [{ patrolId: 'a', startAt: new Date(T('09:02')), finishAt: new Date(T('11:32')) }],
+      selfPassages: [{ id: 'a', startAt: new Date(T('09:00')), finishAt: new Date(T('12:00')) }, { id: 'b', startAt: new Date(T('09:11')) }] });
+    const per = Object.fromEntries(tider.map(t => [t.patrol.id, t]));
+    assert.equal(tider.length, 3, 'genrep ska inte med');
+    assert.deepEqual([per.a.startKalla, per.a.malKalla, per.a.minuter], ['funktionär', 'funktionär', 150]);
+    assert.deepEqual([per.b.startKalla, per.b.malKalla, per.b.minuter], ['själv', null, null]);         // en av två kontroller — ingen härledd målgång
+    assert.deepEqual([per.c.startKalla, per.c.malKalla, per.c.minuter], ['planerad', 'sista rapport', 105]); // planerad 09:20 (plats 2 × 10 min) -> 11:05
+  });
+
+  test('tidsstatistik: medianen mot planen, och ett datumfel räknas bort', () => {
+    const s = tidsStatistik([{ minuter: 100 }, { minuter: 140 }, { minuter: 120 }, { minuter: null }, { minuter: 5000 }], 110);
+    assert.deepEqual([s.antal, s.medianMin, s.snabbastMin, s.langsammastMin, s.diffMin], [3, 120, 100, 140, 10]);
+    assert.equal(tidsStatistik([], 60).medianMin, null);
+  });
+
+  test('kontrollerna: en kontroll med max 0 har inga maxade; tidtagning ger median', () => {
+    const k = kontrollStatistik(
+      [{ id: 'u', nummer: 2, maxPoang: 0 }, { id: 'p', nummer: 1, maxPoang: 10 }, { id: 't', nummer: 3, maxPoang: 10, tidtagning: true }],
+      [{ controlId: 'u', poang: 0 }, { controlId: 'p', poang: 10, extraPoang: 2 }, { controlId: 'p', poang: 0 }, { controlId: 'p', poang: 5 },
+       { controlId: 't', tidSek: 30 }, { controlId: 't', tidSek: 50 }, { controlId: 't', ejGenomford: true, poang: 0 }]);
+    assert.deepEqual(k.map(x => x.control.id), ['p', 'u', 't']);
+    assert.deepEqual([k[0].rapporter, k[0].snitt, k[0].maxade, k[0].nollor], [3, 5, 1, 1]);
+    assert.equal(k[1].maxade, 0);
+    assert.deepEqual([k[2].tidMedianSek, k[2].tidBastSek, k[2].ejGenomford], [40, 30, 1]);
+  });
+
+  test('sträckorna: modell = gång + stopp, verklig bara där det finns mätningar', () => {
+    const eta = { speedKmh: 4, dwellMin: 15,
+      nodes: [{ key: 's', label: 'S', kind: 'start' }, { key: 'k1', label: '1', title: 'Kontroll 1', kind: 'control' }, { key: 'pl', label: '', title: 'Matplats', kind: 'place', dwellMin: 20 }, { key: 'm', label: 'M', kind: 'finish' }],
+      byKey: { s: { dist: 0 }, k1: { dist: 1000, obsMin: 41, samples: 5 }, pl: { dist: 1400 }, m: { dist: 2400 } } };
+    const st = strackStatistik(eta);
+    assert.deepEqual(st.map(x => [x.fran, x.till, Math.round(x.langdM), Math.round(x.modellMin), x.verkligMin, x.matningar]),
+      [['S', '1', 1000, 30, 41, 5], ['1', 'P', 400, 26, null, 0], ['P', 'M', 1000, 15, null, 0]]);
+    assert.equal(st[1].tillNamn, 'Matplats', 'platsens namn står i egen kolumn — i Från/Till spiller det över');
+    assert.deepEqual(strackStatistik(null), []);
+  });
+
+  test('PDF-texten: det som inte går att sätta i WinAnsi släpps, svenskan står kvar', () => {
+    assert.equal(renPdfText('Räksmörgås – "bra" — 5 €'), 'Räksmörgås – "bra" — 5 €');
+    assert.equal(renPdfText('Bra jobbat 🎉 → nästa år ✓'), 'Bra jobbat  -> nästa år v');
+    assert.equal(renPdfText('rad1\r\nrad2\tx'), 'rad1\nrad2  x');
+    assert.equal(renPdfText(null), '');
+  });
+
+  test('rapporten ritar med delad kod och skriver aldrig ut ett telefonnummer', () => {
+    const src = readFileSync(new URL('../public/js/rapport-pdf.js', import.meta.url), 'utf8');
+    assert.ok(!/\.phone\b|telefon/i.test(src.replace(/\/\/.*$/gm, '')), 'rapporten sprids vidare — namn och e-post, aldrig telefon');
+    assert.match(src, /ritaResultat\(pdf, d\.ctx/, 'resultatdelen ska vara samma kod som den officiella resultat-PDF:en');
+    assert.match(src, /courseEtaCalibrated\(/); assert.match(src, /courseMapDataUrl\(/);
+    const res = readFileSync(new URL('../public/js/results-export.js', import.meta.url), 'utf8');
+    assert.match(res, /let y = ritaResultat\(pdf, ctx, 46,/, 'den officiella PDF:en ska gå samma väg');
   });
 });
