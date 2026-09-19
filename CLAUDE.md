@@ -623,6 +623,51 @@ precis det brott den ska fånga.
   `--field-top` (report.css) är summan av båda — sticky-remsor och
   `scroll-padding-top` måste utgå från den, annars hamnar det de scrollar
   fram under headern.
+- **Kontrollkortets patrullrutnät (/k) följer patrullerna LIVE och vet vilka
+  som är på väg.** Båda kom ur en skarp tävling. (1) Patrullerna lästes EN
+  gång vid sidladdning, och ingen laddar om en sida som fungerar: det
+  sekretariatet döpte om, lade till eller tog bort nådde aldrig kontrollen —
+  en borttagen patrull gick att rapportera på och en ny fanns inte att välja.
+  Första läsningen ligger KVAR i den kritiska `Promise.all` (den beprövade
+  startvägen rörs inte); en `onSnapshot` tar över därefter. En tom
+  cache-snapshot ignoreras — den betyder "cachen vet inget", inte "alla
+  patruller är borta". Det ÖPPNA poängbladet följer med (`speglaOppetBlad`):
+  rubriken döps om, och tas patrullen bort stängs Spara av med en varning —
+  rapporten hade annars hamnat på en patrull som inte finns, och
+  kontrollanten fått "sparat". Papperskorgen återställer med samma id, och då
+  låses bladet upp igen.
+  (2) **Ordningen räknas i `public/js/kontrollko.js`** (ren, testad): på väg
+  hit → övriga → rapporterade → utgångna, STARTORDNING inom gruppen (inte
+  patrullnummer, och en patrull utan plats sist — `Number(null)` är 0 och
+  hade ställt den först). "På väg hit" = har lämnat kontrollen med närmast
+  LÄGRE nummer men är inte rapporterad här, sorterade efter NÄR de lämnade
+  (`clientReportedAt` — ankomstordningen, och den enda tid som stämmer efter
+  en offline-synk). För banans första kontroll är källan starten: patrullens
+  egen bekräftelse (`selfPassages`, världsläsbar), annars den planerade
+  starttiden, med en timer till nästa start. **Stationens avprickningar går
+  INTE att använda** — `list` kräver medlemskap och sidan är anonym; ett test
+  förbjuder `'stations'` i report.js. Väntas är en GISSNING och aldrig en
+  spärr: en patrull som hoppat över föregående kontroll, eller vars rapport
+  ligger i en telefon utan täckning, står under "övriga" och rapporteras som
+  vanligt. Hela logiken ligger i en try/catch utanför startvägen. En rapport i
+  offline-kön räknas som rapporterad i ordningen — patrullen ÄR hanterad.
+  **Omritningar som kommer av DATA går genom `ritaListaLugnt()`**, aldrig
+  `renderPatrols()` direkt: listan sorterar nu om sig själv, och hoppar
+  rutnätet ett steg i samma ögonblick som kontrollanten trycker öppnas FEL
+  patrull. Omritningen väntar tills listan varit orörd i 1,5 s (pointerdown,
+  scroll); filter och sökning är användarens egna tryck och ritar direkt.
+  Uppmätt i emulatorn: 27 ms utan beröring, 2,2 s med ett finger på listan.
+  **Demospåret visar det utan omseedning** — de seedade poängen är redan
+  förskjutna mellan kontrollerna (12, 11, 9, 8 …), så varje kontroll har några
+  på väg. Men klockan måste frysas (`demoNu`, samma lösning som Läget och
+  stationssidan): demots tidsstämplar åldras, och mot väggklockan stod det
+  "för 3 h 8 min sedan" redan samma eftermiddag i emulatorn — i produktion
+  hundratals timmar. Demots rullande starttider får SAMMA frusna klocka, och
+  start-timern körs inte där. En riktig tävling får aldrig en frusen klocka;
+  ett test vaktar den raden.
+  Kostnaden: en lyssnare till på patrullerna (N läsningar per sidladdning,
+  sedan en per ändring) och en på föregående kontrolls poäng (en läsning per
+  passerad patrull). Kontrollistan läses EN gång och delas med ETA-raden.
 - **Systemnotiser går ALLTID via service workern** (`showSystemNotification`
   i broadcast.js, som äger notisplumbingen). Android Chrome KASTAR på
   `new Notification()` — där finns bara `registration.showNotification()`. /t:s

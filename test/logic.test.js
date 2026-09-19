@@ -54,6 +54,7 @@ function kontrastMellan(a, b) {
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
 }
 import { fitView, niceScale, nodkontakt } from '../public/js/pdf.js';
+import { platsIBanan, ordnaPatruller, iStartordning, passertid, sedanText, sedanFras, demoNu, tillMs as koTillMs } from '../public/js/kontrollko.js';
 import {
   PLACE_KINDS, PLACE_ICONS, PALETTE, placeColorHex, normPlace, compPlaces, placeToStorage, coursePlaces
 } from '../public/js/places.js';
@@ -2788,5 +2789,139 @@ describe('nödinfon: grannkontrollernas kontakt', () => {
       assert.ok(i > 0, f);
       assert.match(src.slice(0, i), /attachControlMeta\(cid, (state\.rows|controls)\)/, `${f} bygger fältpaketet utan kontrollernas meta`);
     }
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// Kontrollkortets patrullrutnät (/k). Två saker märktes på en skarp tävling:
+// patrullerna lästes EN gång vid sidladdning, så det sekretariatet döpte om
+// eller tog bort syntes aldrig på kontrollen; och rutnätet låg i
+// patrullnummerordning fast man nästan alltid vet vilka som är på väg.
+// ---------------------------------------------------------------------------
+describe('kontrollkortet: vilka patruller är på väg hit', () => {
+  const las = (f) => readFileSync(new URL(`../public/js/${f}`, import.meta.url), 'utf8');
+  const K = [{ id: 'a', nummer: 1 }, { id: 'b', nummer: 2 }, { id: 'c', nummer: 4 }, { id: 'x', nummer: null }];
+  const P = (id, startOrder, extra = {}) => ({ id, name: id, number: startOrder + 1, startOrder, ...extra });
+  const NU = Date.UTC(2026, 8, 19, 10, 0, 0), MIN = 60000;
+
+  test('föregående kontroll är närmast LÄGRE nummer — hål i serien spelar ingen roll', () => {
+    assert.deepEqual(platsIBanan(K, 'a'), { kand: true, forsta: true, foregaende: null });
+    assert.equal(platsIBanan(K, 'b').foregaende.id, 'a');
+    assert.equal(platsIBanan(K, 'c').foregaende.id, 'b', 'kontroll 3 finns inte; 4:an följer på 2:an');
+    assert.equal(platsIBanan(K, 'x').kand, false, 'utan nummer går inget att förutse');
+    assert.equal(platsIBanan(K, 'finns-inte').kand, false);
+    // Två kontroller med samma nummer pekar inte på varandra.
+    const dubbel = [{ id: 'a', nummer: 1 }, { id: 'b1', nummer: 2 }, { id: 'b2', nummer: 2 }, { id: 'c', nummer: '3' }];
+    assert.equal(platsIBanan(dubbel, 'b1').foregaende.id, 'a');
+    assert.equal(platsIBanan(dubbel, 'b2').foregaende.id, 'a');
+    assert.equal(platsIBanan(dubbel, 'c').foregaende.id, 'b1', 'deterministiskt vid lika nummer');
+  });
+
+  test('ordningen: på väg hit → övriga → rapporterade → utgångna', () => {
+    const patrols = [P('p1', 0), P('p2', 1), P('p3', 2), P('p4', 3), P('p5', 4, { utgatt: { at: 'x' } })];
+    const ut = ordnaPatruller({
+      patrols, nu: NU, rapporterade: new Set(['p1']),
+      lamnat: new Map([['p1', NU - 50 * MIN], ['p3', NU - 5 * MIN], ['p2', NU - 12 * MIN], ['p5', NU - 3 * MIN]])
+    });
+    assert.deepEqual(ut.map(r => `${r.patrol.id}:${r.grupp}`),
+      ['p2:vantas', 'p3:vantas', 'p4:ovriga', 'p1:klara', 'p5:utgatt']);
+    assert.equal(ut[0].sedanMs, NU - 12 * MIN);
+  });
+
+  test('väntade sorteras efter NÄR de lämnade — det är ankomstordningen, inte startordningen', () => {
+    // p1 startade först men blev omsprungen: p3 lämnade föregående kontroll före.
+    const ut = ordnaPatruller({ patrols: [P('p1', 0), P('p3', 2)], nu: NU,
+      lamnat: new Map([['p1', NU - 2 * MIN], ['p3', NU - 9 * MIN]]) });
+    assert.deepEqual(ut.map(r => r.patrol.id), ['p3', 'p1']);
+  });
+
+  test('utan kunskap om föregående kontroll: ren startordning, ingen väntas', () => {
+    const patrols = [P('p3', 2), P('p1', 0), P('p2', 1)];
+    const ut = ordnaPatruller({ patrols, nu: NU, lamnat: null });
+    assert.deepEqual(ut.map(r => `${r.patrol.id}:${r.grupp}`), ['p1:ovriga', 'p2:ovriga', 'p3:ovriga']);
+  });
+
+  test('en planerad start i FRAMTIDEN är ingen start', () => {
+    const ut = ordnaPatruller({ patrols: [P('p1', 0), P('p2', 1)], nu: NU,
+      lamnat: new Map([['p1', NU - MIN], ['p2', NU + 4 * MIN]]) });
+    assert.deepEqual(ut.map(r => r.grupp), ['vantas', 'ovriga']);
+  });
+
+  test('startordning, inte patrullnummer — och en patrull utan plats hamnar sist, inte först', () => {
+    const a = { id: 'a', number: 9, startOrder: 0, name: 'A' }, b = { id: 'b', number: 1, startOrder: 5, name: 'B' };
+    const ny = { id: 'ny', number: 2, name: 'Ny' };   // nyss tillagd, startlistan inte satt
+    assert.deepEqual([b, ny, a].sort(iStartordning).map(p => p.id), ['a', 'b', 'ny']);
+    // startOrder 0 är en riktig plats — Number(null) är också 0, och får inte räknas som den.
+    assert.deepEqual([{ id: 'n', startOrder: null, number: 1 }, { id: 'z', startOrder: 0, number: 2 }].sort(iStartordning).map(p => p.id), ['z', 'n']);
+  });
+
+  test('passertiden är knapptrycket, inte synkögonblicket', () => {
+    const ts = (ms) => ({ toMillis: () => ms });
+    assert.equal(passertid({ clientReportedAt: ts(NU - 40 * MIN), reportedAt: ts(NU) }), NU - 40 * MIN);
+    assert.equal(passertid({ reportedAt: ts(NU) }), NU);
+    assert.equal(passertid({}), null);
+    assert.equal(koTillMs('2026-09-19T10:00:00.000Z'), NU);
+    assert.equal(koTillMs({ seconds: NU / 1000 }), NU);
+    assert.equal(koTillMs('skräp'), null);
+  });
+
+  test('"för hur länge sedan" ryms i en ruta', () => {
+    assert.equal(sedanText(NU - 20000, NU), 'nyss');
+    assert.equal(sedanText(NU - 12 * MIN, NU), '12 min');
+    assert.equal(sedanText(NU - 60 * MIN, NU), '1 h');
+    assert.equal(sedanText(NU - 95 * MIN, NU), '1 h 35 min');
+    assert.equal(sedanText(null, NU), '');
+    // Frasen i rutan: aldrig "för nyss sedan".
+    assert.equal(sedanFras(NU - 12 * MIN, NU), 'för 12 min sedan');
+    assert.equal(sedanFras(NU - 20000, NU), 'nyss');
+    assert.equal(sedanFras(null, NU), '');
+  });
+
+  test('demospåret har en FRUSEN klocka — annars står det "för 900 h sedan" i produktion', () => {
+    assert.equal(demoNu([NU - 40 * MIN, NU - 3 * MIN, null, NaN], NU + 900 * 60 * MIN), NU + 2 * MIN,
+      'fem minuter efter det senaste som hänt, oavsett vad väggklockan säger');
+    assert.equal(demoNu([], NU), NU, 'utan tidsstämplar finns inget att pinna mot');
+    const src = las('report.js');
+    assert.match(src, /if \(!comp\?\.demo\) return Date\.now\(\);/, 'en RIKTIG tävling får aldrig en frusen klocka');
+    assert.match(src, /const nu = nuMs\(\);/);
+    assert.match(src, /patrolStartDateTime\(comp, p, idag, platser\)/, 'demots rullande starttider måste få samma frusna klocka');
+  });
+
+  test('sidan följer patrullerna LIVE och läser dem inte bara vid sidladdning', () => {
+    const src = las('report.js');
+    assert.match(src, /onSnapshot\(collection\(db, 'competitions', cid, 'patrols'\)/, 'patrullerna läses bara en gång — sekretariatets ändringar når aldrig kontrollen');
+    assert.match(src, /snap\.metadata\.fromCache && snap\.empty && patrols\.length\) return/,
+      'en tom cache-snapshot betyder "vet inget", inte "alla patruller är borta"');
+    assert.match(src, /speglaOppetBlad\(\)/);
+    assert.match(src, /if \(saveBtn\.dataset\.borttagen\) return;/, 'en rapport på en borttagen patrull får inte gå att spara');
+  });
+
+  test('ordningen kommer ur kontrollko.js, och en köad rapport räknas som rapporterad', () => {
+    const src = las('report.js');
+    const rp = src.slice(src.indexOf('  function renderPatrols()'), src.indexOf('  // --- Det öppna poängbladet'));
+    assert.match(rp, /ordnaPatruller\(\{ patrols: rows, rapporterade, lamnat: lamnatKarta\(\), nu \}\)/);
+    assert.match(rp, /listQueue\(cid, ctrlId\)\.forEach\(x => rapporterade\.add\(x\.patrolId\)\)/);
+    assert.doesNotMatch(rp, /\(a\.number \|\| 0\) - \(b\.number \|\| 0\)/, 'den gamla sorteringen på patrullnummer är tillbaka');
+  });
+
+  test('omritningar som kommer av DATA väntar ut ett finger — de som kommer av användaren gör det inte', () => {
+    const src = las('report.js');
+    assert.match(src, /plist\.addEventListener\('pointerdown', rord/);
+    // Snapshot-vägarna: poäng här, patruller, föregående kontroll, egna starter.
+    const lugna = src.match(/ritaListaLugnt\(\)/g) || [];
+    assert.ok(lugna.length >= 6, `bara ${lugna.length} lugna omritningar`);
+    const poang = src.slice(src.indexOf('watchScoresForControl(cid, ctrlId, (rows) => {'), src.indexOf('// --- Live patruller ---'));
+    assert.doesNotMatch(poang, /renderPatrols\(\)/, 'poäng-snapshoten ritar om direkt och kan flytta rutan under ett finger');
+    // Filter och sökning är användarens egna tryck och ska svara direkt.
+    const sok = src.slice(src.indexOf('function sakerstallSok()'), src.indexOf('// Håll skärmen tänd'));
+    assert.match(sok, /renderPatrols\(\)/);
+  });
+
+  test('väntas-logiken är en bonus: den anonyma sidan läser aldrig stationernas avprickningar', () => {
+    const src = las('report.js');
+    assert.doesNotMatch(src, /'stations'/, 'stationslistan kräver medlemskap — läsningen nekas och id:t är hemligt');
+    assert.match(src, /collection\(db, 'competitions', cid, 'selfPassages'\)/);
+    assert.match(src, /watchScoresForControl\(cid, banplats\.foregaende\.id/);
   });
 });

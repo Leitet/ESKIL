@@ -434,6 +434,7 @@ public/
     pdf.js              # PDF + QR-generering (lazy-loaded CDN-libar)
     qr.js               # QR-kodslib (lazy-loaded CDN), används av anmälans Swish-QR
     report.js           # Kontrollsida (k.html) logik
+    kontrollko.js       # Kontrollsidans patrullordning: på väg hit → övriga → rapporterade (ren, testad)
     share-card.js       # Delningsbilden — ritar resultatkortet i canvas
     views/kontakt.js    # Publikt kontaktformulär (/kontakt)
     views/admin-feedback.js # Super-admins inkorg för de meddelandena

@@ -1061,3 +1061,48 @@ html:has(.field-bar) {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
+
+/* ---------------------------------------------------------------------------
+   På väg hit — patrullerna som lämnat föregående kontroll (eller startat) men
+   inte rapporterats här. Accenten som KANT och rubrik, aldrig som fyllning:
+   rutan ska skilja sig från både en orapporterad (grå kant) och en
+   rapporterad (grön), och hålla i nattläget där accenten är röd.
+   --------------------------------------------------------------------------- */
+.r-label-vantas {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--r-accent-text);
+}
+.patrol-grid + .r-label { margin-top: 22px; }
+.patrol-btn.vantas {
+  border-color: var(--r-accent);
+  box-shadow: inset 5px 0 0 var(--r-accent);
+  padding-left: 14px;
+}
+/* Egen rad som FÅR brytas: rutan är 140 px som smalast, och "lämnade 10:an ·
+   1 h 35 min" ryms inte på en rad där — med nowrap stack texten ut ur rutan. */
+.patrol-btn .p-vantas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 4px;
+  margin-top: 3px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--r-accent-text);
+}
+.patrol-btn .p-vantas svg { flex: none; }
+
+/* Patrullen togs bort medan poängbladet stod öppet. */
+.score-borttagen {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 2px solid var(--r-danger);
+  color: var(--r-fg);
+  font-weight: 600;
+  font-size: 14.5px;
+  line-height: 1.4;
+}

@@ -2,13 +2,14 @@
 // Firestore document IDs. Subscribes to patrols + scores and lets anyone
 // with the URL report (if the control is open).
 
-import { db, doc, onSnapshot } from './firebase.js';
+import { db, doc, collection, onSnapshot } from './firebase.js';
 import { getCompetition, getControl, listPatrols, watchScoresForControl, upsertScore, upsertTidScore, deleteScore, listControls, getTrack, listAllScoresForEta, rensaEtaCache, sendControlBeacon } from './store.js';
 import { formateraTid, tolkaTid } from './tidspoang.js';
 import { AVDELNINGAR, escapeHtml, allInstructionGroups, internalManagement, parseFieldPath,
   NOTE_CHIPS, harNotering, laggTillNotering, taBortNotering, kapaNotering,
-  sparlagesBeslut } from './utils.js';
+  sparlagesBeslut, patrolStartDateTime, antalStartplatser } from './utils.js';
 import { controlEtaWindow } from './course.js';
+import { platsIBanan, passertid, ordnaPatruller, sedanFras, tillMs, demoNu } from './kontrollko.js';
 import { ensureLeaflet } from './leaflet.js';
 import { icon } from './icons.js';
 import { haptic, bindHaptic, bindTap } from './haptic.js';
@@ -375,8 +376,12 @@ async function main() {
   const bctx = { audience: 'kontroll', id: ctrlId };
   onSnapshot(doc(db, 'competitions', cid), snap => {
     if (!snap.exists()) return;
+    const forraStart = JSON.stringify(comp?.startTimes || null);
     comp = { id: cid, ...snap.data() };
     updateBroadcast(comp, bctx);
+    // Flyttar sekretariatet starten flyttas också vilka som hunnit starta —
+    // banans första kontroll räknar "på väg hit" ur de planerade tiderna.
+    if (JSON.stringify(comp.startTimes || null) !== forraStart) { ritaListaLugnt(); planeraStartTimer(); }
   });
   updateBroadcast(comp, bctx);
 
@@ -396,14 +401,143 @@ async function main() {
   watchScoresForControl(cid, ctrlId, (rows) => {
     scores = rows;
     renderAvdelningar();
-    renderPatrols();
+    ritaListaLugnt();
   });
+
+  // --- Live patruller ---
+  // Förut lästes patrullerna EN gång vid sidladdning. Sekretariatet döper om,
+  // lägger till och tar bort patruller under dagen, och kontrollanten såg det
+  // först efter en omladdning — alltså aldrig, för ingen laddar om en sida som
+  // fungerar. Följden var en borttagen patrull som gick att rapportera på och
+  // en ny som inte fanns att välja.
+  //
+  // Första läsningen ligger KVAR i Promise.all ovan (sidan ska kunna rita
+  // direkt); lyssnaren tar över därefter. En tom cache-snapshot ignoreras:
+  // den betyder "cachen vet inget", inte "alla patruller är borta".
+  const patrullNyckel = (lista) => JSON.stringify(lista
+    .map(p => [p.id, p.name || '', p.kar || '', p.number ?? null, p.avdelning || '', p.startOrder ?? null, !!p.utgatt])
+    .sort((a, b) => (a[0] < b[0] ? -1 : 1)));
+  let senastePatruller = patrullNyckel(patrols);
+  onSnapshot(collection(db, 'competitions', cid, 'patrols'), (snap) => {
+    if (snap.metadata.fromCache && snap.empty && patrols.length) return;
+    const nya = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const nyckel = patrullNyckel(nya);
+    if (nyckel === senastePatruller) return;
+    senastePatruller = nyckel;
+    patrols = nya;
+    // Avdelningen man filtrerat på kan ha försvunnit med sin sista patrull.
+    if (state.avd && !patrols.some(p => p.avdelning === state.avd)) state.avd = null;
+    sakerstallSok();
+    renderAvdelningar();
+    ritaListaLugnt();
+    speglaOppetBlad();
+  }, () => { /* tappad lyssnare: listan står kvar som den var */ });
 
   // --- UI State ---
   const state = {
     avd: null, // selected avdelning filter
     sok: ''    // fritext-filter över patrullrutnätet
   };
+
+  // --- Vilka patruller är på väg hit? ---
+  // Ordningen och grupperna räknas i kontrollko.js (ren, testad). Här bara
+  // källorna: för banans FÖRSTA kontroll är det starten — patrullens egen
+  // bekräftelse om den finns, annars den planerade starttiden — och för alla
+  // andra rapporterna från föregående kontroll, live. Stationens avprickningar
+  // går inte att använda: de kräver medlemskap, och den här sidan är anonym.
+  //
+  // Allt här är en BONUS. Går något fel står patrullerna i startordning utan
+  // någon väntas-grupp, och rapporteringen är orörd.
+  // EN läsning av kontrollistan, delad med ETA-beräkningen nedan.
+  const allaKontrollerP = listControls(cid);
+  allaKontrollerP.catch(() => {});   // var och en av de två hanterar sitt eget fel
+  let banplats = null;            // { kand, forsta, foregaende }
+  let lamnatForra = null;         // Map patrolId → ms, från föregående kontroll
+  let egnaStarter = new Map();    // Map patrolId → ms, patrullens egen startbekräftelse
+  let startTimer = null;
+
+  // Klockan. Demospåret är en frusen ögonblicksbild — se demoNu.
+  function nuMs() {
+    if (!comp?.demo) return Date.now();
+    return demoNu([...scores.map(passertid), ...(lamnatForra?.values() || []), ...egnaStarter.values()]);
+  }
+
+  function lamnatKarta() {
+    if (!banplats?.kand) return null;
+    if (!banplats.forsta) return lamnatForra;
+    const karta = new Map();
+    const platser = antalStartplatser(comp, patrols);
+    // Demots planerade starter rullar mot den klocka de får — ge dem SAMMA
+    // frusna klocka som resten av sidan, annars jämförs en rullande tid med en
+    // frusen.
+    const idag = new Date(nuMs());
+    for (const p of patrols) {
+      const t = egnaStarter.get(p.id) ?? patrolStartDateTime(comp, p, idag, platser)?.getTime();
+      if (Number.isFinite(t)) karta.set(p.id, t);
+    }
+    return karta.size ? karta : null;
+  }
+
+  // Nästa planerade start som inte inträffat: då ska en patrull till upp i
+  // väntas-gruppen, utan att någon snapshot kommer och säger det.
+  function planeraStartTimer() {
+    clearTimeout(startTimer);
+    // Demots klocka står still — där finns ingen "nästa start" att vänta på.
+    if (!banplats?.forsta || comp?.demo) return;
+    const nu = Date.now();
+    const kommande = [...(lamnatKarta()?.values() || [])].filter(t => t > nu);
+    if (!kommande.length) return;
+    startTimer = setTimeout(() => { ritaListaLugnt(); planeraStartTimer(); },
+      Math.min(Math.max(Math.min(...kommande) - nu + 500, 1000), 30 * 60 * 1000));
+  }
+
+  (async () => {
+    try {
+      banplats = platsIBanan(await allaKontrollerP, ctrlId);
+      if (!banplats.kand) return;
+      if (banplats.foregaende) {
+        watchScoresForControl(cid, banplats.foregaende.id, (rows) => {
+          lamnatForra = new Map();
+          for (const r of rows) {
+            const t = passertid(r);
+            if (r.patrolId && Number.isFinite(t)) lamnatForra.set(r.patrolId, t);
+          }
+          ritaListaLugnt();
+        });
+      } else {
+        onSnapshot(collection(db, 'competitions', cid, 'selfPassages'), (snap) => {
+          egnaStarter = new Map();
+          snap.docs.forEach(d => { const t = tillMs(d.data()?.startAt); if (Number.isFinite(t)) egnaStarter.set(d.id, t); });
+          ritaListaLugnt();
+          planeraStartTimer();
+        }, () => {});
+        planeraStartTimer();
+      }
+      ritaListaLugnt();
+    } catch { /* bonus — se ovan */ }
+  })();
+
+  // --- Rita om UTAN att flytta rutorna under ett finger ---
+  // Listan sorteras nu om av sig själv: en patrull lämnar föregående kontroll,
+  // sekretariatet döper om en annan. Hoppar rutnätet ett steg i samma ögonblick
+  // som kontrollanten trycker öppnas FEL patrull, och det är en riktig
+  // poängmiss. Omritningar som kommer av DATA väntar därför tills listan varit
+  // orörd en stund; de som kommer av användaren (filter, sökning) ritar direkt.
+  const LUGN_MS = 1500;
+  let senastRort = 0;
+  let lugnTimer = null;
+  const rord = () => { senastRort = Date.now(); };
+  window.addEventListener('scroll', rord, { passive: true });
+  function ritaListaLugnt() {
+    clearTimeout(lugnTimer);
+    const kvar = LUGN_MS - (Date.now() - senastRort);
+    if (kvar <= 0) { renderPatrols(); return; }
+    lugnTimer = setTimeout(ritaListaLugnt, kvar + 30);
+  }
+  // "12 min" åldras. En gång i minuten, bara när någon väntas och sidan syns.
+  setInterval(() => {
+    if (document.visibilityState === 'visible' && root.querySelector('.patrol-btn.vantas')) ritaListaLugnt();
+  }, 60 * 1000);
 
   // --- ETA: "Patruller väntas ca X–Y" ---
   // Gångtid längs spåret (eller fågelvägen) + stationstid per kontroll före
@@ -414,7 +548,7 @@ async function main() {
     try {
       if (comp?.demo) return;
       const [allControls, track, allScores] = await Promise.all([
-        listControls(cid),
+        allaKontrollerP,
         getTrack(cid).catch(() => null),
         // Kalibrering: verkliga mellantider (inkl. köer) skärper fönstret
         // så fort tre patruller passerat en sträcka.
@@ -531,47 +665,88 @@ async function main() {
         || (p.name || '').toLowerCase().includes(q)
         || (p.kar || '').toLowerCase().includes(q));
     }
-    // Non-reported patrols first (start-order within group), reported last.
-    // Utgångna (DNF) allra sist — de kommer inte, men går att rapportera om
-    // de hann göra kontrollen innan de bröt.
-    rows = [...rows].sort((a, b) => {
-      const aOut = a.utgatt ? 1 : 0, bOut = b.utgatt ? 1 : 0;
-      if (aOut !== bOut) return aOut - bOut;
-      const aDone = !!scoreByPatrol[a.id];
-      const bDone = !!scoreByPatrol[b.id];
-      if (aDone !== bDone) return aDone ? 1 : -1;
-      return (a.number || 0) - (b.number || 0) || (a.name || '').localeCompare(b.name || '', 'sv');
-    });
+    // Ordningen: på väg hit → övriga → rapporterade → utgångna, startordning
+    // inom varje grupp (kontrollko.js). En rapport som ligger i offline-kön
+    // räknas som rapporterad här — patrullen ÄR hanterad, och ska inte stå
+    // kvar överst som väntad bara för att nätet är borta.
+    const rapporterade = new Set(Object.keys(scoreByPatrol));
+    listQueue(cid, ctrlId).forEach(x => rapporterade.add(x.patrolId));
+    const nu = nuMs();
+    const ordnade = ordnaPatruller({ patrols: rows, rapporterade, lamnat: lamnatKarta(), nu });
 
-    if (!rows.length) {
+    if (!ordnade.length) {
       plist.innerHTML = `
         <div class="r-label">Patruller</div>
         <div class="r-empty">${q ? 'Ingen patrull matchar sökningen.' : 'Inga patruller i vald avdelning.'}</div>`;
       return;
     }
 
-    plist.innerHTML = `
-      <div class="r-label">Välj patrull (${rows.length})</div>
-      <div class="patrol-grid">
-        ${rows.map(p => {
-          const s = scoreByPatrol[p.id];
-          const pending = isPending(cid, ctrlId, p.id);
-          const missingGissning = s && control.utslag && s.utslagGissning == null;
-          return `<button type="button" class="patrol-btn ${s ? 'reported' : ''}" data-id="${p.id}"
-            aria-label="${escapeHtml(`#${p.number ?? ''} ${p.name || ''}${p.kar ? ', ' + p.kar : ''}. ${s ? `Rapporterad, ${resultatText(s, control)}` : 'Ej rapporterad'}${pending ? ', väntar på synk' : ''}`)}">
-            <div class="p-num">#${p.number ?? '—'}</div>
-            <div class="p-name">${escapeHtml(p.name || '—')}</div>
-            <div class="p-meta">${escapeHtml(p.kar || '')}${p.utgatt ? ' <span class="p-utgatt">Utgått</span>' : ''}${pending ? ' <span class="p-pending">Väntar på synk</span>' : ''}${missingGissning ? ' <span class="p-missing-guess">Utslagssvar saknas!</span>' : ''}</div>
-            ${s ? `<span class="p-score">${escapeHtml(resultatText(s, control))}</span>` : ''}
-          </button>`;
-        }).join('')}
-      </div>
-    `;
+    const varifran = banplats?.forsta ? 'startade' : `lämnade ${banplats?.foregaende?.nummer ?? ''}:an`;
+    const ruta = ({ patrol: p, grupp, sedanMs }) => {
+      const s = scoreByPatrol[p.id];
+      const pending = isPending(cid, ctrlId, p.id);
+      const missingGissning = s && control.utslag && s.utslagGissning == null;
+      const vantas = grupp === 'vantas';
+      return `<button type="button" class="patrol-btn ${s ? 'reported' : ''}${vantas ? ' vantas' : ''}" data-id="${p.id}"
+        aria-label="${escapeHtml(`#${p.number ?? ''} ${p.name || ''}${p.kar ? ', ' + p.kar : ''}. ${s ? `Rapporterad, ${resultatText(s, control)}` : (vantas ? `På väg hit, ${varifran} ${sedanFras(sedanMs, nu)}` : 'Ej rapporterad')}${pending ? ', väntar på synk' : ''}`)}">
+        <div class="p-num">#${p.number ?? '—'}</div>
+        <div class="p-name">${escapeHtml(p.name || '—')}</div>
+        <div class="p-meta">${escapeHtml(p.kar || '')}${vantas ? ` <span class="p-vantas">${icon('footprints', { size: 12 })}<span>${escapeHtml(varifran)}</span><span>${escapeHtml(sedanFras(sedanMs, nu))}</span></span>` : ''}${p.utgatt ? ' <span class="p-utgatt">Utgått</span>' : ''}${pending ? ' <span class="p-pending">Väntar på synk</span>' : ''}${missingGissning ? ' <span class="p-missing-guess">Utslagssvar saknas!</span>' : ''}</div>
+        ${s ? `<span class="p-score">${escapeHtml(resultatText(s, control))}</span>` : ''}
+      </button>`;
+    };
+    const iGrupp = (...g) => ordnade.filter(r => g.includes(r.grupp));
+    const vantade = iGrupp('vantas'), ovriga = iGrupp('ovriga'), klara = iGrupp('klara', 'utgatt');
+    // Utan väntade ser listan ut som förut: EN rubrik, ett rutnät. Rubrikerna
+    // kommer först när de har något att skilja åt.
+    const sektion = (rubrik, rader, klass = '') => rader.length ? `
+      <div class="r-label${klass ? ' ' + klass : ''}">${rubrik} (${rader.length})</div>
+      <div class="patrol-grid">${rader.map(ruta).join('')}</div>` : '';
+    plist.innerHTML = vantade.length
+      ? sektion(`${icon('footprints', { size: 14 })} På väg hit`, vantade, 'r-label-vantas')
+        + sektion('Övriga patruller', ovriga) + sektion('Rapporterade', klara)
+      : `<div class="r-label">Välj patrull (${ordnade.length})</div>
+         <div class="patrol-grid">${ordnade.map(ruta).join('')}</div>`;
 
     plist.querySelectorAll('.patrol-btn').forEach(b => {
       bindHaptic(b);
       b.addEventListener('click', () => openScoreSheet(b.dataset.id));
     });
+  }
+
+  // --- Det öppna poängbladet följer patrullen ---
+  // Bladet ritas en gång och står sedan öppet medan kontrollanten fyller i.
+  // Döper sekretariatet om patrullen under tiden ska rubriken stämma, och tas
+  // patrullen BORT får rapporten inte gå att spara: den skulle hamna på en
+  // patrull som inte finns — osynlig i resultatet, och kontrollanten fick
+  // "sparat". Kommer patrullen tillbaka (papperskorgen återställer med samma
+  // id) låses bladet upp igen.
+  let oppetBlad = null;   // { patrolId, el }
+  function speglaOppetBlad() {
+    if (!oppetBlad) return;
+    const el = oppetBlad.el;
+    const p = patrols.find(x => x.id === oppetBlad.patrolId);
+    const spara = el.querySelector('#save');
+    let varning = el.querySelector('.score-borttagen');
+    if (!p) {
+      if (!varning) {
+        varning = document.createElement('div');
+        varning.className = 'score-borttagen';
+        varning.setAttribute('role', 'alert');
+        varning.textContent = 'Sekretariatet har tagit bort den här patrullen. Rapporten går inte att spara — stäng bladet, och hör av dig till ledningen om det är fel.';
+        el.querySelector('#sheet-body')?.prepend(varning);
+      }
+      if (spara) { spara.disabled = true; spara.dataset.borttagen = '1'; }
+      return;
+    }
+    varning?.remove();
+    if (spara?.dataset.borttagen) { spara.disabled = false; delete spara.dataset.borttagen; }
+    const h2 = el.querySelector('.sheet-head h2');
+    if (h2) h2.textContent = p.name || '';
+    const ogon = el.querySelector('.sheet-eyebrow');
+    if (ogon) ogon.textContent = `Patrull #${p.number ?? ''}`;
+    const vem = el.querySelector('.score-who');
+    if (vem) vem.textContent = `${p.avdelning || ''} · ${p.kar || ''}`;
   }
 
   // --- Score entry sheet ---
@@ -610,6 +785,9 @@ async function main() {
       // och skrivit en notering, och ett slarvigt tapp ovanför bladet får
       // inte kasta det. Handtaget, ✕ och Esc stänger.
       backdropClose: false,
+      // Jämför mot DET HÄR bladet: onClose kommer 170 ms efter stängningen,
+      // och då kan nästa patrulls blad redan vara öppet.
+      onClose: () => { if (oppetBlad?.el === ark.el) oppetBlad = null; },
       body: `
         <div class="score-who">${escapeHtml(patrol.avdelning || '')} · ${escapeHtml(patrol.kar || '')}</div>
 
@@ -668,6 +846,7 @@ async function main() {
     });
     const overlay = ark.el;
     const close = ark.close;
+    oppetBlad = { patrolId, el: overlay };
 
     const valEl = overlay.querySelector('#val');
     const inp = overlay.querySelector('#poang-input');
@@ -807,6 +986,9 @@ async function main() {
     const saveBtn = overlay.querySelector('#save');
     bindHaptic(saveBtn, 15);
     saveBtn.addEventListener('click', async () => {
+      // Patrullen togs bort medan bladet stod öppet (speglaOppetBlad). Knappen
+      // är redan avstängd; det här fångar ett fel som slår på den igen.
+      if (saveBtn.dataset.borttagen) return;
       if (comp?.demo) { rtoast('Demospår — rapportering är avstängd.', 'err'); return; }
       if (!control.open) { rtoast('Kontrollen är stängd.', 'err'); return; }
       // Tidtagning: tiden ur fältet (mm:ss) eller "ej genomförd" — inget annat.
@@ -1058,9 +1240,14 @@ async function main() {
 
   // Sökrutan ligger UTANFÖR renderPatrols: rutnätet ritas om på varje
   // poäng-snapshot, och ett fält inne i det skulle tappa fokus och text mitt
-  // i skrivandet. Visas först när listan är lång nog att behöva sökas i.
-  if (patrols.length >= 9) {
+  // i skrivandet. Visas först när listan är lång nog att behöva sökas i —
+  // och det kan den bli under dagen, nu när patrullerna följs live. Rutan tas
+  // aldrig bort igen: den kan ha text i sig.
+  plist.addEventListener('pointerdown', rord, { passive: true });
+  sakerstallSok();
+  function sakerstallSok() {
     const psok = root.querySelector('#psok');
+    if (!psok || psok.firstElementChild || patrols.length < 9) return;
     psok.innerHTML = `
       <div class="p-sok">
         ${icon('search', { size: 17 })}
