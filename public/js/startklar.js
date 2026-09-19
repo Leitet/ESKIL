@@ -11,7 +11,7 @@
 // test/logic.test.js. Vyn hämtar datan (inklusive kontrollernas private/meta
 // för telefonkollen) och ritar.
 
-import { startFinishPoints, isNumSet, startTimesPublished, startlistaLuckor, antalStartplatser, patrolStartTime } from './utils.js';
+import { startFinishPoints, isNumSet, startTimesPublished, startlistaLuckor, startlistaLuft, antalStartplatser, patrolStartTime } from './utils.js';
 
 /**
  * @param comp     tävlingsdokumentet
@@ -89,7 +89,11 @@ export function startklarChecks(comp, controls = [], patrols = [], metas = null)
       } else ok('startordning', 'Alla patruller har en startordning.');
       // En lucka är en tom starttid — oftast en borttagen patrull. Den syns
       // som en rad i patrullistan, men glöms lätt om ingen tittar där.
-      const luckor = startlistaLuckor(comp, patrols);
+      // LUFT är något annat: tomma tider ledningen lagt in med flit, att
+      // flytta in en försenad patrull i. Dem ska förkontrollen lämna i fred —
+      // en varning som alltid lyser för något avsiktligt slutar man läsa.
+      const luft = new Set(startlistaLuft(comp, patrols));
+      const luckor = startlistaLuckor(comp, patrols).filter(i => !luft.has(i));
       if (luckor.length) {
         const n = antalStartplatser(comp, patrols);
         const tider = luckor.map(i => patrolStartTime(comp, { startOrder: i }, n)).filter(Boolean);

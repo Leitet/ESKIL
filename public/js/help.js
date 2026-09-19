@@ -642,6 +642,33 @@ export const HELP = {
     ]
   },
 
+  'patrol.luft': {
+    title: 'Luft i schemat',
+    body: [
+      'Luft är en starttid som hålls tom med flit. Lägg till exempel en tom plats efter var tionde patrull, så finns det någonstans att flytta in patrullen som missade sin start — eller den som kom för tidigt — utan att någon annans tid rörs.',
+      'Luften är en rad i listan, precis som en lucka efter en borttagen patrull: dra en patrull intill den så tar patrullen platsen, eller ta bort raden så flyttas allt efter ett steg tidigare. Skillnaden är att förkontrollen på översikten inte påpekar luft — den är planering, inte något som glömts.',
+      'Att lägga in luft flyttar patrullerna efter den ett intervall senare. Är startlistan publicerad får du se exakt vilka som får ny tid innan något sparas.'
+    ],
+    faq: [
+      { q: 'Syns luften för patrullerna?', a: 'Nej. Tävlingssidan och startkorten visar bara patrullernas egna tider. På startskärmen står det "Väntar på nästa patrull" under den tomma tiden.' },
+      { q: 'Kan jag köra "var N:e" två gånger?', a: 'Ja. Tomma platser som redan finns räknas som pauser, så verktyget lägger aldrig dubbel luft.' }
+    ],
+    tip: 'Lägg in luften INNAN startlistan publiceras — då flyttar den inga tider som kårerna redan planerat efter.'
+  },
+
+  'patrol.startat': {
+    title: 'Startat / ej startat',
+    body: [
+      'Ett klick på "Ej startat" stämplar patrullens start med klockslaget just då. Det är samma avprickning som startfunktionären gör på start/mål-stationens sida, så Läget, stationen och patrullistan visar alltid samma sak. Har patrullen själv bekräftat starten på sitt startkort står det "· själv".',
+      'Raden som är markerad "På startskärmen" är den patrull storbildsskärmen visar just nu. Patruller som startat gråas ned. En patrull vars starttid har passerat utan avprickning markeras i stället — det är den som missade sin start.',
+      'Att ångra en start kräver en bekräftelse: den uppmätta tiden tas bort och går inte att få tillbaka.'
+    ],
+    faq: [
+      { q: 'Vi prickar inte av starter — blir allt markerat som missat?', a: 'Nej. Så länge ingen start är avprickad går listan bara på klockan: patruller vars tid passerat gråas ned, utan varning.' },
+      { q: 'Det finns ingen start/mål-station?', a: 'Den skapas automatiskt vid första avprickningen här (av en administratör). Länken till stationssidan hittar du under Läget.' }
+    ]
+  },
+
   'patrol.number': {
     title: 'Patrullnummer',
     body: [

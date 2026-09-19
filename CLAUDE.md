@@ -1172,7 +1172,47 @@ BÅDA ställena.
   sekretariatets logg (`vad: 'startlista'`). Inställningssidan varnar på
   samma sätt för första start/intervall/läge, och MCP:s `patrull_skapa`/
   `patrull_uppdatera` vägrar `startOrder` helt medan listan är publicerad —
-  servern kan inte visa varningen. `startklar.js` varnar för luckor);
+  servern kan inte visa varningen. `startklar.js` varnar för luckor.
+  **LUFT (`startTimes.luft`) är en lucka som lagts in MED FLIT** — en tom
+  starttid var tionde patrull, att flytta in den som missade sin start eller
+  kom för tidigt. I tidsberäkningen ÄR den en lucka (varje luftplats skrivs
+  också i `luckor`, och allt räknas som förut av `antalStartplatser`); fältet
+  bär bara BETYDELSEN, så att förkontrollen kan lämna planerad luft i fred och
+  ändå påpeka luckan efter en borttagen patrull. Läs den ALLTID via
+  `startlistaLuft(comp, patrols)` — snittet med de platser som faktiskt står
+  tomma — aldrig det sparade fältet rakt av: ett kvarglömt index får inte döpa
+  om en ny, oavsiktlig lucka till luft. Planerna (`planLaggInLuft`,
+  `planLuftVarN`) är rena och testade; "var N:e" räknar befintliga tomma
+  platser som pauser (två körningar ger aldrig dubbel luft) och lägger aldrig
+  luft sist. Att lägga in luft FLYTTAR allt efter den, så det går genom
+  `genomforStartlista` som allt annat. Varje väg som skriver startlistan måste
+  bära luften med sig: `sparaStartlista(…, luft)` (utelämnad = fältet rörs
+  inte), dragets `planFranRader` (raden bär `data-luft`), inställningssidans
+  hela `startTimes`-skrivning, papperskorgens `arrayRemove`, och
+  årgångskopians BÅDA speglar som nollar den (parity-testat — alltså en
+  functions-deploy när den ändras). Källtestat.
+  **Patrullistans startstatus är stationens avprickning**, inte ett eget fält:
+  ett klick på "Ej startat" kör `setPassage(…, 'startAt', true)` mot
+  start/mål-stationen — exakt det startfunktionären gör på /m — så Läget,
+  stationen och listan har EN sanning, med samma företräde som Läget
+  (funktionär > patrullens egen `selfPassages`; den planerade tiden är ingen
+  start). Saknas station skapas den vid första klicket, men först efter en
+  FÄRSK `listStations` — två stationer delar avprickningarna mellan sig. Att
+  ångra kräver bekräftelse (en uppmätt tid försvinner) och en egen-bekräftad
+  start rensas i `selfPassages`, aldrig på stationen. Demot kortsluts med en
+  demotext före skrivningen.
+  **"På startskärmen" räknas med SAMMA fönster som startskärmen**
+  (`startskarmsSchema` / `paStartskarmen` i utils.js; startscreen.js har ingen
+  egen beräkning längre — ett test förbjuder det). Två härledningar av samma
+  sak glider isär, och då pekar listan på en patrull medan skärmen visar en
+  annan. Tidsläget sätts som KLASSER på raderna var femte sekund
+  (`uppdateraTidslage`), aldrig genom en omritning: en omritad tabell förstör
+  Sortable mitt i ett drag. Av samma skäl väntar status-snapshots ut ett
+  pågående drag (`drar` / `ritaEfterDrag`). Tre lägen: `pa-startskarmen`,
+  `har-gatt` (startat — eller tiden har gått i en tävling där INGEN prickar av
+  starter, för då är klockan det enda vi har) och `start-missad` (tiden har
+  gått utan avprickning i en tävling där starter faktiskt prickas av: den
+  raden ska synas, inte gråna);
   `courseHidden` (**hemligt spår** — läs den via `courseHidden(comp)` i
   utils.js; `=== true`, saknas = visat. Går FÖRE släppet i både
   `controlsPublic()` på /t och `positionsVisible()` på startkortet, och

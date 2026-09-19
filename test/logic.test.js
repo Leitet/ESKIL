@@ -25,6 +25,8 @@ import {
   arSpaRutt,
   rankPatrols, rankKarer, RANKING_RULES_TEXT,
   startlistaPublik, antalStartplatser, startlistaLuckor, startlistaLuckorSparade, starttidsAndringar,
+  startlistaLuft, startlistaLuftSparad, planLaggInLuft, planLuftVarN, startskarmsSchema, paStartskarmen,
+  patrolStartTime as testStarttid,
 } from '../public/js/utils.js';
 import { hasIcon } from '../public/js/icons.js';
 import { fordelaTidspoang, invNorm, formateraTid, tolkaTid } from '../public/js/tidspoang.js';
@@ -2410,8 +2412,17 @@ describe('startlistan: platser, luckor och varningar när den är publicerad', (
     for (const f of filer) {
       const src = readFileSync(new URL(`../public/js/${f}`, import.meta.url), 'utf8');
       assert.ok(!/(patrolStartDateTime|patrolStartTime|effectiveIntervalSec)\([^)]*\.length\b/.test(src), `${f} skickar antalet patruller som antal platser`);
-      assert.match(src, /antalStartplatser\(/, `${f} räknar inte platserna`);
+      // Startskärmens fönster räknas i utils.js (delat med patrullistan) — där
+      // ligger platsräkningen, och vyn får inte ha en egen bredvid.
+      if (f === 'views/startscreen.js') {
+        assert.match(src, /startskarmsSchema\(comp, patrols, now\)/, `${f} räknar fönstret själv`);
+        assert.doesNotMatch(src, /FUTURE_OFFSET_FRAC|function computeSchedule/, 'startskärmen har en egen fönsterberäkning igen');
+      } else assert.match(src, /antalStartplatser\(/, `${f} räknar inte platserna`);
     }
+    const ut = readFileSync(new URL('../public/js/utils.js', import.meta.url), 'utf8');
+    const schema = ut.slice(ut.indexOf('export function startskarmsSchema'), ut.indexOf('export function paStartskarmen'));
+    assert.match(schema, /const total = antalStartplatser\(comp, sorterade\)/);
+    assert.match(schema, /patrolStartDateTime\(comp, p, now, total\)/);
     const verktyg = readFileSync(new URL('../functions/mcp/verktyg.js', import.meta.url), 'utf8');
     assert.match(verktyg, /lagetKarna\.antalStartplatser\(comp, rå\.patrols\)/);
     // MCP kan inte visa varningen — startordningen är låst där medan listan är publicerad
@@ -2428,7 +2439,7 @@ describe('startlistan: platser, luckor och varningar när den är publicerad', (
     // Patrullistan: borttagning lämnar en lucka, varje ändring går genom genomforStartlista
     const pl = readFileSync(new URL('../public/js/views/patrols.js', import.meta.url), 'utf8');
     assert.match(pl, /sparaStartlista\(cid, \[\], \[\.\.\.startlistaLuckorSparade\(comp\), plats\]\)/);
-    assert.equal((pl.match(/await genomforStartlista\(/g) || []).length, 3, 'drag, ta bort lucka och fyll-knappen ska gå samma väg');
+    assert.equal((pl.match(/await genomforStartlista\(/g) || []).length, 4, 'drag, ta bort lucka, fyll-knappen och luft ska gå samma väg');
   });
 });
 
@@ -2923,5 +2934,142 @@ describe('kontrollkortet: vilka patruller är på väg hit', () => {
     assert.doesNotMatch(src, /'stations'/, 'stationslistan kräver medlemskap — läsningen nekas och id:t är hemligt');
     assert.match(src, /collection\(db, 'competitions', cid, 'selfPassages'\)/);
     assert.match(src, /watchScoresForControl\(cid, banplats\.foregaende\.id/);
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// Patrullistan: luft i schemat, startstatus och "på startskärmen".
+// ---------------------------------------------------------------------------
+describe('patrullistan: luft, startstatus och startskärmen', () => {
+  const las = (f) => readFileSync(new URL(`../public/js/${f}`, import.meta.url), 'utf8');
+  const COMP = (extra = {}) => ({ date: '2026-10-04',
+    startTimes: { enabled: true, mode: 'interval', firstStart: '09:00', intervalMinutes: 5, ...extra } });
+  const P = (n, startOrder) => ({ id: 'p' + n, name: 'P' + n, number: n, startOrder });
+  const rad = (n) => Array.from({ length: n }, (_, i) => P(i + 1, i));
+  // Tillämpa en plan så som sparaStartlista gör — och ge tillbaka läget efter.
+  const tillampa = (comp, patrols, plan) => ({
+    comp: { ...comp, startTimes: { ...comp.startTimes, luckor: [...new Set([...plan.luckor, ...(plan.luft || [])])], luft: plan.luft } },
+    patrols: patrols.map(p => { const t = plan.tilldelning.find(x => x.id === p.id); return t ? { ...p, startOrder: t.startOrder } : p; })
+  });
+  const tider = ({ comp, patrols }) => Object.fromEntries(patrols.map(p => [p.id, testStarttid(comp, p, antalStartplatser(comp, patrols))]));
+
+  test('en tom plats före en patrull: allt därifrån flyttas ETT steg, inget före rörs', () => {
+    const comp = COMP(), patrols = rad(5);
+    const plan = planLaggInLuft(comp, patrols, 2);
+    assert.deepEqual(plan.tilldelning, [{ id: 'p3', startOrder: 3 }, { id: 'p4', startOrder: 4 }, { id: 'p5', startOrder: 5 }]);
+    assert.deepEqual(plan.luft, [2]);
+    const efter = tillampa(comp, patrols, plan);
+    assert.deepEqual(tider(efter), { p1: '09:00', p2: '09:05', p3: '09:15', p4: '09:20', p5: '09:25' });
+    assert.deepEqual(startlistaLuft(efter.comp, efter.patrols), [2]);
+    assert.deepEqual(startlistaLuckor(efter.comp, efter.patrols), [2]);
+  });
+
+  test('luft efter var N:e patrull — aldrig sist, och två körningar ger inte dubbel luft', () => {
+    const comp = COMP(), patrols = rad(25);
+    const plan = planLuftVarN(comp, patrols, 10);
+    assert.equal(plan.nya, 2);
+    assert.deepEqual(plan.luft, [10, 21]);
+    const efter = tillampa(comp, patrols, plan);
+    assert.equal(antalStartplatser(efter.comp, efter.patrols), 27);
+    assert.equal(efter.patrols.find(p => p.id === 'p11').startOrder, 11);
+    assert.equal(efter.patrols.find(p => p.id === 'p25').startOrder, 26);
+    const igen = planLuftVarN(efter.comp, efter.patrols, 10);
+    assert.equal(igen.nya, 0, 'andra körningen lade dubbel luft');
+    assert.deepEqual(igen.tilldelning, []);
+    assert.deepEqual(igen.luft, [10, 21], 'den befintliga luften ska bäras med, inte tappas');
+    // Exakt jämnt antal: ingen luft efter den sista.
+    assert.equal(planLuftVarN(comp, rad(20), 10).nya, 1);
+    assert.deepEqual(planLuftVarN(comp, rad(20), 10).luft, [10]);
+    // Skräp ger ingen ändring.
+    for (const n of [0, -3, 'x', null]) assert.deepEqual(planLuftVarN(comp, rad(12), n).tilldelning, [], String(n));
+  });
+
+  test('en lucka efter en borttagen patrull räknas som paus — men BLIR inte luft', () => {
+    const comp = COMP(), patrols = rad(12).filter(p => p.id !== 'p4');   // plats 3 står tom
+    const plan = planLuftVarN(comp, patrols, 5);
+    // p1–p3, lucka, p5–p9 (fem i rad) → luft, p10–p12
+    assert.deepEqual(plan.luft, [9]);
+    assert.ok(plan.luckor.includes(3) && plan.luckor.includes(9));
+    const efter = tillampa(comp, patrols, plan);
+    assert.deepEqual(startlistaLuft(efter.comp, efter.patrols), [9], 'luckan efter den borttagna patrullen döptes om till luft');
+    assert.deepEqual(startlistaLuckor(efter.comp, efter.patrols), [3, 9]);
+  });
+
+  test('ett kvarglömt luftindex döper aldrig om en upptagen plats eller en ny lucka', () => {
+    const comp = COMP({ luft: [1, 7, 'x', -2], luckor: [1] });
+    assert.deepEqual(startlistaLuftSparad(comp), [1, 7]);
+    assert.deepEqual(startlistaLuft(comp, [P(1, 0), P(2, 2)]), [1], 'plats 7 finns inte — den får inte räknas');
+    assert.deepEqual(startlistaLuft(comp, [P(1, 0), P(2, 1), P(3, 2)]), [], 'plats 1 är upptagen igen');
+    assert.deepEqual(startlistaLuft(COMP(), rad(3)), [], 'tävlingar utan fältet fungerar som förut');
+  });
+
+  test('förkontrollen påpekar luckor men lämnar luft i fred', () => {
+    const patrols = [P(1, 0), P(2, 2), P(3, 4)];    // plats 1 och 3 tomma
+    const kontroller = [{ id: 'a', nummer: 1, name: 'A', lat: 56, lng: 16 }];
+    const text = (comp) => startklarChecks(comp, kontroller, patrols).filter(c => c.id === 'startlista-luckor').map(c => c.text).join('');
+    assert.match(text(COMP()), /2 luckor/);
+    assert.match(text(COMP({ luft: [1] })), /en lucka \(09:15\)/, 'luften 09:05 ska inte nämnas, luckan 09:15 ska');
+    assert.equal(text(COMP({ luft: [1, 3] })), '');
+  });
+
+  test('startskärmens fönster: 80 % före, 20 % efter — och en tom plats visar ingen', () => {
+    const comp = COMP({ luckor: [1], luft: [1] }), patrols = [P(1, 0), P(2, 2)];
+    const kl = (h, m, s = 0) => new Date(2026, 9, 4, h, m, s);
+    const vem = (d) => paStartskarmen(startskarmsSchema(comp, patrols, d), d)?.patrol.id || null;
+    assert.equal(vem(kl(8, 55, 59)), null, 'fönstret öppnar 4 min före (80 % av 5 min)');
+    assert.equal(vem(kl(8, 56, 1)), 'p1');
+    assert.equal(vem(kl(9, 0, 59)), 'p1', 'ligger kvar en minut efter (20 %)');
+    assert.equal(vem(kl(9, 1, 1)), null);
+    assert.equal(vem(kl(9, 4, 0)), null, 'luften 09:05 hör inte till någon patrull');
+    assert.equal(vem(kl(9, 6, 1)), 'p2', 'p2 står på plats 2 och startar 09:10');
+  });
+
+  test('patrullistan och startskärmen delar EN fönsterberäkning', () => {
+    const lista = las('views/patrols.js'), skarm = las('views/startscreen.js');
+    assert.match(lista, /paStartskarmen\(schema, now\)/);
+    assert.match(skarm, /const active = paStartskarmen\(schedule, now\);/);
+    assert.doesNotMatch(lista, /0\.8|0\.2/, 'patrullistan har en egen kopia av fönstret');
+  });
+
+  test('startklicket är stationens avprickning — samma sanning som Läget — och ångra kräver bekräftelse', () => {
+    const src = las('views/patrols.js');
+    const v = src.slice(src.indexOf('const vaxlaStart = async'), src.indexOf('// --- Tidsläget'));
+    assert.match(v, /await setPassage\(cid, station\.id, pid, 'startAt', true\)/);
+    assert.match(v, /if \(comp\.demo\) \{ toast\(/, 'demot nekar skrivningen — svara med en demotext, inte ett rättighetsfel');
+    assert.ok(v.indexOf('comp.demo') < v.indexOf('setPassage('), 'demospärren måste ligga före skrivningen');
+    assert.match(v, /station = \(await listStations\(cid\)\)\[0\] \|\| null;/, 'titta efter en färsk station innan en ny skapas — två stationer delar avprickningarna');
+    assert.match(v, /confirmDialog\(text, \{ okLabel: 'Ångra starten', danger: true \}\)/);
+    assert.match(v, /clearSelfPassage\(cid, pid, 'startAt'\)/, 'patrullens egen bekräftelse ligger i selfPassages, inte på stationen');
+    assert.doesNotMatch(src, /confirmSelfPassage/, 'ledningens klick får aldrig se ut som patrullens egen bekräftelse');
+  });
+
+  test('tidsläget sätts som klasser — tabellen ritas inte om mitt i ett drag', () => {
+    const src = las('views/patrols.js');
+    assert.match(src, /tidTick = setInterval\(uppdateraTidslage, 5000\)/);
+    const u = src.slice(src.indexOf('const uppdateraTidslage = () => {'), src.indexOf('// Platsvyn: hela listan'));
+    assert.doesNotMatch(u, /render\(\)|innerHTML/);
+    assert.match(src, /if \(drar\) \{ ritaEfterDrag = true; return; \}/);
+    assert.match(src, /clearInterval\(tidTick\)/);
+  });
+
+  test('luften överlever varje väg som skriver startlistan', () => {
+    const src = las('views/patrols.js');
+    assert.match(src, /sparaStartlista\(cid, plan\.tilldelning, plan\.luckor, plan\.luft\)/);
+    assert.match(src, /if \(tr\.dataset\.luft\) luft\.push\(i\)/, 'ett drag räknar om platserna — luftraderna måste följa med');
+    const store = las('store.js');
+    assert.match(store, /if \(luft !== undefined\) falt\['startTimes\.luft'\] = platser\(luft\);/, 'utan luft-argument får fältet inte röras');
+    assert.match(store, /'startTimes\.luft': arrayRemove\(Number\(post\.data\.startOrder\)\)/);
+    assert.match(las('views/competition-settings.js'), /luft: comp\.startTimes\?\.luft \|\| \[\]/, 'inställningssidan skriver om hela startTimes och får inte sopa luften');
+    for (const f of ['../public/js/argangskopia.js', '../functions/overlamning.js']) {
+      assert.match(readFileSync(new URL(f, import.meta.url), 'utf8'), /luckor: \[\], luft: \[\]/, `${f}: nästa års tävling ska börja utan fjolårets luft`);
+    }
+  });
+
+  test('ikonerna och hjälptexterna finns', () => {
+    assert.ok(hasIcon('monitor'));
+    const hj = las('help.js');
+    assert.match(hj, /'patrol\.luft': \{/);
+    assert.match(hj, /'patrol\.startat': \{/);
   });
 });

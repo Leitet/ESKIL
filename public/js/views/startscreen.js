@@ -11,16 +11,13 @@
 
 import { getCompetition, watchPatrols, ensureThreadToken } from '../store.js';
 import { db, doc, onSnapshot } from '../firebase.js';
-import { antalStartplatser,
-  escapeHtml, startTimeSettings, patrolStartDateTime, effectiveIntervalSec, startUrl,
-  isCompAdminUser
+import {
+  escapeHtml, startTimeSettings, startUrl,
+  isCompAdminUser, startskarmsSchema, paStartskarmen
 } from '../utils.js';
 import { renderQrToImg } from '../pdf.js';
 import { icon } from '../icons.js';
 import { updateBroadcast } from '../broadcast.js';
-
-const FUTURE_OFFSET_FRAC = 0.8;   // card appears this far before the scheduled time
-const PAST_OFFSET_FRAC   = 0.2;   // card lingers this far after
 
 let unsubPatrols = null;
 let unsubComp = null;
@@ -159,29 +156,11 @@ function stopWatches() {
 export function teardownStartScreen() { stopWatches(); }
 
 // --- Window logic ---------------------------------------------------------
-function computeSchedule(comp, patrols, now) {
-  const sorted = [...patrols]
-    .filter(p => Number.isFinite(Number(p.startOrder)))
-    .sort((a, b) => (a.startOrder || 0) - (b.startOrder || 0));
-
-  const total = antalStartplatser(comp, sorted);
-  const intervalMs = effectiveIntervalSec(comp, total) * 1000;
-  const winBefore = intervalMs * FUTURE_OFFSET_FRAC;
-  const winAfter  = intervalMs * PAST_OFFSET_FRAC;
-
-  return sorted.map(p => {
-    const scheduled = patrolStartDateTime(comp, p, now, total);
-    return scheduled ? {
-      patrol: p,
-      scheduled,
-      windowStart: new Date(scheduled.getTime() - winBefore),
-      windowEnd:   new Date(scheduled.getTime() + winAfter)
-    } : null;
-  }).filter(Boolean);
-}
-
+// Fönstret räknas i utils.js (startskarmsSchema / paStartskarmen) — patrullistan
+// visar "På startskärmen" med SAMMA beräkning, och får aldrig peka på en annan
+// patrull än den som står här.
 function renderWindow(comp, patrols, now) {
-  const schedule = computeSchedule(comp, patrols, now);
+  const schedule = startskarmsSchema(comp, patrols, now);
   if (!schedule.length) {
     document.getElementById('ss-main').innerHTML = `<div class="ss-loading">Inga patruller att visa.</div>`;
     document.getElementById('ss-foot').innerHTML = '';
@@ -191,7 +170,7 @@ function renderWindow(comp, patrols, now) {
 
   // Active = patrol whose visibility window contains now. Pick the latest if
   // multiple overlap (shouldn't happen with default window sizing, but be safe).
-  const active = [...schedule].reverse().find(e => now >= e.windowStart && now <= e.windowEnd);
+  const active = paStartskarmen(schedule, now);
   // Anything not yet out, excluding whoever is currently "active" (already on screen)
   const upcomingAll = schedule.filter(e => e.scheduled > now && e !== active);
   const upcoming = upcomingAll.slice(0, 4);           // bottom strip (narrow screens)

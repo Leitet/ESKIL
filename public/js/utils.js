@@ -866,6 +866,98 @@ export function startlistaLuckor(comp, patrols) {
   return ut;
 }
 
+// LUFT i schemat: en lucka som ledningen lagt in MED FLIT — en tom starttid
+// var tionde patrull, att flytta in den som missade sin start eller kom för
+// tidigt. I tidsberäkningen är luft och lucka samma sak (en plats utan
+// patrull; den räknas av antalStartplatser som alla andra). Skillnaden är bara
+// vad den BETYDER: en lucka efter en borttagen patrull är något förkontrollen
+// ska påpeka, luft är planering och ska lämnas i fred. Därför ett eget fält,
+// `startTimes.luft`, och därför är det som gäller alltid snittet med de
+// platser som faktiskt står tomma — ett kvarglömt index får aldrig döpa om en
+// ny, oavsiktlig lucka till "luft".
+export function startlistaLuftSparad(comp) {
+  const arr = comp?.startTimes?.luft;
+  return Array.isArray(arr) ? arr.map(Number).filter(n => Number.isInteger(n) && n >= 0) : [];
+}
+export function startlistaLuft(comp, patrols) {
+  const tomma = new Set(startlistaLuckor(comp, patrols));
+  return [...new Set(startlistaLuftSparad(comp))].filter(l => tomma.has(l)).sort((a, b) => a - b);
+}
+
+// Planerna nedan är RENA: de säger vad som ska skrivas ({ tilldelning, luckor,
+// luft }) och rör ingenting. Patrullistan skickar dem genom
+// genomforStartlista, som varnar med namn om listan är publicerad.
+
+// En tom plats PÅ index `plats`: allt som står där och efter flyttas ett steg.
+export function planLaggInLuft(comp, patrols, plats) {
+  const p = Math.max(0, Math.min(Number(plats) || 0, antalStartplatser(comp, patrols)));
+  const flytta = (l) => (l >= p ? l + 1 : l);
+  const tilldelning = (patrols || [])
+    .filter(r => Number.isFinite(Number(r?.startOrder)) && Number(r.startOrder) >= p)
+    .map(r => ({ id: r.id, startOrder: Number(r.startOrder) + 1 }));
+  return {
+    tilldelning,
+    luckor: [...startlistaLuckor(comp, patrols).map(flytta), p],
+    luft: [...startlistaLuft(comp, patrols).map(flytta), p]
+  };
+}
+
+// Luft efter var N:e patrull. En tom plats som redan finns — luft eller lucka
+// — räknas som en paus och nollställer räknaren, så att köra verktyget två
+// gånger inte ger dubbel luft. Ingen luft läggs SIST: efter sista patrullen
+// finns inget att skapa utrymme för.
+export function planLuftVarN(comp, patrols, n) {
+  const var_n = Math.floor(Number(n));
+  const platser = antalStartplatser(comp, patrols);
+  const perPlats = new Map();
+  for (const r of patrols || []) {
+    const o = Number(r?.startOrder);
+    if (Number.isFinite(o)) { if (!perPlats.has(o)) perPlats.set(o, []); perPlats.get(o).push(r); }
+  }
+  const gammalLuft = new Set(startlistaLuft(comp, patrols));
+  const tilldelning = [], luckor = [], luft = [];
+  if (!(var_n >= 1)) return { tilldelning, luckor: startlistaLuckor(comp, patrols), luft: [...gammalLuft], nya: 0 };
+  let ny = 0, iRad = 0, nya = 0;
+  const sistaPatrull = Math.max(-1, ...perPlats.keys());
+  for (let i = 0; i < platser; i++) {
+    const har = perPlats.get(i);
+    if (!har) { luckor.push(ny); if (gammalLuft.has(i)) luft.push(ny); ny++; iRad = 0; continue; }
+    for (const r of har) if (Number(r.startOrder) !== ny) tilldelning.push({ id: r.id, startOrder: ny });
+    ny++; iRad++;
+    const nastaArTom = i + 1 < platser && !perPlats.has(i + 1);
+    if (iRad >= var_n && i < sistaPatrull && !nastaArTom) { luckor.push(ny); luft.push(ny); ny++; iRad = 0; nya++; }
+  }
+  return { tilldelning, luckor, luft, nya };
+}
+
+// Startskärmens fönster. Storbildsskärmen visar EN patrull åt gången, från
+// 80 % av ett intervall före starttiden till 20 % efter. Patrullistan måste
+// kunna säga "den här står på skärmen nu" — och gör det med SAMMA beräkning,
+// för två härledningar av samma sak glider isär och då pekar listan på en
+// patrull medan skärmen visar en annan.
+export const STARTSKARM_FORE = 0.8;
+export const STARTSKARM_EFTER = 0.2;
+export function startskarmsSchema(comp, patrols, now = new Date()) {
+  const sorterade = [...(patrols || [])]
+    .filter(p => Number.isFinite(Number(p?.startOrder)))
+    .sort((a, b) => (Number(a.startOrder) || 0) - (Number(b.startOrder) || 0));
+  const total = antalStartplatser(comp, sorterade);
+  const intervalMs = effectiveIntervalSec(comp, total) * 1000;
+  return sorterade.map(p => {
+    const scheduled = patrolStartDateTime(comp, p, now, total);
+    return scheduled ? {
+      patrol: p,
+      scheduled,
+      windowStart: new Date(scheduled.getTime() - intervalMs * STARTSKARM_FORE),
+      windowEnd: new Date(scheduled.getTime() + intervalMs * STARTSKARM_EFTER)
+    } : null;
+  }).filter(Boolean);
+}
+// Den som visas: fönstret innehåller nu. Överlappar två tar skärmen den senare.
+export function paStartskarmen(schema, now = new Date()) {
+  return [...(schema || [])].reverse().find(e => now >= e.windowStart && now <= e.windowEnd) || null;
+}
+
 // Vilka patruller får en annan starttid om listan går från `fore` till
 // `efter`? Båda är { comp, patrols }. En flytt, en borttagning, en ny patrull
 // och en ändrad inställning jämförs med samma funktion, så varningen kan

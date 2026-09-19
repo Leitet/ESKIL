@@ -40,7 +40,7 @@ export function kopiaTavlingsdata(src, { name, shortName, year, date }) {
   if (src.registration) {
     data.registration = { ...src.registration, enabled: false, opensAt: null, closesAt: null };
   }
-  if (data.startTimes) data.startTimes = { ...data.startTimes, published: false, luckor: [] };
+  if (data.startTimes) data.startTimes = { ...data.startTimes, published: false, luckor: [], luft: [] };
   return data;
 }
 

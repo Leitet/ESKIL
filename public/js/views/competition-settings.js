@@ -837,7 +837,8 @@ function renderRulesTab(comp, cid, refresh, readOnly) {
       maxTimeMinutes: Number(card.querySelector('#st-maxtime').value) || null,
       published: card.querySelector('#st-published').checked,
       // Luckorna ägs av patrullistan — en hel objektskrivning får inte sopa dem.
-      luckor: comp.startTimes?.luckor || []
+      luckor: comp.startTimes?.luckor || [],
+      luft: comp.startTimes?.luft || []
     };
     // Publicerad startlista: en annan första start, ett annat intervall eller
     // ett annat läge flyttar ALLA patrullers tider. Kårerna har redan bokat

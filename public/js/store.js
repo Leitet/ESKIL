@@ -1093,14 +1093,21 @@ export async function setPatrolUtgatt(cid, pid, utgatt) {
 // som inte nämns rörs inte. Förut skrev drag-och-släpp 0..N-1 på ALLA
 // patruller och sopade tyst igen varje lucka — allt efter luckan fick en
 // tidigare starttid utan att någon sagt det.
-export async function sparaStartlista(cid, tilldelning, luckor) {
+//
+// `luft` (valfri) är de luckor som lagts in MED FLIT — se startlistaLuft i
+// utils.js. Utelämnas den rörs fältet inte; skickas den skrivs den, och varje
+// luftplats läggs också i luckorna (en tom SISTA plats syns annars inte på
+// någon patrull, och då krymper antalet platser).
+export async function sparaStartlista(cid, tilldelning, luckor, luft) {
   const batch = writeBatch(db);
   for (const { id, startOrder } of tilldelning || []) {
     batch.update(doc(db, 'competitions', cid, 'patrols', id), { startOrder });
   }
-  const unika = [...new Set((luckor || []).map(Number).filter(n => Number.isInteger(n) && n >= 0))]
+  const platser = (arr) => [...new Set((arr || []).map(Number).filter(n => Number.isInteger(n) && n >= 0))]
     .sort((a, b) => a - b);
-  batch.update(doc(db, 'competitions', cid), { 'startTimes.luckor': unika });
+  const falt = { 'startTimes.luckor': platser([...(luckor || []), ...(luft || [])]) };
+  if (luft !== undefined) falt['startTimes.luft'] = platser(luft);
+  batch.update(doc(db, 'competitions', cid), falt);
   await batch.commit();
 }
 
@@ -1457,7 +1464,10 @@ export async function aterstallFranPapperskorg(cid, korgId) {
   await setDoc(doc(db, 'competitions', cid, bas, post.ursprungsId), post.data);
   // Platsen är upptagen igen — stryk den ur startlistans sparade luckor.
   if (post.sort === 'patrull' && Number.isFinite(Number(post.data?.startOrder))) {
-    await updateDoc(doc(db, 'competitions', cid), { 'startTimes.luckor': arrayRemove(Number(post.data.startOrder)) })
+    await updateDoc(doc(db, 'competitions', cid), {
+      'startTimes.luckor': arrayRemove(Number(post.data.startOrder)),
+      'startTimes.luft': arrayRemove(Number(post.data.startOrder))
+    })
       .catch(() => { /* luckan är en bonus — återställningen får aldrig hänga på den */ });
   }
   if (post.meta) {
