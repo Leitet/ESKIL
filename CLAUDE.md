@@ -454,6 +454,20 @@ Email extension). Production domain: https://eskilscout.se.
   på baksidan av föregående. Verifierat genom att leta upp sidfoten
   "Sida 1 · Placering" per sida i den färdiga filen — och mutationsverifierat
   (utan utfyllnad blir startsidorna 1, 6, 11, 16).
+  **Nödinfons grannkontroller kräver metan för VARJE kontroll** — ansvarigas
+  namn och kontrollens telefon ligger i `controls/{id}/private/meta`.
+  Fältpaketets två vägar kör `attachControlMeta` på hela listan; kontrollens
+  egen sida läste bara SIN meta och skickade den nakna listan, så varje granne
+  fick ett streck i produktion. Den hämtar dem nu med `kontrollerMedKontakt()`
+  vid klicket (inte vid sidladdning — N läsningar per visning). Den ger NYA
+  objekt: `kontaktOlast` är en utskriftsflagga, och på en kontroll i vyns
+  tillstånd kunde den följa med i en `updateControl` till det världsläsbara
+  dokumentet. `nodkontakt()` i pdf.js (testad) håller isär tre sorters tomt:
+  `saknas`, `utan-telefon` och `olast`. Den sista är en kontrollansvarig utan
+  medlemskap — reglerna släpper bara in den egna kontrollens meta, och PDF:en
+  säger då det i stället för att se ut som att ingen fyllt i något. Raderna
+  sorteras på nummer i ritfunktionen (anroparna skickar olika ordning) och
+  e-post skrivs aldrig ut.
 - `.../threads/{tid}/messages/{msgId}` — **samtal fält ↔ ledning**
   (`comp.fieldMessaging`, PÅ som standard, så regeln läser
   `.get('fieldMessaging', true)`).

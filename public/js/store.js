@@ -1214,6 +1214,26 @@ export async function attachControlMeta(cid, controls) {
   return controls;
 }
 
+// Kontrollerna med kontaktuppgifter för NÖDINFON i kontrollens PDF — nya
+// objekt, aldrig anroparens egna: `kontaktOlast` är en utskriftsflagga, och
+// hamnade den på en kontroll i vyns tillstånd kunde den följa med i en
+// updateControl och skrivas till det världsläsbara dokumentet.
+//
+// Skillnaden mot attachControlMeta är just flaggan. En kontrollansvarig som
+// inte är medlem får bara läsa sin EGEN kontrolls meta; de andra läsningarna
+// nekas. attachControlMeta sväljer det till tomma fält, och då kan utskriften
+// inte skilja "ingen har fyllt i något" från "du fick inte se det".
+export async function kontrollerMedKontakt(cid, controls) {
+  return Promise.all((controls || []).map(async (c) => {
+    try {
+      const m = await getControlMeta(cid, c.id);
+      return { ...c, telefon: m.telefon || '', ansvariga: m.ansvariga ?? c.ansvariga ?? [], kontaktOlast: false };
+    } catch {
+      return { ...c, telefon: '', ansvariga: [], kontaktOlast: true };
+    }
+  }));
+}
+
 // One-time migration: older data stored telefon/notering directly on the
 // (world-readable) control doc. Move any such fields into the private/meta
 // subdoc and delete them from the doc. Idempotent — skips already-migrated

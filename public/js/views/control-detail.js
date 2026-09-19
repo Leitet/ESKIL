@@ -1,6 +1,6 @@
 import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import {
-  getCompetition, getControl, updateControl, attachControlMeta,
+  getCompetition, getControl, updateControl, attachControlMeta, kontrollerMedKontakt,
   watchScoresForControl, listPatrols, listControls, getTrack,
   deleteScore, adjustScore, adjustTidScore, stangKontroll, fordelaTidspoangForKontroll, ensureThreadToken, loggHandelse
 } from '../store.js';
@@ -236,9 +236,16 @@ export async function renderControlDetail(app, user, cid, ctrlId) {
       // Kontrollens PDF är hela paketet: placering, instruktioner, nödinfo
       // och reservprotokoll — det som lämnas över till kontrollanten.
       const { internalManagement } = await import('../utils.js');
+      // Nödinfon listar de ANDRA kontrollernas ansvariga och telefon, och de
+      // ligger i varje kontrolls private/meta. Sidan läser bara sin egen meta
+      // vid laddning, så grannarnas hämtas här — vid klicket, inte vid varje
+      // sidvisning (N läsningar), och färskt: numret kan ha ändrats sedan
+      // sidan öppnades. Förut skickades den nakna kontrollistan och PDF:en
+      // skrev ett streck efter varje kontroll.
+      const medKontakt = await kontrollerMedKontakt(cid, allControls);
       await downloadControlPdf({ id: cid, ...comp }, { ...control, id: ctrlId }, {
         legIn, legOut, etaWindow,
-        patrols, mgmt: internalManagement(comp), allControls
+        patrols, mgmt: internalManagement(comp), allControls: medKontakt
       });
     } catch (e) {
       console.error(e);

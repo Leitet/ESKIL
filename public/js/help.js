@@ -129,7 +129,7 @@ export const HELP = {
   'comp.faltpaket': {
     title: 'Fältpaket — alla kontroller',
     body: [
-      'Samtliga kontrollers kompletta PDF:er i en enda fil. Varje kontroll bidrar med samma sidor som när du laddar ner den enskilt: placering med karta och QR-kod, instruktioner till kontrollanten, nödinfo med kontrollens egna koordinater och telefonnummer till ledning och grannkontroller, samt ett reservprotokoll att fylla i för hand.',
+      'Samtliga kontrollers kompletta PDF:er i en enda fil. Varje kontroll bidrar med samma sidor som när du laddar ner den enskilt: placering med karta och QR-kod, instruktioner till kontrollanten, nödinfo med kontrollens egna koordinater, telefonnummer till ledningen och de andra kontrollernas ansvariga med telefonnummer, samt ett reservprotokoll att fylla i för hand.',
       'Skriv ut hela bunten dubbelsidigt och riv isär den till kontrollernas pärmar — varje kontroll börjar på en ny framsida, så inget paket kan råka börja på baksidan av föregående.'
     ],
     faq: [

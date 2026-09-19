@@ -891,6 +891,30 @@ export async function generateControlPdf(comp, control, {
   return pdf;
 }
 
+// En grannkontrolls kontakt i nödinfon: kontrollansvarigas NAMN och kontrollens
+// telefon. Båda ligger i kontrollens private/meta — den som bygger PDF:en måste
+// alltså ha läst metan för VARJE kontroll, inte bara den som skrivs ut
+// (store.kontrollerMedKontakt / attachControlMeta). Kontrollens egen sida
+// gjorde det inte, och då stod ett streck efter varje kontroll.
+//
+// Tre sorters tomt, och de får inte se likadana ut: `saknas` (ingen har fyllt
+// i något), `utan-telefon` (det finns en ansvarig men inget nummer att ringa)
+// och `olast` (uppgiften finns kanske, men den som skrev ut fick inte läsa
+// den). E-post skrivs aldrig ut här — ingen mailar i ett nödläge.
+export function nodkontakt(c) {
+  if (c?.kontaktOlast) return { namn: '', telefon: '', status: 'olast' };
+  const namn = [...new Set((Array.isArray(c?.ansvariga) ? c.ansvariga : [])
+    .map(a => String(a?.name || '').trim()).filter(Boolean))].join(', ');
+  const telefon = String(c?.telefon || '').trim();
+  return { namn, telefon, status: telefon ? 'ok' : namn ? 'utan-telefon' : 'saknas' };
+}
+
+const NODKONTAKT_SAKNAS = {
+  saknas: 'ingen kontakt angiven',
+  'utan-telefon': 'telefon saknas',
+  olast: 'visas inte i den här utskriften'
+};
+
 // Nödinfo för EN kontroll. Koordinaterna står här, inte "se annan sida" —
 // det är den här sidan man river loss och sätter i kontrollens pärm.
 function drawControlEmergencyPage(pdf, comp, control, { mgmt = [], allControls = [] } = {}) {
@@ -924,6 +948,25 @@ function drawControlEmergencyPage(pdf, comp, control, { mgmt = [], allControls =
     y += rows.length * 5.2 + (opts.gap ?? 1.5);
   };
 
+  // En grannkontroll per rad: vem till vänster, NUMRET i fetstil i en egen
+  // högerkolumn. Det är numret man letar efter med blicken, och i löpande text
+  // efter ett namn av varierande längd hamnar det på olika ställen varje rad.
+  const TEL_KOLUMN = 52;
+  const kontaktrad = (etikett, k) => {
+    if (y > H - 24) { footer(); pdf.addPage(); drawBannerSlim(pdf, W, comp); y = 44; }
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(10.5); pdf.setTextColor('#282727');
+    const rows = pdf.splitTextToSize(k.namn ? `${etikett}  —  ${k.namn}` : etikett, W - 30 - TEL_KOLUMN);
+    pdf.text(rows, 15, y);
+    if (k.telefon) {
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(k.telefon, W - 15, y, { align: 'right' });
+    } else {
+      pdf.setFont('helvetica', 'italic'); pdf.setFontSize(9.5); pdf.setTextColor('#8a8a8a');
+      pdf.text(NODKONTAKT_SAKNAS[k.status], W - 15, y, { align: 'right' });
+    }
+    y += rows.length * 5.2 + 1.5;
+  };
+
   pdf.setFillColor('#fdecec');
   pdf.rect(15, y - 6, W - 30, 26, 'F');
   pdf.setFont('helvetica', 'bold'); pdf.setFontSize(13); pdf.setTextColor('#c8102e');
@@ -944,10 +987,23 @@ function drawControlEmergencyPage(pdf, comp, control, { mgmt = [], allControls =
     y += 4;
   }
 
-  const andra = (allControls || []).filter(c => c.id !== control.id);
+  // Nummerordning, alltid: den som letar efter "kontroll 4" ska inte behöva
+  // läsa hela listan. Anroparna skickar olika ordning (fältpaketet sorterar,
+  // kontrollens egen sida gör det inte).
+  const andra = (allControls || []).filter(c => c.id !== control.id)
+    .sort((a, b) => (a.nummer ?? Infinity) - (b.nummer ?? Infinity));
   if (andra.length) {
     heading('ÖVRIGA KONTROLLER');
-    for (const c of andra) line(`${c.nummer ?? '?'}. ${c.name || '—'}: ${c.telefon || '—'}`);
+    const rader = andra.map(c => ({ c, k: nodkontakt(c) }));
+    if (rader.every(r => r.k.status === 'olast')) {
+      // Kontrollansvarig utan medlemskap: reglerna släpper bara in den egna
+      // kontrollens uppgifter. Säg det — en lista med streck ser ut som att
+      // ingen fyllt i något, och det är inte sant.
+      line('Kontaktuppgifterna till de andra kontrollerna får bara tävlingsledningen skriva ut. '
+        + 'Be ledningen om kontrollens paket ur fältpaketet, så står de här.', { color: '#8a8a8a' });
+    } else {
+      for (const { c, k } of rader) kontaktrad(`${c.nummer ?? '?'}. ${c.name || '—'}`, k);
+    }
     y += 4;
   }
 

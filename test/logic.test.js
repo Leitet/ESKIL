@@ -53,7 +53,7 @@ function kontrastMellan(a, b) {
   const la = lum(a), lb = lum(b);
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
 }
-import { fitView, niceScale } from '../public/js/pdf.js';
+import { fitView, niceScale, nodkontakt } from '../public/js/pdf.js';
 import {
   PLACE_KINDS, PLACE_ICONS, PALETTE, placeColorHex, normPlace, compPlaces, placeToStorage, coursePlaces
 } from '../public/js/places.js';
@@ -2713,5 +2713,80 @@ describe('avslutet: ledningens namn och e-post sparas, allt annat gallras', () =
     const pdf = readFileSync(new URL('../public/js/rapport-pdf.js', import.meta.url), 'utf8');
     assert.match(pdf, /I och med avslutet har alla personuppgifter raderats ur ESKIL/);
     assert.match(pdf, /Det enda personliga som sparas är tävlingsledningens namn och e-postadresser/);
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// Nödinfon i kontrollens PDF: de andra kontrollernas ansvariga och telefon.
+// Uppgifterna ligger i varje kontrolls private/meta. Kontrollens egen sida
+// läste bara SIN meta och skickade den nakna kontrollistan till PDF:en, så
+// varje grannkontroll fick ett streck — i produktion, på pappret som ska
+// fungera när telefonen inte gör det.
+// ---------------------------------------------------------------------------
+describe('nödinfon: grannkontrollernas kontakt', () => {
+  const las = (f) => readFileSync(new URL(`../public/js/${f}`, import.meta.url), 'utf8');
+
+  test('namn och telefon — namnen ur ansvariga, aldrig e-posten', () => {
+    const k = nodkontakt({ telefon: ' 070-111 22 33 ', ansvariga: [
+      { name: 'Anna Andersson', email: 'anna@example.se' }, { name: ' Bo Berg ', email: 'bo@example.se' }] });
+    assert.deepEqual(k, { namn: 'Anna Andersson, Bo Berg', telefon: '070-111 22 33', status: 'ok' });
+    assert.ok(!JSON.stringify(k).includes('@'), 'ingen mailar i ett nödläge, och adressen ska inte ut på papper');
+  });
+
+  test('tre sorters tomt hålls isär', () => {
+    assert.equal(nodkontakt({}).status, 'saknas');
+    assert.equal(nodkontakt({ telefon: '', ansvariga: [] }).status, 'saknas');
+    // En ansvarig som bara har e-post (inbjuden, har inte fyllt i namn) är
+    // ingen kontakt man kan ringa.
+    assert.equal(nodkontakt({ ansvariga: [{ email: 'x@example.se', name: '' }] }).status, 'saknas');
+    assert.deepEqual(nodkontakt({ ansvariga: [{ name: 'Anna' }] }), { namn: 'Anna', telefon: '', status: 'utan-telefon' });
+    assert.deepEqual(nodkontakt({ telefon: '070-1' }), { namn: '', telefon: '070-1', status: 'ok' });
+  });
+
+  test('en nekad läsning är INTE "ingen kontakt angiven"', () => {
+    // Även om fälten råkar vara ifyllda: flaggan vinner, för då vet vi inte.
+    assert.deepEqual(nodkontakt({ kontaktOlast: true, telefon: '', ansvariga: [] }),
+      { namn: '', telefon: '', status: 'olast' });
+  });
+
+  test('tål skräp: null, ansvariga som inte är en lista, dubbletter', () => {
+    assert.equal(nodkontakt(null).status, 'saknas');
+    assert.equal(nodkontakt({ ansvariga: 'Anna' }).status, 'saknas');
+    assert.equal(nodkontakt({ ansvariga: [null, { name: 'Anna' }, { name: 'Anna' }], telefon: '1' }).namn, 'Anna');
+  });
+
+  test('kontrollens sida hämtar grannarnas kontakt innan PDF:en byggs', () => {
+    const vy = las('views/control-detail.js');
+    assert.match(vy, /const medKontakt = await kontrollerMedKontakt\(cid, allControls\)/);
+    assert.match(vy, /allControls: medKontakt/, 'PDF:en får annars den nakna listan och skriver streck');
+    assert.doesNotMatch(vy, /mgmt: internalManagement\(comp\), allControls\s*\}/,
+      'den gamla formen — kontrollistan utan meta — är tillbaka');
+  });
+
+  test('läsningen ger NYA objekt och skiljer nekad från tom', () => {
+    const store = las('store.js');
+    const f = store.slice(store.indexOf('export async function kontrollerMedKontakt'),
+      store.indexOf('// One-time migration: older data stored telefon'));
+    assert.match(f, /return \{ \.\.\.c, telefon: m\.telefon \|\| ''/, 'muterar anroparens kontroller — flaggan kan då följa med i en updateControl');
+    assert.match(f, /catch \{\s*return \{ \.\.\.c, telefon: '', ansvariga: \[\], kontaktOlast: true \}/);
+  });
+
+  test('PDF:en sorterar på nummer, ritar via nodkontakt och säger ifrån när allt är nekat', () => {
+    const pdf = las('pdf.js');
+    const sida = pdf.slice(pdf.indexOf('function drawControlEmergencyPage'), pdf.indexOf('function drawControlProtocolPage'));
+    assert.match(sida, /\.sort\(\(a, b\) => \(a\.nummer \?\? Infinity\) - \(b\.nummer \?\? Infinity\)\)/);
+    assert.match(sida, /nodkontakt\(c\)/);
+    assert.match(sida, /rader\.every\(r => r\.k\.status === 'olast'\)/);
+    assert.doesNotMatch(sida, /c\.telefon \|\| '—'/, 'strecket är tillbaka');
+  });
+
+  test('fältpaketets två vägar läser metan för ALLA kontroller', () => {
+    for (const f of ['views/controls.js', 'views/utskrifter.js']) {
+      const src = las(f);
+      const i = src.indexOf('downloadFieldPackPdf(comp');
+      assert.ok(i > 0, f);
+      assert.match(src.slice(0, i), /attachControlMeta\(cid, (state\.rows|controls)\)/, `${f} bygger fältpaketet utan kontrollernas meta`);
+    }
   });
 });
