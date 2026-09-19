@@ -13,7 +13,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 case "${1:-all}" in
-  logic) exec node --test test/logic.test.js test/mcp.test.js test/mcp-transport.test.js test/mcp-klienter.test.js test/laget.test.js test/boot.test.js test/markup.test.js ;;
+  logic) exec node --test test/logic.test.js test/mcp.test.js test/mcp-transport.test.js test/mcp-klienter.test.js test/laget.test.js test/boot.test.js test/markup.test.js test/overlamning.test.js ;;
   rules) FILES=(test/rules.test.js) ;;
   all)   FILES=(test/*.test.js) ;;
   *) echo "Okänt argument: $1 (använd: all | logic | rules)"; exit 2 ;;

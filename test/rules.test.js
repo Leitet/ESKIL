@@ -1308,3 +1308,56 @@ describe('faltinfo — ledningens interna kontakter mot fältet', () => {
       'demots /k måste kunna visa kontakterna — get: if true täcker det utan egen demogren');
   });
 });
+
+describe('Överlämningskoder — bara tävlingens admin skapar, bara servern löser in', () => {
+  const C = uniq('comp');
+  const ANNAN = uniq('comp');
+  const DEMO = uniq('comp');
+  const hash = () => [...Array(64)].map(() => '0123456789abcdef'[Math.floor(Math.random() * 16)]).join('');
+  const bas = (cid) => ({ cid, skapad: new Date().toISOString(), skapadAv: USER.email });
+  const H = hash();
+
+  before(async () => {
+    await seed(`competitions/${C}`, { name: 'Min', demo: false, closed: true });
+    await seed(`competitions/${C}/private/access`, { adminEmails: [USER.email], userEmails: [], ekonomiEmails: [] });
+    await seed(`competitions/${ANNAN}`, { name: 'Någon annans', demo: false, closed: true });
+    await seed(`competitions/${ANNAN}/private/access`, { adminEmails: [OTHER.email], userEmails: [], ekonomiEmails: [] });
+    await seed(`competitions/${DEMO}`, { name: 'Demo', demo: true });
+    await seed(`competitions/${DEMO}/private/access`, { adminEmails: [USER.email], userEmails: [], ekonomiEmails: [] });
+    await seed(`overlamningskoder/${H}`, bas(C));
+  });
+
+  test('admin skapar en kod för SIN tävling — aldrig för någon annans, aldrig anonymt', async () => {
+    allow(await write(`overlamningskoder/${hash()}`, bas(C), USER), 'admin skapar kod');
+    deny(await write(`overlamningskoder/${hash()}`, bas(ANNAN), USER), 'kod som pekar på någon annans tävling');
+    deny(await write(`overlamningskoder/${hash()}`, bas(C), OTHER), 'utomstående skapar kod för min tävling');
+    deny(await write(`overlamningskoder/${hash()}`, bas(C), null), 'anonym skapar kod');
+    deny(await write(`overlamningskoder/${hash()}`, bas(DEMO), USER), 'kod för demotävling');
+  });
+
+  test('formen är låst: bara de tre fälten, och id:t måste vara en sha256', async () => {
+    deny(await write(`overlamningskoder/${hash()}`, { ...bas(C), anvand: null }, USER), 'eget anvand-fält');
+    deny(await write(`overlamningskoder/${hash()}`, { ...bas(C), extra: 1 }, USER), 'okänt fält');
+    deny(await write(`overlamningskoder/ABCD-EFGH-2345`, bas(C), USER), 'klartextkod som id');
+    deny(await write(`overlamningskoder/${hash().slice(0, 40)}`, bas(C), USER), 'för kort hash');
+  });
+
+  test('en kod går aldrig att skriva om från en klient — inte ens av admin', async () => {
+    deny(await write(`overlamningskoder/${H}`, { ...bas(C), skapadAv: 'annan@test.se' }, USER), 'admin skriver om koden');
+    deny(await write(`overlamningskoder/${H}`, bas(ANNAN), OTHER), 'kapa koden till en annan tävling');
+  });
+
+  test('läsning: admin får sin egen, ingen får lista', async () => {
+    allow(await read(`overlamningskoder/${H}`, USER), 'admin läser sin kod');
+    deny(await read(`overlamningskoder/${H}`, OTHER), 'utomstående läser koden');
+    deny(await read(`overlamningskoder/${H}`, null), 'anonym läser koden');
+    deny(await list('overlamningskoder', USER), 'admin listar koder');
+    deny(await list('overlamningskoder', SUPER), 'super-admin listar koder');
+  });
+
+  test('admin drar in sin kod; ingen annan kan', async () => {
+    deny(await remove(`overlamningskoder/${H}`, OTHER), 'utomstående drar in koden');
+    deny(await remove(`overlamningskoder/${H}`, null), 'anonym drar in koden');
+    allow(await remove(`overlamningskoder/${H}`, USER), 'admin drar in koden');
+  });
+});

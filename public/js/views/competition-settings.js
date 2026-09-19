@@ -350,10 +350,12 @@ function renderBasicTab(comp, cid, refresh, readOnly, isSuperAdmin, user) {
       lifecycle.innerHTML = `
         <h3 class="t-h3" style="margin-top:0;">Avsluta tävling</h3>
         <p class="muted">När tävlingen är genomförd: raderar samtliga användare och kontrollansvariga
-        (inklusive namn — bara administratörer ligger kvar), kontrollernas telefonnummer samt
+        (inklusive namn — bara administratörer ligger kvar), telefonnummer till ledning och kontroller samt
         anmälningarnas kontaktuppgifter, fritextsvar och förhinder (GDPR-gallring), stänger alla
-        kontroller för rapportering och gör tävlingen skrivskyddad. Resultat och publika sidor går
-        fortfarande att titta på. Kan återöppnas, men de raderade uppgifterna återställs inte.</p>
+        kontroller för rapportering och gör tävlingen skrivskyddad. <strong>Tävlingsledningens namn och
+        e-post sparas</strong> — de står på tävlingsrapporten. Resultat och publika sidor går fortfarande
+        att titta på. Avslutet <strong>låser upp utvärderingen, tävlingsrapporten och överlämningen till
+        nästa arrangör</strong> här nedanför. Kan återöppnas, men de raderade uppgifterna återställs inte.</p>
         <button class="btn btn-secondary mt-4" id="close-comp">Avsluta tävling</button>
       `;
       // Backup-nudge: avslutet gallrar kontaktuppgifter PERMANENT — en backup
@@ -365,16 +367,15 @@ function renderBasicTab(comp, cid, refresh, readOnly, isSuperAdmin, user) {
           <div class="modal" style="max-width:540px;">
             <div class="modal-head"><h3>Avsluta "${escapeHtml(comp.name || '')}"?</h3></div>
             <div class="modal-body">
-              <p class="muted" style="margin-top:0;">Alla användare och kontrollansvariga raderas (administratörer ligger kvar), anmälningarnas kontaktuppgifter och fritextsvar rensas och alla kontroller stängs. De raderade uppgifterna går inte att återställa.</p>
+              <p class="muted" style="margin-top:0;">Alla användare och kontrollansvariga raderas (administratörer ligger kvar), telefonnummer och anmälningarnas kontaktuppgifter och fritextsvar rensas och alla kontroller stängs. De raderade uppgifterna går inte att återställa.</p>
               <div style="border:1px solid var(--border);border-left:3px solid var(--avent-orange);border-radius:10px;padding:12px 14px;">
                 <strong>Ta en sista säkerhetskopia först</strong>
                 <p class="muted t-sm" style="margin:4px 0 10px;">En backup tagen efter avslutet saknar det som gallras. Senaste backup: <strong id="cl-last">${fmtBackup(comp.lastBackupAt)}</strong>.</p>
                 <button class="btn btn-secondary btn-sm" id="cl-backup">${icon('download', { size: 14 })} Ladda ner backup + export (ZIP)</button>
               </div>
               <div style="border:1px solid var(--border);border-left:3px solid var(--scout-blue);border-radius:10px;padding:12px 14px;margin-top:10px;">
-                <strong>Ta ut tävlingsrapporten också</strong>
-                <p class="muted t-sm" style="margin:4px 0 10px;">Rapporten (PDF) samlar utvärderingen, banan, kontrollerna, anmälningarna och resultaten. Efter avslutet saknar den ledningens namn och sekretariatets logg. Utvärderingen själv går att skriva även efteråt.</p>
-                <button class="btn btn-secondary btn-sm" id="cl-rapport">${icon('file-text', { size: 14 })} Ladda ner tävlingsrapport (PDF)</button>
+                <strong>Efter avslutet: utvärdering och tävlingsrapport</strong>
+                <p class="muted t-sm" style="margin:4px 0 0;">Avslutet låser upp utvärderingen, tävlingsrapporten (PDF) och överlämningen till nästa arrangör under Inställningar → Grund. Tävlingsledningens namn och e-post sparas för rapporten; telefonnumren och allt annat personligt gallras.</p>
               </div>
             </div>
             <div class="modal-foot">
@@ -396,15 +397,6 @@ function renderBasicTab(comp, cid, refresh, readOnly, isSuperAdmin, user) {
             if (el) el.textContent = fmtBackup(at);
             toast('Exporten laddas ner', 'success');
           } catch (err) { console.error(err); toast('Fel: ' + err.message, 'error'); }
-        }));
-        overlay.querySelector('#cl-rapport').addEventListener('click', (e) => withBusy(e.currentTarget, 'Samlar underlag…', async () => {
-          try {
-            const btn = e.currentTarget;
-            const label = btn.querySelector('.busy-label') || btn;
-            const { byggTavlingsrapport } = await import('../rapport-pdf.js');
-            await byggTavlingsrapport({ cid, comp, user }, { onProgress: (t) => { label.textContent = t; } });
-            toast('Tävlingsrapporten skapad', 'success');
-          } catch (err) { console.error(err); toast('Kunde inte skapa rapporten: ' + err.message, 'error'); }
         }));
         overlay.querySelector('#cl-confirm').addEventListener('click', (e) => withBusy(e.currentTarget, 'Avslutar…', async () => {
           try {

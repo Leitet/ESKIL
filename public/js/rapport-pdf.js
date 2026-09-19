@@ -13,7 +13,7 @@
 // från inställningssidan, som är admin-only. Efter avslut är namnen gallrade;
 // rapporten säger det då rakt ut i stället för att visa tomma rader.
 
-import { ensureLibs, BLUE, ORANGE, YELLOW, courseMapDataUrl } from './pdf.js';
+import { ensureLibs, BLUE, ORANGE, YELLOW, courseMapDataUrl, renderQrToImg } from './pdf.js';
 import { banner, footer, heading, table, computeTotals, ritaResultat, fileStem } from './results-export.js';
 import {
   rankPatrols, RANKING_RULES_TEXT, activeManagement, allowedAvdelningar, formatDate,
@@ -23,7 +23,8 @@ import {
 import { courseEta, courseEtaCalibrated, fmtDist, fmtMin } from './course.js';
 import { compPlaces, placeKind } from './places.js';
 import { districtName } from './districts.js';
-import { UTV_SEKTIONER, UTV_ANTECKNINGAR, normUtvardering, utvarderingBildIds } from './utvardering.js';
+import { UTV_SEKTIONER, UTV_ANTECKNINGAR, OVERLAMNING_ARRANGOR, OVERLAMNING_ADRESS, normUtvardering, utvarderingBildIds } from './utvardering.js';
+import { formateraKod } from './overlamningskod.js';
 import {
   anmalningsStatistik, deltagarStatistik, patrullTider, tidsStatistik, kontrollStatistik,
   strackStatistik, tillMs
@@ -112,6 +113,31 @@ function skapaDok(pdf, comp) {
     d.y += gap;
   };
   d.not = (text) => d.stycke(text, { size: 8.5, color: GRA, style: 'italic', gap: 4 });
+  // Höjden en punktlista tar — så att rubrik + lista kan hållas ihop på en
+  // sida i stället för att sista punkten hamnar ensam på nästa.
+  d.punkterHojd = (rader) => {
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(10);
+    return rader.reduce((h, r) => h + pdf.splitTextToSize(ren(r), W - 30 - 7).length * 4.7 + 1.5, 3);
+  };
+  d.rubrikMedPunkter = (rubrik, rader, { color = BLUE, numrerad = false } = {}) => {
+    const hojd = 18 + d.punkterHojd(rader);
+    if (hojd < BOTTEN - 46) d.plats(hojd);      // en lista längre än en sida får brytas som vanligt
+    d.rubrik(rubrik, color);
+    d.punkter(rader, { numrerad });
+  };
+  // Punktlista med hängande indrag.
+  d.punkter = (rader, { numrerad = false } = {}) => {
+    rader.forEach((r, i) => {
+      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(10);
+      const delar = pdf.splitTextToSize(ren(r), W - 30 - 7);
+      d.plats(delar.length * 4.7 + 1.5);
+      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(10); pdf.setTextColor(MORK);
+      pdf.text(numrerad ? `${i + 1}.` : '•', 15 + (numrerad ? 0 : 1.2), d.y);
+      pdf.text(delar, 22, d.y);
+      d.y += delar.length * 4.7 + 1.5;
+    });
+    d.y += 3;
+  };
   // Etikett : värde, en rad per faktum. Långa värden radbryts under sig själva.
   d.fakta = (rader, { etikettB = 52 } = {}) => {
     for (const [etikett, varde] of rader.filter(r => r && r[1] != null && String(r[1]).trim() !== '')) {
@@ -185,17 +211,21 @@ function skapaDok(pdf, comp) {
 // --- Försättsbladet ---------------------------------------------------------------
 async function ritaForsattsblad(d, { comp, user, nyckeltal, ledning }) {
   const { pdf, W, H } = d;
-  pdf.setFillColor(BLUE); pdf.rect(0, 0, W, 112, 'F');
-  pdf.setFillColor(YELLOW); pdf.rect(0, 112, W, 2.2, 'F');
+  // Huvudet är 84 mm, inte högre: försättsbladet ska rymma fakta, ledning OCH
+  // gallringsbeskedet på EN sida. Med 112 mm svämmade beskedet över till en
+  // nästan tom sida två.
+  const HUVUD = 84;
+  pdf.setFillColor(BLUE); pdf.rect(0, 0, W, HUVUD, 'F');
+  pdf.setFillColor(YELLOW); pdf.rect(0, HUVUD, W, 2.2, 'F');
   const logo = await logotyp();
-  if (logo) { try { pdf.addImage(logo, 'PNG', W - 15 - 46, 12, 46, 16.7, undefined, 'FAST'); } catch { /* utan logotyp */ } }
+  if (logo) { try { pdf.addImage(logo, 'PNG', W - 15 - 46, 10, 46, 16.7, undefined, 'FAST'); } catch { /* utan logotyp */ } }
 
   pdf.setTextColor(YELLOW); pdf.setFont('helvetica', 'bold'); pdf.setFontSize(10);
-  pdf.text('TÄVLINGSRAPPORT', 15, 22);
+  pdf.text('TÄVLINGSRAPPORT', 15, 20);
   pdf.setTextColor('#ffffff'); pdf.setFontSize(27);
-  const titel = pdf.splitTextToSize(ren(comp.name || comp.shortName || 'Tävling'), W - 30).slice(0, 3);
-  pdf.text(titel, 15, 50);
-  let y = 50 + titel.length * 11;
+  const titel = pdf.splitTextToSize(ren(comp.name || comp.shortName || 'Tävling'), W - 30).slice(0, 2);
+  pdf.text(titel, 15, 42);
+  let y = 42 + titel.length * 11;
   // Årtalet står ofta redan i namnet ("Älghornsjakten 2026") — skriv det inte två gånger.
   const arINamnet = comp.year && String(comp.name || '').includes(String(comp.year));
   pdf.setTextColor(YELLOW); pdf.setFontSize(17);
@@ -210,14 +240,14 @@ async function ritaForsattsblad(d, { comp, user, nyckeltal, ledning }) {
   const n = nyckeltal.length, mellan = 4, b = (W - 30 - mellan * (n - 1)) / n;
   nyckeltal.forEach((k, i) => {
     const x = 15 + i * (b + mellan);
-    pdf.setFillColor('#eef2f6'); pdf.roundedRect(x, 124, b, 23, 2, 2, 'F');
+    pdf.setFillColor('#eef2f6'); pdf.roundedRect(x, HUVUD + 10, b, 21, 2, 2, 'F');
     pdf.setFont('helvetica', 'bold'); pdf.setFontSize(7.5); pdf.setTextColor(GRA);
-    pdf.text(ren(k.etikett).toUpperCase(), x + 4, 131);
+    pdf.text(ren(k.etikett).toUpperCase(), x + 4, HUVUD + 17);
     pdf.setFontSize(15); pdf.setTextColor(BLUE);
-    pdf.text(ren(k.varde), x + 4, 141);
+    pdf.text(ren(k.varde), x + 4, HUVUD + 26.5);
   });
 
-  d.y = 160;
+  d.y = HUVUD + 42;
   d.rubrik('Om tävlingen');
   const st = startTimeSettings(comp);
   const reg = registrationSettings(comp);
@@ -233,7 +263,7 @@ async function ritaForsattsblad(d, { comp, user, nyckeltal, ledning }) {
       : 'Inga schemalagda starttider'],
     ['Anmälan', reg.opensAt || reg.closesAt ? `${reg.opensAt || '—'} till ${reg.closesAt || '—'}` : ''],
     ['Tävlingssida', `eskilscout.se/t/${comp.slug || comp.id || ''}`],
-    ['Status', comp.closed ? 'Avslutad' : 'Pågående / ej avslutad']
+    ['Status', comp.closed ? `Avslutad${comp.closedAt ? ' ' + dag(tillMs(comp.closedAt)) : ''}` : 'Inte avslutad']
   ]);
   if (comp.description) d.stycke(comp.description, { color: GRA });
 
@@ -243,14 +273,79 @@ async function ritaForsattsblad(d, { comp, user, nyckeltal, ledning }) {
     d.fakta(medNamn.map(r => [r.label || 'Roll', [r.name, r.email].filter(x => (x || '').trim()).join('  ·  ')]));
   } else if (ledning.length) {
     d.fakta(ledning.map(r => [r.label || 'Roll', '(uppgiften är gallrad)']));
-    d.not('Namn och e-post gallrades när tävlingen avslutades. Ta ut rapporten före avslutet nästa gång.');
+    d.not('Tävlingen avslutades innan ESKIL började spara tävlingsledningens namn och e-post vid avslut — de gallrades då tillsammans med allt annat.');
   } else {
     d.not('Ingen tävlingsledning är registrerad i ESKIL.');
   }
 
+  // Gallringsbeskedet hålls ihop som ETT block. Får det inte plats här (en
+  // ledning med många roller) ritas det på innehållssidan i stället, som
+  // alltid har utrymme — hellre där än utspritt över en sidbrytning.
+  const besked = personuppgiftsbesked(comp);
+  const fickPlats = d.y + besked.hojd(pdf, W) <= H - 16;
+  if (fickPlats) d.y = besked.rita(pdf, W, d.y);
+
   pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8); pdf.setTextColor('#8a8a8a');
   pdf.text(ren(`Genererad ${new Date().toLocaleString('sv-SE', { dateStyle: 'long', timeStyle: 'short' })}${user?.email ? ' av ' + user.email : ''} · ESKIL — eskilscout.se`), 15, H - 8);
   pdf.text('Internt dokument för tävlingsledningen', W - 15, H - 8, { align: 'right' });
+  return { beskedKvar: !fickPlats, besked };
+}
+
+// Vad som finns kvar — och vad som inte gör det. Rapporten tas ut EFTER
+// avslutet (formuläret är låst dessförinnan), så påståendet är sant när det
+// skrivs. Texten följer closeCompetition i store.js; ändras gallringen där ska
+// den ändras här och i /integritet.
+function personuppgiftsbesked(comp) {
+  const text = comp.closed
+    ? `Tävlingen är avslutad${comp.closedAt ? ' (' + dag(tillMs(comp.closedAt)) + ')' : ''}. I och med avslutet har alla personuppgifter raderats ur ESKIL: användare, kontrollansvariga och ekonomiansvariga; telefonnummer till tävlingsledning och kontroller; anmälningarnas kontaktuppgifter och fritextsvar; kompletteringar per patrull och ändringsärenden; samtal och bilder mellan fältet och ledningen; sekretariatets logg samt papperskorgen. Det enda personliga som sparas är tävlingsledningens namn och e-postadresser. I övrigt innehåller rapporten bara patrullnamn, kårer, resultat och statistik.`
+    : 'Tävlingen är INTE avslutad. Personuppgifterna i ESKIL är därför inte gallrade ännu — avsluta tävlingen under Inställningar -> Grund när den är genomförd.';
+  const rader = (pdf, W) => { pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9.5); return pdf.splitTextToSize(ren(text), W - 30); };
+  return {
+    hojd: (pdf, W) => 12 + rader(pdf, W).length * 4.5 + 2,
+    rita: (pdf, W, y) => {
+      const r = rader(pdf, W);
+      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(13); pdf.setTextColor(BLUE);
+      pdf.text('Personuppgifter', 15, y + 3);
+      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9.5); pdf.setTextColor(comp.closed ? GRA : '#c8102e');
+      pdf.text(r, 15, y + 11);
+      return y + 11 + r.length * 4.5 + 2;
+    }
+  };
+}
+
+// Överlämningskoden — stor, i mitten av blicken, med QR rakt in på inlösningssidan.
+// Koden är en nyckel: rapporten säger det, och säger ärligt om den saknas eller
+// redan är använd i stället för att trycka en kod som inte fungerar.
+async function ritaKodruta(d, ovl) {
+  const { pdf, W } = d;
+  if (!ovl?.kod) {
+    d.not('Ingen överlämningskod är skapad. Skapa den under Inställningar -> Grund -> Utvärdering och överlämning och ta ut rapporten igen — då står koden här.');
+    return;
+  }
+  if (ovl.anvand) {
+    d.stycke(`Överlämningskoden löstes in ${dag(tillMs(ovl.anvand.at))} — nästa arrangör har redan fått sin tävling. Koden gäller inte längre och skrivs därför inte ut.`, { style: 'bold', gap: 5 });
+    return;
+  }
+  const kod = formateraKod(ovl.kod);
+  const hojd = 46;
+  d.plats(hojd + 6);
+  const y0 = d.y;
+  pdf.setFillColor('#eef2f6'); pdf.roundedRect(15, y0, W - 30, hojd, 3, 3, 'F');
+  pdf.setFillColor(BLUE); pdf.rect(15, y0, 2.2, hojd, 'F');
+  pdf.setFont('helvetica', 'bold'); pdf.setFontSize(8.5); pdf.setTextColor(GRA);
+  pdf.text('ÖVERLÄMNINGSKOD', 24, y0 + 9);
+  pdf.setFont('courier', 'bold'); pdf.setFontSize(27); pdf.setTextColor(BLUE);
+  pdf.text(kod, 24, y0 + 22);
+  pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9.5); pdf.setTextColor(MORK);
+  const rader = pdf.splitTextToSize(`Gå till ${OVERLAMNING_ADRESS} — eller skanna rutan — skriv koden och din e-postadress. Du får en inloggningslänk i mejlen och landar i en färdig tävling för nästa år.`, W - 30 - 56);
+  pdf.text(rader, 24, y0 + 30);
+  pdf.setFont('helvetica', 'bold'); pdf.setFontSize(8.5); pdf.setTextColor('#c8102e');
+  pdf.text('Gäller en gång. Behandla koden som en nyckel.', 24, y0 + hojd - 4);
+  try {
+    const img = await renderQrToImg(`https://${OVERLAMNING_ADRESS}/${kod}`, 300);
+    pdf.addImage(img.src, 'PNG', W - 15 - 40, y0 + 3, 37, 37, undefined, 'FAST');
+  } catch { /* utan QR går koden fortfarande att skriva in */ }
+  d.y = y0 + hojd + 8;
 }
 
 function ritaInnehall(d, innehallSida) {
@@ -272,7 +367,7 @@ function ritaInnehall(d, innehallSida) {
 }
 
 // --- Huvudfunktionen ----------------------------------------------------------------
-export async function byggTavlingsrapport({ cid, comp: compIn, user, utvardering = null, bildData = null }, { onProgress = null, spara = true } = {}) {
+export async function byggTavlingsrapport({ cid, comp: compIn, user, utvardering = null, bildData = null, overlamning = undefined }, { onProgress = null, spara = true } = {}) {
   const steg = (t) => { try { onProgress?.(t); } catch { /* bara en etikett */ } };
   steg('Hämtar underlag…');
   await ensureLibs();
@@ -281,17 +376,17 @@ export async function byggTavlingsrapport({ cid, comp: compIn, user, utvardering
   // Färsk tävling: den hydrerade bär ledningens interna roller, och `compIn`
   // kan vara minuter gammal.
   const comp = { ...(compIn || {}), ...((await store.getCompetition(cid).catch(() => null)) || {}), id: cid };
-  const [patrols, controls, track, regs, stations, selfPassages, messages, logg] = await Promise.all([
+  const [patrols, controls, track, regs, stations, selfPassages, messages] = await Promise.all([
     store.listPatrols(cid), store.listControls(cid), store.getTrack(cid).catch(() => null),
     store.listRegistrations(cid).catch(() => []), store.listStations(cid).catch(() => []),
-    store.listSelfPassages(cid).catch(() => []), store.listBroadcastMessages(cid).catch(() => []),
-    store.listLogg(cid).catch(() => [])
+    store.listSelfPassages(cid).catch(() => []), store.listBroadcastMessages(cid).catch(() => [])
   ]);
   const scores = await store.listAllScores(cid, controls).catch(() => []);
   const stationPassages = (await Promise.all(stations.map(s => store.listPassages(cid, s.id).catch(() => [])))).flat();
 
   const u = normUtvardering(utvardering || await store.getHandover(cid).catch(() => null));
   const bilder = bildData || await store.hamtaUtvarderingBilder(cid, utvarderingBildIds(u)).catch(() => ({}));
+  const ovl = overlamning !== undefined ? overlamning : await store.getOverlamning(cid).catch(() => null);
 
   // --- Siffrorna ---
   const riktiga = patrols.filter(p => !p.genrep);
@@ -318,7 +413,7 @@ export async function byggTavlingsrapport({ cid, comp: compIn, user, utvardering
   const pdf = new jsPDF({ unit: 'mm', format: 'a4', compress: true });
   const d = skapaDok(pdf, comp);
 
-  await ritaForsattsblad(d, {
+  const forsatt = await ritaForsattsblad(d, {
     comp, user,
     ledning: activeManagement(comp),
     nyckeltal: [
@@ -336,6 +431,7 @@ export async function byggTavlingsrapport({ cid, comp: compIn, user, utvardering
   d.ctx.subtitle = 'Innehåll';
   banner(pdf, d.W, comp, 'Innehåll');
   const innehallSida = pdf.getNumberOfPages();
+  if (forsatt.beskedKvar) forsatt.besked.rita(pdf, d.W, 170);
 
   // ===== 1. Utvärdering =====
   d.kapitel('Utvärdering');
@@ -362,6 +458,20 @@ export async function byggTavlingsrapport({ cid, comp: compIn, user, utvardering
     d.rubrik(`Att följa upp: förra årets utvärdering${f.namn || f.ar ? ' (' + [f.namn, f.ar].filter(Boolean).join(' ') + ')' : ''}`, GRA);
     if (f.forbattringar.trim()) { d.underrubrik('Förbättringsförslagen då'); d.stycke(f.forbattringar, { color: GRA }); }
     if (f.mindreBra.trim()) { d.underrubrik('Det som fungerade mindre bra då'); d.stycke(f.mindreBra, { color: GRA }); }
+  }
+
+  // ===== Överlämning till nästa arrangör (bara när kryssrutan är i) =====
+  if (u.nyArrangor) {
+    const o = OVERLAMNING_ARRANGOR;
+    d.kapitel(o.titel);
+    d.stycke(o.ingress, { color: GRA, gap: 5 });
+    await ritaKodruta(d, ovl);
+    if (u.nyArrangorText.trim()) { d.rubrik('Från årets arrangör', ORANGE); d.stycke(u.nyArrangorText, { size: 10.5, gap: 4 }); }
+    d.rubrik('Så tar nästa arrangör över tävlingen i ESKIL');
+    o.steg.forEach((s, i) => { d.underrubrik(`${i + 1}. ${s.rubrik}`); d.stycke(s.text, { indent: 4, gap: 3 }); });
+    d.rubrikMedPunkter('Följer med i kopian', o.foljerMed);
+    d.rubrikMedPunkter('Följer inte med', o.foljerInteMed);
+    d.rubrikMedPunkter('Det första nästa arrangör gör i den nya tävlingen', o.attGoraForst, { color: ORANGE, numrerad: true });
   }
 
   // ===== 2. Banan =====
@@ -514,8 +624,10 @@ export async function byggTavlingsrapport({ cid, comp: compIn, user, utvardering
 
   // ===== 7. Dagen i korthet =====
   const meddelanden = messages.filter(m => (m.text || '').trim()).sort((a, b) => (tillMs(a.at) ?? 0) - (tillMs(b.at) ?? 0));
-  const loggrader = logg.sort((a, b) => (tillMs(a.at) ?? 0) - (tillMs(b.at) ?? 0));
-  if (meddelanden.length || loggrader.length) {
+  // Sekretariatets logg skrivs medvetet INTE ut: den är ett arbetsredskap för
+  // dagen (vem stängde vad, vem flyttade vem) och hör inte hemma i ett dokument
+  // som arkiveras och lämnas vidare.
+  if (meddelanden.length) {
     d.kapitel('Dagen i korthet');
     if (meddelanden.length) {
       d.rubrik('Driftmeddelanden');
@@ -527,14 +639,6 @@ export async function byggTavlingsrapport({ cid, comp: compIn, user, utvardering
         d.stycke(`${t != null ? new Date(t).toLocaleString('sv-SE', { dateStyle: 'short', timeStyle: 'short' }) : '—'}  ·  ${niva[m.level] || 'Info'}  ·  till ${till}`, { size: 9, style: 'bold', color: m.level === 'kritisk' ? '#c8102e' : GRA, gap: 0.5 });
         d.stycke(m.text, { gap: 4 });
       }
-    }
-    if (loggrader.length) {
-      d.rubrik('Sekretariatets logg');
-      d.tabell([
-        { label: 'Tid', w: 30, get: r => { const t = tillMs(r.at); return t != null ? new Date(t).toLocaleString('sv-SE', { dateStyle: 'short', timeStyle: 'short' }) : '—'; } },
-        { label: 'Händelse', w: 150, get: r => String(r.text || '').slice(0, 105) }
-      ], loggrader);
-      d.not('Loggen raderas när tävlingen avslutas. Vem som gjorde vad står i ESKIL fram till dess, men skrivs inte ut här.');
     }
   }
 

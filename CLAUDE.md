@@ -1113,7 +1113,21 @@ BÅDA ställena.
   (`handoverBilder`, BACKUP_VERSION 5). Utvärderingen LIGGER KVAR vid
   closeCompetition — den är skriven för nästa år — och formuläret säger därför
   ifrån om personuppgifter och igenkännbara scouter (står i /integritet).
-  Skrivskyddet följer inte `closed`: utvärderingen skrivs efteråt.
+  **Utvärderingen, rapporten och överlämningen LÅSES UPP av avslutet**
+  (`comp.closed === true` i views/utvardering.js). Det är moroten för att
+  faktiskt avsluta — och det gör rapportens besked sant: när den tas ut ÄR
+  allt personligt utom ledningens namn och e-post raderat. Utanför låset står
+  de löpande anteckningarna och förra årets utvärdering: dem behöver ledningen
+  medan tävlingen PLANERAS, och anteckningarna användes långt före låset.
+  **Därför sparar `closeCompetition` ledningens NAMN och E-POST och tömmer bara
+  telefonnumren** (förut tömdes allt och private/ledning raderades). Ledningen
+  läses FÖRE rivningen — de interna namnen vävs in ur private/ledning — och
+  skrivs tillbaka genom samma `splitManagement` som alltid, så en intern rolls
+  namn aldrig hamnar på det världsläsbara dokumentet. `closedAt` stämplas.
+  faltinfo-speglarna (telefon till fältet) raderas fortfarande helt.
+  `deleteMyAccount` rensar redan båda ställena. Tävlingar som avslutades före
+  ändringen har inga namn kvar; rapporten säger det i stället för att visa
+  tomma rader.
   **Tävlingsrapporten (`rapport-pdf.js`, `byggTavlingsrapport`) RITAR bara.**
   Siffrorna räknas i `rapport-stat.js` (testad), resultatdelen är
   `ritaResultat()` i results-export.js — SAMMA kod som den officiella
@@ -1124,8 +1138,59 @@ BÅDA ställena.
   har samma företräde som Läget: funktionär > själv > härlett. Fritext går
   genom `ren()`: jsPDF:s standardtypsnitt är WinAnsi, och en emoji ur en
   utvärderingstext blir annars skräptecken som förskjuter raden. Rapporten
-  ska tas ut FÖRE avslut (avslutet gallrar ledningens namn och loggen) —
-  avslutsdialogen erbjuder den bredvid backupen.
+  tas ut EFTER avslut och har ett eget stycke "Personuppgifter" på
+  försättsbladet som säger vad som raderats och vad som finns kvar — texten
+  följer closeCompetition och /integritet; ändras gallringen ska alla tre
+  ändras. Sekretariatets logg skrivs medvetet INTE ut: den är dagens
+  arbetsredskap, inte arkiv.
+  **Överlämning till ny arrangör** är en kryssruta (`nyArrangor`, bara
+  `=== true`, + valfritt `nyArrangorText`). Guiden — stegen, vad som följer
+  med, vad som inte gör det, och "att göra först" — är EN konstant,
+  `OVERLAMNING_ARRANGOR` i utvardering.js, som formuläret, rapportens kapitel,
+  inlösningssidan och nästa års tävling alla läser. Varje påstående är bundet
+  till koden av test/overlamning.test.js. Ändrar du kopian faller testet —
+  rätta då GUIDEN, inte testet. Kopian bär `foregaende.nyArrangor` (nästa
+  arrangör möts av listan överst) men aldrig kryssrutan som sin egen.
+  **Överlämningskoden** (`XXXX-XXXX-XXXX`, alfabetet A–Z utan I och O samt 2–9:
+  32 tecken, 5 bitar styck, 60 bitar; `& 31` på en byte är LIKFORMIGT eftersom
+  32 delar 256 — testat över alla 256 bytevärden). Den nya arrangören löser in
+  den på `/overlamning` (QR i rapporten: `/overlamning/<kod>`) och får en kopia
+  med sig själv som ENSAM admin. **Det är det TREDJE undantaget från "Cloud
+  Functions bara för mail"** (callable `losInOverlamningskod`,
+  functions/overlamning.js), och inte ett val: reglerna släpper bara in en
+  årgångskopia från den som redan administrerar källan, och inlösaren har per
+  definition ingen rätt till den. Fem saker som måste sitta:
+  1. **Adressen tas ur den verifierade inloggningen, ALDRIG ur anropet.** Ett
+     stavfel i ett formulär hade skapat en tävling åt ingen och bränt en kod
+     som står tryckt i en rapport. Sidan skickar därför en inloggningslänk,
+     sparar koden i localStorage (`eskil:overlamningskod`, en timme), och
+     app.js skickar tillbaka till `/overlamning` när inloggningen landat på
+     /app — inloggningslänkens continue-URL är fast.
+  2. **EN kopia, två implementationer, ett parity-test.** Vad en kopia
+     innehåller bor i `public/js/argangskopia.js` (rena funktioner som
+     `copyCompetition` använder) med CJS-spegel i functions/overlamning.js —
+     samma mönster som laget-core/laget.js. `forNyArrangor()` drar sedan av det
+     som hör till den GAMLA arrangören: betalningsmetoderna (ett kvarglömt
+     Swish-nummer skickar nästa års avgifter till fel kår), ledningens
+     personuppgifter (rollerna stannar) och arrangörens namn.
+  3. **Koden tas i en transaktion och SLÄPPS om kopian havererar.** Två
+     samtidiga inlösningar får inte ge två tävlingar, och ett nätfel får inte
+     bränna koden. Båda testade mot en databasattrapp.
+  4. **`overlamningskoder/{sha256}` har `list: false` och `update: false` även
+     för admin.** Klartexten ligger i tävlingens `private/overlamning` (den ska
+     stå i rapporten; efter avslut är medlemmarna bara admins). Kunde en klient
+     skriva `anvand` gick en använd kod att nollställa; kunde samlingen listas
+     vore hasharna en förteckning över vilka tävlingar som lämnas över. Create
+     kräver admin för JUST den tävling koden pekar på — annars kunde vem som
+     helst peka en egen kod mot någon annans tävling och lösa in den.
+     Mutationsverifierat i test/rules.test.js.
+  5. **Koden följer ALDRIG med i backup eller årgångskopia** — samma skäl som
+     samtalstoken. `deleteCompetition` drar in den FÖRST, medan private/access
+     finns kvar att pröva rätten mot. Lägg aldrig till en rules-match för
+     `overlamningForsok/**` (strypningen, bara admin-SDK).
+  Den gamla arrangören ser i formuläret ATT koden lösts in och från vilken
+  adress — det är den de lämnade över till, och de ska kunna upptäcka om det
+  inte är det. Står i /integritet.
 - `.../track/main` — the drawn course ("Spår" tab): waypoints per leg keyed
   `<fromKey>__<toKey>` plus `speedKmh`. The leg sequence itself is derived
   from control number order at render time, never stored. Publicly readable
@@ -1295,8 +1360,11 @@ finns), aldrig en patrull med `genrep: true`, och aldrig `selfStart`/
   competitionRequests, the users doc and the Auth account. Sole admin of a
   competition must supply a replacement admin per competition, and the last
   super-admin is refused outright.
-  Never add rules matches for `/mail/**`, `/caps/**`, `/loginRequests/**` or
-  `/resendRequests/**` — only the admin SDK may touch them. Keep all
+  A fourth callable, `losInOverlamningskod`, redeems a handover code — see the
+  handover bullet under the rules model for why it cannot live in the client.
+  Never add rules matches for `/mail/**`, `/caps/**`, `/loginRequests/**`,
+  `/resendRequests/**` or `/overlamningForsok/**` — only the admin SDK may
+  touch them. Keep all
   other logic client-side + rules. Functions deploy manually:
   `npx firebase-tools deploy --only functions` (not part of CI).
 - In firestore.rules, always read optional competition fields with

@@ -30,7 +30,7 @@ import { hasIcon } from '../public/js/icons.js';
 import { fordelaTidspoang, invNorm, formateraTid, tolkaTid } from '../public/js/tidspoang.js';
 import {
   UTV_SEKTIONER, UTV_ALLA_NYCKLAR, normUtvardering, utvarderingTom, utvarderingForNastaAr,
-  utvarderingBildIds, harInnehall, bilderForSektion
+  utvarderingBildIds, harInnehall, bilderForSektion, OVERLAMNING_ARRANGOR
 } from '../public/js/utvardering.js';
 import {
   median, isoVecka, anmalningsStatistik, deltagarStatistik, patrullTider, tidsStatistik,
@@ -2345,7 +2345,7 @@ describe('hemligt spår: courseHidden döljer spåret hela tävlingen', () => {
     const skrivbart = verktyg.slice(i, verktyg.indexOf('};', i));
     assert.ok(!/courseHidden/.test(skrivbart), 'MCP får inte kunna avslöja ett hemligt spår i ett enda anrop');
     assert.match(readFileSync(new URL('../functions/mcp/redact.js', import.meta.url), 'utf8'), /courseHidden: OPPEN/);
-    assert.match(las('store.js'), /'autoCloseControls', 'courseHidden'/);
+    assert.match(las('argangskopia.js'), /'autoCloseControls', 'courseHidden'/);
   });
 });
 
@@ -2423,7 +2423,7 @@ describe('startlistan: platser, luckor och varningar när den är publicerad', (
     const store = readFileSync(new URL('../public/js/store.js', import.meta.url), 'utf8');
     assert.match(store, /arrayRemove\(Number\(post\.data\.startOrder\)\)/);
     assert.ok(!/updatePatrolOrders/.test(store), 'drag-och-släpp får inte längre skriva 0..N-1 på alla');
-    assert.match(store, /published: false, luckor: \[\]/, 'årgångskopian ska börja utan luckor');
+    assert.match(readFileSync(new URL('../public/js/argangskopia.js', import.meta.url), 'utf8'), /published: false, luckor: \[\]/, 'årgångskopian ska börja utan luckor');
     // Patrullistan: borttagning lämnar en lucka, varje ändring går genom genomforStartlista
     const pl = readFileSync(new URL('../public/js/views/patrols.js', import.meta.url), 'utf8');
     assert.match(pl, /sparaStartlista\(cid, \[\], \[\.\.\.startlistaLuckorSparade\(comp\), plats\]\)/);
@@ -2528,7 +2528,8 @@ describe('utvärdering och överlämning: samma dokument, inget förstörs', () 
     const inst = readFileSync(new URL('../public/js/views/competition-settings.js', import.meta.url), 'utf8');
     assert.ok(!/setHandover\(/.test(inst), 'inställningssidan ska gå via utvärderingsvyn');
     assert.match(inst, /mountUtvardering\(utvHost, \{ cid, comp, user, readOnly \}\)/);
-    assert.match(inst, /id="cl-rapport"/, 'avslutsdialogen ska erbjuda rapporten — avslutet gallrar ledningens namn');
+    assert.ok(!/id="cl-rapport"/.test(inst), 'rapporten tas ut EFTER avslutet numera — dialogen ska inte erbjuda den före');
+    assert.match(inst, /Avslutet låser upp utvärderingen, tävlingsrapporten/);
   });
 });
 
@@ -2624,10 +2625,93 @@ describe('tävlingsrapporten: siffrorna', () => {
 
   test('rapporten ritar med delad kod och skriver aldrig ut ett telefonnummer', () => {
     const src = readFileSync(new URL('../public/js/rapport-pdf.js', import.meta.url), 'utf8');
-    assert.ok(!/\.phone\b|telefon/i.test(src.replace(/\/\/.*$/gm, '')), 'rapporten sprids vidare — namn och e-post, aldrig telefon');
+    // Ordet får stå i prosan (gallringsbeskedet nämner telefonnummer) — FÄLTET får aldrig läsas.
+    assert.ok(!/\.phone\b|\.telefon\b|\bphone:/.test(src.replace(/\/\/.*$/gm, '')), 'rapporten sprids vidare — namn och e-post, aldrig telefon');
     assert.match(src, /ritaResultat\(pdf, d\.ctx/, 'resultatdelen ska vara samma kod som den officiella resultat-PDF:en');
     assert.match(src, /courseEtaCalibrated\(/); assert.match(src, /courseMapDataUrl\(/);
     const res = readFileSync(new URL('../public/js/results-export.js', import.meta.url), 'utf8');
     assert.match(res, /let y = ritaResultat\(pdf, ctx, 46,/, 'den officiella PDF:en ska gå samma väg');
+  });
+});
+
+describe('överlämning till ny arrangör: kryssrutan, guiden och vad den påstår', () => {
+  test('bara === true slår på den; ett dokument från före kryssrutan är av', () => {
+    assert.equal(normUtvardering({ text: 'x' }).nyArrangor, false);
+    assert.equal(normUtvardering({ nyArrangor: 'true' }).nyArrangor, false);
+    const u = normUtvardering({ nyArrangor: true, nyArrangorText: 'Ring Anna' });
+    assert.deepEqual([u.nyArrangor, u.nyArrangorText], [true, 'Ring Anna']);
+  });
+
+  test('kopian: nästa arrangör möts av överlämningen, men ärver inte kryssrutan som sin egen', () => {
+    const ny = utvarderingForNastaAr({ nyArrangor: true, nyArrangorText: 'Materielen står i förrådet', bra: 'Allt' }, { shortName: 'AH', year: 2026 });
+    assert.equal(ny.nyArrangor, undefined);
+    assert.equal(ny.nyArrangorText, undefined);
+    assert.deepEqual([ny.foregaende.nyArrangor, ny.foregaende.nyArrangorText], [true, 'Materielen står i förrådet']);
+    assert.equal(normUtvardering(ny).nyArrangor, false);
+    // Bara kryssrutan, ingen utvärdering: överlämningen ska ändå med
+    const bara = utvarderingForNastaAr({ nyArrangor: true, foregaende: { ar: 2025, bra: 'gammalt' } }, { shortName: 'AH', year: 2026 });
+    assert.deepEqual([bara.foregaende.ar, bara.foregaende.nyArrangor], [2026, true]);
+    assert.equal(harInnehall(bara), true);
+    // Meddelandet följer inte med om rutan är urkryssad
+    assert.equal(utvarderingForNastaAr({ nyArrangor: false, nyArrangorText: 'kvarglömt', bra: 'x' }, {}).foregaende.nyArrangorText, '');
+  });
+
+  test('flikarna guiden pekar på finns — resten av guidens påståenden prövas i overlamning.test.js', () => {
+    const inst = readFileSync(new URL('../public/js/views/competition-settings.js', import.meta.url), 'utf8');
+    for (const flik of ['Användare', 'Anmälan', 'Tävlingsledning', 'Grund']) assert.match(inst, new RegExp(`label: '${flik}`), `fliken ${flik} finns inte längre`);
+    const text = JSON.stringify(OVERLAMNING_ARRANGOR);
+    for (const flik of ['Användare', 'Anmälan', 'Tävlingsledning', 'Grund']) assert.ok(text.includes(`Inställningar -> ${flik}`), `guiden nämner inte ${flik}`);
+  });
+
+  test('formulär, rapport och lagring går samma väg; loggen skrivs inte ut', () => {
+    const vy = readFileSync(new URL('../public/js/views/utvardering.js', import.meta.url), 'utf8');
+    assert.match(vy, /id="utv-nyArrangor"/);
+    assert.match(vy, /nyArrangor: u\.nyArrangor, nyArrangorText: u\.nyArrangorText/);
+    assert.match(vy, /f\.nyArrangor \?/, 'nästa års tävling ska visa att-göra-listan');
+    const pdf = readFileSync(new URL('../public/js/rapport-pdf.js', import.meta.url), 'utf8');
+    assert.match(pdf, /if \(u\.nyArrangor\) \{/);
+    assert.match(pdf, /d\.kapitel\(o\.titel\)/);
+    assert.ok(!/listLogg|d\.rubrik\('Sekretariatets logg'\)/.test(pdf), 'sekretariatets logg ska inte med i rapporten');
+    const store = readFileSync(new URL('../public/js/store.js', import.meta.url), 'utf8');
+    assert.match(store, /typeof falt\?\.nyArrangor === 'boolean'/);
+    assert.ok(!/export async function listLogg/.test(store), 'läsaren fanns bara för rapporten');
+  });
+});
+
+describe('avslutet: ledningens namn och e-post sparas, allt annat gallras', () => {
+  const store = readFileSync(new URL('../public/js/store.js', import.meta.url), 'utf8');
+  const avslut = store.slice(store.indexOf('export async function closeCompetition'), store.indexOf('export async function deleteThreads'));
+
+  test('telefonnumren töms, namn och e-post står kvar — och delas publikt/internt som alltid', () => {
+    assert.match(avslut, /foreAvslut\.management\.map\(r => \(\{ \.\.\.r, phone: '' \}\)\)/);
+    assert.match(avslut, /splitManagement\(utanTelefon\)/, 'en intern rolls namn får aldrig hamna på det världsläsbara dokumentet');
+    assert.match(avslut, /skrivLedning\(cid, delad\.internPii\)/);
+    assert.ok(!/name: '', phone: '', email: ''/.test(avslut), 'avslutet tömde förut ALLT — då går rapporten inte att ta ut efteråt');
+    assert.ok(!/deleteDoc\(doc\(db, 'competitions', cid, 'private', 'ledning'\)\)/.test(avslut), 'private/ledning raderades förut helt');
+  });
+  test('ledningen läses FÖRE rivningen, och avslutet tidsstämplas', () => {
+    assert.ok(avslut.indexOf('const foreAvslut = await getCompetition(cid)') < avslut.indexOf("collection(db, 'competitions', cid, 'faltinfo')"),
+      'läses ledningen efter rivningen finns de interna namnen inte kvar att väva in');
+    assert.match(avslut, /closed: true, closedAt: new Date\(\)\.toISOString\(\)/);
+  });
+  test('splitManagement utan telefon: publika roller behåller namn och e-post, interna hamnar i internPii', () => {
+    const { publikt, internPii } = splitManagement([
+      { id: 'tl', label: 'Tävlingsledare', visibility: 'public', name: 'Anna', phone: '', email: 'anna@x.se' },
+      { id: 'sek', label: 'Sekretariat', visibility: 'internal', name: 'Johan', phone: '', email: 'johan@x.se' }
+    ]);
+    assert.deepEqual([publikt[0].name, publikt[0].email, publikt[0].phone], ['Anna', 'anna@x.se', '']);
+    assert.deepEqual([publikt[1].name, publikt[1].email], [undefined, undefined]);
+    assert.deepEqual(internPii.sek, { name: 'Johan', phone: '', email: 'johan@x.se' });
+  });
+  test('utvärderingen och rapporten låses upp av avslutet; anteckningarna och förra året står utanför låset', () => {
+    const vy = readFileSync(new URL('../public/js/views/utvardering.js', import.meta.url), 'utf8');
+    assert.match(vy, /const avslutad = comp\?\.closed === true;/);
+    const last = vy.slice(vy.indexOf('if (!avslutad) {'), vy.indexOf('koppla();\n      return;'));
+    assert.match(last, /foregaendeHtml\(\)/, 'nästa års ledning läser förra årets utvärdering medan de PLANERAR');
+    assert.match(last, /sektionHtml\(UTV_ANTECKNINGAR, 0\)/, 'de löpande anteckningarna användes före låset och får inte försvinna');
+    assert.ok(!/utv-pdf|UTV_SEKTIONER\.map/.test(last), 'rapporten eller de fyra delarna är åtkomliga före avslutet');
+    const pdf = readFileSync(new URL('../public/js/rapport-pdf.js', import.meta.url), 'utf8');
+    assert.match(pdf, /I och med avslutet har alla personuppgifter raderats ur ESKIL/);
+    assert.match(pdf, /Det enda personliga som sparas är tävlingsledningens namn och e-postadresser/);
   });
 });

@@ -263,6 +263,31 @@ service cloud.firestore {
       allow read, write: if isSuperAdmin();
     }
 
+    // --- Överlämningskoder. Tävlingens administratör skapar en kod som en NY
+    // arrangör löser in (Cloud Function losInOverlamningskod) för att få en
+    // kopia av upplägget. Doc-id:t är sha256 av koden — klartexten ligger i
+    // tävlingens private/overlamning — så en läcka av samlingen ger inga koder.
+    //   list: ALDRIG. Även hasharna är uppräkningsbara nycklar till vilka
+    //         tävlingar som lämnas över.
+    //   update: ALDRIG från en klient. Bara servern (admin-SDK) markerar en kod
+    //         som använd; kunde admin skriva `anvand` kunde en använd kod
+    //         nollställas och lösas in igen.
+    //   create: bara de tre fälten, och bara för en tävling man administrerar —
+    //         annars kunde vem som helst peka en egen kod mot någon annans tävling
+    //         och lösa in den.
+    match /overlamningskoder/{hash} {
+      allow get: if isSuperAdmin() || (isSignedIn() && isCompAdmin(resource.data.cid));
+      allow list: if false;
+      allow create: if isSignedIn()
+        && hash.matches('^[0-9a-f]{64}$')
+        && request.resource.data.keys().hasOnly(['cid', 'skapad', 'skapadAv'])
+        && request.resource.data.cid is string
+        && (isSuperAdmin() || isCompAdmin(request.resource.data.cid))
+        && !compIsDemo(request.resource.data.cid);
+      allow update: if false;
+      allow delete: if isSuperAdmin() || (isSignedIn() && isCompAdmin(resource.data.cid));
+    }
+
     // --- Users
     // Any signed-in user may read the (email, role) of other users so that
     // competition admins can look up invitees by email. A user may only

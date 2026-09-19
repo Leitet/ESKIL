@@ -76,6 +76,7 @@ import { renderLogin } from './views/login.js';
 import { renderLanding } from './views/landing.js';
 import { renderKontakt, renderKontaktArende } from './views/kontakt.js';
 import { renderOm } from './views/om.js';
+import { renderOverlamning, vantandeKod } from './views/overlamning.js';
 
 const app = document.getElementById('app');
 let currentUser = null;
@@ -91,6 +92,9 @@ route('/om',           () => renderOm(app, currentUser));
 route('/kontakt',      () => renderKontakt(app, currentUser));
 // Ärendet — id:t är hemligheten, precis som anmälningarnas ändringslänk.
 route('/kontakt/:id',  (p) => renderKontaktArende(app, p.id));
+// Överlämningskoden: publik sida, och /overlamning/<kod> är QR-koden i rapporten.
+route('/overlamning',      () => renderOverlamning(app, currentUser));
+route('/overlamning/:kod', (p) => renderOverlamning(app, currentUser, p.kod));
 route('/app',          () => guard(async () => await vy('./views/home.js', 'renderHome')(app, currentUser)));
 route('/app/settings', () => guard(async () => await vy('./views/settings.js', 'renderSettings')(app, currentUser)));
 route('/app/admin/users', () => guard(async () => await vy('./views/admin-users.js', 'renderAdminUsers')(app, currentUser)));
@@ -446,6 +450,13 @@ async function runMagicLinkFlow() {
       }
     } else {
       currentUser = null;
+    }
+    // En överlämningskod väntar på att inloggningen blev klar: inloggnings-
+    // länken landar alltid på /app, så skicka tillbaka till inlösningssidan.
+    // replaceState, inte navigate — routern startar (eller dispatchar) strax
+    // nedan och ska rendera EN gång, på rätt adress.
+    if (currentUser && vantandeKod() && !location.pathname.startsWith('/overlamning')) {
+      history.replaceState({}, '', '/overlamning');
     }
     if (routerStarted) {
       // Auth state changed after boot (sign-out, token refresh) — re-render

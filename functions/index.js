@@ -27,6 +27,7 @@ const { FieldValue } = require('firebase-admin/firestore');
 const QRCode = require('qrcode');
 const crypto = require('crypto');
 const { renderReceiptPdfBase64 } = require('./receipt-pdf');
+const overlamning = require('./overlamning');
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -598,6 +599,47 @@ exports.onCompetitionRequestDecided = onDocumentUpdated('competitionRequests/{re
 
 const RESEND_MIN_INTERVAL_MS = 60 * 1000; // 1 begäran/minut per adress
 const RESEND_MAX_PER_DAY = 5;
+
+// ── Överlämningskoden ───────────────────────────────────────────────────────
+// En ny arrangör löser in koden som står i förra arrangörens tävlingsrapport
+// och får en kopia av tävlingens upplägg med sig själv som ensam
+// administratör. Måste ske här: reglerna släpper bara in en årgångskopia från
+// den som redan administrerar källan, och det gör inlösaren inte. All logik —
+// och skälen — ligger i overlamning.js.
+//
+// Kräver INLOGGNING. Adressen som blir administratör är den verifierade i
+// token, aldrig en som skickas med i anropet: annars hade ett stavfel skapat
+// en tävling åt ingen och bränt koden, och vem som helst med koden hade kunnat
+// skapa tävlingar åt andra.
+const OVERLAMNING_MAX_PER_DAG = 20;
+exports.losInOverlamningskod = onCall(async (req) => {
+  const email = String(req.auth?.token?.email || '').trim().toLowerCase();
+  if (!req.auth?.uid || !email || req.auth.token.email_verified === false) {
+    throw new HttpsError('unauthenticated', 'Logga in med din e-postadress först.');
+  }
+  // Strypning per konto. 60 bitar går inte att gissa sig till, men det ska
+  // inte heller gå att försöka hur många gånger som helst.
+  const idag = new Date().toISOString().slice(0, 10);
+  const strypRef = db.doc(`overlamningForsok/${req.auth.uid}`);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(strypRef);
+    const d = snap.exists ? snap.data() : {};
+    const antal = d.dag === idag ? (d.antal || 0) : 0;
+    if (antal >= OVERLAMNING_MAX_PER_DAG) {
+      throw new HttpsError('resource-exhausted', 'För många försök idag — försök igen imorgon.');
+    }
+    tx.set(strypRef, { dag: idag, antal: antal + 1 });
+  });
+  try {
+    const ut = await overlamning.losInKod(db, FieldValue, { kod: req.data?.kod, email, uid: req.auth.uid });
+    logger.info(`Överlämningskod inlöst: ny tävling ${ut.cid} (${ut.kontroller} kontroller)`);
+    return { ok: true, ...ut };
+  } catch (e) {
+    if (e instanceof overlamning.KodFel) throw new HttpsError('not-found', e.message);
+    logger.error('Överlämningskoden kunde inte lösas in', e);
+    throw new HttpsError('internal', 'Tävlingen kunde inte skapas. Försök igen om en stund — koden är inte förbrukad.');
+  }
+});
 
 exports.resendManageLink = onCall(async (req) => {
   const email = String((req.data && req.data.email) || '').trim().toLowerCase();

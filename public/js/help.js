@@ -330,11 +330,13 @@ export const HELP = {
       'Fyra delar i en medveten ordning: vad som fungerade bra (det ni vill göra om — det glöms först), vad som fungerade mindre bra (det som hände, inte det ni önskar), förbättringsförslag (konkreta åtgärder — det nästa ledning öppnar först) och en kort sammanfattning av helheten. Varje del kan ha bilder. De löpande anteckningarna är det som gäller år efter år: markägare, bokningar, vem som har materiel.',
       'Allt sparas i ESKIL och följer med när tävlingen kopieras till nästa årgång — där visas det som "förra årets utvärdering", skrivskyddat, med förbättringsförslagen överst. Tävlingsrapporten (PDF) lägger till det systemet redan vet: försättsblad, bankarta med planerad och verklig tid, kontrollerna med instruktioner, anmälningsstatistik, start- och måltider, kompletta resultat, dagens meddelanden och inställningarna.'
     ],
-    warn: 'Ta ut rapporten innan tävlingen avslutas. Avslutet gallrar ledningens namn, kontrollansvariga och sekretariatets logg — de saknas i en rapport som tas ut efteråt. Utvärderingen själv går bra att skriva efter avslutet.',
+    warn: 'Utvärderingen, rapporten och överlämningen låses upp först när tävlingen är avslutad. Avslutet gallrar alla personuppgifter utom tävlingsledningens namn och e-post, som står på rapportens försättsblad. De löpande anteckningarna och förra årets utvärdering går att läsa och skriva hela tiden.',
     faq: [
       { q: 'Vem kan läsa utvärderingen?', a: 'Tävlingens medlemmar — ledning och funktionärer. Den är aldrig publik. Bara administratörer kan ändra den.' },
       { q: 'Vad händer med bilderna?', a: 'De skalas ner i webbläsaren och sparas i ESKIL, högst sex per del. De ligger kvar efter avslutet och följer med till nästa årgång, så välj bilder där enskilda scouter inte går att känna igen. De raderas när tävlingen raderas.' },
-      { q: 'Vi har redan skrivit i det gamla fritextfältet — är det kvar?', a: 'Ja. Det är samma dokument; texten ligger under "Löpande anteckningar".' }
+      { q: 'Vi har redan skrivit i det gamla fritextfältet — är det kvar?', a: 'Ja. Det är samma dokument; texten ligger under "Löpande anteckningar".' },
+      { q: 'Tävlingen ska arrangeras av en annan kår nästa år — hur lämnar vi över?', a: 'Kryssa i "Tävlingen går vidare till en ny arrangör" och skapa en överlämningskod. Koden skrivs ut i rapporten, med QR. Nästa arrangör löser in den på eskilscout.se/overlamning med sin e-postadress och får en färdig tävling för nästa år som ensam administratör. De får upplägget och er utvärdering — men varken era namn, era betalningsuppgifter eller åtkomst till er tävling. Koden gäller en gång, och ni ser när den lösts in.' },
+      { q: 'Vi ska arrangera igen själva — behöver vi koden?', a: 'Nej. Använd "Kopiera till ny tävling" högre upp på sidan; då följer även er ledning och era betalningsuppgifter med.' }
     ]
   },
 

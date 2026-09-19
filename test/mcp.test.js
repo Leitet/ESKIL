@@ -403,11 +403,11 @@ describe('klasslistan mot SKRIVKODEN — vakten mot listor skrivna ur minnet', (
   const las = (f) => readFileSync(new URL(`../public/js/${f}`, import.meta.url), 'utf8');
 
   test('kontrollens fält i copyCompetition har alla en klass', () => {
-    // store.js kopierar kontrollen fält för fält vid årgångskopiering — den
-    // listan ÄR kontrollens form.
-    const src = las('store.js');
+    // Årgångskopian kopierar kontrollen fält för fält (kopiaKontroll i
+    // argangskopia.js, delad med överlämningskoden) — den listan ÄR kontrollens form.
+    const src = las('argangskopia.js');
     const block = src.slice(src.indexOf('nummer: c.nummer'), src.indexOf('nummer: c.nummer') + 500);
-    const falt = [...block.matchAll(/^\s{8}([a-zA-Z]+):/gm)].map(m => m[1]);
+    const falt = [...block.matchAll(/^\s{4}([a-zA-Z]+):/gm)].map(m => m[1]);
     assert.ok(falt.length >= 5, `hittade bara ${falt.length} fält — har koden ändrats?`);
     for (const f of falt) {
       assert.ok(f in KONTROLL, `kontrollfältet "${f}" saknar klass i redact.js`);

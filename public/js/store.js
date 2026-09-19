@@ -9,6 +9,8 @@ import {
 import { normDistrict } from './districts.js';
 import { mergeBeacons, splitManagement, mergeManagement, isValidSlug } from './utils.js';
 import { fordelaTidspoang } from './tidspoang.js';
+import { kopiaTavlingsdata, kopiaKontroll, remappaSpar } from './argangskopia.js';
+import { nyOverlamningskod, kodHash } from './overlamningskod.js';
 import {
   UTV_ALLA_NYCKLAR, MAX_TEXT, BILD_PREFIX, normUtvardering, utvarderingForNastaAr,
   utvarderingBildIds, harInnehall
@@ -443,40 +445,12 @@ export async function copyCompetition(cid, { name, shortName, year, date }, user
   const src = await getCompetition(cid);
   if (!src) throw new Error('Tävlingen hittades inte.');
 
-  const data = {
-    name, shortName, year: Number(year) || null, date: date || null,
-    location: src.location || '',
-    organizer: src.organizer || '',
-    description: src.description || '',
-    generalInfo: src.generalInfo || '',
-    closed: false,
-    demo: false,
-    adminEmails: [],
-    userEmails: [],
-    // Distriktet måste följa med — annars saknar kopian fältet och faller ur
-    // distriktsgrupperingen på /app (normDistrict tvingar okänt/tomt → 'annat').
-    district: normDistrict(src.district),
-    // Årgångskedjan: publika sidan länkar till föregående års tävling.
-    copiedFrom: cid
-  };
-  if (Array.isArray(src.avdelningar) && src.avdelningar.length) data.avdelningar = src.avdelningar;
-  // 'places' bärs med precis som startFinish och spåret: en plats med
-  // inCourse blir en nod i banan (kostar sin dwell i ETA:n), så att tappa
-  // dem skulle tyst ändra nästa års bana och alla kartnålar.
-  for (const k of ['startTimes', 'startFinish', 'parking', 'places', 'management',
-                   'publicScores', 'publicControls', 'autoReleaseControls',
-                   'anonymousControls', 'autoCloseControls', 'courseHidden',
-                   'selfStart', 'selfFinish', 'autoFinish', 'fieldMessaging']) {
-    if (src[k] !== undefined) data[k] = src[k];
-  }
-  if (src.registration) {
-    data.registration = { ...src.registration, enabled: false, opensAt: null, closesAt: null };
-  }
-  // Starttiderna följer med som mall men PUBLICERAS inte: nästa års schema är
-  // ett utkast tills startordningen är spikad, och kopian ska inte visa
-  // fjolårets tider på nya startkort. Samma skäl som anmälan stängs ovan;
-  // förkontrollen (startklar.js) påminner om växeln.
-  if (data.startTimes) data.startTimes = { ...data.startTimes, published: false, luckor: [] };
+  // VAD som följer med bestäms av de rena funktionerna i argangskopia.js —
+  // servern (överlämningskoden) gör samma kopia åt en ny arrangör, och ett
+  // parity-test håller ihop de två. Distriktet normaliseras här: annars saknar
+  // kopian fältet och faller ur distriktsgrupperingen på /app.
+  const data = kopiaTavlingsdata({ ...src, id: cid }, { name, shortName, year, date });
+  data.district = normDistrict(src.district);
 
   const newCid = await createCompetition(data, user);
 
@@ -502,27 +476,8 @@ export async function copyCompetition(cid, { name, shortName, year, date }, user
     controls.slice(i, i + 400).forEach(c => {
       const ref = doc(collection(db, 'competitions', newCid, 'controls'));
       idMap[c.id] = ref.id;
-      const copy = {
-        nummer: c.nummer ?? null,
-        name: c.name || '',
-        maxPoang: c.maxPoang ?? 0,
-        minPoang: c.minPoang ?? 0,
-        extraPoang: c.extraPoang ?? 0,
-        placement: c.placement || '',
-        ansvariga: [],
-        ansvarigaEmails: [],
-        open: false
-      };
-      // telefon/notering live in the private meta subdoc and are intentionally
-      // NOT copied to next year's competition.
-      if (Number.isFinite(c.lat)) { copy.lat = c.lat; copy.lng = c.lng; }
-      if (Array.isArray(c.instructions)) copy.instructions = c.instructions;
-      else if (c.information) copy.information = c.information;
-      if (c.utslag) {
-        copy.utslag = true;
-        copy.utslagFraga = c.utslagFraga || '';
-        copy.utslagSvar = null;
-      }
+      // Stängd, utan ansvariga, utan facit — se kopiaKontroll.
+      const copy = kopiaKontroll(c);
       batch.set(ref, copy);
     });
     await batch.commit();
@@ -531,12 +486,7 @@ export async function copyCompetition(cid, { name, shortName, year, date }, user
   // The drawn track — leg keys reference control ids, remap them.
   const track = await getTrack(cid).catch(() => null);
   if (track && track.legs && Object.keys(track.legs).length) {
-    const legs = {};
-    for (const [key, wps] of Object.entries(track.legs)) {
-      let newKey = key;
-      for (const [oldId, newId] of Object.entries(idMap)) newKey = newKey.replaceAll(oldId, newId);
-      legs[newKey] = wps;
-    }
+    const legs = remappaSpar(track.legs, idMap);
     await saveTrack(newCid, { speedKmh: track.speedKmh ?? 4, legs });
   }
 
@@ -584,6 +534,9 @@ export async function setCompetitionEkonomi(cid, entries) {
 // read-only. Reversible via reopenCompetition, but the removed people/numbers
 // are gone for good.
 export async function closeCompetition(cid) {
+  // Ledningen läses FÖRST, medan private/ledning finns kvar att väva in: de
+  // interna rollernas namn ligger där, och allt nedan river i den ordningen.
+  const foreAvslut = await getCompetition(cid).catch(() => null);
   const controls = await listControls(cid);
   for (let i = 0; i < controls.length; i += 400) {
     const batch = writeBatch(db);
@@ -611,7 +564,8 @@ export async function closeCompetition(cid) {
   // kontrolldokument kvar att hitta sin spegel via.
   const faltinfoSnap = await getDocs(collection(db, 'competitions', cid, 'faltinfo'));
   await deleteRefs(faltinfoSnap.docs.map(d => d.ref));
-  await deleteDoc(doc(db, 'competitions', cid, 'private', 'ledning')).catch(() => {});
+  // private/ledning raderas INTE längre — den skrivs om längre ner utan
+  // telefonnummer. Speglarna ovan bär telefon till fältet och ska bort helt.
   // MCP-nyckeln. Servern nekar redan en avslutad tävling, så åtkomsten är
   // stängd ändå — men dokumentet raderas för att påståendet på /integritet
   // ("åtkomsten upphör automatiskt när tävlingen avslutas") ska vara sant på
@@ -675,17 +629,23 @@ export async function closeCompetition(cid) {
   // stressad kväll. Det finns inget här som är tävlingshistorik.
   await deleteThreads(cid);
 
-  // Strip the tävlingsledning's personal contact details (name/phone/email)
-  // from `management` too — the role structure stays, the PII goes. Only
-  // admins remain reachable (via adminEmails).
-  const comp = await getCompetition(cid).catch(() => null);
-  const strippedManagement = Array.isArray(comp?.management)
-    ? comp.management.map(r => ({ id: r.id, label: r.label || '', visibility: r.visibility || 'public', ekonomi: r.ekonomi === true, name: '', phone: '', email: '' }))
-    : undefined;
+  // Tävlingsledningen: TELEFONNUMREN gallras, NAMN och E-POST sparas. De står
+  // på tävlingsrapportens försättsblad och är det enda personliga som ligger
+  // kvar efter avslutet — rapporten säger det uttryckligen, och /integritet
+  // likaså. Förut tömdes allt, och då gick rapporten inte att ta ut efter
+  // avslutet utan att förlora just det den skulle dokumentera: vem som höll i
+  // tävlingen. Uppdelningen publik/intern går genom samma splitManagement som
+  // alltid: en intern rolls namn får aldrig hamna på det världsläsbara dokumentet.
+  const utanTelefon = Array.isArray(foreAvslut?.management)
+    ? foreAvslut.management.map(r => ({ ...r, phone: '' }))
+    : null;
+  const delad = utanTelefon ? splitManagement(utanTelefon) : null;
+  if (delad) await skrivLedning(cid, delad.internPii);
 
   await updateDoc(doc(db, 'competitions', cid), {
-    closed: true, users: deleteField(), userEmails: deleteField(),
-    ...(strippedManagement ? { management: strippedManagement } : {})
+    closed: true, closedAt: new Date().toISOString(),
+    users: deleteField(), userEmails: deleteField(),
+    ...(delad ? { management: delad.publikt } : {})
   });
   await mirrorAccess(cid, { users: [], userEmails: [], ekonomi: [], ekonomiEmails: [] });
 }
@@ -707,6 +667,9 @@ export async function reopenCompetition(cid) {
 }
 
 export async function deleteCompetition(cid) {
+  // Överlämningskoden ligger i en toppnivåsamling och pekar hit — dra in den
+  // FÖRST, medan private/access finns kvar att pröva rätten mot.
+  await draInOverlamningskod(cid).catch(() => {});
   // Firestore never deletes subcollections with their parent, so remove
   // everything that lives under the competition first — otherwise patrols,
   // controls, scores and registrations linger as orphaned documents.
@@ -787,10 +750,6 @@ export async function loggHandelse(cid, { vad, text, av }) {
 
 // Engångsläsningar för tävlingsrapporten (rapport-pdf.js). Rapporten ska bli
 // till även när en av dem nekas eller är tom, så anroparen fångar felen.
-export async function listLogg(cid) {
-  const snap = await getDocs(collection(db, 'competitions', cid, 'logg'));
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
-}
 export async function listBroadcastMessages(cid) {
   const snap = await getDocs(collection(db, 'competitions', cid, 'messages'));
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -1035,6 +994,8 @@ export async function sparaUtvardering(cid, falt, user) {
     if (typeof falt?.[k] === 'string') data[k] = falt[k].slice(0, MAX_TEXT);
   }
   if (Array.isArray(falt?.bilder)) data.bilder = normUtvardering({ bilder: falt.bilder }).bilder;
+  if (typeof falt?.nyArrangor === 'boolean') data.nyArrangor = falt.nyArrangor;
+  if (typeof falt?.nyArrangorText === 'string') data.nyArrangorText = falt.nyArrangorText.slice(0, MAX_TEXT);
   await setDoc(doc(db, 'competitions', cid, 'private', 'handover'), data, { merge: true });
   return data;
 }
@@ -1067,6 +1028,32 @@ export async function hamtaUtvarderingBilder(cid, ids) {
   }));
   return ut;
 }
+// ── Överlämningskoden ───────────────────────────────────────────────────────
+// Klartexten bor i tävlingens private/overlamning (den ska stå i rapporten),
+// uppslagsdokumentet i overlamningskoder/{sha256} (det servern slår i när en
+// ny arrangör löser in koden). Följer ALDRIG med i backup eller årgångskopia,
+// av samma skäl som samtalstoken: en kod i en fil som mailas runt är en
+// fungerande nyckel till en kopia av tävlingen.
+export async function getOverlamning(cid) {
+  const snap = await getDoc(doc(db, 'competitions', cid, 'private', 'overlamning'));
+  return snap.exists() ? snap.data() : null;
+}
+export async function draInOverlamningskod(cid) {
+  const o = await getOverlamning(cid);
+  if (!o?.kod) return;
+  await deleteDoc(doc(db, 'overlamningskoder', await kodHash(o.kod))).catch(() => {});
+  await deleteDoc(doc(db, 'competitions', cid, 'private', 'overlamning'));
+}
+// En tävling har EN giltig kod åt gången: en ny drar in den gamla.
+export async function skapaOverlamningskod(cid, user) {
+  await draInOverlamningskod(cid).catch(() => {});
+  const kod = nyOverlamningskod();
+  const post = { skapad: new Date().toISOString(), skapadAv: user?.email || '' };
+  await setDoc(doc(db, 'overlamningskoder', await kodHash(kod)), { cid, ...post });
+  await setDoc(doc(db, 'competitions', cid, 'private', 'overlamning'), { kod, ...post });
+  return { kod, ...post };
+}
+
 // Hela bilddokumenten (för backupen).
 export async function dumpaUtvarderingBilder(cid, ids) {
   const ut = [];

@@ -184,8 +184,16 @@ att köra gratis på Spark-planen.
   årets utvärdering". "Ladda ner tävlingsrapport" bygger en PDF i webbläsaren:
   försättsblad, utvärderingen, bankarta med planerad mot verklig tid sträcka
   för sträcka, kontrollerna med instruktioner och utfall, anmälningsstatistik,
-  start- och måltider, kompletta resultat, dagens meddelanden och logg samt
-  inställningarna. Ta ut den före avslut — avslutet gallrar ledningens namn.
+  start- och måltider, kompletta resultat, dagens driftmeddelanden samt
+  inställningarna.
+  Utvärderingen, rapporten och överlämningen **låses upp när tävlingen
+  avslutas**; avslutet sparar ledningens namn och e-post (telefonnumren och
+  allt annat personligt gallras) och rapporten säger det uttryckligen.
+  Kryssrutan "Tävlingen går vidare till en ny arrangör" ger ett kapitel med en
+  **överlämningskod** (`XXXX-XXXX-XXXX`, med QR). Nästa arrangör löser in den på
+  `eskilscout.se/overlamning` med sin e-postadress och får en färdig tävling
+  för nästa år som ensam administratör — utan åtkomst till den gamla, och utan
+  förra arrangörens namn eller betalningsuppgifter.
 - **Publicerad startlista** (starttider på + "Visa starttiderna" på): kårerna
   planerar resor efter den, så en borttagen patrull lämnar en **lucka** — en
   tom starttid som visas som en egen rad — i stället för att flytta de andra,
@@ -441,6 +449,8 @@ public/
     place-modal.js      # Delad redigeringsdialog för en plats på kartan
     laget-core.js       # Lägets härledning (kö, tryck, tystnad) — delas med MCP
     utvardering.js      # Utvärdering och överlämning — ren modell (delar, bilder, årgångskopia)
+    argangskopia.js     # Vad en årgångskopia innehåller — rena regler, speglade i functions/overlamning.js
+    overlamningskod.js  # Överlämningskoden: alfabet, generering, normalisering, hash
     rapport-stat.js     # Tävlingsrapportens siffror (anmälningar, tider, kontroller, sträckor)
     rapport-pdf.js      # Tävlingsrapporten (PDF) — ritar bara; delar resultatdelen med results-export.js
     seo.js              # Metadata per rutt (canonical, description, OG, noindex)
@@ -451,6 +461,7 @@ public/
 functions/              # Cloud Functions — transaktionsmail via Trigger Email
   index.js              # Firestore-triggers som köar mail i `mail`-collectionen
   receipt-pdf.js        # Node-port av kvitto-PDF:n (bilaga i kvittomail)
+  overlamning.js        # Inlösning av överlämningskod: serverns årgångskopia åt en ny arrangör
   mcp/                  # MCP-servern — det andra undantaget från "bara mail"
     transport.js        # Streamable HTTP för hand (tillståndslös, legacy-eran)
     auth.js             # /mcp/<cid>/<nyckel> — nyckeln lagras bara som sha256
