@@ -958,6 +958,31 @@ export function paStartskarmen(schema, now = new Date()) {
   return [...(schema || [])].reverse().find(e => now >= e.windowStart && now <= e.windowEnd) || null;
 }
 
+// EXTRA på startskärmen: sekretariatet lägger EN patrulls startkort över
+// schemat — patrullen som skulle gått för en halvtimme sedan står plötsligt
+// där, och ska kunna skanna sitt kort utan att startordningen rörs. Pekaren
+// ligger i private/startskarm ({ patrolId, at }) och DÖR AV SIG SJÄLV: en
+// bortglömd visning får aldrig stå och skymma schemat resten av morgonen.
+// `at` skrivs av en dator och läses av en annan (storbildsskärmen), så en
+// tidsstämpel lite in i framtiden är klockskillnad, inte skräp.
+export const STARTSKARM_EXTRA_MS = 5 * 60 * 1000;
+export function startskarmExtra(visar, patrols, now = new Date()) {
+  const id = visar?.patrolId;
+  const at = Date.parse(visar?.at);
+  if (!id || !Number.isFinite(at)) return null;
+  const sedan = now.getTime() - at;
+  if (sedan > STARTSKARM_EXTRA_MS || sedan < -10 * 60 * 1000) return null;
+  return (patrols || []).find(p => p.id === id) || null;
+}
+
+// Det som STÅR på startskärmens stora kort. Kortet ritas om när nyckeln ändras
+// — förut bara när en ANNAN patrull blev aktiv, så ett namnbyte på patrullen
+// som visades slog inte igenom förrän nästa patrull gick upp.
+export function startkortNyckel(p, scheduled = null) {
+  return JSON.stringify([p?.id ?? '', p?.number ?? '', p?.name ?? '', p?.kar ?? '', p?.avdelning ?? '', p?.antal ?? '',
+    scheduled ? scheduled.getTime() : '']);
+}
+
 // Vilka patruller får en annan starttid om listan går från `fore` till
 // `efter`? Båda är { comp, patrols }. En flytt, en borttagning, en ny patrull
 // och en ändrad inställning jämförs med samma funktion, så varningen kan

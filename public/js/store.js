@@ -1111,6 +1111,24 @@ export async function sparaStartlista(cid, tilldelning, luckor, luft) {
   await batch.commit();
 }
 
+// Startskärmens EXTRA-visning (se startskarmExtra i utils.js). Ett eget
+// private-dokument, inte ett fält på tävlingen: tävlingsdokumentet är
+// världsläsbart och varje fältsida lyssnar på det, så ett klick här hade
+// blivit en läsning på varje kontrolltelefon. Följer medvetet INTE med i
+// backupen — det är en pekare som lever i fem minuter, inte data.
+export async function visaPaStartskarm(cid, patrolId) {
+  await setDoc(doc(db, 'competitions', cid, 'private', 'startskarm'),
+    { patrolId, at: new Date().toISOString() }, { merge: false });
+}
+export async function rensaStartskarm(cid) {
+  await deleteDoc(doc(db, 'competitions', cid, 'private', 'startskarm'));
+}
+export function watchStartskarm(cid, cb) {
+  return onSnapshot(doc(db, 'competitions', cid, 'private', 'startskarm'),
+    snap => cb(snap.exists() ? snap.data() : null),
+    () => cb(null));   // demo/icke-medlem: ingen extra-visning, aldrig ett fel
+}
+
 // hydrateComp är ASYNKRON (den läser private/access) — därför .then, inte
 // ett direkt cb(). Utan det fick vyn ett Promise i stället för tävlingen och
 // luckorna försvann tyst ur listan (uppmätt i emulatorn).

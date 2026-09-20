@@ -2,14 +2,16 @@ import { layout, setTopbarCompetition, registerViewCleanup } from '../app.js';
 import {
   getCompetition, watchCompetition, watchPatrols, createPatrol, updatePatrol, flyttaTillPapperskorg,
   sparaStartlista, loggHandelse, getPatrolMeta, migratePatrolMeta, listControls, getTrack, ensureThreadToken,
-  listStations, createStation, watchPassages, watchSelfPassages, setPassage, clearSelfPassage
+  listStations, createStation, watchPassages, watchSelfPassages, setPassage, clearSelfPassage,
+  visaPaStartskarm, rensaStartskarm, watchStartskarm
 } from '../store.js';
 import {
   allowedAvdelningar, escapeHtml, toast, confirmDialog, withBusy, startUrl,
   copyToClipboard, patrolStartTime, startTimeSettings, effectiveIntervalSec,
   wireOverlayClose, isCompAdminUser,
   startlistaPublik, antalStartplatser, startlistaLuckor, startlistaLuckorSparade, starttidsAndringar,
-  startlistaLuft, startlistaLuftSparad, planLaggInLuft, planLuftVarN, startskarmsSchema, paStartskarmen
+  startlistaLuft, startlistaLuftSparad, planLaggInLuft, planLuftVarN, startskarmsSchema, paStartskarmen,
+  startskarmExtra
 } from '../utils.js';
 import { renderQrToImg, downloadStartPdf, downloadManualStartPdf } from '../pdf.js';
 import { icon } from '../icons.js';
@@ -102,6 +104,9 @@ export async function renderPatrols(app, user, cid) {
   // start/mål-stationen före patrullens egen bekräftelse. Den PLANERADE tiden
   // är ingen start — hela poängen med kolumnen är att någon sett patrullen gå.
   let station = null;
+  // Extra-visningen på startskärmen ({ patrolId, at }) — se startskarmExtra.
+  let visar = null;
+  const extraId = () => startskarmExtra(visar, state.rows, new Date())?.id || null;
   let stationPass = {};   // patrolId -> { startAt, finishAt }
   let selfPass = {};      // patrolId -> { startAt, finishAt }
   // Startstatusen kommer i egna snapshots. De får varken rita en tom lista
@@ -145,6 +150,8 @@ export async function renderPatrols(app, user, cid) {
         }
         knapp.disabled = true;
         await setPassage(cid, station.id, pid, 'startAt', true);
+        // Patrullen har gått — då ska dess kort inte stå kvar över schemat.
+        if (extraId() === pid) rensaStartskarm(cid).catch(() => {});
         return;
       }
       const vem = namnet(row);
@@ -170,6 +177,7 @@ export async function renderPatrols(app, user, cid) {
   //   start-missad     tiden har gått men patrullen är inte avprickad, i en
   //                    tävling där starter FAKTISKT prickas av — den raden ska
   //                    synas, inte gråna: det är patrullen som missade sin start
+  let senastExtra = null;
   const uppdateraTidslage = () => {
     const body = wrap.querySelector('#patrol-body');
     if (!body) return;
@@ -178,8 +186,13 @@ export async function renderPatrols(app, user, cid) {
     const aktiv = paStartskarmen(schema, now)?.patrol?.id || null;
     const perId = new Map(schema.map(e => [e.patrol.id, e]));
     const prickas = state.rows.some(r => startInfo(r.id));
+    const extra = extraId();
+    // Visningen dör av sig själv efter fem minuter. Knappen i den utfällda
+    // panelen ska då byta tillbaka — via ritaOmStatus, som väntar ut ett drag.
+    if (extra !== senastExtra) { senastExtra = extra; if (state.oppen) ritaOmStatus(); }
     body.querySelectorAll('tr[data-id]').forEach(tr => {
       const id = tr.dataset.id;
+      tr.classList.toggle('visas-extra', id === extra);
       const e = perId.get(id);
       const startat = !!startInfo(id);
       const forbi = !!e && now > e.windowEnd;
@@ -241,7 +254,7 @@ export async function renderPatrols(app, user, cid) {
       ${dragEnabled ? `<td class="drag-col" aria-label="Dra för att ändra ordning">${icon('grip-vertical', { size: 18, class: 'drag-handle' })}</td>` : ''}
       ${st.enabled ? `<td class="num time-col">${t ?? '<span class="muted">—</span>'}</td>` : ''}
       <td class="status-col">${statusCell(r)}</td>
-      <td><strong>${escapeHtml(r.name || '—')}</strong> <span class="badge badge-blue pa-skarm-badge">${icon('monitor', { size: 12 })} På startskärmen</span></td>
+      <td><strong>${escapeHtml(r.name || '—')}</strong> <span class="badge badge-blue pa-skarm-badge">${icon('monitor', { size: 12 })} På startskärmen</span><span class="badge extra-skarm-badge">${icon('monitor', { size: 12 })} Visas extra på startskärmen</span></td>
       <td><span class="dot ${shortOf(r.avdelning)}"></span>${escapeHtml(r.avdelning || '')}</td>
       <td>${escapeHtml(r.kar || '')}</td>
       <td class="num">${escapeHtml(String(r.antal ?? ''))}</td>
@@ -304,7 +317,15 @@ export async function renderPatrols(app, user, cid) {
               <a class="btn btn-ghost btn-sm" data-oppna-kort="${r.id}" target="_blank" rel="noopener">${icon('external', { size: 14 })} Öppna startkort</a>
               ${st.enabled ? `<a class="btn btn-ghost btn-sm" href="/app/c/${cid}/startscreen" target="_blank" rel="noopener">${icon('monitor', { size: 14 })} Startskärm</a>` : ''}
             </div>
-          </div>` : ''}
+          </div>
+          ${st.enabled ? `<div class="pd-skarm">
+            <span class="pd-etikett">Startskärmen ${help('patrol.visaPaSkarm')}</span>
+            ${extraId() === r.id
+              ? `<button type="button" class="btn btn-secondary btn-sm" data-skarm-av="${r.id}">${icon('x', { size: 14 })} Ta bort från startskärmen</button>
+                 <span class="muted t-sm">Patrullens kort ligger över schemat nu. Det försvinner av sig självt efter fem minuter, eller när du prickar av starten.</span>`
+              : `<button type="button" class="btn btn-secondary btn-sm" data-skarm-pa="${r.id}">${icon('monitor', { size: 14 })} Visa på startskärmen</button>
+                 <span class="muted t-sm">Lägger patrullens startkort över schemat — utan nedräkning, och utan att någons starttid ändras.</span>`}
+          </div>` : ''}` : ''}
         </div>
       </div>
     </td></tr>`;
@@ -329,6 +350,18 @@ export async function renderPatrols(app, user, cid) {
         const host = rad.querySelector('[data-qr]');
         if (host) host.innerHTML = '<span class="muted t-sm">QR-koden kunde inte laddas.</span>';
       });
+    });
+    rad.querySelector('[data-skarm-pa]')?.addEventListener('click', async (e) => {
+      // Demospåret nekar skrivningen — svara med en demotext.
+      if (comp.demo) { toast('Demospår — inget sparas. I en riktig tävling visas patrullens kort på startskärmen.'); return; }
+      e.currentTarget.disabled = true;
+      try { await visaPaStartskarm(cid, r.id); toast(`${r.name || 'Patrullen'} visas på startskärmen`, 'success'); }
+      catch (err) { toast('Kunde inte visa: ' + err.message, 'error'); render(); }
+    });
+    rad.querySelector('[data-skarm-av]')?.addEventListener('click', async (e) => {
+      e.currentTarget.disabled = true;
+      try { await rensaStartskarm(cid); }
+      catch (err) { toast('Kunde inte ta bort: ' + err.message, 'error'); render(); }
     });
     inp.addEventListener('click', () => inp.select());
     rad.querySelector('[data-kopiera]').addEventListener('click', async () => {
@@ -795,6 +828,8 @@ export async function renderPatrols(app, user, cid) {
     selfPass = {}; rows.forEach(p => { selfPass[p.id] = p; });
     ritaOmStatus();
   }));
+  // Bara admin kan lägga upp en extra-visning, och bara admin ser knappen.
+  if (isAdmin) unsubStart.push(watchStartskarm(cid, v => { visar = v; ritaOmStatus(); }));
   clearInterval(tidTick);
   tidTick = setInterval(uppdateraTidslage, 5000);
 

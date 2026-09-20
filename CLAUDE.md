@@ -1234,7 +1234,36 @@ BÅDA ställena.
   Tabellen ska rymmas i ett 1024-fönster: "tiden har gått" står därför på en
   egen rad under pillret (i pillret blev statuskolumnen 200 px och radens
   ikoner hamnade utanför bild), och på smalare skärmar följer panelen den
-  SYNLIGA bredden (`100cqw` mot `.patrull-wrap`), inte tabellens;
+  SYNLIGA bredden (`100cqw` mot `.patrull-wrap`), inte tabellens.
+  **"Visa på startskärmen"** (panelen) lägger EN patrulls startkort över
+  schemat — patrullen som skulle gått för en halvtimme sedan och plötsligt står
+  där — utan nedräkning och utan att startlistan rörs. Startskärmen kör ofta på
+  en ANNAN dator än sekretariatets, så knappen måste gå via databasen: pekaren
+  `{ patrolId, at }` ligger i `private/startskarm`, INTE på tävlingsdokumentet
+  (världsläsbart, och varje fältsida lyssnar på det — ett klick hade blivit en
+  läsning per kontrolltelefon). Den DÖR AV SIG SJÄLV efter fem minuter
+  (`startskarmExtra` i utils.js, testad): en bortglömd visning får aldrig skymma
+  schemat resten av morgonen. `at` skrivs av en dator och läses av en annan, så
+  upp till tio minuter in i framtiden är klockskillnad, inte skräp. Den rensas
+  också när patrullen prickas av som startad och av "Tillbaka till schemat" på
+  skärmen. Schemat går vidare UNDER kortet: den som står i tur syns i en remsa
+  som blir grön vid GÅ NU. Pekaren följer medvetet inte med i backupen.
+  **Startskärmens stora kort ritas om på `startkortNyckel`** (id + nummer, namn,
+  kår, avdelning, antal, starttid), inte bara på patrullens id. Förut ritades
+  det om först när en ANNAN patrull blev aktiv, så ett namnbyte på patrullen som
+  visades slog inte igenom förrän nästa gick upp — listorna vid sidan ritas om
+  varje sekund och var alltid rätt, vilket gjorde felet svårt att se. Eftersom
+  kortet nu ritas om oftare CACHAS QR-BILDEN per patrull (`ssQrBilder`), annars
+  blinkar koden mitt under en skanning. Extra-visningen läser modulens
+  `ssVisar` — `renderWindow` ligger på modulnivå (samma fälla som QR-token).
+  **Tvåflikstest: visa varje flik minst en gång innan du drar slutsatser.**
+  Flikarna delar Firestores lokala databas och EN av dem äger serverkontakten.
+  En flik som skapats i bakgrunden och ALDRIG visats kan hålla den utan att
+  bearbeta något — den andra fliken ser då ett dokument som "finns inte" fast
+  servern har det (uppmätt här: skrivningen kvitterad, REST visade dokumentet,
+  lyssnaren sa exists:false). Gick inte att återskapa när fliken väl visats en
+  gång, inte ens med båda flikarna dolda. En egenhet i testverktyget, inte i
+  koden — men den ser exakt ut som ett fel i lyssnaren;
   `courseHidden` (**hemligt spår** — läs den via `courseHidden(comp)` i
   utils.js; `=== true`, saknas = visat. Går FÖRE släppet i både
   `controlsPublic()` på /t och `positionsVisible()` på startkortet, och

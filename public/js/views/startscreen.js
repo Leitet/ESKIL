@@ -9,11 +9,11 @@
 // green: "GÅ NU". Transitions automatically as the clock advances, and
 // resyncs whenever startTimes or startOrder changes in Firestore.
 
-import { getCompetition, watchPatrols, ensureThreadToken } from '../store.js';
+import { getCompetition, watchPatrols, ensureThreadToken, watchStartskarm, rensaStartskarm } from '../store.js';
 import { db, doc, onSnapshot } from '../firebase.js';
 import {
   escapeHtml, startTimeSettings, startUrl,
-  isCompAdminUser, startskarmsSchema, paStartskarmen
+  isCompAdminUser, startskarmsSchema, paStartskarmen, startskarmExtra, startkortNyckel
 } from '../utils.js';
 import { renderQrToImg } from '../pdf.js';
 import { icon } from '../icons.js';
@@ -21,9 +21,15 @@ import { updateBroadcast } from '../broadcast.js';
 
 let unsubPatrols = null;
 let unsubComp = null;
+let unsubVisar = null;
 let tickInterval = null;
-let currentPatrolId = null;
+// Nyckeln till det som STÅR på det stora kortet (startkortNyckel) — inte bara
+// patrullens id. Kortet ritades förut om först när en ANNAN patrull blev
+// aktiv, så ett namnbyte på patrullen som visades syntes inte förrän nästa.
+let currentKortNyckel = null;
 let currentQrId = null;
+// Sekretariatets extra-visning: { patrolId, at } ur private/startskarm.
+let ssVisar = null;
 // renderWindow() ligger på MODULNIVÅ och ser inte renderStartScreen:s lokala
 // variabler. Det som QR-koden behöver måste därför bo här — annars kastar
 // kortritningen ReferenceError, och den enda synliga effekten är en tom
@@ -31,12 +37,17 @@ let currentQrId = null;
 let ssCid = null;
 let ssTestMode = false;
 const ssQrTokens = new Map();   // patrolId -> samtalstoken, en mintning per patrull
+// QR-BILDEN sparas också: kortet ritas nu om när ett namn ändras, och utan
+// cachen blinkade QR-koden till varje gång — mitt under en skanning.
+const ssQrBilder = new Map();   // patrolId -> Promise<HTMLImageElement>
 
 export async function renderStartScreen(app, user, cid) {
   stopWatches();
 
   ssCid = cid;
   ssQrTokens.clear();
+  ssQrBilder.clear();
+  ssVisar = null;
   let comp = await getCompetition(cid).catch(() => null);
   if (!comp) {
     app.innerHTML = `<div class="page"><div class="empty"><h3>Tävlingen hittades inte</h3></div></div>`;
@@ -113,6 +124,9 @@ export async function renderStartScreen(app, user, cid) {
     if (snap.exists()) { comp = { id: cid, ...snap.data() }; updateBroadcast(comp, bctx); tick(); }
   });
   updateBroadcast(comp, bctx);
+  // Extra-visningen från patrullistan. Demot får ett tyst null (läsningen
+  // kräver medlemskap), och då händer ingenting.
+  unsubVisar = watchStartskarm(cid, v => { ssVisar = v; tick(); });
   unsubPatrols = watchPatrols(cid, rows => {
     testMode = rows.length === 0;
     if (testMode && !testAnchor) {
@@ -148,8 +162,10 @@ function stopWatches() {
   if (tickInterval) { clearInterval(tickInterval); tickInterval = null; }
   if (unsubPatrols) { unsubPatrols(); unsubPatrols = null; }
   if (unsubComp)    { unsubComp();    unsubComp = null; }
-  currentPatrolId = null;
+  if (unsubVisar)   { unsubVisar();   unsubVisar = null; }
+  currentKortNyckel = null;
   currentQrId = null;
+  ssVisar = null;
   updateBroadcast(null); // ta ner ev. driftmeddelande-banner vid SPA-navigering
 }
 // Export so the router can call it when navigating away.
@@ -164,7 +180,7 @@ function renderWindow(comp, patrols, now) {
   if (!schedule.length) {
     document.getElementById('ss-main').innerHTML = `<div class="ss-loading">Inga patruller att visa.</div>`;
     document.getElementById('ss-foot').innerHTML = '';
-    currentPatrolId = null;
+    currentKortNyckel = null;
     return;
   }
 
@@ -178,7 +194,108 @@ function renderWindow(comp, patrols, now) {
 
   // Main card
   const mainEl = document.getElementById('ss-main');
-  if (!active) {
+  const tid = (d) => d.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
+  const msToStart = active ? active.scheduled - now : null;
+  const go = !!active && msToStart <= 0 && now <= active.windowEnd;
+  const goSeconds = active ? Math.floor(Math.max(0, (active.windowEnd - now) / 1000)) : 0;
+  const countdownText = !active ? '' : go
+    ? (goSeconds > 0 ? `GÅ NU · ${goSeconds}s kvar` : 'GÅ NU')
+    : formatMs(msToStart);
+
+  // QR-koden: token EN gång per patrull, bilden EN gång per patrull. Kortet
+  // ritas om varje gång ett namn ändras, och startskärmen tickar varje sekund —
+  // utan cacharna vore det en skrivning per sekund och en blinkande kod.
+  // Testpatrullerna (tom lista → TEST_PATROLS) har inga riktiga id:n och får
+  // aldrig mintas.
+  const ritaQr = (p) => {
+    const qrHost = document.getElementById('ss-qr');
+    const qrKey = p.id;
+    currentQrId = qrKey;
+    if (!ssQrBilder.has(p.id)) {
+      const tokenLöfte = (ssTestMode || !ssCid)
+        ? Promise.resolve('')
+        : (ssQrTokens.has(p.id)
+            ? Promise.resolve(ssQrTokens.get(p.id))
+            : ensureThreadToken(ssCid, 'patrull', p.id).catch(() => '')
+                .then(tok => { ssQrTokens.set(p.id, tok || ''); return tok || ''; }));
+      ssQrBilder.set(p.id, tokenLöfte.then(tok => renderQrToImg(startUrl(comp.id || comp, p.id, tok), 440)));
+    }
+    ssQrBilder.get(p.id).then(img => {
+      if (currentQrId !== qrKey || !qrHost.isConnected) return;  // changed while loading
+      qrHost.innerHTML = '';
+      qrHost.appendChild(img);
+    }).catch(() => {
+      ssQrBilder.delete(p.id);
+      if (currentQrId === qrKey) qrHost.innerHTML = '<span style="opacity:.6;">QR-koden kunde inte laddas</span>';
+    });
+  };
+  const kortHuvud = (p) => `
+          <header class="ss-card-head">
+            <div class="ss-card-eyebrow">
+              <span class="ss-number">#${escapeHtml(String(p.number ?? ''))}</span>
+              <span class="ss-avd">${escapeHtml(p.avdelning || '')}</span>
+              ${p.kar ? `<span class="ss-kar">${escapeHtml(p.kar)}</span>` : ''}
+            </div>
+            <h1 class="ss-name">${escapeHtml(p.name || '')}</h1>
+          </header>`;
+
+  // EXTRA: sekretariatet har lagt en patrulls kort över schemat (patrullistan →
+  // "Visa på startskärmen"). Ingen nedräkning — patrullen är redan sen eller
+  // tidig, och en klocka som räknar mot en passerad tid säger bara fel sak.
+  // Schemat går vidare under: den som står i tur syns i remsan längst ner på
+  // kortet, så ingen missar sitt GÅ NU för att någon annan visas.
+  const extra = ssTestMode ? null : startskarmExtra(ssVisar, patrols, now);
+  if (extra) {
+    const egen = schedule.find(e => e.patrol.id === extra.id);
+    const nyckel = 'extra:' + startkortNyckel(extra, egen?.scheduled || null);
+    if (currentKortNyckel !== nyckel) {
+      currentKortNyckel = nyckel;
+      mainEl.innerHTML = `
+        <div class="ss-card ss-extra" id="ss-card">
+          <div class="ss-extra-rad">
+            <span class="ss-extra-etikett">Visas av sekretariatet</span>
+            <button type="button" class="ss-btn ss-extra-stang" id="ss-extra-stang">${icon('x', { size: 16 })} Tillbaka till schemat</button>
+          </div>
+          ${kortHuvud(extra)}
+          <div class="ss-card-body">
+            <div class="ss-card-info">
+              <div class="ss-meta">
+                ${extra.antal ? `<span class="ss-meta-pill">${extra.antal} deltagare</span>` : ''}
+              </div>
+              ${egen ? `<div class="ss-time-block">
+                <div class="ss-time-label">Ordinarie starttid</div>
+                <div class="ss-time-value">${tid(egen.scheduled)}</div>
+              </div>` : ''}
+              <div class="ss-count-block">
+                <div class="ss-count-label">Skanna koden</div>
+                <div class="ss-count-value ss-extra-text">och gå när ni är klara</div>
+              </div>
+            </div>
+            <div class="ss-card-right">
+              <div class="ss-qr" id="ss-qr"></div>
+              <div class="ss-qr-caption">Scanna för startkort</div>
+            </div>
+          </div>
+          <div class="ss-extra-schema" id="ss-extra-schema"></div>
+        </div>`;
+      document.getElementById('ss-extra-stang').addEventListener('click', () => {
+        ssVisar = null;                       // direkt på den här skärmen …
+        rensaStartskarm(ssCid).catch(() => {}); // … och för alla andra
+      });
+      ritaQr(extra);
+    }
+    const remsa = document.getElementById('ss-extra-schema');
+    if (remsa) {
+      remsa.classList.toggle('ss-go', go);
+      remsa.innerHTML = active && active.patrol.id !== extra.id
+        ? `<span class="ss-extra-schema-etikett">Enligt schemat</span>
+           <strong>#${escapeHtml(String(active.patrol.number ?? ''))} ${escapeHtml(active.patrol.name || '')}</strong>
+           <span>${tid(active.scheduled)}</span>
+           <span class="ss-extra-schema-tid">${escapeHtml(countdownText)}</span>`
+        : '';
+      remsa.hidden = !remsa.innerHTML;
+    }
+  } else if (!active) {
     // Between windows — show a soft "waiting" state
     const nextScheduled = upcoming[0];
     const msToNext = nextScheduled ? Math.max(0, nextScheduled.windowStart - now) : null;
@@ -187,33 +304,21 @@ function renderWindow(comp, patrols, now) {
         <div class="ss-idle-label">Väntar på nästa patrull</div>
         ${nextScheduled ? `
           <div class="ss-idle-next">Nästa: <strong>#${escapeHtml(String(nextScheduled.patrol.number ?? ''))} ${escapeHtml(nextScheduled.patrol.name || '')}</strong></div>
-          <div class="ss-idle-time">kl. ${nextScheduled.scheduled.toLocaleTimeString('sv-SE',{hour:'2-digit',minute:'2-digit'})} · ${formatMs(msToNext)} till kort visas</div>
+          <div class="ss-idle-time">kl. ${tid(nextScheduled.scheduled)} · ${formatMs(msToNext)} till kort visas</div>
         ` : '<div class="ss-idle-next">Alla patruller har startat.</div>'}
       </div>
     `;
-    currentPatrolId = null;
+    currentKortNyckel = null;
   } else {
     const p = active.patrol;
-    const msToStart = active.scheduled - now;
-    const go = msToStart <= 0 && now <= active.windowEnd;
-    const goSeconds = Math.floor(Math.max(0, (active.windowEnd - now) / 1000));
-    const countdownText = go
-      ? (goSeconds > 0 ? `GÅ NU · ${goSeconds}s kvar` : 'GÅ NU')
-      : formatMs(msToStart);
-
-    // Re-render the card shell only when the active patrol changes
-    if (currentPatrolId !== p.id) {
-      currentPatrolId = p.id;
+    // Rita om kortet när det som STÅR på det ändras — en annan patrull, men
+    // också ett nytt namn, en ny kår eller en flyttad starttid.
+    const nyckel = startkortNyckel(p, active.scheduled);
+    if (currentKortNyckel !== nyckel) {
+      currentKortNyckel = nyckel;
       mainEl.innerHTML = `
         <div class="ss-card" id="ss-card">
-          <header class="ss-card-head">
-            <div class="ss-card-eyebrow">
-              <span class="ss-number">#${escapeHtml(String(p.number ?? ''))}</span>
-              <span class="ss-avd">${escapeHtml(p.avdelning || '')}</span>
-              ${p.kar ? `<span class="ss-kar">${escapeHtml(p.kar)}</span>` : ''}
-            </div>
-            <h1 class="ss-name">${escapeHtml(p.name || '')}</h1>
-          </header>
+          ${kortHuvud(p)}
           <div class="ss-card-body">
             <div class="ss-card-info">
               <div class="ss-meta">
@@ -221,7 +326,7 @@ function renderWindow(comp, patrols, now) {
               </div>
               <div class="ss-time-block">
                 <div class="ss-time-label">Starttid</div>
-                <div class="ss-time-value">${active.scheduled.toLocaleTimeString('sv-SE',{hour:'2-digit',minute:'2-digit'})}</div>
+                <div class="ss-time-value">${tid(active.scheduled)}</div>
               </div>
               <div class="ss-count-block" id="ss-count-block">
                 <div class="ss-count-label" id="ss-count-label">${go ? 'GÅ!' : 'Tid till start'}</div>
@@ -235,29 +340,7 @@ function renderWindow(comp, patrols, now) {
           </div>
         </div>
       `;
-      // Render QR once per patrol
-      const qrHost = document.getElementById('ss-qr');
-      const qrKey = p.id;
-      currentQrId = qrKey;
-      // Samtalstoken hämtas EN gång per patrull och sparas — startskärmen
-      // ritar om varje sekund, och en mintning per tick vore en skrivning per
-      // sekund hela morgonen. Testpatrullerna (tom lista → TEST_PATROLS) har
-      // inga riktiga id:n och får aldrig mintas.
-      const tokenLöfte = (ssTestMode || !ssCid)
-        ? Promise.resolve('')
-        : (ssQrTokens.has(p.id)
-            ? Promise.resolve(ssQrTokens.get(p.id))
-            : ensureThreadToken(ssCid, 'patrull', p.id).catch(() => '')
-                .then(tok => { ssQrTokens.set(p.id, tok || ''); return tok || ''; }));
-      tokenLöfte
-        .then(tok => renderQrToImg(startUrl(comp.id || comp, p.id, tok), 440))
-        .then(img => {
-        if (currentQrId !== qrKey) return;  // changed while loading
-        qrHost.innerHTML = '';
-        qrHost.appendChild(img);
-      }).catch(() => {
-        if (currentQrId === qrKey) qrHost.innerHTML = '<span style="opacity:.6;">QR-koden kunde inte laddas</span>';
-      });
+      ritaQr(p);
     } else {
       // Just update countdown + go-state
       const countEl = document.getElementById('ss-count');

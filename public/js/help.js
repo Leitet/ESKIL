@@ -656,6 +656,19 @@ export const HELP = {
     tip: 'Lägg in luften INNAN startlistan publiceras — då flyttar den inga tider som kårerna redan planerat efter.'
   },
 
+  'patrol.visaPaSkarm': {
+    title: 'Visa på startskärmen',
+    body: [
+      'Lägger den här patrullens startkort över schemat på startskärmen — namn, kår och QR-koden till startkortet, utan nedräkning. Tänkt för patrullen som skulle gått för en halvtimme sedan och plötsligt står där: de skannar sin kod och kommer iväg, utan att du behöver flytta dem i startlistan eller röra någon annans tid.',
+      'Schemat går vidare under tiden. Den som står i tur syns i en remsa längst ner på kortet, och blir den grön är det deras tur att gå.',
+      'Kortet försvinner av sig självt efter fem minuter, när du prickar av patrullen som startad, eller när någon trycker "Tillbaka till schemat" på startskärmen.'
+    ],
+    faq: [
+      { q: 'Startskärmen står på en annan dator — fungerar det ändå?', a: 'Ja. Knappen går via ESKIL, så varje öppen startskärm för tävlingen visar kortet inom någon sekund.' },
+      { q: 'Ändras patrullens starttid?', a: 'Nej. Ingenting i startlistan ändras. Vill du ge patrullen en ny tid: dra den till en lucka eller till luft i schemat.' }
+    ]
+  },
+
   'patrol.startat': {
     title: 'Startat / ej startat',
     body: [

@@ -1384,3 +1384,13 @@ table.t tr.patrull-detalj td {
   .pd { flex-direction: column; }
   .pd-qr { width: 160px; min-height: 160px; }
 }
+
+/* Patrullen vars kort sekretariatet lagt ÖVER schemat på startskärmen. Gult,
+   som på skärmen — och skilt från den blå brickan för den som står i tur. */
+.extra-skarm-badge { display: none; gap: 5px; align-items: center; width: fit-content; margin-top: 4px;
+  white-space: nowrap; background: #E2E000; color: #003660; }
+table.t tr.visas-extra .extra-skarm-badge { display: flex; }
+table.t tr.visas-extra td:first-child { box-shadow: inset 4px 0 0 #c9c700; }
+.pd-skarm { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--gray-200, #e3e8ee);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.pd-skarm .pd-etikett { flex-basis: 100%; margin-bottom: 0; }

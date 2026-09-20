@@ -375,3 +375,31 @@
 @media (min-width: 1100px) {
   .ss-foot { display: none !important; }
 }
+
+/* ---------------------------------------------------------------------------
+   EXTRA — sekretariatet har lagt en patrulls kort över schemat. Gul kant i
+   stället för den vanliga: på håll ska det synas att det här INTE är patrullen
+   som står i tur. Ingen nedräkning, ingen grön puls.
+   --------------------------------------------------------------------------- */
+.ss-card.ss-extra {
+  border-color: var(--rover-yellow, #E2E000);
+  box-shadow: 0 0 0 3px rgba(226, 224, 0, 0.25);
+}
+.ss-extra-rad { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.ss-extra-etikett {
+  background: var(--rover-yellow, #E2E000); color: #003660;
+  font-weight: 800; font-size: 14px; letter-spacing: .1em; text-transform: uppercase;
+  padding: 6px 14px; border-radius: 999px;
+}
+.ss-btn.ss-extra-stang { width: auto; height: 40px; padding: 0 16px; gap: 8px; font: inherit; font-weight: 600; font-size: 15px; }
+.ss-count-value.ss-extra-text { font-family: inherit; font-size: 34px; line-height: 1.2; }
+/* Schemat går vidare under: den som står i tur får inte missa sitt GÅ NU. */
+.ss-extra-schema {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 18px;
+  padding: 14px 20px; border-radius: 16px;
+  background: rgba(255,255,255,0.08); font-size: 22px;
+  transition: background .4s ease, color .4s ease;
+}
+.ss-extra-schema-etikett { font-size: 13px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; opacity: .75; }
+.ss-extra-schema-tid { margin-left: auto; font-family: 'SF Mono', ui-monospace, monospace; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ss-extra-schema.ss-go { background: var(--spaer-green); color: #fff; }

@@ -26,6 +26,7 @@ import {
   rankPatrols, rankKarer, RANKING_RULES_TEXT,
   startlistaPublik, antalStartplatser, startlistaLuckor, startlistaLuckorSparade, starttidsAndringar,
   startlistaLuft, startlistaLuftSparad, planLaggInLuft, planLuftVarN, startskarmsSchema, paStartskarmen,
+  startskarmExtra, startkortNyckel, STARTSKARM_EXTRA_MS,
   patrolStartTime as testStarttid,
 } from '../public/js/utils.js';
 import { hasIcon } from '../public/js/icons.js';
@@ -3139,5 +3140,91 @@ describe('patrullistan: utfälld rad, ikoner och drag som tål en öppen panel',
   test('bannern räknar inte luft som något att åtgärda', () => {
     const b = src.slice(src.indexOf('const ritaBanner = () => {'), src.indexOf('const render = () => {'));
     assert.match(b, /startlistaLuckor\(comp, state\.rows\)\.filter\(l => !luftplatser\.has\(l\)\)/);
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// Startskärmen: sekretariatets extra-visning, och ett kort som följer namnbyten.
+// ---------------------------------------------------------------------------
+describe('startskärmen: extra-visning och kort som följer patrullen', () => {
+  const las = (f) => readFileSync(new URL(`../public/js/${f}`, import.meta.url), 'utf8');
+  const NU = new Date('2026-09-20T09:13:00.000Z');
+  const PATRULLER = [{ id: 'p1', name: 'Vargarna' }, { id: 'p2', name: 'Falkarna' }];
+  const vid = (minSedan) => ({ patrolId: 'p1', at: new Date(NU.getTime() - minSedan * 60000).toISOString() });
+
+  test('extra-visningen dör av sig själv — en bortglömd får aldrig skymma schemat', () => {
+    assert.equal(STARTSKARM_EXTRA_MS, 5 * 60 * 1000);
+    assert.equal(startskarmExtra(vid(0), PATRULLER, NU)?.id, 'p1');
+    assert.equal(startskarmExtra(vid(4.9), PATRULLER, NU)?.id, 'p1');
+    assert.equal(startskarmExtra(vid(5.1), PATRULLER, NU), null);
+    assert.equal(startskarmExtra(vid(600), PATRULLER, NU), null, 'gårdagens pekare');
+  });
+
+  test('pekaren skrivs av en dator och läses av en annan: lite klockskillnad är inte skräp', () => {
+    assert.equal(startskarmExtra(vid(-3), PATRULLER, NU)?.id, 'p1', 'storbildsskärmens klocka går tre minuter efter');
+    assert.equal(startskarmExtra(vid(-30), PATRULLER, NU), null, 'en halvtimme in i framtiden är skräp');
+  });
+
+  test('ingen pekare, en borttagen patrull eller skräp ger ingen visning', () => {
+    assert.equal(startskarmExtra(null, PATRULLER, NU), null);
+    assert.equal(startskarmExtra({ patrolId: 'borta', at: NU.toISOString() }, PATRULLER, NU), null);
+    assert.equal(startskarmExtra({ patrolId: 'p1', at: 'igår' }, PATRULLER, NU), null);
+    assert.equal(startskarmExtra({ patrolId: 'p1' }, PATRULLER, NU), null);
+    assert.equal(startskarmExtra(vid(0), [], NU), null);
+  });
+
+  test('kortets nyckel ändras när det som STÅR på kortet ändras — inte bara när patrullen byts', () => {
+    const p = { id: 'p1', number: 3, name: 'Ugglorna', kar: 'Lindsdals Scoutkår', avdelning: 'Spårare', antal: 6 };
+    const t = new Date('2026-09-20T09:13:00');
+    const bas = startkortNyckel(p, t);
+    assert.equal(startkortNyckel({ ...p }, new Date(t)), bas, 'samma innehåll ska ge samma nyckel — annars ritas kortet om varje sekund');
+    for (const andring of [{ name: 'Kattugglorna' }, { kar: 'Annan kår' }, { avdelning: 'Rover' }, { antal: 7 }, { number: 4 }, { id: 'p2' }])
+      assert.notEqual(startkortNyckel({ ...p, ...andring }, t), bas, JSON.stringify(andring));
+    assert.notEqual(startkortNyckel(p, new Date('2026-09-20T09:18:00')), bas, 'en flyttad starttid');
+    assert.notEqual(startkortNyckel(p, null), bas);
+  });
+
+  test('startskärmen ritar om kortet på nyckeln, och cachar QR-bilden så den inte blinkar', () => {
+    const src = las('views/startscreen.js');
+    assert.doesNotMatch(src, /currentPatrolId/, 'kortet ritas bara om när en annan patrull blir aktiv — ett namnbyte syns då inte');
+    assert.match(src, /const nyckel = startkortNyckel\(p, active\.scheduled\);/);
+    assert.match(src, /if \(!ssQrBilder\.has\(p\.id\)\)/);
+    assert.match(src, /ssQrBilder\.clear\(\);/, 'en annan tävling får inte ärva QR-bilder');
+  });
+
+  test('extra-kortet: ingen nedräkning, schemat syns under, och stängning rensar för alla', () => {
+    const src = las('views/startscreen.js');
+    const extra = src.slice(src.indexOf('const extra = ssTestMode ? null : startskarmExtra('), src.indexOf('} else if (!active) {'));
+    assert.doesNotMatch(extra, /id="ss-count"|Tid till start/, 'en klocka som räknar mot en passerad tid säger fel sak');
+    assert.match(extra, /id="ss-extra-schema"/);
+    assert.match(extra, /remsa\.classList\.toggle\('ss-go', go\)/, 'den som står i tur får inte missa sitt GÅ NU');
+    assert.match(extra, /rensaStartskarm\(ssCid\)/);
+    // renderWindow ligger på MODULNIVÅ och ser inte renderStartScreen:s lokala
+    // variabler — extra-visningen måste läsa modulens egna (samma fälla som QR-token).
+    const rw = src.slice(src.indexOf('function renderWindow(comp, patrols, now) {'));
+    assert.match(rw, /startskarmExtra\(ssVisar, patrols, now\)/);
+    assert.match(src, /^let ssVisar = null;/m);
+    assert.match(src, /unsubVisar = watchStartskarm\(cid, v => \{ ssVisar = v; tick\(\); \}\);/);
+    assert.match(src, /if \(unsubVisar\)\s+\{ unsubVisar\(\);/);
+  });
+
+  test('pekaren ligger i ett private-dokument — inte på det världsläsbara tävlingsdokumentet', () => {
+    const store = las('store.js');
+    const f = store.slice(store.indexOf('export async function visaPaStartskarm'), store.indexOf('// hydrateComp är ASYNKRON'));
+    assert.equal((f.match(/doc\(db, 'competitions', cid, 'private', 'startskarm'\)/g) || []).length, 3);
+    assert.doesNotMatch(f, /updateDoc\(doc\(db, 'competitions', cid\)/, 'varje fältsida lyssnar på tävlingsdokumentet — ett klick blev en läsning per kontrolltelefon');
+    assert.match(f, /\(\) => cb\(null\)\);/, 'demo och icke-medlem: tyst null, aldrig ett fel');
+    assert.doesNotMatch(las('backup.js'), /startskarm/, 'en pekare som lever i fem minuter är inte data');
+  });
+
+  test('patrullistan: knappen kortsluts i demot, och en avprickad start rensar visningen', () => {
+    const src = las('views/patrols.js');
+    const pa = src.slice(src.indexOf("rad.querySelector('[data-skarm-pa]')"), src.indexOf("rad.querySelector('[data-skarm-av]')"));
+    assert.ok(pa.indexOf('comp.demo') > 0 && pa.indexOf('comp.demo') < pa.indexOf('visaPaStartskarm('), 'demospärren måste ligga före skrivningen');
+    const v = src.slice(src.indexOf('const vaxlaStart = async'), src.indexOf('// --- Tidsläget'));
+    assert.match(v, /if \(extraId\(\) === pid\) rensaStartskarm\(cid\)/);
+    assert.match(src, /if \(isAdmin\) unsubStart\.push\(watchStartskarm\(cid,/);
+    assert.match(las('help.js'), /'patrol\.visaPaSkarm': \{/);
   });
 });
