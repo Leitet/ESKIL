@@ -21,7 +21,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { arAnonymFaltsida, medOmforsok, arSakertInteFunnen, faltFelHtml } from '../public/js/utils.js';
+import { arAnonymFaltsida, arEnflikssida, medOmforsok, arSakertInteFunnen, faltFelHtml } from '../public/js/utils.js';
 
 const las = (f) => readFileSync(new URL(`../public/${f}`, import.meta.url), 'utf8');
 const SIDOR = readdirSync(new URL('../public/', import.meta.url)).filter(f => f.endsWith('.html'));
@@ -537,11 +537,31 @@ describe('fältsidorna hänger aldrig på en annan flik', () => {
     // Återskapat i emulatorn: en levande flik med dött nät + en ny flik →
     // vakthunden efter 10 s, även efter "Försök igen". Med enflikshantering: 0,19 s.
     assert.match(fb, /persistentLocalCache\(\{ tabManager: persistentSingleTabManager\(\{\}\) \}\)/);
-    const gren = fb.slice(fb.indexOf('const faltsida = arAnonymFaltsida'), fb.indexOf('const db = isLocalHost'));
-    assert.match(gren, /if \(!faltsida\) \{\s*localCache = persistentLocalCache\(\{ tabManager: persistentMultipleTabManager\(\) \}\);/,
-      'admin och /t ska behålla den delade cachen');
-    const faltgren = gren.slice(gren.indexOf('} else {'));
-    assert.doesNotMatch(faltgren, /persistentMultipleTabManager/, 'fältsidorna har fliksynkronisering igen');
+    const gren = fb.slice(fb.indexOf('let localCache;'), fb.indexOf('const db = isLocalHost'));
+    assert.match(gren, /if \(!enflikssida\) \{\s*localCache = persistentLocalCache\(\{ tabManager: persistentMultipleTabManager\(\) \}\);/,
+      'admin-appen ska behålla den delade cachen');
+    const enflik = gren.slice(gren.indexOf('} else {'));
+    assert.doesNotMatch(enflik, /persistentMultipleTabManager/, 'fältsidorna och /t har fliksynkronisering igen');
+    assert.match(fb, /const enflikssida = arEnflikssida\(location\.pathname\);/);
+  });
+
+  test('/t kör enflikshantering men är INTE en anonym fältsida — den behåller appen och inloggningen', () => {
+    // Anhöriga har /t på telefoner, ofta i flera flikar (varje delad länk blir
+    // en ny). Men sidan läser behörigheter som den inloggade (admin-genvägen),
+    // så den får inte hamna i den anonyma "falt"-appen.
+    for (const p of ['/t/ah26', '/t/ah26/patrull', '/k/c/x', '/s/c/p', '/m/c/s', '/a/c'])
+      assert.equal(arEnflikssida(p), true, p);
+    for (const p of ['/app', '/app/c/x/patrols', '/', '/om', '/kontakt', '/t', '/tavling', '/overlamning'])
+      assert.equal(arEnflikssida(p), false, p);
+    assert.equal(arAnonymFaltsida('/t/ah26'), false);
+    assert.match(fb, /initializeApp\(config, arAnonymFaltsida\(location\.pathname\) \? 'falt' : undefined\)/,
+      'appnamnet ska följa arAnonymFaltsida, inte arEnflikssida — annars tappar /t inloggningen');
+  });
+
+  test('IndexedDB prövas FÖRE Auth — på /t skyddar provet även inloggningens start', () => {
+    assert.ok(fb.indexOf('idbOk = await idbSvarar();') < fb.indexOf('const auth = initializeAuth('),
+      'Auth med IndexedDB-persistens hänger Firestores kö om databasen är död — provet måste komma först');
+    assert.match(fb, /persistence: \(faltsida \|\| !idbOk\)\s*\? inMemoryPersistence/);
   });
 
   test('aldrig forceOwnership — den dödar den andra flikens Firestore tyst', () => {
@@ -554,9 +574,8 @@ describe('fältsidorna hänger aldrig på en annan flik', () => {
     assert.doesNotMatch(fb, /indexedDB\.open\('firestore/, 'en tom databas med Firestores namn förstör dess schema');
     assert.match(fb, /const t = setTimeout\(\(\) => svara\(false\), ms\);/);
     assert.match(fb, /: memoryLocalCache\(\);/);
-    assert.match(fb, /const idbOk = await idbSvarar\(\);/);
-    // Provet får bara kosta fältsidorna något; admin ska inte vänta på det.
-    assert.ok(fb.indexOf('await idbSvarar()') > fb.indexOf('if (!faltsida) {'), 'provet ligger utanför fältgrenen');
+    // Provet får bara kosta de sidor som behöver det; admin ska inte vänta på det.
+    assert.match(fb, /if \(enflikssida\) \{\s*fas\('idb-prov'\);\s*idbOk = await idbSvarar\(\);/);
   });
 
   test('getDocFromServer exporteras — "finns inte" ska kunna bekräftas förbi cachen', () => {

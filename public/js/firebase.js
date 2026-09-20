@@ -22,7 +22,7 @@ import {
   initializeAppCheck, ReCaptchaV3Provider
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app-check.js';
 
-import { arAnonymFaltsida } from './utils.js';
+import { arAnonymFaltsida, arEnflikssida } from './utils.js';
 
 // Fasmärkning till vakthundens tekniska rad — se field-watchdog.js.
 const fas = (n) => { try { window.__eskilFas?.(n); } catch {} };
@@ -172,9 +172,24 @@ if (!isLocalHost && config.appId) {
 // blockera Firestores kö för alltid, och sidan blir stående på "Laddar…"
 // utan att något fel inträffar. De sidorna loggar aldrig in, så
 // minnespersistens kostar ingenting där.
+//
+// IndexedDB PRÖVAS FÖRST på de sidor som kör enflikshantering (fältsidorna och
+// /t) — se idbSvarar nedan. Svarar den inte får även Auth minnespersistens:
+// /t behåller annars IndexedDB för inloggningen (admin-genvägen), och då hade
+// samma hängning som beskrivs ovan slagit till just där anhöriga öppnar länken
+// — i Facebooks och WhatsApps inbyggda webbläsare. Priset är att genvägen inte
+// visas i en sådan webbläsare; sidan fungerar.
+const faltsida = arAnonymFaltsida(location.pathname);
+const enflikssida = arEnflikssida(location.pathname);
+let idbOk = true;
+if (enflikssida) {
+  fas('idb-prov');
+  idbOk = await idbSvarar();
+  fas(idbOk ? 'idb-ok' : 'idb-dod');
+}
 fas('auth-init');
 const auth = initializeAuth(app, {
-  persistence: arAnonymFaltsida(location.pathname)
+  persistence: (faltsida || !idbOk)
     ? inMemoryPersistence
     : indexedDBLocalPersistence
 });
@@ -217,8 +232,21 @@ const EMU_HOST = '127.0.0.1';
 // dödar den andra flikens Firestore tyst, och en kontrollant som växlar
 // tillbaka dit sparar poäng som aldrig går iväg.
 //
-// Admin-SPA:n och /t behåller fliksynkroniseringen: de används på datorer, där
+// Admin-SPA:n behåller fliksynkroniseringen: den används på datorer, där
 // bakgrundsflikar har fungerande nät, och där en delad cache sparar läsningar.
+//
+// /t KÖR OCKSÅ ENFLIKSHANTERING, fast den delar lagring med admin-appen
+// (standardappen, för admin-genvägens skull). Att de två har OLIKA hanterare
+// är ofarligt, och det är SDK:n som ser till det: den som kommer tvåa faller
+// tillbaka på minnescache åt vilket håll det än är. Admin först → /t får
+// minnescache (start(): "!isPrimary && !allowTabSynchronization" →
+// FAILED_PRECONDITION). /t först → admin får minnescache (canActAsPrimary:
+// ägarens allowTabSynchronization är false → FAILED_PRECONDITION). Båda
+// fungerar; den som kom tvåa saknar bara lokal kopia den sessionen. Verifierat
+// i emulatorn åt båda håll. /t behåller PERSISTENSEN med flit (minnescache
+// rakt av hade varit enklare): med en lokal kopia kostar en omladdning bara
+// det som ändrats, och anhöriga laddar om resultatsidan hela dagen — utan den
+// läses varje patrull och varje poäng om varje gång, mot en delad gratiskvot.
 //
 // IndexedDB KAN DESSUTOM VARA DÖD: i inbyggda webbläsare (QR-läsare, mailappar)
 // och när iOS tappat sin IDB-anslutning svarar indexedDB.open() varken success
@@ -240,14 +268,11 @@ function idbSvarar(ms = 1500) {
   });
 }
 
-const faltsida = arAnonymFaltsida(location.pathname);
 let localCache;
-if (!faltsida) {
+if (!enflikssida) {
   localCache = persistentLocalCache({ tabManager: persistentMultipleTabManager() });
 } else {
-  fas('idb-prov');
-  const idbOk = await idbSvarar();
-  fas(idbOk ? 'idb-ok' : 'idb-dod');
+  // idbOk prövades före Auth, längre upp.
   localCache = idbOk
     ? persistentLocalCache({ tabManager: persistentSingleTabManager({}) })
     : memoryLocalCache();

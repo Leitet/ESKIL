@@ -451,10 +451,28 @@ precis det brott den ska fånga.
   täckning. Rätt byte — att sidan öppnas när det finns nät är det som inte får
   fallera. **ALDRIG `forceOwnership`**: den dödar den andra flikens Firestore
   tyst, och en kontrollant som växlar tillbaka dit sparar poäng som aldrig går
-  iväg. Admin-SPA:n och /t behåller fliksynkroniseringen (datorer, fungerande
+  iväg. Admin-SPA:n behåller fliksynkroniseringen (datorer, fungerande
   bakgrundsnät, delad cache sparar läsningar). Blandade versioner under en
   deploy är ofarliga: en flik med gammal kod och en med ny faller bara tillbaka
   på minnescache åt varandra.
+  **/t kör OCKSÅ enflikshantering** (`arEnflikssida` = fältsidorna + `/t/`):
+  anhöriga har den på telefoner, och varje delad länk i en gruppchatt blir en ny
+  flik. Men /t är INTE en anonym fältsida — den läser behörigheter som den
+  inloggade (admin-genvägen), så den behåller standardappen och delar lagring
+  med admin. Appnamnet följer därför `arAnonymFaltsida`, flikhanteringen
+  `arEnflikssida`; blanda inte ihop dem (ett test vaktar). Att /t och admin har
+  OLIKA hanterare i samma lagring är ofarligt — SDK:n låter den som kommer
+  tvåa falla tillbaka på minnescache åt vilket håll det än är (admin först →
+  `start()` kastar för /t; /t först → `canActAsPrimary` kastar för admin).
+  Verifierat i emulatorn åt båda håll: båda fungerar, inloggningen är intakt.
+  /t behåller PERSISTENSEN med flit, fast ren minnescache hade varit enklare:
+  med en lokal kopia kostar en omladdning bara det som ändrats, och anhöriga
+  laddar om resultatsidan hela dagen — utan den läses varje patrull och varje
+  poäng om varje gång, mot den delade gratiskvoten. På /t prövas IndexedDB FÖRE
+  Auth, och svarar den inte får även Auth minnespersistens: /t har annars
+  IndexedDB i inloggningens startväg, och anhöriga öppnar länken just i
+  Facebooks och WhatsApps inbyggda webbläsare, där den hänger. Priset är att
+  admin-genvägen inte visas där.
   **IndexedDB prövas dessutom med en tidsgräns** (`idbSvarar`, 1,5 s, mätt till
   1–10 ms när den fungerar): svarar den inte kör sidan `memoryLocalCache()`.
   Samma WebKit-fel som `inMemoryPersistence` löste för Auth hängde annars

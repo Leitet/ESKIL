@@ -1545,13 +1545,25 @@ export function sparlagesBeslut(nuvarande, { level, charging } = {}) {
 // På de här fyra sidorna är IndexedDB-persistensen alltså ingen funktion, bara
 // en risk: de har ingen session att bevara. `/t` står MEDVETET utanför —
 // public.js använder onAuthStateChanged för admin-genvägen — och SPA:n
-// behöver långlivade sessioner.
+// behöver långlivade sessioner. (/t skyddas i stället av IndexedDB-provet i
+// firebase.js, och kör enflikshantering via arEnflikssida nedan.)
 //
 // Obs att mönstret kräver ett avslutande snedstreck: `/app/...` börjar på
 // "a" men matchar inte, och det är hela skillnaden mellan den här listan och
 // att slå ut inloggningen i hela admingränssnittet.
 export function arAnonymFaltsida(sokvag) {
   return /^\/(a|k|s|m)\//.test(String(sokvag || ''));
+}
+
+// Sidor som kör ENFLIKShantering av Firestores lokala cache: fältsidorna och
+// den publika tävlingssidan /t. Skälet står i firebase.js — en flik får aldrig
+// hänga på en annan flik som telefonen lagt i vila, och /t öppnas av anhöriga
+// på telefoner, ofta i flera flikar (varje delad länk i en gruppchatt blir en
+// ny). /t är INTE en anonym fältsida: den behåller standardappen och
+// inloggningen, för admin-genvägen. Därför ett eget predikat.
+export function arEnflikssida(sokvag) {
+  const s = String(sokvag || '');
+  return arAnonymFaltsida(s) || /^\/t\//.test(s);
 }
 
 export function arSpaRutt(href) {
