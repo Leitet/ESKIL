@@ -17,12 +17,18 @@
 //
 // Bump VERSION whenever cached-asset behavior must be reset.
 
+// v10: REN START efter felsökningen av fältsidor som inte laddade. Den här
+// deployen lägger nya namn i firebase.js, store.js och utils.js som report.js
+// och start.js importerar. En redan installerad SW kan på ett trögt nät (4 s
+// per fil) annars para ihop en färsk fil med en cachad äldre — och då dör hela
+// modulgrafen. Med ny version töms cachen, så första laddningen hämtar ALLT
+// färskt och som en sammanhängande uppsättning.
 // v9: init.json serveras nu faktiskt ur cachen (predikatet matchade den inte).
 // v8: /firebase-config.json cachas inte längre (emulatorstub i produktion).
 // v7: vakthunden ändrades (den täcker nu #app också) och /a registrerar
 // service workern för första gången. Utan versionshöjning serverar en redan
 // installerad SW den gamla filen ur cachen tills den råkar revalideras.
-const VERSION = 'eskil-sw-v9';
+const VERSION = 'eskil-sw-v10';
 const RUNTIME = `${VERSION}-runtime`;
 
 const FIELD_SHELLS = { '/k/': '/k.html', '/s/': '/s.html', '/m/': '/m.html' };

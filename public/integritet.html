@@ -273,6 +273,17 @@
     81 ms — samt vilken sidadress det gällde. Inga personuppgifter, inget innehåll från
     tävlingen, och ingenting skickas någonstans: uppgifterna lämnar aldrig din enhet och raderas
     när du rensar webbläsardata.</p>
+    <p>Av samma skäl gör fältsidorna (rapportsidan, startkortet, stationen och anmälan) två små
+    saker vid start. De öppnar en <strong>tom provdatabas</strong> (<code>eskil-idb-prov</code>)
+    för att se om webbläsarens lokala databas svarar — i vissa inbyggda webbläsare gör den inte
+    det, och då kör sidan utan lokal kopia i stället för att fastna. Och om sidan råkar få filer
+    av olika versioner strax efter en uppdatering laddar den om sig själv en gång; tidpunkten för
+    den omladdningen sparas i fliken (<code>sessionStorage</code>, nyckeln
+    <code>eskil-skev-omladdning</code>) och försvinner när fliken stängs. Ingetdera innehåller
+    något om dig eller tävlingen.</p>
+    <p>Har du flera flikar med fältsidor öppna samtidigt är det bara den första som sparar en
+    lokal kopia av tävlingsdatat; de övriga hämtar allt direkt från servern. Det är med flit —
+    en flik får aldrig bli beroende av en annan flik som telefonen har lagt i vila.</p>
 
     <h2>Tredje parter</h2>
     <p>När du använder ESKIL laddas resurser från följande leverantörer, som då ser din

@@ -6,6 +6,8 @@ import {
   collection, addDoc, getDocs, onSnapshot, query, where, orderBy,
   serverTimestamp, deleteField, writeBatch, Timestamp, arrayRemove
 } from './firebase.js';
+import * as firebaseNs from './firebase.js';
+import * as utilsNs from './utils.js';
 import { normDistrict } from './districts.js';
 import { mergeBeacons, splitManagement, mergeManagement, isValidSlug } from './utils.js';
 import { fordelaTidspoang } from './tidspoang.js';
@@ -258,14 +260,50 @@ export async function resolveCompetition(segment) {
   const seg = String(segment || '').trim();
   if (!seg) return null;
   const slug = seg.toLowerCase();
+  // Felen SPARAS i stället för att sväljas: utan träff avgör de om svaret är
+  // "finns inte" eller "kunde inte läsa" — se arSakertInteFunnen i utils.js.
+  let fel = null;
   const [byId, bySlug] = await Promise.all([
-    getDoc(doc(db, 'competitions', seg)).catch(() => null),
+    getDoc(doc(db, 'competitions', seg)).catch((e) => { fel = fel || e; return null; }),
     isValidSlug(slug)
-      ? getDocs(query(collection(db, 'competitions'), where('slug', '==', slug))).catch(() => null)
+      ? getDocs(query(collection(db, 'competitions'), where('slug', '==', slug))).catch((e) => { fel = fel || e; return null; })
       : Promise.resolve(null)
   ]);
   const snap = (byId && byId.exists()) ? byId : (bySlug && !bySlug.empty ? bySlug.docs[0] : null);
-  return snap ? hydrateComp(snap) : null;
+  if (snap) return hydrateComp(snap);
+  // Ingen träff. En FRÅGA som inte når servern kastar inte — den svarar tomt ur
+  // cachen — så den tomma träfflistan är bara sann om den kom från servern.
+  const franCache = !!(bySlug && bySlug.empty && bySlug.metadata?.fromCache);
+  if (!arSakertInteFunnen({ fel, franCache })) throw ingenKontakt(fel);
+  return null;
+}
+
+// NAMNRYMDSIMPORT, inte namngiven, för de två NYA namnen. Service workern
+// hämtar modulerna nät-först med en tidsgräns per fil, så på ett trögt nät kan
+// en sidladdning efter en deploy få den NYA store.js ihop med en CACHAD
+// firebase.js eller utils.js. Ett namngivet import av ett namn som saknas i den
+// gamla filen är ett SyntaxError vid länkningen — hela fältsidan dör. Ur en
+// namnrymd blir det saknade namnet bara undefined, och då gäller reserven.
+const getDocFromServer = firebaseNs.getDocFromServer || getDoc;
+const arSakertInteFunnen = utilsNs.arSakertInteFunnen || (({ fel }) => !fel);
+
+// Ett läsfel i klartext. Firestores egna meningar ("Failed to get document
+// because the client is offline") säger inget till den som står i skogen.
+function ingenKontakt(orsak) {
+  const e = new Error('Ingen kontakt med servern just nu — kontrollera täckningen.');
+  e.orsak = orsak || null;
+  if (orsak?.code) e.code = orsak.code;
+  return e;
+}
+
+// "Finns inte" får bara sägas om SERVERN sagt det. Fältsidorna anropar den här
+// när den vanliga läsningen svarat att dokumentet saknas: getDocFromServer går
+// förbi cachen helt och KASTAR om servern inte nås, så svaret null är äkta.
+export async function finnsPaServern(...sokvag) {
+  try {
+    const snap = await getDocFromServer(doc(db, ...sokvag));
+    return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+  } catch (e) { throw ingenKontakt(e); }
 }
 
 // A slug is free when no competition uses it AND no competition document has

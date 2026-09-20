@@ -958,6 +958,62 @@ export function paStartskarmen(schema, now = new Date()) {
   return [...(schema || [])].reverse().find(e => now >= e.windowStart && now <= e.windowEnd) || null;
 }
 
+// --- Fältsidornas start: omförsök, och "finns inte" bara när servern sagt det --
+//
+// På en skarp tävling stod det "Tävlingen hittades inte" och "Kontrollen
+// hittades inte" för sådant som fanns. Två skäl, båda här:
+//
+// 1. Ett LÄSFEL gjordes om till "finns inte". resolveCompetition svalde varje
+//    fel till null, och en fråga (getDocs) som inte når servern KASTAR INTE —
+//    den svarar med en tom träfflista ur cachen. Kortadressen (/s/ah26/…) är
+//    normalvägen till startkortet, så ett trögt nät blev "Tävlingen hittades
+//    inte". Det är en lögn som får folk att leta efter fel länk.
+// 2. Ett enda misslyckat försök var slutgiltigt. På ett skogsnät är det
+//    vanliga fallet att försök två går igenom.
+//
+// arSakertInteFunnen: bara ett svar FRÅN SERVERN, utan fel, får betyda att
+// något inte finns.
+export function arSakertInteFunnen({ fel = null, franCache = false } = {}) {
+  return !fel && !franCache;
+}
+
+// Kör `fn` tills den lyckas, högst `forsok` gånger. `vidForsok(n, fel)` anropas
+// före varje NYTT försök — fältsidorna märker en fas där, så vakthunden ser att
+// sidan arbetar och inte byter ut den mitt i ett omförsök. `vanta` injiceras i
+// test. Ett fel märkt `slutgiltigt` (t.ex. nekad behörighet) försöks inte om:
+// det blir inte sannare av att upprepas.
+export async function medOmforsok(fn, { forsok = 3, vantaMs = 1200, tidsgransMs = 0, vidForsok = null, vanta = null } = {}) {
+  const sov = vanta || ((ms) => new Promise(r => setTimeout(r, ms)));
+  // En läsning som varken svarar eller felar får inte hålla sidan för alltid:
+  // med en tidsgräns blir den ett fel, och då går nästa försök.
+  const medGrans = (p) => (tidsgransMs > 0
+    ? Promise.race([p, new Promise((_, nej) => setTimeout(() => nej(new Error('Servern svarade inte i tid.')), tidsgransMs))])
+    : p);
+  let sista = null;
+  for (let n = 1; n <= forsok; n++) {
+    try { return await medGrans(Promise.resolve().then(() => fn(n))); }
+    catch (e) {
+      sista = e;
+      if (e?.slutgiltigt || e?.code === 'permission-denied' || n === forsok) break;
+      try { vidForsok?.(n + 1, e); } catch { /* märkningen får aldrig stoppa försöket */ }
+      await sov(vantaMs * n);
+    }
+  }
+  throw sista;
+}
+
+// Fältsidornas felskärm. En felskärm utan väg vidare är en återvändsgränd — och
+// den som står i skogen ska inte behöva veta att "ladda om" finns. Anroparen
+// kopplar knappen (#falt-igen) till location.reload().
+export function faltFelHtml(rubrik, detalj = '') {
+  const esc = (t) => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return `<div class="r-empty" style="text-align:left;max-width:460px;margin:32px auto;">
+    <strong style="display:block;font-size:19px;margin-bottom:8px;">${esc(rubrik)}</strong>
+    ${detalj ? `<span style="display:block;margin-bottom:16px;line-height:1.5;">${esc(detalj)}</span>` : ''}
+    <button type="button" id="falt-igen" style="display:block;width:100%;padding:14px;font-size:17px;font-weight:700;border-radius:12px;border:none;background:#003660;color:#fff;cursor:pointer;">Försök igen</button>
+  </div>`;
+}
+
 // EXTRA på startskärmen: sekretariatet lägger EN patrulls startkort över
 // schemat — patrullen som skulle gått för en halvtimme sedan står plötsligt
 // där, och ska kunna skanna sitt kort utan att startordningen rörs. Pekaren

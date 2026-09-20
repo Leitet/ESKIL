@@ -10,8 +10,8 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
 import {
   getFirestore, initializeFirestore,
-  persistentLocalCache, persistentMultipleTabManager,
-  doc, getDoc, setDoc, updateDoc, deleteDoc,
+  persistentLocalCache, persistentMultipleTabManager, persistentSingleTabManager, memoryLocalCache,
+  doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc,
   collection, addDoc, getDocs, onSnapshot, query, where, orderBy,
   serverTimestamp, deleteField, writeBatch, Timestamp, arrayRemove
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
@@ -190,18 +190,76 @@ auth.languageCode = 'sv';
 const EMU_HOST = '127.0.0.1';
 // Persistent local cache (IndexedDB): reporter/startkort pages can render
 // their data with no network at all — critical in the woods, where the
-// service worker serves the page shell and this serves the data. Multi-tab
-// manager so several open ESKIL tabs share the cache instead of erroring.
+// service worker serves the page shell and this serves the data.
+//
+// FÄLTSIDORNA FÅR ALDRIG HÄNGA PÅ EN ANNAN FLIK.
+//
+// Med fliksynkronisering (persistentMultipleTabManager) äger EN flik
+// serverkontakten, och alla andra flikar på samma domän läser GENOM den. SDK:n
+// låter ägaren behålla ägarskapet så länge den förnyar det (var fjärde sekund)
+// — och en BAKGRUNDSFLIK på en telefon gör just det: timrarna tickar, men
+// nätet är strypt. Varje ny flik hänger då på en flik som inte kan nå servern.
+// Det slog till på en skarp tävling: kontrollkort och startkort som stod på
+// "Laddar…", vakthunden med "inget fel — sidan väntade", "hittades inte" för
+// något som fanns — och en omladdning hjälpte INTE, för den gamla fliken levde
+// kvar. Att lägga sidan på hemskärmen hjälpte: den har egen lagring och därmed
+// inga andra flikar. Återskapat i emulatorn: en levande flik med dött nät, en
+// ny flik → vakthunden efter 10 s, även efter "Försök igen". Och gamla flikar
+// finns ALLTID: varje tryck på maillänken och varje QR-skanning öppnar en ny.
+//
+// Med enflikshantering (persistentSingleTabManager) äger första fliken
+// IndexedDB-cachen, och varje YTTERLIGARE flik faller tillbaka på minnescache
+// — SDK:n gör det själv (FAILED_PRECONDITION → "Falling back to memory cache",
+// verifierat i firebase-firestore.js 10.12.5). Varje flik har då sin EGEN
+// serverkontakt. Priset: en extra flik har ingen cache som överlever en
+// omladdning utan täckning. Det är rätt byte — att sidan öppnas när det finns
+// nät är det som inte får fallera. Använd ALDRIG forceOwnership här: den
+// dödar den andra flikens Firestore tyst, och en kontrollant som växlar
+// tillbaka dit sparar poäng som aldrig går iväg.
+//
+// Admin-SPA:n och /t behåller fliksynkroniseringen: de används på datorer, där
+// bakgrundsflikar har fungerande nät, och där en delad cache sparar läsningar.
+//
+// IndexedDB KAN DESSUTOM VARA DÖD: i inbyggda webbläsare (QR-läsare, mailappar)
+// och när iOS tappat sin IDB-anslutning svarar indexedDB.open() varken success
+// eller error, och då hänger Firestores start för alltid — samma fel som
+// inMemoryPersistence ovan löste för Auth. Pröva därför IndexedDB med en EGEN
+// databas (aldrig Firestores — en tom databas där förstör dess schema) och en
+// tidsgräns; svarar den inte körs sidan med minnescache.
+function idbSvarar(ms = 1500) {
+  return new Promise((resolve) => {
+    let klar = false;
+    const svara = (v) => { if (!klar) { klar = true; resolve(v); } };
+    const t = setTimeout(() => svara(false), ms);
+    try {
+      const req = indexedDB.open('eskil-idb-prov');
+      req.onsuccess = () => { clearTimeout(t); try { req.result.close(); } catch {} svara(true); };
+      req.onerror = () => { clearTimeout(t); svara(false); };
+      req.onblocked = () => { clearTimeout(t); svara(false); };
+    } catch { clearTimeout(t); svara(false); }
+  });
+}
+
+const faltsida = arAnonymFaltsida(location.pathname);
+let localCache;
+if (!faltsida) {
+  localCache = persistentLocalCache({ tabManager: persistentMultipleTabManager() });
+} else {
+  fas('idb-prov');
+  const idbOk = await idbSvarar();
+  fas(idbOk ? 'idb-ok' : 'idb-dod');
+  localCache = idbOk
+    ? persistentLocalCache({ tabManager: persistentSingleTabManager({}) })
+    : memoryLocalCache();
+}
 const db = isLocalHost
   ? initializeFirestore(app, {
       host: `${EMU_HOST}:8080`,
       ssl: false,
       experimentalForceLongPolling: true,
-      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+      localCache
     })
-  : initializeFirestore(app, {
-      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
-    });
+  : initializeFirestore(app, { localCache });
 
 // Cloud Functions (callables) — deployed in europe-west1.
 const functions = getFunctions(app, 'europe-west1');
@@ -227,7 +285,7 @@ export {
   app, auth, db, functions, httpsCallable,
   isSignInWithEmailLink, sendSignInLinkToEmail, signInWithEmailLink,
   onAuthStateChanged, signOut,
-  doc, getDoc, setDoc, updateDoc, deleteDoc,
+  doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc,
   collection, addDoc, getDocs, onSnapshot, query, where, orderBy,
   serverTimestamp, deleteField, writeBatch, Timestamp, arrayRemove
 };

@@ -3,6 +3,11 @@
 // with the URL report (if the control is open).
 
 import { db, doc, collection, onSnapshot } from './firebase.js';
+// Namnrymder för de NYA namnen — se kommentaren vid getDocFromServer i store.js:
+// en cachad äldre utils.js/store.js ihop med den här filen får inte bli ett
+// SyntaxError som dödar sidan. Saknas namnet gäller reserven nedan.
+import * as utilsNs from './utils.js';
+import * as storeNs from './store.js';
 import { getCompetition, getControl, listPatrols, watchScoresForControl, upsertScore, upsertTidScore, deleteScore, listControls, getTrack, listAllScoresForEta, rensaEtaCache, sendControlBeacon } from './store.js';
 import { formateraTid, tolkaTid } from './tidspoang.js';
 import { AVDELNINGAR, escapeHtml, allInstructionGroups, internalManagement, parseFieldPath,
@@ -324,15 +329,40 @@ async function main() {
   const samtalsToken = parsed.token;
 
   let comp, control, patrols = [], scores = [];
+  // STARTLÄSNINGEN FÅR INTE VARA SKÖR. Tre försök med tidsgräns — på ett
+  // skogsnät är det vanliga att försök två går igenom — och "finns inte" sägs
+  // bara om SERVERN sagt det (finnsPaServern går förbi cachen och kastar om
+  // servern inte nås). Varje försök märker en fas, så vakthunden ser att sidan
+  // arbetar; laddtexten rörs först vid försök två, för en ändring i #root
+  // kopplar ner vakthunden.
+  const fasa = (n) => { try { window.__eskilFas?.(n); } catch {} };
+  const omforsok = utilsNs.medOmforsok || ((fn) => fn(1));
+  const felskarm = (rubrik, detalj) => {
+    root.innerHTML = utilsNs.faltFelHtml ? utilsNs.faltFelHtml(rubrik, detalj)
+      : `<div class="r-empty">${escapeHtml(rubrik)} ${escapeHtml(detalj || '')}</div>`;
+    root.querySelector('#falt-igen')?.addEventListener('click', () => location.reload());
+  };
   try {
-    [comp, control, patrols] = await Promise.all([
+    fasa('k-las');
+    [comp, control, patrols] = await omforsok(() => Promise.all([
       getCompetition(cid),
       getControl(cid, ctrlId),
       listPatrols(cid)
-    ]);
+    ]), {
+      forsok: 3, tidsgransMs: 15000,
+      vidForsok: (n) => {
+        fasa('k-las-' + n);
+        root.innerHTML = `<div class="r-empty">Trögt nät — försöker igen (${n} av 3)…</div>`;
+      }
+    });
+    if (!control && storeNs.finnsPaServern) {
+      fasa('k-bekrafta');
+      control = await storeNs.finnsPaServern('competitions', cid, 'controls', ctrlId);
+    }
+    fasa('k-last');
   } catch (e) {
     console.error(e);
-    root.innerHTML = `<div class="r-empty">Kunde inte läsa kontrollen: ${escapeHtml(e.message)}</div>`;
+    felskarm('Kunde inte läsa kontrollen', `${e.message} Sidan fungerar så fort det finns täckning igen.`);
     return;
   }
 
@@ -367,7 +397,7 @@ async function main() {
   }
 
   if (!control) {
-    root.innerHTML = `<div class="r-empty">Kontrollen hittades inte.</div>`;
+    felskarm('Kontrollen hittades inte', 'Länken pekar på en kontroll som inte finns. Be tävlingsledningen om en ny länk eller QR-kod.');
     return;
   }
   document.title = `${control.nummer ?? ''}. ${control.name || 'Kontroll'} · ${comp?.shortName || ''} — ESKIL`;

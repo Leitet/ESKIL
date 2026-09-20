@@ -61,11 +61,47 @@
   } catch (e) { /* privat läge */ }
   window.__eskilFas('start');
 
+  // ── Blandade modulversioner ───────────────────────────────────────────────
+  // Service workern hämtar varje modul nät-först med en tidsgräns PER FIL. På
+  // ett trögt nät strax efter en deploy kan en sidladdning därför få några
+  // filer färska och andra ur cachen — och importerar en färsk fil ett namn som
+  // den cachade inte exporterar är det ett SyntaxError vid länkningen: ingen
+  // modulkod körs alls, och sidan står på "Laddar…" tills vakthunden slår till.
+  // Då hade användaren fått trycka "Försök igen" själv, tio sekunder senare.
+  // Under tiden har service workerns bakgrundshämtningar fyllt på cachen, så en
+  // omladdning går igenom — gör den direkt. EN gång per halvminut: ett äkta
+  // syntaxfel får aldrig bli en omladdningsloop. Admin-appen gör samma sak i
+  // laddaOmVidSkev (app.js); meningarna är Chromes respektive Safaris.
+  var SKEV_NYCKEL = 'eskil-skev-omladdning';
+  function arLankfel(text) {
+    return /does not provide an export named|Importing binding name .* is not found|import .* not found|Unexpected export/i.test(String(text || ''));
+  }
+  window.__eskilArLankfel = arLankfel;   // för test
+  function laddaOmVidSkev(text) {
+    if (!arLankfel(text)) return false;
+    var senast = 0;
+    try { senast = Number(sessionStorage.getItem(SKEV_NYCKEL)) || 0; } catch (e) { /* privat läge */ }
+    if (Date.now() - senast < 30000) return false;
+    try { sessionStorage.setItem(SKEV_NYCKEL, String(Date.now())); } catch (e) { return false; }
+    try { location.reload(); } catch (e) { return false; }
+    return true;
+  }
+
+  // EN lyssnare, i CAPTURE-fasen. En modul som inte gick att HÄMTA ger inget fel
+  // på window — händelsen går till <script>-elementet och bubblar inte — så
+  // utan capture stod det "inget fel — sidan väntade" på felskärmen när en fil
+  // saknades. Vanliga skriptfel (target === window) kommer hit ändå.
   window.addEventListener('error', function (e) {
+    var t = e && e.target;
+    if (t && t !== window && t.tagName === 'SCRIPT') {
+      lastError = 'Kunde inte hämta ' + String(t.src || 'ett skript').split('/').slice(-1)[0];
+      return;
+    }
     var src = e.filename ? ' (' + e.filename.split('/').slice(-1)[0] +
       (e.lineno ? ':' + e.lineno : '') + ')' : '';
     lastError = (e.message || 'Skriptfel') + src;
-  });
+    laddaOmVidSkev(e.message);
+  }, true);
   window.addEventListener('unhandledrejection', function (e) {
     var r = e.reason;
     lastError = (r && (r.message || String(r))) || 'Okänt fel';

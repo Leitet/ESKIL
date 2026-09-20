@@ -21,7 +21,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { arAnonymFaltsida } from '../public/js/utils.js';
+import { arAnonymFaltsida, medOmforsok, arSakertInteFunnen, faltFelHtml } from '../public/js/utils.js';
 
 const las = (f) => readFileSync(new URL(`../public/${f}`, import.meta.url), 'utf8');
 const SIDOR = readdirSync(new URL('../public/', import.meta.url)).filter(f => f.endsWith('.html'));
@@ -518,5 +518,202 @@ describe('cache-reglerna säger vad de gör', () => {
     const jsRegler = kallor.filter(s => s.includes('js'));
     assert.ok(!jsRegler.includes('/js/**'),
       `/js/** överskuggas av ${jsRegler.filter(s => s !== '/js/**').join(', ')} — ta bort den i stället för att låta den ljuga`);
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// FÄLTSIDOR SOM INTE LADDADE — felsökningen efter en skarp tävling.
+//
+// Startkort och kontrollkort stod på "Laddar…", vakthunden sa "inget fel — sidan
+// väntade", det stod "hittades inte" för sådant som fanns, en omladdning hjälpte
+// INTE, men att lägga sidan på hemskärmen gjorde det. Tre orsaker, alla här.
+// ---------------------------------------------------------------------------
+describe('fältsidorna hänger aldrig på en annan flik', () => {
+  const las = (f) => readFileSync(new URL(`../public/js/${f}`, import.meta.url), 'utf8');
+  const fb = las('firebase.js');
+
+  test('fältsidor kör ENFLIKShantering — med fliksynkronisering äger en bakgrundsflik serverkontakten', () => {
+    // Återskapat i emulatorn: en levande flik med dött nät + en ny flik →
+    // vakthunden efter 10 s, även efter "Försök igen". Med enflikshantering: 0,19 s.
+    assert.match(fb, /persistentLocalCache\(\{ tabManager: persistentSingleTabManager\(\{\}\) \}\)/);
+    const gren = fb.slice(fb.indexOf('const faltsida = arAnonymFaltsida'), fb.indexOf('const db = isLocalHost'));
+    assert.match(gren, /if \(!faltsida\) \{\s*localCache = persistentLocalCache\(\{ tabManager: persistentMultipleTabManager\(\) \}\);/,
+      'admin och /t ska behålla den delade cachen');
+    const faltgren = gren.slice(gren.indexOf('} else {'));
+    assert.doesNotMatch(faltgren, /persistentMultipleTabManager/, 'fältsidorna har fliksynkronisering igen');
+  });
+
+  test('aldrig forceOwnership — den dödar den andra flikens Firestore tyst', () => {
+    const kod = fb.split('\n').filter(r => !r.trim().startsWith('//')).join('\n');
+    assert.doesNotMatch(kod, /forceOwnership/, 'en kontrollant som växlar tillbaka till den gamla fliken sparar poäng som aldrig går iväg');
+  });
+
+  test('IndexedDB prövas med en EGEN databas och en tidsgräns — svarar den inte körs minnescache', () => {
+    assert.match(fb, /indexedDB\.open\('eskil-idb-prov'\)/);
+    assert.doesNotMatch(fb, /indexedDB\.open\('firestore/, 'en tom databas med Firestores namn förstör dess schema');
+    assert.match(fb, /const t = setTimeout\(\(\) => svara\(false\), ms\);/);
+    assert.match(fb, /: memoryLocalCache\(\);/);
+    assert.match(fb, /const idbOk = await idbSvarar\(\);/);
+    // Provet får bara kosta fältsidorna något; admin ska inte vänta på det.
+    assert.ok(fb.indexOf('await idbSvarar()') > fb.indexOf('if (!faltsida) {'), 'provet ligger utanför fältgrenen');
+  });
+
+  test('getDocFromServer exporteras — "finns inte" ska kunna bekräftas förbi cachen', () => {
+    const exp = fb.slice(fb.lastIndexOf('export {'));
+    assert.match(exp, /getDocFromServer/);
+  });
+});
+
+describe('"hittades inte" sägs bara när servern sagt det', () => {
+  const las = (f) => readFileSync(new URL(`../public/js/${f}`, import.meta.url), 'utf8');
+
+  test('ett fel eller ett svar ur cachen är ALDRIG ett "finns inte"', () => {
+    assert.equal(arSakertInteFunnen({ fel: null, franCache: false }), true);
+    assert.equal(arSakertInteFunnen({ fel: new Error('offline') }), false);
+    assert.equal(arSakertInteFunnen({ franCache: true }), false, 'en fråga som inte når servern svarar tomt ur cachen utan att kasta');
+    assert.equal(arSakertInteFunnen(), true);
+  });
+
+  test('kortadressen sväljer inte längre fel till null', () => {
+    const store = las('store.js');
+    const f = store.slice(store.indexOf('export async function resolveCompetition'), store.indexOf('// NAMNRYMDSIMPORT'));
+    assert.doesNotMatch(f, /\.catch\(\(\) => null\)/, 'varje läsfel blir "Tävlingen hittades inte" — på startkortets normalväg');
+    assert.match(f, /bySlug\.metadata\?\.fromCache/);
+    assert.match(f, /if \(!arSakertInteFunnen\(\{ fel, franCache \}\)\) throw ingenKontakt\(fel\);/);
+    assert.match(store, /await getDocFromServer\(doc\(db, \.\.\.sokvag\)\)/);
+  });
+
+  test('kontrollkortet och startkortet bekräftar mot servern innan de säger "hittades inte"', () => {
+    const k = las('report.js'), s = las('start.js');
+    assert.ok(k.indexOf("storeNs.finnsPaServern('competitions', cid, 'controls', ctrlId)") < k.indexOf("felskarm('Kontrollen hittades inte'"));
+    assert.ok(k.indexOf("storeNs.finnsPaServern('competitions', cid, 'controls', ctrlId)") > 0);
+    assert.ok(s.indexOf("storeNs.finnsPaServern('competitions', cid, 'patrols', patrolId)") > 0);
+    assert.ok(s.indexOf("storeNs.finnsPaServern('competitions', cid, 'patrols', patrolId)") < s.indexOf("renderError('Patrullen hittades inte'"));
+  });
+
+  test('de nya namnen importeras ur NAMNRYMDER — en cachad äldre fil får inte döda sidan', () => {
+    // Service workern hämtar nät-först med tidsgräns per fil, så en färsk
+    // report.js kan paras ihop med en cachad utils.js. Ett namngivet import av
+    // ett namn som saknas där är ett SyntaxError vid länkningen.
+    for (const f of ['report.js', 'start.js']) {
+      const src = las(f);
+      const namngivna = [...src.matchAll(/import\s*\{([^}]*)\}\s*from\s*'\.\/(?:utils|store)\.js'/g)].map(m => m[1]).join(',');
+      for (const namn of ['medOmforsok', 'faltFelHtml', 'finnsPaServern', 'arSakertInteFunnen'])
+        assert.ok(!new RegExp(`\\b${namn}\\b`).test(namngivna), `${f} importerar ${namn} med namn`);
+      assert.match(src, /import \* as utilsNs from '\.\/utils\.js';/);
+      assert.match(src, /utilsNs\.medOmforsok \|\| \(\(fn\) => fn\(1\)\)/, `${f} saknar reserven`);
+    }
+    const store = las('store.js');
+    assert.match(store, /const getDocFromServer = firebaseNs\.getDocFromServer \|\| getDoc;/);
+    assert.doesNotMatch(store.slice(0, store.indexOf("import * as firebaseNs")), /getDocFromServer/, 'store.js importerar getDocFromServer med namn');
+  });
+});
+
+describe('startläsningen: omförsök med tidsgräns', () => {
+  const ingenVanta = () => Promise.resolve();
+
+  test('andra försöket går igenom — det vanliga fallet på ett skogsnät', async () => {
+    const anrop = []; const marken = [];
+    const ut = await medOmforsok(async (n) => { anrop.push(n); if (n < 2) throw new Error('trögt'); return 'klart'; },
+      { forsok: 3, vanta: ingenVanta, vidForsok: (n) => marken.push(n) });
+    assert.equal(ut, 'klart');
+    assert.deepEqual(anrop, [1, 2]);
+    assert.deepEqual(marken, [2], 'vakthunden ska få en fas FÖRE varje nytt försök');
+  });
+
+  test('ger upp efter sista försöket och kastar det SISTA felet', async () => {
+    let n = 0;
+    await assert.rejects(() => medOmforsok(async () => { n++; throw new Error('fel ' + n); }, { forsok: 3, vanta: ingenVanta }), /fel 3/);
+    assert.equal(n, 3);
+  });
+
+  test('nekad behörighet försöks inte om — den blir inte sannare av att upprepas', async () => {
+    let n = 0;
+    const nekad = Object.assign(new Error('nekad'), { code: 'permission-denied' });
+    await assert.rejects(() => medOmforsok(async () => { n++; throw nekad; }, { forsok: 3, vanta: ingenVanta }), /nekad/);
+    assert.equal(n, 1);
+  });
+
+  // Egen tidsgräns på TESTET: utan den hänger hela sviten om tidsgränsen i
+  // medOmforsok försvinner — ett test som hänger i stället för att falla.
+  test('en läsning som varken svarar eller felar blir ett fel — och nästa försök går', { timeout: 3000 }, async () => {
+    let n = 0;
+    const ut = await medOmforsok((forsok) => { n++; return forsok === 1 ? new Promise(() => {}) : Promise.resolve('svar'); },
+      { forsok: 2, tidsgransMs: 20, vanta: ingenVanta });
+    assert.equal(ut, 'svar');
+    assert.equal(n, 2);
+  });
+
+  test('en märkning som kastar stoppar aldrig försöket', async () => {
+    const ut = await medOmforsok(async (n) => { if (n === 1) throw new Error('x'); return 'ok'; },
+      { vanta: ingenVanta, vidForsok: () => { throw new Error('vakthunden saknas'); } });
+    assert.equal(ut, 'ok');
+  });
+
+  test('felskärmen har en väg vidare, och escapar det den visar', () => {
+    const html = faltFelHtml('Kunde inte läsa <b>kontrollen</b>', 'fel & "sånt"');
+    assert.match(html, /id="falt-igen"/);
+    assert.ok(!html.includes('<b>'), 'rubriken injicerades rått');
+    assert.match(html, /fel &amp; /);
+  });
+
+  test('båda fältsidorna läser med omförsök, tidsgräns och fas per försök', () => {
+    for (const [f, fas] of [['report.js', "fasa('k-las-' + n)"], ['start.js', "fasa('s-las-' + n)"]]) {
+      const src = readFileSync(new URL(`../public/js/${f}`, import.meta.url), 'utf8');
+      assert.match(src, /forsok: 3, tidsgransMs: 15000/, f);
+      assert.ok(src.includes(fas), `${f}: utan fas byter vakthunden ut en sida som arbetar`);
+      assert.match(src, /location\.reload\(\)/);
+    }
+  });
+});
+
+describe('vakthunden laddar om vid blandade modulversioner', () => {
+  const medLagring = (fn) => {
+    const lager = new Map(); const fore = globalThis.sessionStorage;
+    globalThis.sessionStorage = { getItem: (k) => lager.get(k) ?? null, setItem: (k, v) => lager.set(k, String(v)) };
+    try { return fn(lager); } finally { if (fore === undefined) delete globalThis.sessionStorage; else globalThis.sessionStorage = fore; }
+  };
+
+  test('känner igen länkfelet i Chrome och Safari — men inte vanliga fel', () => {
+    const g = kor();
+    const ar = g.__eskilArLankfel;
+    assert.ok(ar("The requested module './store.js' does not provide an export named 'finnsPaServern'"), 'Chrome');
+    assert.ok(ar("SyntaxError: Importing binding name 'medOmforsok' is not found."), 'Safari');
+    assert.ok(!ar('TypeError: undefined is not a function'));
+    assert.ok(!ar('Failed to get document because the client is offline.'));
+    assert.ok(!ar(''));
+  });
+
+  test('laddar om EN gång — ett äkta syntaxfel får aldrig bli en loop', () => medLagring(() => {
+    const g = kor();
+    let omladdningar = 0;
+    g.location.reload = () => { omladdningar++; };
+    const fel = { message: "The requested module './utils.js' does not provide an export named 'medOmforsok'" };
+    g._lyssnare.error(fel);
+    g._lyssnare.error(fel);
+    assert.equal(omladdningar, 1);
+  }));
+
+  test('går sessionStorage inte att skriva (privat läge) laddas inget om — då går spärren inte att hålla', () => {
+    // Uttryckligen en lagring som KASTAR: nyare Node har en egen
+    // sessionStorage, så "saknas" går inte att lita på i testmiljön.
+    const fore = globalThis.sessionStorage;
+    globalThis.sessionStorage = { getItem: () => null, setItem: () => { throw new Error('QuotaExceededError'); } };
+    try {
+      const g = kor();
+      let omladdningar = 0;
+      g.location.reload = () => { omladdningar++; };
+      g._lyssnare.error({ message: "does not provide an export named 'x'" });
+      assert.equal(omladdningar, 0);
+    } finally { if (fore === undefined) delete globalThis.sessionStorage; else globalThis.sessionStorage = fore; }
+  });
+
+  test('en modul som inte gick att HÄMTA hamnar i den tekniska raden', () => {
+    const g = kor();
+    g._lyssnare.error({ target: { tagName: 'SCRIPT', src: 'https://eskilscout.se/js/report.js' } });
+    g._brand();
+    assert.match(g._root.innerHTML, /Kunde inte hämta report\.js/);
+    assert.doesNotMatch(g._root.innerHTML, /inget fel — sidan väntade/);
   });
 });

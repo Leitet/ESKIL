@@ -6,6 +6,10 @@
 //   - Filter chips + control list with anonymity enforced
 
 import { db, doc, onSnapshot, collection } from './firebase.js';
+// Namnrymder för de NYA namnen — se getDocFromServer i store.js: en cachad
+// äldre utils.js/store.js ihop med den här filen får inte bli ett SyntaxError.
+import * as utilsNs from './utils.js';
+import * as storeNs from './store.js';
 import {
   resolveCompetition, getPatrol, listControls, listPatrols, getTrack,
   watchSelfPassages, confirmSelfPassage, sendThreadMessage
@@ -108,13 +112,25 @@ async function main() {
   samtalsToken = parsed.token;
   const { patrolId } = parsed;
 
+  // STARTLÄSNINGEN FÅR INTE VARA SKÖR — se samma block i report.js. Tre försök
+  // med tidsgräns, och "hittades inte" bara när SERVERN sagt det:
+  // resolveCompetition kastar numera vid ett läsfel i stället för att svara
+  // null, och en saknad patrull bekräftas mot servern.
+  const fasa = (n) => { try { window.__eskilFas?.(n); } catch {} };
+  const omforsok = utilsNs.medOmforsok || ((fn) => fn(1));
+  const vidForsok = (n) => {
+    fasa('s-las-' + n);
+    root.innerHTML = `<div class="r-empty">Trögt nät — försöker igen (${n} av 3)…</div>`;
+  };
   try {
     // /s/<id>/... or the competition's fixed slug (/s/ah26/...) — ETT
     // nätvarv för båda, se resolveCompetition i store.js.
-    comp = await resolveCompetition(cid);
+    fasa('s-las');
+    comp = await omforsok(() => resolveCompetition(cid), { forsok: 3, tidsgransMs: 15000, vidForsok });
     if (comp) cid = comp.id;
     if (comp) {
-      [patrol, controls, patrols, track] = await Promise.all([
+      fasa('s-banan');
+      [patrol, controls, patrols, track] = await omforsok(() => Promise.all([
         // /s/<cid>/test — a synthetic patrol so the startkort can be
         // previewed before any patrols exist. Everything shown is public
         // data anyway; the banner below marks it clearly as a test.
@@ -128,13 +144,18 @@ async function main() {
         listControls(cid),
         listPatrols(cid),
         getTrack(cid).catch(() => null)
-      ]);
+      ]), { forsok: 3, tidsgransMs: 15000, vidForsok });
+      if (!patrol && storeNs.finnsPaServern) {
+        fasa('s-bekrafta');
+        patrol = await storeNs.finnsPaServern('competitions', cid, 'patrols', patrolId);
+      }
     }
+    fasa('s-last');
   } catch (e) {
-    return renderError('Kunde inte ladda startkortet: ' + e.message);
+    return renderError('Kunde inte ladda startkortet', `${e.message} Kortet öppnas så fort det finns täckning igen.`);
   }
-  if (!comp)   return renderError('Tävlingen hittades inte.');
-  if (!patrol) return renderError('Patrullen hittades inte.');
+  if (!comp)   return renderError('Tävlingen hittades inte', 'Länken pekar på en tävling som inte finns. Skanna QR-koden på nytt eller be om en ny länk.');
+  if (!patrol) return renderError('Patrullen hittades inte', 'Länken pekar på en patrull som inte finns — den kan ha tagits bort. Hör med sekretariatet.');
   document.title = `${patrol.name || 'Startkort'} · ${comp.shortName || comp.name || ''} — ESKIL`;
 
   // Offline-bannern följer nätstatusen direkt.
@@ -1587,8 +1608,10 @@ function openStartFinishSheet(kind) {
 }
 
 // --- Error view ---
-function renderError(msg) {
-  root.innerHTML = `<div class="r-empty">${escapeHtml(msg)}</div>`;
+function renderError(rubrik, detalj = '') {
+  root.innerHTML = utilsNs.faltFelHtml ? utilsNs.faltFelHtml(rubrik, detalj)
+    : `<div class="r-empty">${escapeHtml(rubrik)} ${escapeHtml(detalj)}</div>`;
+  root.querySelector('#falt-igen')?.addEventListener('click', () => location.reload());
 }
 
 main().catch(e => {

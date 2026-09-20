@@ -426,6 +426,65 @@ precis det brott den ska fånga.
   admin-genvägen — och SPA:n behöver långlivade sessioner. Mönstret kräver ett
   avslutande snedstreck: `/app/...` börjar på "a", och utan det slås
   inloggningen ut i hela admingränssnittet. Mutationsverifierat.
+  **Den fjärde hängningen slog till på en skarp tävling, och den är den
+  lömskaste: FLIKSYNKRONISERINGEN.** Med `persistentMultipleTabManager` äger EN
+  flik serverkontakten och alla andra flikar på samma domän läser GENOM den.
+  SDK:n låter ägaren behålla ägarskapet så länge den förnyar det var fjärde
+  sekund (`canActAsPrimary`: giltigt eget kontrakt → `return true`, den tittar
+  aldrig efter en förgrundsflik då) — och en BAKGRUNDSFLIK på en telefon gör
+  just det: timrarna tickar, men nätet är strypt. Varje ny flik hänger då på en
+  flik som inte når servern. Symptomen: kontrollkort och startkort på
+  "Laddar…", vakthunden med "inget fel — sidan väntade", "hittades inte" för
+  sådant som fanns — och **en omladdning hjälper inte** (den gamla fliken
+  lever), medan "lägg till på hemskärmen" gör det (egen lagring → inga andra
+  flikar). Gamla flikar finns ALLTID: varje tryck på maillänken och varje
+  QR-skanning öppnar en ny. Återskapat i emulatorn — och INTE genom att frysa
+  flik 1 (ett fruset kontrakt går ut på 5 s och den nya fliken tar över), utan
+  genom att låta den LEVA med dött nät (`window.fetch` och
+  `XMLHttpRequest.prototype.send` strypta): ny flik → vakthunden efter 10,2 s,
+  och igen efter "Försök igen". Med fixen: 0,19 s i exakt samma läge.
+  Fältsidorna kör därför `persistentSingleTabManager({})`: första fliken äger
+  IndexedDB-cachen, varje YTTERLIGARE flik faller tillbaka på minnescache av
+  sig själv (`FAILED_PRECONDITION` → "Falling back to memory cache", verifierat
+  i firebase-firestore.js 10.12.5 och i konsolen) och har EGEN serverkontakt.
+  Priset: en extra flik har ingen cache som överlever en omladdning utan
+  täckning. Rätt byte — att sidan öppnas när det finns nät är det som inte får
+  fallera. **ALDRIG `forceOwnership`**: den dödar den andra flikens Firestore
+  tyst, och en kontrollant som växlar tillbaka dit sparar poäng som aldrig går
+  iväg. Admin-SPA:n och /t behåller fliksynkroniseringen (datorer, fungerande
+  bakgrundsnät, delad cache sparar läsningar). Blandade versioner under en
+  deploy är ofarliga: en flik med gammal kod och en med ny faller bara tillbaka
+  på minnescache åt varandra.
+  **IndexedDB prövas dessutom med en tidsgräns** (`idbSvarar`, 1,5 s, mätt till
+  1–10 ms när den fungerar): svarar den inte kör sidan `memoryLocalCache()`.
+  Samma WebKit-fel som `inMemoryPersistence` löste för Auth hängde annars
+  Firestores start. Provet öppnar en EGEN databas (`eskil-idb-prov`) — öppna
+  ALDRIG Firestores: en tom databas med dess namn förstör schemat.
+  **"Hittades inte" sägs bara när SERVERN sagt det.** `resolveCompetition`
+  svalde varje läsfel till null, och en FRÅGA (`getDocs`) som inte når servern
+  kastar inte — den svarar tomt ur cachen. Kortadressen är startkortets
+  normalväg, så ett trögt nät blev "Tävlingen hittades inte": en lögn som får
+  folk att leta efter fel länk. Den kastar numera "Ingen kontakt med servern"
+  (`arSakertInteFunnen`: inget fel OCH inte ur cachen), och /k och /s bekräftar
+  en saknad kontroll/patrull med `finnsPaServern` (`getDocFromServer`, går
+  förbi cachen, kastar om servern inte nås) innan de säger att den inte finns.
+  Startläsningen går genom `medOmforsok` — tre försök, 15 s tidsgräns per
+  försök, en FAS per försök så vakthunden ser att sidan arbetar. Laddtexten
+  rörs först vid försök två: en ändring i `#root` kopplar ner vakthunden, och
+  det är tidsgränsen i `medOmforsok` som gör att det ändå är säkert. Felskärmen
+  (`faltFelHtml`) har alltid en Försök igen-knapp.
+  **De NYA namnen importeras ur NAMNRYMDER** (`import * as utilsNs`), aldrig med
+  namn, i report.js, start.js och store.js. Service workern hämtar nät-först med
+  4 s tidsgräns PER FIL, så en sidladdning efter en deploy kan på trögt nät para
+  ihop en färsk fil med en cachad äldre — och ett namngivet import av ett namn
+  som saknas i den gamla är ett SyntaxError vid länkningen: ingen modulkod körs
+  alls. Ur en namnrymd blir det saknade namnet `undefined`, och reserven gäller.
+  Gör likadant nästa gång en fältsida ska importera något nytt ur en delad
+  modul. Som andra försvarslinje laddar VAKTHUNDEN om sidan en gång vid just
+  det länkfelet (`laddaOmVidSkev` i field-watchdog.js, samma idé som i app.js),
+  spärrad med sessionStorage — går den inte att skriva laddas inget om, för då
+  går spärren inte att hålla. SW-versionen höjdes (v10) så att första
+  laddningen efter den här deployen hämtar allt färskt.
   **Samma predikat ger fältsidorna en EGEN Firebase-app (`initializeApp(config,
   'falt')`), och det är den fjärde hängningens kusin: en rättighetskrasch.**
   Firestores lokala cache och fliksynkronisering nycklas på appens namn, så
