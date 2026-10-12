@@ -20,6 +20,7 @@ import { compPlaces } from '../places.js';
 import { icon } from '../icons.js';
 import { downloadFieldPackPdf, downloadManualStartPdf } from '../pdf.js';
 import { downloadResultsPdf, attachTrackStats } from '../results-export.js';
+import { oppnaBokforingSida } from '../bokforing.js';
 import { help } from '../help.js';
 import { layout, setTopbarCompetition } from '../app.js';
 
@@ -129,6 +130,22 @@ export async function renderUtskrifter(app, user, cid) {
       }
     }
   ];
+
+  // Samma sida som knappen på Anmälan. Bara admin: underlaget är kassörens,
+  // och utskrifterna i övrigt kan en medlem ladda ner.
+  if (isAdmin) poster.push({
+    id: 'bokforing',
+    titel: 'Bokföringsunderlag',
+    varfor: 'Utskrivbar A4-sida med sammanfattning, tabell per kår, noteringar och attestrad för kassören. Samma underlag som på Anmälan, där det också går att ladda ner som CSV. ESKIL lagrar inte ett separat inbetalt belopp: en avprickad referens räknas som hela det förväntade beloppet.',
+    antal: null,
+    saknas: null,
+    efterat: true,
+    knapp: 'Öppna utskriftsvy',
+    kor: async () => {
+      const regs = await listRegistrations(cid);
+      oppnaBokforingSida(comp, regs);
+    }
+  });
 
   wrap.innerHTML = `
     ${compHeader(cid, comp, user, {

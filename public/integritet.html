@@ -234,9 +234,10 @@
     <div class="no-cookies" style="border-left-color: var(--scout-blue);">
       <strong>Vad assistenten inte kan läsa.</strong> Telefonnummer, e-postadresser och
       personnamn på funktionärer och kontaktpersoner lämnas aldrig ut. Servern svarar
-      ”ifyllt” eller ”saknas” — aldrig värdet. Assistenten når heller inte anmälningar,
-      allergiuppgifter, fältets meddelanden, nödrop, säkerhetskopior, PDF:er eller
-      papperskorgen, och den kan inte avsluta eller radera en tävling.
+      ”ifyllt” eller ”saknas” — aldrig värdet. Assistenten når heller inte anmälningslänkar,
+      kontaktpersoner i anmälningar, allergiuppgifter, Swish- och kontonummer, fältets
+      meddelanden, nödrop, säkerhetskopior, PDF:er eller papperskorgen, och den kan inte
+      avsluta eller radera en tävling.
     </div>
 
     <p><strong>Vad assistenten kan läsa:</strong> tävlingens namn, datum, plats och
@@ -244,7 +245,12 @@
     instruktioner), samt patrullernas namn, kår och avdelning. Under tävlingsdagen kan den
     också läsa <strong>inrapporterade poäng, passagetider och var patrullerna befinner sig på
     banan</strong> — samma bild som tävlingsledningen ser i ESKIL, så att assistenten kan
-    varna för köer och för patruller som inte hörts av. Patrull- och kårnamn står redan på den publika tävlingssidan.</p>
+    varna för köer och för patruller som inte hörts av. Patrull- och kårnamn står redan på den publika tävlingssidan.
+    Den kan också läsa <strong>bokföringsunderlag</strong>: anmälningar per kår (patrullnamn,
+    avdelning och antal scouter), avgiftsinställningar och betalningar (referens, förväntat
+    belopp och om referensen är avprickad). Belopp och betalningsreferenser är inte
+    personuppgifter. Ett separat inbetalt belopp lagras inte — en avprickad referens räknas
+    som hela det förväntade beloppet, och en post som inte är avprickad visas utan inbetalt belopp.</p>
 
     <p><strong>Vad administratören kan låta assistenten skriva:</strong> kontaktuppgifter går
     att <em>sätta</em> via assistenten, även om de inte går att läsa tillbaka. Väljer man det
@@ -262,8 +268,10 @@
 
     <p>Nyckeln som ger åtkomst lagras aldrig i klartext, bara som ett kryptografiskt avtryck.
     Den visas en gång när den skapas och kan när som helst återkallas under
-    Inställningar → AI-koppling. Åtkomsten upphör direkt vid återkallande, och automatiskt när
-    tävlingen avslutas.</p>
+    Inställningar → AI-koppling. Åtkomsten upphör direkt vid återkallande, och när tävlingen
+    raderas. När tävlingen avslutas slutar assistenten kunna ändra något, men läsning —
+    inklusive bokföringsunderlaget — fungerar tills nyckeln återkallas. Vid avslutet är
+    kontaktuppgifter och fritextsvar i anmälningarna redan raderade.</p>
 
     <h2>Startdiagnostik i webbläsaren</h2>
     <p>För att kunna felsöka sidor som blir stående på ”Laddar…” sparar ESKIL de tre senaste
