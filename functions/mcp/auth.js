@@ -96,12 +96,11 @@ async function verifiera(sokvag) {
   const compSnap = await db.doc(`competitions/${cid}`).get();
   if (!compSnap.exists) return avvisa;
   const comp = compSnap.data() || {};
-  // En avslutad tävling är läsbar men oföränderlig för alla utom admin — och
-  // stängningen sveper personuppgifterna. Att låta en MCP skriva där hade
-  // kringgått både.
-  if (comp.closed) {
-    return { ok: false, status: 403, meddelande: 'Tävlingen är avslutad och kan inte ändras.' };
-  }
+  // En avslutad tävling är läsbar. Skrivspärren sitter i verktygslagret
+  // (stangdNekande), inte här: initialize, tools/list och läsverktygen ska
+  // fungera efter avslutet så kassören kan ta ut bokföringsunderlaget.
+  // Nyckeln raderas inte vid avslut av samma skäl.
+  //
   // Demotävlingen nekar varje skrivning i reglerna. Att svara med ett tydligt
   // besked är hela mönstret från report.js och station.js: ett demo som svarar
   // PERMISSION_DENIED är värre än inget demo.

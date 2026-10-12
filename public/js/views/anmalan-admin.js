@@ -17,6 +17,7 @@ import {
 import { icon } from '../icons.js';
 import { compHeader, compLabel, setDocTitle } from '../nav.js';
 import { openEfteranmalanModal } from './efteranmalan.js';
+import { laddaNerBokforingCsv, oppnaBokforingSida } from '../bokforing.js';
 
 // Ready-made PM templates — {comp} is replaced with the competition label,
 // [HAKPARENTESER] are gaps the admin fills in before sending.
@@ -336,6 +337,14 @@ export async function renderAnmalanAdmin(app, user, cid) {
             })()}
           </div>
         </div>
+        <div class="card mb-4" style="padding:var(--sp-4);" id="bokforing-kort">
+          <div class="t-over" style="margin-bottom:6px;">Bokföringsunderlag</div>
+          <p class="muted t-sm" style="margin:0 0 10px;">Kår, patruller, antal, referenser och belopp — samma underlag som AI-kopplingen kan läsa. ESKIL lagrar inte ett separat inbetalt belopp: en avprickad referens räknas som hela det förväntade beloppet, och en post som inte är avprickad lämnas tom, inte som 0 kr. Kontaktpersoner, e-post och telefon ingår inte. A4-sidan skrivs ut till PDF i webbläsaren och har en attestrad för kassören.</p>
+          <div class="btn-row">
+            <button class="btn btn-secondary btn-sm" id="bok-csv">${icon('download', { size: 14 })} Ladda ner CSV</button>
+            <button class="btn btn-secondary btn-sm" id="bok-html">${icon('download', { size: 14 })} Öppna utskriftsvy</button>
+          </div>
+        </div>
       ` : ''}
 
       ${regs.length === 0 ? `
@@ -638,6 +647,9 @@ export async function renderAnmalanAdmin(app, user, cid) {
       try { await setPaid(regId, payId, false); toast('Betalning återställd'); }
       catch (e) { toast('Fel: ' + e.message, 'error'); }
     })));
+
+    content.querySelector('#bok-csv')?.addEventListener('click', () => laddaNerBokforingCsv(comp, regs));
+    content.querySelector('#bok-html')?.addEventListener('click', () => oppnaBokforingSida(comp, regs));
 
     const markBtn = content.querySelector('#mark-paid');
     markBtn?.addEventListener('click', () => withBusy(markBtn, 'Söker…', async () => {

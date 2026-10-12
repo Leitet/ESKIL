@@ -1592,10 +1592,15 @@ function renderMcpTab(comp, cid, refresh, readOnly) {
       uppgiften din AI-leverantör på vägen in. Patrullnamn och kårnamn är läsbara; de står
       redan på den publika tävlingssidan.
       <br><br>
-      Assistenten når inte anmälningar, utskick, säkerhetskopior, PDF:er, fältets meddelanden
-      eller papperskorgen, och kan inte avsluta eller radera tävlingen.
+      Assistenten kan läsa anmälningar per kår (patruller och antal scouter), avgiftsinställningar
+      och betalningar, och ta ut ett bokföringsunderlag. Den når inte kontaktpersoner, e-post,
+      telefon, allergier, Swish-nummer, anmälningslänkar, utskick, säkerhetskopior, PDF:er,
+      fältets meddelanden eller papperskorgen, och kan inte avsluta eller radera tävlingen.
       <a href="/integritet">Så hanteras personuppgifter</a>.
     </div>
+    ${comp?.closed ? `
+      <div class="notice" style="margin-top:12px;">Tävlingen är avslutad. Assistenten kan fortfarande läsa — inklusive bokföringsunderlaget — men verktyg som ändrar data nekas. Återkalla nyckeln om läsningen också ska upphöra.</div>
+    ` : ''}
 
     <div id="mcp-nyckel"></div>
   `;

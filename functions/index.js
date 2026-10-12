@@ -1460,6 +1460,9 @@ exports.mcp = onRequest({ cors: false, maxInstances: 3, timeoutSeconds: 30 }, as
     version: '1.0.0',
     instruktioner: mcpVerktyg.INSTRUKTIONER,
     listaVerktyg: () => mcpVerktyg.listaVerktyg(),
+    // 403 bara för verktyg som ändrar data. Läsning, initialize och
+    // tools/list går igenom även när tävlingen är avslutad.
+    nekasVerktyg: (namn) => mcpVerktyg.stangdNekande(kontroll.comp, namn),
     anropaVerktyg: (namn, args) => mcpVerktyg.anropaVerktyg(namn, args, ctx)
   });
 });

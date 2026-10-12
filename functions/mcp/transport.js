@@ -202,6 +202,13 @@ async function hanteraMcp(req, res, server) {
       case 'tools/call': {
         const namn = params?.name;
         if (!namn) return svaraFel(res, 200, FEL.ogiltigParam, 'params.name saknas.', id);
+        // Valfri spärr innan verktyget körs. Avslutad tävling nekar skrivande
+        // verktyg med HTTP 403 — samma svar som förut gällde hela anropet —
+        // medan läsverktyg, initialize och tools/list går vidare.
+        if (typeof server.nekasVerktyg === 'function') {
+          const nekad = server.nekasVerktyg(namn);
+          if (nekad) return svaraFel(res, nekad.status, nekad.kod, nekad.meddelande, id);
+        }
         const utfall = await server.anropaVerktyg(namn, params?.arguments || {});
         // Ett VERKTYGSFEL är inte ett protokollfel: det ska tillbaka som ett
         // lyckat svar med isError, så att modellen kan läsa felet och rätta

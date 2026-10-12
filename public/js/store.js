@@ -604,11 +604,11 @@ export async function closeCompetition(cid) {
   await deleteRefs(faltinfoSnap.docs.map(d => d.ref));
   // private/ledning raderas INTE längre — den skrivs om längre ner utan
   // telefonnummer. Speglarna ovan bär telefon till fältet och ska bort helt.
-  // MCP-nyckeln. Servern nekar redan en avslutad tävling, så åtkomsten är
-  // stängd ändå — men dokumentet raderas för att påståendet på /integritet
-  // ("åtkomsten upphör automatiskt när tävlingen avslutas") ska vara sant på
-  // ett ställe, inte bero på en kontroll någon annanstans.
-  await deleteDoc(doc(db, 'competitions', cid, 'private', 'mcp')).catch(() => {});
+  // MCP-nyckeln LIGGER KVAR. Avslutet stoppar skrivningar via kopplingen,
+  // men kassören ska kunna läsa — bokföringsunderlaget ingår — med samma
+  // nyckel efteråt. Återkallande, eller att tävlingen raderas, är det som
+  // stänger läsningen. Förut raderades dokumentet här, och då dog även
+  // läsningen i samma stund som tävlingen stängdes.
 
   // Kompletteringarna bär ALLERGIER — hälsouppgifter — och kontaktpersoner.
   // De fyller sitt syfte fram till tävlingsdagen; efter avslut är de bara
